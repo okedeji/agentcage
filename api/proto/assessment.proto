@@ -1,0 +1,81 @@
+syntax = "proto3";
+package agentcage.assessment.v1;
+option go_package = "github.com/okedeji/agentcage/api/proto/assessment";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+import "api/proto/cage.proto";
+
+service AssessmentService {
+  rpc CreateAssessment(CreateAssessmentRequest) returns (CreateAssessmentResponse);
+  rpc GetAssessment(GetAssessmentRequest) returns (GetAssessmentResponse);
+}
+
+enum AssessmentStatus {
+  ASSESSMENT_STATUS_UNSPECIFIED = 0;
+  ASSESSMENT_STATUS_MAPPING = 1;
+  ASSESSMENT_STATUS_TESTING = 2;
+  ASSESSMENT_STATUS_VALIDATING = 3;
+  ASSESSMENT_STATUS_PENDING_REVIEW = 4;
+  ASSESSMENT_STATUS_APPROVED = 5;
+  ASSESSMENT_STATUS_REJECTED = 6;
+}
+
+enum ComplianceFramework {
+  COMPLIANCE_FRAMEWORK_UNSPECIFIED = 0;
+  COMPLIANCE_FRAMEWORK_SOC2 = 1;
+  COMPLIANCE_FRAMEWORK_HIPAA = 2;
+  COMPLIANCE_FRAMEWORK_PCI_DSS = 3;
+}
+
+message CageTypeConfig {
+  agentcage.cage.v1.CageType type = 1;
+  agentcage.cage.v1.ResourceLimits defaults = 2;
+  int32 max_concurrent = 3;
+}
+
+message AssessmentConfig {
+  string customer_id = 1;
+  agentcage.cage.v1.TargetScope scope = 2;
+  repeated CageTypeConfig cage_type_configs = 3;
+  int64 total_token_budget = 4;
+  google.protobuf.Duration max_duration = 5;
+  int32 max_chain_depth = 6;
+  ComplianceFramework compliance = 7;
+}
+
+message AssessmentStats {
+  int32 total_cages = 1;
+  int32 active_cages = 2;
+  int32 findings_candidate = 3;
+  int32 findings_validated = 4;
+  int32 findings_rejected = 5;
+  int64 tokens_consumed = 6;
+}
+
+message AssessmentInfo {
+  string assessment_id = 1;
+  string customer_id = 2;
+  AssessmentStatus status = 3;
+  AssessmentConfig config = 4;
+  AssessmentStats stats = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message CreateAssessmentRequest {
+  AssessmentConfig config = 1;
+}
+
+message CreateAssessmentResponse {
+  AssessmentInfo assessment = 1;
+}
+
+message GetAssessmentRequest {
+  string assessment_id = 1;
+}
+
+message GetAssessmentResponse {
+  AssessmentInfo assessment = 1;
+}
