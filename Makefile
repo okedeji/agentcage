@@ -1,4 +1,4 @@
-.PHONY: all build clean proto test vet lint
+.PHONY: all build clean proto test vet lint check-secrets ci
 
 GO := go
 GOFLAGS := -trimpath
@@ -31,6 +31,11 @@ vet:
 
 lint:
 	golangci-lint run ./...
+
+check-secrets:
+	$(GO) run scripts/check_secret_redaction.go
+
+ci: vet check-secrets test build
 
 tidy:
 	$(GO) mod tidy
