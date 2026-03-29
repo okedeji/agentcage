@@ -1,0 +1,43 @@
+- rule: Any Shell Spawn in Validator Cage
+  desc: Validators should not spawn shells at all
+  condition: >
+    spawned_process and proc.name in (bash, sh, dash, zsh)
+    and container.id != host
+  output: "Shell spawned in validator cage (command=%proc.cmdline container=%container.id)"
+  priority: CRITICAL
+  tags: [agentcage, validator, unexpected_shell]
+
+- rule: Any File Write in Validator Cage
+  desc: Validators should not write to the filesystem
+  condition: >
+    open_write and container.id != host
+  output: "File write in validator cage (file=%fd.name command=%proc.cmdline container=%container.id)"
+  priority: WARNING
+  tags: [agentcage, validator, file_write]
+
+- rule: Unexpected Network Connection in Validator Cage
+  desc: Validators should make only a single outbound connection to the target
+  condition: >
+    evt.type in (connect, sendto) and fd.type = ipv4
+    and container.id != host
+  output: "Network connection in validator cage (dest=%fd.sip:%fd.sport command=%proc.cmdline container=%container.id)"
+  priority: NOTICE
+  tags: [agentcage, validator, network]
+
+- rule: Privilege Escalation in Validator Cage
+  desc: Any privilege change in a validator is immediately critical
+  condition: >
+    (evt.type in (setuid, setgid, setreuid, setregid) or proc.name = sudo)
+    and container.id != host
+  output: "Privilege escalation in validator cage (syscall=%evt.type command=%proc.cmdline container=%container.id)"
+  priority: CRITICAL
+  tags: [agentcage, validator, privilege_escalation]
+
+- rule: Unexpected Process in Validator Cage
+  desc: Only the agent process and payload proxy should be running
+  condition: >
+    spawned_process and not proc.name in (agent, payload-proxy, findings-sidecar)
+    and container.id != host
+  output: "Unexpected process in validator cage (process=%proc.name command=%proc.cmdline container=%container.id)"
+  priority: CRITICAL
+  tags: [agentcage, validator, unexpected_process]

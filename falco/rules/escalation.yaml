@@ -1,0 +1,36 @@
+- rule: Privileged Shell in Escalation Cage
+  desc: Root shells in escalation cages are suspicious
+  condition: >
+    spawned_process and proc.name in (bash, sh, dash, zsh) and proc.uid = 0
+    and container.id != host
+  output: "Privileged shell in escalation cage (command=%proc.cmdline container=%container.id)"
+  priority: WARNING
+  tags: [agentcage, escalation, privilege_escalation]
+
+- rule: Sensitive File Write in Escalation Cage
+  desc: Writes to system paths in escalation cages
+  condition: >
+    open_write and (fd.name startswith /etc/ or fd.name startswith /proc/
+    or fd.name startswith /sys/)
+    and container.id != host
+  output: "Sensitive file write in escalation cage (file=%fd.name command=%proc.cmdline container=%container.id)"
+  priority: WARNING
+  tags: [agentcage, escalation, file_write]
+
+- rule: Privilege Escalation in Escalation Cage
+  desc: Privilege changes are critical in any cage type
+  condition: >
+    (evt.type in (setuid, setgid, setreuid, setregid) or proc.name = sudo)
+    and container.id != host
+  output: "Privilege escalation in escalation cage (syscall=%evt.type command=%proc.cmdline container=%container.id)"
+  priority: CRITICAL
+  tags: [agentcage, escalation, privilege_escalation]
+
+- rule: Lateral Movement Attempt in Escalation Cage
+  desc: Detects SSH, RDP, or SMB connections that suggest pivot attempts beyond scope
+  condition: >
+    evt.type in (connect, sendto) and fd.sport in (22, 3389, 445)
+    and container.id != host
+  output: "Lateral movement attempt in escalation cage (dest=%fd.sip:%fd.sport command=%proc.cmdline container=%container.id)"
+  priority: CRITICAL
+  tags: [agentcage, escalation, lateral_movement]
