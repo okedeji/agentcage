@@ -64,10 +64,15 @@ type PatternEntry struct {
 }
 
 type InfrastructureConfig struct {
-	LLMEndpoint string        `yaml:"llm_endpoint"`
-	LLMTimeout  time.Duration `yaml:"llm_timeout"`
-	NATSAddr    string        `yaml:"nats_addr"`
-	InfraHosts  []string      `yaml:"infra_hosts"`
+	LLMEndpoint              string        `yaml:"llm_endpoint"`
+	LLMTimeout               time.Duration `yaml:"llm_timeout"`
+	ClassificationEndpoint   string        `yaml:"classification_endpoint"`
+	ClassificationTimeout    time.Duration `yaml:"classification_timeout"`
+	ClassificationThreshold  float64       `yaml:"classification_threshold"`
+	ClassificationBatchWindow time.Duration `yaml:"classification_batch_window"`
+	ClassificationMaxBatch   int           `yaml:"classification_max_batch"`
+	NATSAddr                 string        `yaml:"nats_addr"`
+	InfraHosts               []string      `yaml:"infra_hosts"`
 }
 
 // Parse reads configuration from raw YAML bytes.
@@ -179,6 +184,21 @@ func Merge(base, override *Config) *Config {
 	}
 	if override.Infrastructure.LLMTimeout > 0 {
 		result.Infrastructure.LLMTimeout = override.Infrastructure.LLMTimeout
+	}
+	if override.Infrastructure.ClassificationEndpoint != "" {
+		result.Infrastructure.ClassificationEndpoint = override.Infrastructure.ClassificationEndpoint
+	}
+	if override.Infrastructure.ClassificationTimeout > 0 {
+		result.Infrastructure.ClassificationTimeout = override.Infrastructure.ClassificationTimeout
+	}
+	if override.Infrastructure.ClassificationThreshold > 0 {
+		result.Infrastructure.ClassificationThreshold = override.Infrastructure.ClassificationThreshold
+	}
+	if override.Infrastructure.ClassificationBatchWindow > 0 {
+		result.Infrastructure.ClassificationBatchWindow = override.Infrastructure.ClassificationBatchWindow
+	}
+	if override.Infrastructure.ClassificationMaxBatch > 0 {
+		result.Infrastructure.ClassificationMaxBatch = override.Infrastructure.ClassificationMaxBatch
 	}
 	if override.Infrastructure.NATSAddr != "" {
 		result.Infrastructure.NATSAddr = override.Infrastructure.NATSAddr

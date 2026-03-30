@@ -210,9 +210,14 @@ blocklist_patterns:
 # Platform infrastructure addresses
 # Required fields — CI validation fails if left empty.
 infrastructure:
-  llm_endpoint: ""   # External LLM gateway URL (e.g. https://litellm.internal:4000/v1/chat/completions)
+  llm_endpoint: ""              # External LLM gateway URL (OpenAI-compatible chat completions endpoint)
   llm_timeout: 30s
-  nats_addr: ""      # NATS server address (e.g. nats://nats.internal:4222)
+  classification_endpoint: ""   # External payload classification service URL (optional — leave empty to disable classification mode)
+  classification_timeout: 5s
+  classification_threshold: 0.8 # Confidence threshold: >= allow, < block or hold
+  classification_batch_window: 100ms  # How long to collect payloads before sending a batch
+  classification_max_batch: 10  # Max payloads per batch
+  nats_addr: ""                 # NATS server address (e.g. nats://nats.internal:4222)
   infra_hosts:             # agentcage infrastructure hosts — cages cannot target these
     - orchestrator.agentcage.internal
     - vault.agentcage.internal

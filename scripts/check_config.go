@@ -36,9 +36,11 @@ type patternEntry struct {
 }
 
 type infrastructureConfig struct {
-	LLMEndpoint string   `yaml:"llm_endpoint"`
-	NATSAddr    string   `yaml:"nats_addr"`
-	InfraHosts  []string `yaml:"infra_hosts"`
+	LLMEndpoint              string   `yaml:"llm_endpoint"`
+	ClassificationEndpoint   string   `yaml:"classification_endpoint"`
+	ClassificationThreshold  float64  `yaml:"classification_threshold"`
+	NATSAddr                 string   `yaml:"nats_addr"`
+	InfraHosts               []string `yaml:"infra_hosts"`
 }
 
 func main() {
