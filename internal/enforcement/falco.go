@@ -41,36 +41,16 @@ func (h *FalcoHandler) HandleAlert(_ context.Context, cageType cage.Type, alert 
 	return rs.Default, nil
 }
 
-// DefaultRuleSets returns the standard Falco-to-tripwire mappings for each cage type.
-func DefaultRuleSets() map[cage.Type]TripwireRuleSet {
-	return map[cage.Type]TripwireRuleSet{
-		cage.TypeDiscovery: {
-			Rules: map[string]TripwirePolicy{
-				"Unexpected Privileged Shell in Discovery Cage":  TripwireHumanReview,
-				"Sensitive File Write in Discovery Cage":         TripwireLogAndContinue,
-				"Privilege Escalation Attempt in Discovery Cage": TripwireImmediateTeardown,
-				"Excessive Process Forking in Discovery Cage":    TripwireLogAndContinue,
-			},
-			Default: TripwireLogAndContinue,
-		},
-		cage.TypeValidator: {
-			Rules: map[string]TripwirePolicy{
-				"Any Shell Spawn in Validator Cage":              TripwireImmediateTeardown,
-				"Any File Write in Validator Cage":               TripwireHumanReview,
-				"Unexpected Network Connection in Validator Cage": TripwireLogAndContinue,
-				"Privilege Escalation in Validator Cage":         TripwireImmediateTeardown,
-				"Unexpected Process in Validator Cage":           TripwireImmediateTeardown,
-			},
-			Default: TripwireHumanReview,
-		},
-		cage.TypeEscalation: {
-			Rules: map[string]TripwirePolicy{
-				"Privileged Shell in Escalation Cage":            TripwireHumanReview,
-				"Sensitive File Write in Escalation Cage":        TripwireHumanReview,
-				"Privilege Escalation in Escalation Cage":        TripwireImmediateTeardown,
-				"Lateral Movement Attempt in Escalation Cage":    TripwireImmediateTeardown,
-			},
-			Default: TripwireHumanReview,
-		},
+// TripwirePolicyFromString converts a string from configuration into a TripwirePolicy value.
+func TripwirePolicyFromString(s string) (TripwirePolicy, error) {
+	switch s {
+	case "log_and_continue":
+		return TripwireLogAndContinue, nil
+	case "human_review":
+		return TripwireHumanReview, nil
+	case "immediate_teardown":
+		return TripwireImmediateTeardown, nil
+	default:
+		return 0, fmt.Errorf("unknown tripwire policy %q", s)
 	}
 }

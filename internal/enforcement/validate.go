@@ -5,41 +5,23 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/config"
 )
 
 var ErrInvalidConfig = errors.New("invalid cage config")
 
-const maxRequestsPerSecond int32 = 1000
-
-var typeDurationLimits = map[cage.Type]time.Duration{
-	cage.TypeDiscovery:  30 * time.Minute,
-	cage.TypeValidator:  60 * time.Second,
-	cage.TypeEscalation: 15 * time.Minute,
-}
-
-var typeVCPULimits = map[cage.Type]int32{
-	cage.TypeDiscovery:  4,
-	cage.TypeValidator:  1,
-	cage.TypeEscalation: 2,
-}
-
-var typeMemoryLimits = map[cage.Type]int32{
-	cage.TypeDiscovery:  8192,
-	cage.TypeValidator:  1024,
-	cage.TypeEscalation: 4096,
-}
-
-func ValidateCageConfig(config cage.Config) error {
+func ValidateCageConfig(cageConfig cage.Config, limits *config.Config) error {
 	var errs []error
 
-	errs = append(errs, validateScope(config.Scope)...)
-	errs = append(errs, validateRateLimits(config.RateLimits)...)
-	errs = append(errs, validateTimeLimits(config.Type, config.TimeLimits)...)
-	errs = append(errs, validateResources(config.Type, config.Resources)...)
-	errs = append(errs, validateRequiredFields(config)...)
+	errs = append(errs, validateScope(cageConfig.Scope)...)
+	errs = append(errs, validateRateLimits(cageConfig.RateLimits, limits.RateLimits.MaxRequestsPerSecond)...)
+
+	typeLimits, hasType := limits.CageTypes[cageConfig.Type.String()]
+	errs = append(errs, validateTimeLimits(cageConfig.Type, cageConfig.TimeLimits, hasType, typeLimits)...)
+	errs = append(errs, validateResources(cageConfig.Type, cageConfig.Resources, hasType, typeLimits)...)
+	errs = append(errs, validateRequiredFields(cageConfig)...)
 
 	if len(errs) > 0 {
 		return fmt.Errorf("%w: %w", ErrInvalidConfig, errors.Join(errs...))
@@ -103,31 +85,30 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
-func validateRateLimits(limits cage.RateLimits) []error {
+func validateRateLimits(limits cage.RateLimits, maxRPS int32) []error {
 	var errs []error
 	if limits.RequestsPerSecond <= 0 {
 		errs = append(errs, fmt.Errorf("rate limit must be positive, got %d", limits.RequestsPerSecond))
 	}
-	if limits.RequestsPerSecond > maxRequestsPerSecond {
-		errs = append(errs, fmt.Errorf("rate limit must be ≤ %d, got %d", maxRequestsPerSecond, limits.RequestsPerSecond))
+	if limits.RequestsPerSecond > maxRPS {
+		errs = append(errs, fmt.Errorf("rate limit must be ≤ %d, got %d", maxRPS, limits.RequestsPerSecond))
 	}
 	return errs
 }
 
-func validateTimeLimits(t cage.Type, limits cage.TimeLimits) []error {
+func validateTimeLimits(t cage.Type, limits cage.TimeLimits, hasType bool, typeCfg config.CageTypeConfig) []error {
 	var errs []error
 	if limits.MaxDuration <= 0 {
 		errs = append(errs, fmt.Errorf("time limit must be positive, got %s", limits.MaxDuration))
 		return errs
 	}
-	max, ok := typeDurationLimits[t]
-	if ok && limits.MaxDuration > max {
-		errs = append(errs, fmt.Errorf("%s cage time limit must be ≤ %s, got %s", t, max, limits.MaxDuration))
+	if hasType && limits.MaxDuration > typeCfg.MaxDuration {
+		errs = append(errs, fmt.Errorf("%s cage time limit must be ≤ %s, got %s", t, typeCfg.MaxDuration, limits.MaxDuration))
 	}
 	return errs
 }
 
-func validateResources(t cage.Type, res cage.ResourceLimits) []error {
+func validateResources(t cage.Type, res cage.ResourceLimits, hasType bool, typeCfg config.CageTypeConfig) []error {
 	var errs []error
 	if res.VCPUs <= 0 {
 		errs = append(errs, fmt.Errorf("vCPUs must be positive, got %d", res.VCPUs))
@@ -136,11 +117,11 @@ func validateResources(t cage.Type, res cage.ResourceLimits) []error {
 		errs = append(errs, fmt.Errorf("memory must be positive, got %d MB", res.MemoryMB))
 	}
 
-	if maxVCPU, ok := typeVCPULimits[t]; ok && res.VCPUs > maxVCPU {
-		errs = append(errs, fmt.Errorf("%s cage must use ≤ %d vCPU(s), got %d", t, maxVCPU, res.VCPUs))
+	if hasType && res.VCPUs > typeCfg.MaxVCPUs {
+		errs = append(errs, fmt.Errorf("%s cage must use ≤ %d vCPU(s), got %d", t, typeCfg.MaxVCPUs, res.VCPUs))
 	}
-	if maxMem, ok := typeMemoryLimits[t]; ok && res.MemoryMB > maxMem {
-		errs = append(errs, fmt.Errorf("%s cage must use ≤ %d MB memory, got %d", t, maxMem, res.MemoryMB))
+	if hasType && res.MemoryMB > typeCfg.MaxMemoryMB {
+		errs = append(errs, fmt.Errorf("%s cage must use ≤ %d MB memory, got %d", t, typeCfg.MaxMemoryMB, res.MemoryMB))
 	}
 	return errs
 }

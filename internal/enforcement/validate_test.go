@@ -2,14 +2,26 @@ package enforcement
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func testLimits(t *testing.T) *config.Config {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "agentcage.yaml"))
+	require.NoError(t, err)
+	cfg, err := config.Default(data)
+	require.NoError(t, err)
+	return cfg
+}
 
 func validDiscoveryConfig() cage.Config {
 	return cage.Config{
@@ -52,6 +64,8 @@ func validEscalationConfig() cage.Config {
 }
 
 func TestValidateCageConfig(t *testing.T) {
+	limits := testLimits(t)
+
 	tests := []struct {
 		name      string
 		modify    func(cfg *cage.Config)
@@ -226,7 +240,7 @@ func TestValidateCageConfig(t *testing.T) {
 				tt.modify(&cfg)
 			}
 
-			err := ValidateCageConfig(cfg)
+			err := ValidateCageConfig(cfg, limits)
 			if !tt.wantErr {
 				assert.NoError(t, err)
 				return
@@ -239,6 +253,7 @@ func TestValidateCageConfig(t *testing.T) {
 }
 
 func TestValidateCageConfig_MultipleViolations(t *testing.T) {
+	limits := testLimits(t)
 	cfg := validDiscoveryConfig()
 	cfg.Scope.Hosts = nil
 	cfg.RateLimits.RequestsPerSecond = 0
@@ -246,7 +261,7 @@ func TestValidateCageConfig_MultipleViolations(t *testing.T) {
 	cfg.Resources.VCPUs = 0
 	cfg.LLM = nil
 
-	err := ValidateCageConfig(cfg)
+	err := ValidateCageConfig(cfg, limits)
 	require.Error(t, err)
 
 	msg := err.Error()

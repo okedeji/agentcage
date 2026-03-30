@@ -13,7 +13,7 @@ import (
 )
 
 type PolicyEngine interface {
-	EvaluateScope(ctx context.Context, scope cage.Scope) (PolicyDecision, error)
+	EvaluateScope(ctx context.Context, scope cage.Scope, infraHosts []string) (PolicyDecision, error)
 	EvaluateCageConfig(ctx context.Context, config cage.Config) (PolicyDecision, error)
 	EvaluatePayload(ctx context.Context, vulnClass string, payload string) (PayloadDecision, error)
 	EvaluateCompliance(ctx context.Context, framework string, input map[string]any) (PolicyDecision, error)
@@ -70,11 +70,16 @@ func NewOPAEngine(policyDir string) (*OPAEngine, error) {
 	return e, nil
 }
 
-func (e *OPAEngine) EvaluateScope(ctx context.Context, scope cage.Scope) (PolicyDecision, error) {
+func (e *OPAEngine) EvaluateScope(ctx context.Context, scope cage.Scope, infraHosts []string) (PolicyDecision, error) {
+	infraSet := make(map[string]bool, len(infraHosts))
+	for _, h := range infraHosts {
+		infraSet[h] = true
+	}
 	input := map[string]any{
-		"hosts": scope.Hosts,
-		"ports": scope.Ports,
-		"paths": scope.Paths,
+		"hosts":                scope.Hosts,
+		"ports":                scope.Ports,
+		"paths":                scope.Paths,
+		"infrastructure_hosts": infraSet,
 	}
 
 	violations, err := evaluate(ctx, e.scopeQuery, input)

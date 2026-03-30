@@ -56,16 +56,6 @@ deny contains msg if {
 
 deny contains msg if {
 	some h
-	infrastructure_hosts[input.hosts[h]]
+	input.infrastructure_hosts[input.hosts[h]]
 	msg := sprintf("cannot target agentcage infrastructure: %s", [input.hosts[h]])
-}
-
-infrastructure_hosts := {
-	"orchestrator.agentcage.internal",
-	"vault.agentcage.internal",
-	"spire.agentcage.internal",
-	"nats.agentcage.internal",
-	"temporal.agentcage.internal",
-	"postgres.agentcage.internal",
-	"llm-gateway.agentcage.internal",
 }

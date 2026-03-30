@@ -1,0 +1,221 @@
+# agentcage configuration
+#
+# This is the single source of truth for all platform tunables.
+# Operators override only what they need, everything else falls back
+# to secure defaults.
+#
+# Runtime changes via the Config API override values in memory
+# and persist to Postgres. This file is the startup source of truth.
+
+# Per-cage-type resource and time limits
+cage_types:
+  discovery:
+    max_duration: 30m
+    max_vcpus: 4
+    max_memory_mb: 8192
+  validator:
+    max_duration: 60s
+    max_vcpus: 1
+    max_memory_mb: 1024
+  escalation:
+    max_duration: 15m
+    max_vcpus: 2
+    max_memory_mb: 4096
+
+# Global rate limiting
+rate_limits:
+  max_requests_per_second: 1000
+
+# Temporal activity timeouts
+activity_timeouts:
+  validate_scope: 5s
+  issue_identity: 10s
+  fetch_secrets: 5s
+  provision_vm: 30s
+  apply_policy: 10s
+  start_agent: 5s
+  export_audit_log: 15s
+  teardown_vm: 15s
+  revoke_svid: 5s
+  revoke_vault_token: 5s
+  verify_cleanup: 10s
+  heartbeat_provision_vm: 10s
+  heartbeat_monitor_cage: 30s
+
+# Falco behavioral monitoring rules per cage type.
+# The orchestrator generates Falco daemon config from these at cage boot.
+# Each rule defines what Falco watches for (condition) and how it reports (output).
+# The tripwire_policies section below controls what agentcage DOES when a rule fires.
+falco_rules:
+  discovery:
+    - rule: Unexpected Privileged Shell in Discovery Cage
+      desc: Detects shell spawns with elevated privileges
+      condition: "spawned_process and proc.name in (bash, sh, dash, zsh) and proc.uid = 0 and container.id != host"
+      output: "Privileged shell spawned in discovery cage (user=%user.name command=%proc.cmdline container=%container.id)"
+      priority: WARNING
+      tags: [agentcage, discovery, privilege_escalation]
+    - rule: Sensitive File Write in Discovery Cage
+      desc: Detects writes to sensitive system paths
+      condition: "open_write and (fd.name startswith /etc/ or fd.name startswith /proc/ or fd.name startswith /sys/) and container.id != host"
+      output: "Sensitive file write in discovery cage (file=%fd.name command=%proc.cmdline container=%container.id)"
+      priority: WARNING
+      tags: [agentcage, discovery, file_write]
+    - rule: Privilege Escalation Attempt in Discovery Cage
+      desc: Detects setuid, capability changes, or sudo usage
+      condition: "(evt.type in (setuid, setgid, setreuid, setregid) or proc.name = sudo) and container.id != host"
+      output: "Privilege escalation attempt in discovery cage (syscall=%evt.type command=%proc.cmdline container=%container.id)"
+      priority: CRITICAL
+      tags: [agentcage, discovery, privilege_escalation]
+    - rule: Excessive Process Forking in Discovery Cage
+      desc: Detects rapid process creation that may indicate a fork bomb
+      condition: "evt.type = clone and container.id != host"
+      output: "Process fork in discovery cage (command=%proc.cmdline parent=%proc.pname container=%container.id)"
+      priority: NOTICE
+      tags: [agentcage, discovery, process_fork]
+
+  validator:
+    - rule: Any Shell Spawn in Validator Cage
+      desc: Validators should not spawn shells at all
+      condition: "spawned_process and proc.name in (bash, sh, dash, zsh) and container.id != host"
+      output: "Shell spawned in validator cage (command=%proc.cmdline container=%container.id)"
+      priority: CRITICAL
+      tags: [agentcage, validator, unexpected_shell]
+    - rule: Any File Write in Validator Cage
+      desc: Validators should not write to the filesystem
+      condition: "open_write and container.id != host"
+      output: "File write in validator cage (file=%fd.name command=%proc.cmdline container=%container.id)"
+      priority: WARNING
+      tags: [agentcage, validator, file_write]
+    - rule: Unexpected Network Connection in Validator Cage
+      desc: Validators should make only a single outbound connection to the target
+      condition: "evt.type in (connect, sendto) and fd.type = ipv4 and container.id != host"
+      output: "Network connection in validator cage (dest=%fd.sip:%fd.sport command=%proc.cmdline container=%container.id)"
+      priority: NOTICE
+      tags: [agentcage, validator, network]
+    - rule: Privilege Escalation in Validator Cage
+      desc: Any privilege change in a validator is immediately critical
+      condition: "(evt.type in (setuid, setgid, setreuid, setregid) or proc.name = sudo) and container.id != host"
+      output: "Privilege escalation in validator cage (syscall=%evt.type command=%proc.cmdline container=%container.id)"
+      priority: CRITICAL
+      tags: [agentcage, validator, privilege_escalation]
+    - rule: Unexpected Process in Validator Cage
+      desc: Only the agent process and payload proxy should be running
+      condition: "spawned_process and not proc.name in (agent, payload-proxy, findings-sidecar) and container.id != host"
+      output: "Unexpected process in validator cage (process=%proc.name command=%proc.cmdline container=%container.id)"
+      priority: CRITICAL
+      tags: [agentcage, validator, unexpected_process]
+
+  escalation:
+    - rule: Privileged Shell in Escalation Cage
+      desc: Root shells in escalation cages are suspicious
+      condition: "spawned_process and proc.name in (bash, sh, dash, zsh) and proc.uid = 0 and container.id != host"
+      output: "Privileged shell in escalation cage (command=%proc.cmdline container=%container.id)"
+      priority: WARNING
+      tags: [agentcage, escalation, privilege_escalation]
+    - rule: Sensitive File Write in Escalation Cage
+      desc: Writes to system paths in escalation cages
+      condition: "open_write and (fd.name startswith /etc/ or fd.name startswith /proc/ or fd.name startswith /sys/) and container.id != host"
+      output: "Sensitive file write in escalation cage (file=%fd.name command=%proc.cmdline container=%container.id)"
+      priority: WARNING
+      tags: [agentcage, escalation, file_write]
+    - rule: Privilege Escalation in Escalation Cage
+      desc: Privilege changes are critical in any cage type
+      condition: "(evt.type in (setuid, setgid, setreuid, setregid) or proc.name = sudo) and container.id != host"
+      output: "Privilege escalation in escalation cage (syscall=%evt.type command=%proc.cmdline container=%container.id)"
+      priority: CRITICAL
+      tags: [agentcage, escalation, privilege_escalation]
+    - rule: Lateral Movement Attempt in Escalation Cage
+      desc: Detects SSH, RDP, or SMB connections that suggest pivot attempts beyond scope
+      condition: "evt.type in (connect, sendto) and fd.sport in (22, 3389, 445) and container.id != host"
+      output: "Lateral movement attempt in escalation cage (dest=%fd.sip:%fd.sport command=%proc.cmdline container=%container.id)"
+      priority: CRITICAL
+      tags: [agentcage, escalation, lateral_movement]
+
+# Falco alert → tripwire policy mappings
+# When a Falco rule fires, this controls what agentcage does in response.
+# Values: log_and_continue, human_review, immediate_teardown
+tripwire_policies:
+  discovery:
+    default: log_and_continue
+    rules:
+      "Unexpected Privileged Shell in Discovery Cage": human_review
+      "Sensitive File Write in Discovery Cage": log_and_continue
+      "Privilege Escalation Attempt in Discovery Cage": immediate_teardown
+      "Excessive Process Forking in Discovery Cage": log_and_continue
+  validator:
+    default: human_review
+    rules:
+      "Any Shell Spawn in Validator Cage": immediate_teardown
+      "Any File Write in Validator Cage": human_review
+      "Unexpected Network Connection in Validator Cage": log_and_continue
+      "Privilege Escalation in Validator Cage": immediate_teardown
+      "Unexpected Process in Validator Cage": immediate_teardown
+  escalation:
+    default: human_review
+    rules:
+      "Privileged Shell in Escalation Cage": human_review
+      "Sensitive File Write in Escalation Cage": human_review
+      "Privilege Escalation in Escalation Cage": immediate_teardown
+      "Lateral Movement Attempt in Escalation Cage": immediate_teardown
+
+# Payload proxy blocklist patterns (regex)
+# Add custom patterns per vulnerability class.
+# These are compiled once at cage startup — never per request.
+blocklist_patterns:
+  sqli:
+    - pattern: '(?i)\bDROP\s+(TABLE|DATABASE|INDEX|VIEW)'
+      message: "destructive SQL: DROP statement"
+    - pattern: '(?i)\bDELETE\s+FROM\b'
+      message: "destructive SQL: DELETE statement"
+    - pattern: '(?i)\bTRUNCATE\s+'
+      message: "destructive SQL: TRUNCATE statement"
+    - pattern: '(?i)\bUPDATE\s+\w+\s+SET\b'
+      message: "destructive SQL: UPDATE statement"
+    - pattern: '(?i)\bALTER\s+(TABLE|DATABASE|USER)'
+      message: "destructive SQL: ALTER statement"
+    - pattern: '(?i)\bGRANT\s+'
+      message: "privilege escalation: GRANT statement"
+    - pattern: '(?i)\bCREATE\s+(USER|ROLE)'
+      message: "privilege escalation: CREATE USER/ROLE"
+  rce:
+    - pattern: '(?i)\brm\s+-rf\b'
+      message: "destructive command: rm -rf"
+    - pattern: '(?i)\bmkfs\b'
+      message: "destructive command: mkfs"
+    - pattern: '(?i)\bdd\s+'
+      message: "destructive command: dd"
+    - pattern: '(?i)\bshutdown\b'
+      message: "destructive command: shutdown"
+    - pattern: '(?i)\breboot\b'
+      message: "destructive command: reboot"
+    - pattern: '(?i):\(\)\s*\{\s*:\|\s*:&\s*\}\s*;'
+      message: "fork bomb"
+    - pattern: '(?i)>\s*/etc/(passwd|shadow|sudoers)'
+      message: "write to sensitive system file"
+    - pattern: '(?i)\bcurl\s+.*\|\s*(bash|sh)'
+      message: "remote code download and execute"
+  ssrf:
+    - pattern: '(?i)(^|=)https?://(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)'
+      message: "SSRF to private IP range"
+    - pattern: '(?i)(^|=)https?://127\.'
+      message: "SSRF to loopback"
+    - pattern: '(?i)(^|=)https?://localhost'
+      message: "SSRF to localhost"
+    - pattern: '(?i)(^|=)https?://169\.254\.169\.254'
+      message: "SSRF to cloud metadata endpoint"
+  xss:
+    - pattern: '(?i)\bDROP\s+(TABLE|DATABASE)'
+      message: "destructive SQL in XSS context"
+
+# Platform infrastructure addresses
+infrastructure:
+  gateway_addr: llm-gateway.agentcage.internal
+  nats_addr: nats.agentcage.internal
+  infra_hosts:
+    - orchestrator.agentcage.internal
+    - vault.agentcage.internal
+    - spire.agentcage.internal
+    - nats.agentcage.internal
+    - temporal.agentcage.internal
+    - postgres.agentcage.internal
+    - llm-gateway.agentcage.internal

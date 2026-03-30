@@ -2,6 +2,7 @@ package enforcement
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/config"
 )
 
 func policyDir(t *testing.T) string {
@@ -27,9 +29,19 @@ func newEngine(t *testing.T) *OPAEngine {
 	return e
 }
 
+func testInfraHosts(t *testing.T) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "agentcage.yaml"))
+	require.NoError(t, err)
+	cfg, err := config.Default(data)
+	require.NoError(t, err)
+	return cfg.Infrastructure.InfraHosts
+}
+
 func TestOPAScope(t *testing.T) {
 	e := newEngine(t)
 	ctx := context.Background()
+	infraHosts := testInfraHosts(t)
 
 	tests := []struct {
 		name        string
@@ -106,7 +118,7 @@ func TestOPAScope(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			decision, err := e.EvaluateScope(ctx, tt.scope)
+			decision, err := e.EvaluateScope(ctx, tt.scope, infraHosts)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantAllowed, decision.Allowed)
 			if tt.wantSubstr != "" {
@@ -358,9 +370,9 @@ func TestOPACompliance(t *testing.T) {
 
 	t.Run("soc2 compliant", func(t *testing.T) {
 		decision, err := e.EvaluateCompliance(ctx, "soc2", map[string]any{
-			"max_concurrent_cages":        100,
-			"audit_log_enabled":           true,
-			"intervention_enabled":        true,
+			"max_concurrent_cages":         100,
+			"audit_log_enabled":            true,
+			"intervention_enabled":         true,
 			"intervention_timeout_minutes": 15,
 		})
 		require.NoError(t, err)
@@ -369,9 +381,9 @@ func TestOPACompliance(t *testing.T) {
 
 	t.Run("soc2 audit disabled", func(t *testing.T) {
 		decision, err := e.EvaluateCompliance(ctx, "soc2", map[string]any{
-			"max_concurrent_cages":        100,
-			"audit_log_enabled":           false,
-			"intervention_enabled":        true,
+			"max_concurrent_cages":         100,
+			"audit_log_enabled":            false,
+			"intervention_enabled":         true,
 			"intervention_timeout_minutes": 15,
 		})
 		require.NoError(t, err)

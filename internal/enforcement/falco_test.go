@@ -11,8 +11,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testRuleSets() map[cage.Type]TripwireRuleSet {
+	return map[cage.Type]TripwireRuleSet{
+		cage.TypeDiscovery: {
+			Rules: map[string]TripwirePolicy{
+				"Unexpected Privileged Shell in Discovery Cage":  TripwireHumanReview,
+				"Sensitive File Write in Discovery Cage":         TripwireLogAndContinue,
+				"Privilege Escalation Attempt in Discovery Cage": TripwireImmediateTeardown,
+				"Excessive Process Forking in Discovery Cage":    TripwireLogAndContinue,
+			},
+			Default: TripwireLogAndContinue,
+		},
+		cage.TypeValidator: {
+			Rules: map[string]TripwirePolicy{
+				"Any Shell Spawn in Validator Cage":               TripwireImmediateTeardown,
+				"Any File Write in Validator Cage":                TripwireHumanReview,
+				"Unexpected Network Connection in Validator Cage": TripwireLogAndContinue,
+				"Privilege Escalation in Validator Cage":          TripwireImmediateTeardown,
+				"Unexpected Process in Validator Cage":            TripwireImmediateTeardown,
+			},
+			Default: TripwireHumanReview,
+		},
+		cage.TypeEscalation: {
+			Rules: map[string]TripwirePolicy{
+				"Privileged Shell in Escalation Cage":         TripwireHumanReview,
+				"Sensitive File Write in Escalation Cage":     TripwireHumanReview,
+				"Privilege Escalation in Escalation Cage":     TripwireImmediateTeardown,
+				"Lateral Movement Attempt in Escalation Cage": TripwireImmediateTeardown,
+			},
+			Default: TripwireHumanReview,
+		},
+	}
+}
+
 func TestFalcoHandler_HandleAlert(t *testing.T) {
-	handler := NewFalcoHandler(DefaultRuleSets())
+	handler := NewFalcoHandler(testRuleSets())
 	ctx := context.Background()
 
 	tests := []struct {
@@ -104,6 +137,31 @@ func TestFalcoHandler_HandleAlert(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantPolicy, policy)
+		})
+	}
+}
+
+func TestTripwirePolicyFromString(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    TripwirePolicy
+		wantErr bool
+	}{
+		{"log_and_continue", TripwireLogAndContinue, false},
+		{"human_review", TripwireHumanReview, false},
+		{"immediate_teardown", TripwireImmediateTeardown, false},
+		{"invalid", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := TripwirePolicyFromString(tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
