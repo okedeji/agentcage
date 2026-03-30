@@ -37,11 +37,11 @@ func TestValidateFinding_MissingFields(t *testing.T) {
 		mutate func(*Finding)
 		want   string
 	}{
-		{"missing ID", func(f *Finding) { f.ID = "" }, "ID"},
-		{"missing AssessmentID", func(f *Finding) { f.AssessmentID = "" }, "AssessmentID"},
-		{"missing CageID", func(f *Finding) { f.CageID = "" }, "CageID"},
-		{"missing Title", func(f *Finding) { f.Title = "" }, "Title"},
-		{"missing VulnClass", func(f *Finding) { f.VulnClass = "" }, "VulnClass"},
+		{"missing ID", func(f *Finding) { f.ID = "" }, "finding ID"},
+		{"missing AssessmentID", func(f *Finding) { f.AssessmentID = "" }, "assessment ID"},
+		{"missing CageID", func(f *Finding) { f.CageID = "" }, "cage ID"},
+		{"missing Title", func(f *Finding) { f.Title = "" }, "title"},
+		{"missing VulnClass", func(f *Finding) { f.VulnClass = "" }, "vuln class"},
 		{"zero Status", func(f *Finding) { f.Status = 0 }, "status"},
 		{"zero Severity", func(f *Finding) { f.Severity = 0 }, "severity"},
 	}
@@ -63,11 +63,11 @@ func TestValidateFinding_MultipleViolations(t *testing.T) {
 	err := ValidateFinding(f)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrInvalidFinding))
-	assert.Contains(t, err.Error(), "ID")
-	assert.Contains(t, err.Error(), "AssessmentID")
-	assert.Contains(t, err.Error(), "CageID")
-	assert.Contains(t, err.Error(), "Title")
-	assert.Contains(t, err.Error(), "VulnClass")
+	assert.Contains(t, err.Error(), "finding ID")
+	assert.Contains(t, err.Error(), "assessment ID")
+	assert.Contains(t, err.Error(), "cage ID")
+	assert.Contains(t, err.Error(), "title")
+	assert.Contains(t, err.Error(), "vuln class")
 	assert.Contains(t, err.Error(), "status")
 	assert.Contains(t, err.Error(), "severity")
 }

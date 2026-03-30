@@ -19,19 +19,19 @@ func ValidateFinding(f Finding) error {
 	var errs []error
 
 	if f.ID == "" {
-		errs = append(errs, fmt.Errorf("ID is required"))
+		errs = append(errs, fmt.Errorf("finding ID is required"))
 	}
 	if f.AssessmentID == "" {
-		errs = append(errs, fmt.Errorf("AssessmentID is required"))
+		errs = append(errs, fmt.Errorf("assessment ID is required"))
 	}
 	if f.CageID == "" {
-		errs = append(errs, fmt.Errorf("CageID is required"))
+		errs = append(errs, fmt.Errorf("cage ID is required"))
 	}
 	if f.Title == "" {
-		errs = append(errs, fmt.Errorf("Title is required"))
+		errs = append(errs, fmt.Errorf("title is required"))
 	}
 	if f.VulnClass == "" {
-		errs = append(errs, fmt.Errorf("VulnClass is required"))
+		errs = append(errs, fmt.Errorf("vuln class is required"))
 	}
 
 	switch f.Status {
