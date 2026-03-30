@@ -50,7 +50,7 @@ func (activityStub) RecordCostMetrics(context.Context, string, string) error    
 func testWorkflowInput() CageWorkflowInput {
 	return CageWorkflowInput{
 		CageID:      "test-cage-1",
-		GatewayAddr: "gateway.internal",
+		LLMEndpoint: "llm.internal",
 		NATSAddr:    "nats.internal",
 		Config: Config{
 			AssessmentID: "test-assessment-1",

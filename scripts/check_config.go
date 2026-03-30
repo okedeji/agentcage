@@ -36,7 +36,7 @@ type patternEntry struct {
 }
 
 type infrastructureConfig struct {
-	GatewayAddr string   `yaml:"gateway_addr"`
+	LLMEndpoint string   `yaml:"llm_endpoint"`
 	NATSAddr    string   `yaml:"nats_addr"`
 	InfraHosts  []string `yaml:"infra_hosts"`
 }

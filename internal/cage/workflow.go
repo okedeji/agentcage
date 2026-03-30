@@ -17,7 +17,7 @@ const WorkflowName = "CageLifecycle"
 type CageWorkflowInput struct {
 	Config      Config
 	CageID      string
-	GatewayAddr string
+	LLMEndpoint string
 	NATSAddr    string
 	Timeouts    Timeouts
 }
@@ -78,7 +78,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	}
 	setupReachedVM = true
 
-	extras := []string{input.GatewayAddr, input.NATSAddr}
+	extras := []string{input.LLMEndpoint, input.NATSAddr}
 	if err := execActivity(
 		withTimeout(ctx, t.ApplyPolicy),
 		"ApplyNetworkPolicy", input.CageID, cfg.Scope, extras,

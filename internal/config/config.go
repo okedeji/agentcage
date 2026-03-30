@@ -64,9 +64,10 @@ type PatternEntry struct {
 }
 
 type InfrastructureConfig struct {
-	GatewayAddr string   `yaml:"gateway_addr"`
-	NATSAddr    string   `yaml:"nats_addr"`
-	InfraHosts  []string `yaml:"infra_hosts"`
+	LLMEndpoint string        `yaml:"llm_endpoint"`
+	LLMTimeout  time.Duration `yaml:"llm_timeout"`
+	NATSAddr    string        `yaml:"nats_addr"`
+	InfraHosts  []string      `yaml:"infra_hosts"`
 }
 
 // Parse reads configuration from raw YAML bytes.
@@ -173,8 +174,11 @@ func Merge(base, override *Config) *Config {
 		}
 	}
 
-	if override.Infrastructure.GatewayAddr != "" {
-		result.Infrastructure.GatewayAddr = override.Infrastructure.GatewayAddr
+	if override.Infrastructure.LLMEndpoint != "" {
+		result.Infrastructure.LLMEndpoint = override.Infrastructure.LLMEndpoint
+	}
+	if override.Infrastructure.LLMTimeout > 0 {
+		result.Infrastructure.LLMTimeout = override.Infrastructure.LLMTimeout
 	}
 	if override.Infrastructure.NATSAddr != "" {
 		result.Infrastructure.NATSAddr = override.Infrastructure.NATSAddr

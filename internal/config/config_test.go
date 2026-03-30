@@ -107,7 +107,7 @@ rate_limits:
 activity_timeouts:
   provision_vm: 60s
 infrastructure:
-  gateway_addr: custom-gateway.example.com
+  llm_endpoint: custom-llm.example.com
 `
 	path := writeTempFile(t, content)
 
@@ -120,7 +120,7 @@ infrastructure:
 	assert.Equal(t, int32(16384), cfg.CageTypes["discovery"].MaxMemoryMB)
 	assert.Equal(t, int32(500), cfg.RateLimits.MaxRequestsPerSecond)
 	assert.Equal(t, 60*time.Second, cfg.ActivityTimeouts.ProvisionVM)
-	assert.Equal(t, "custom-gateway.example.com", cfg.Infrastructure.GatewayAddr)
+	assert.Equal(t, "custom-llm.example.com", cfg.Infrastructure.LLMEndpoint)
 }
 
 func TestLoad_NonExistentFile(t *testing.T) {
@@ -179,7 +179,7 @@ func TestMerge_EmptyOverride(t *testing.T) {
 
 	assert.Equal(t, base.RateLimits, result.RateLimits)
 	assert.Equal(t, base.ActivityTimeouts, result.ActivityTimeouts)
-	assert.Equal(t, base.Infrastructure.GatewayAddr, result.Infrastructure.GatewayAddr)
+	assert.Equal(t, base.Infrastructure.LLMEndpoint, result.Infrastructure.LLMEndpoint)
 	assert.Len(t, result.CageTypes, 3)
 	assert.Len(t, result.TripwirePolicies, 3)
 	assert.Len(t, result.BlocklistPatterns, 4)

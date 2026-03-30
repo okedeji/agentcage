@@ -208,14 +208,15 @@ blocklist_patterns:
       message: "destructive SQL in XSS context"
 
 # Platform infrastructure addresses
+# Required fields — CI validation fails if left empty.
 infrastructure:
-  gateway_addr: llm-gateway.agentcage.internal
-  nats_addr: nats.agentcage.internal
-  infra_hosts:
+  llm_endpoint: ""   # External LLM gateway URL (e.g. https://litellm.internal:4000/v1/chat/completions)
+  llm_timeout: 30s
+  nats_addr: ""      # NATS server address (e.g. nats://nats.internal:4222)
+  infra_hosts:             # agentcage infrastructure hosts — cages cannot target these
     - orchestrator.agentcage.internal
     - vault.agentcage.internal
     - spire.agentcage.internal
     - nats.agentcage.internal
     - temporal.agentcage.internal
     - postgres.agentcage.internal
-    - llm-gateway.agentcage.internal

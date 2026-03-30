@@ -4,7 +4,7 @@ GO := go
 GOFLAGS := -trimpath
 BINDIR := bin
 
-CMDS := orchestrator llm-gateway payload-proxy findings-sidecar cage-cli
+CMDS := orchestrator payload-proxy findings-sidecar cage-cli
 
 all: vet build
 

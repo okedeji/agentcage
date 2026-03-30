@@ -10,14 +10,14 @@ import (
 
 type DNSConfig struct {
 	AllowedDomains []string
-	GatewayAddr    string
+	LLMEndpoint    string
 	NATSAddr       string
 }
 
 // GenerateDNSConfig creates a DNS configuration from a cage's scope and
 // the platform service addresses. IP addresses in the scope are filtered
 // out because DNS resolution only applies to domain names.
-func GenerateDNSConfig(scope cage.Scope, gatewayAddr, natsAddr string) DNSConfig {
+func GenerateDNSConfig(scope cage.Scope, llmEndpoint, natsAddr string) DNSConfig {
 	var domains []string
 	for _, host := range scope.Hosts {
 		if net.ParseIP(host) != nil {
@@ -28,7 +28,7 @@ func GenerateDNSConfig(scope cage.Scope, gatewayAddr, natsAddr string) DNSConfig
 
 	return DNSConfig{
 		AllowedDomains: domains,
-		GatewayAddr:    gatewayAddr,
+		LLMEndpoint:    llmEndpoint,
 		NATSAddr:       natsAddr,
 	}
 }
@@ -39,7 +39,7 @@ func GenerateDNSConfig(scope cage.Scope, gatewayAddr, natsAddr string) DNSConfig
 func GenerateResolverConf(config DNSConfig) []byte {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "gateway %s\n", config.GatewayAddr)
+	fmt.Fprintf(&b, "llm %s\n", config.LLMEndpoint)
 	fmt.Fprintf(&b, "nats %s\n", config.NATSAddr)
 
 	for _, domain := range config.AllowedDomains {
