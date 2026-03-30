@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-orchestrator
+  labels:
+    app: agentcage-orchestrator
+spec:
+  replicas: {{ .Values.orchestrator.replicas }}
+  selector:
+    matchLabels:
+      app: agentcage-orchestrator
+  template:
+    metadata:
+      labels:
+        app: agentcage-orchestrator
+    spec:
+      containers:
+        - name: orchestrator
+          image: "{{ .Values.orchestrator.image.repository }}:{{ .Values.orchestrator.image.tag }}"
+          args:
+            - --temporal-addr={{ .Values.orchestrator.temporalAddr }}
+            - --policy-dir={{ .Values.orchestrator.policyDir }}
+          resources:
+            {{- toYaml .Values.orchestrator.resources | nindent 12 }}
+          volumeMounts:
+            - name: policies
+              mountPath: /etc/agentcage/policies
+              readOnly: true
+            - name: config
+              mountPath: /etc/agentcage/config
+              readOnly: true
+      volumes:
+        - name: policies
+          configMap:
+            name: {{ .Release.Name }}-policies
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-config

@@ -1,0 +1,33 @@
+orchestrator:
+  image:
+    repository: agentcage/orchestrator
+    tag: latest
+  replicas: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  temporalAddr: temporal:7233
+  policyDir: /etc/agentcage/policies
+
+temporal:
+  enabled: true
+
+nats:
+  enabled: true
+
+vault:
+  enabled: false
+  externalAddr: ""
+
+postgres:
+  enabled: true
+  persistence:
+    size: 100Gi
+
+config:
+  llmEndpoint: ""
+  natsAddr: "nats:4222"
