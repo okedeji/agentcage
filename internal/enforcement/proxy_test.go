@@ -1,10 +1,15 @@
 package enforcement
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,7 +161,7 @@ func TestProxyEngine_Inspect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			patterns := patternsFromConfig(cfg, tt.vulnClass)
-			engine, err := NewProxyEngine(tt.vulnClass, patterns)
+			engine, err := NewProxyEngine(tt.vulnClass, patterns, nil)
 			require.NoError(t, err)
 
 			decision, msg := engine.Inspect(tt.method, tt.url, []byte(tt.body))
@@ -169,7 +174,7 @@ func TestProxyEngine_Inspect(t *testing.T) {
 }
 
 func TestProxyEngine_NilPatterns(t *testing.T) {
-	engine, err := NewProxyEngine("unknown", nil)
+	engine, err := NewProxyEngine("unknown", nil, nil)
 	require.NoError(t, err)
 
 	decision, msg := engine.Inspect("GET", "http://anything.com", []byte("anything"))
@@ -181,7 +186,7 @@ func TestProxyEngine_InvalidRegex(t *testing.T) {
 	patterns := map[string]string{
 		"[invalid": "should fail",
 	}
-	_, err := NewProxyEngine("test", patterns)
+	_, err := NewProxyEngine("test", patterns, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "compiling pattern")
 }
@@ -189,7 +194,7 @@ func TestProxyEngine_InvalidRegex(t *testing.T) {
 func TestProxyEngine_ConcurrentInspect(t *testing.T) {
 	cfg := loadTestConfig(t)
 	patterns := patternsFromConfig(cfg, "sqli")
-	engine, err := NewProxyEngine("sqli", patterns)
+	engine, err := NewProxyEngine("sqli", patterns, nil)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -202,4 +207,104 @@ func TestProxyEngine_ConcurrentInspect(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func classifyServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestInspectWithClassification_BlocklistBlocksBeforeClassification(t *testing.T) {
+	patterns := map[string]string{`DROP\s+TABLE`: "DROP TABLE blocked"}
+	engine, err := NewProxyEngine("sqli", patterns, &ProxyClassifyConfig{
+		Batcher:     NewPayloadBatcher(NewClassificationClient("http://unused", 5*time.Second), 100*time.Millisecond, 10),
+		Threshold:   0.8,
+		OnUncertain: PayloadHold,
+	})
+	require.NoError(t, err)
+
+	decision, reason, err := engine.InspectWithClassification(context.Background(), "POST", "http://target.com", []byte("DROP TABLE users"))
+	require.NoError(t, err)
+	assert.Equal(t, PayloadBlock, decision)
+	assert.Contains(t, reason, "DROP TABLE")
+}
+
+func TestInspectWithClassification_HighConfidenceAllows(t *testing.T) {
+	srv := classifyServer(t, func(w http.ResponseWriter, r *http.Request) {
+		resp := ClassificationResponse{
+			Results: []ClassificationResult{{Safe: true, Confidence: 0.95, Reason: ""}},
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	client := NewClassificationClient(srv.URL, 5*time.Second)
+	batcher := NewPayloadBatcher(client, 50*time.Millisecond, 10)
+	engine, err := NewProxyEngine("sqli", nil, &ProxyClassifyConfig{
+		Batcher:     batcher,
+		Threshold:   0.8,
+		OnUncertain: PayloadHold,
+	})
+	require.NoError(t, err)
+
+	decision, _, err := engine.InspectWithClassification(context.Background(), "POST", "http://target.com", []byte("benign"))
+	require.NoError(t, err)
+	assert.Equal(t, PayloadAllow, decision)
+}
+
+func TestInspectWithClassification_LowConfidenceHolds(t *testing.T) {
+	srv := classifyServer(t, func(w http.ResponseWriter, r *http.Request) {
+		resp := ClassificationResponse{
+			Results: []ClassificationResult{{Safe: false, Confidence: 0.3, Reason: "suspicious pattern"}},
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	client := NewClassificationClient(srv.URL, 5*time.Second)
+	batcher := NewPayloadBatcher(client, 50*time.Millisecond, 10)
+	engine, err := NewProxyEngine("sqli", nil, &ProxyClassifyConfig{
+		Batcher:     batcher,
+		Threshold:   0.8,
+		OnUncertain: PayloadHold,
+	})
+	require.NoError(t, err)
+
+	decision, reason, err := engine.InspectWithClassification(context.Background(), "POST", "http://target.com", []byte("weird"))
+	require.NoError(t, err)
+	assert.Equal(t, PayloadHold, decision)
+	assert.Equal(t, "suspicious pattern", reason)
+}
+
+func TestInspectWithClassification_NilBatcherAllows(t *testing.T) {
+	engine, err := NewProxyEngine("sqli", nil, nil)
+	require.NoError(t, err)
+
+	decision, reason, err := engine.InspectWithClassification(context.Background(), "POST", "http://target.com", []byte("anything"))
+	require.NoError(t, err)
+	assert.Equal(t, PayloadAllow, decision)
+	assert.Empty(t, reason)
+}
+
+func TestInspectWithClassification_ContextCancellation(t *testing.T) {
+	srv := classifyServer(t, func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second)
+	})
+
+	client := NewClassificationClient(srv.URL, 10*time.Second)
+	batcher := NewPayloadBatcher(client, 50*time.Millisecond, 10)
+	engine, err := NewProxyEngine("sqli", nil, &ProxyClassifyConfig{
+		Batcher:     batcher,
+		Threshold:   0.8,
+		OnUncertain: PayloadHold,
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	decision, reason, err := engine.InspectWithClassification(ctx, "POST", "http://target.com", []byte("slow"))
+	assert.Equal(t, PayloadBlock, decision)
+	assert.Equal(t, "classification timeout", reason)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
