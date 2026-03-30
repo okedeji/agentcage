@@ -28,6 +28,30 @@ postgres:
   persistence:
     size: 100Gi
 
+opa:
+  enabled: true
+  image:
+    repository: openpolicyagent/opa
+    tag: latest
+
+spire:
+  enabled: true
+  server:
+    image:
+      repository: ghcr.io/spiffe/spire-server
+      tag: "1.9.0"
+  agent:
+    image:
+      repository: ghcr.io/spiffe/spire-agent
+      tag: "1.9.0"
+  trustDomain: "agentcage.local"
+
+cilium:
+  enabled: true
+
+falco:
+  enabled: true
+
 config:
   llmEndpoint: ""
   natsAddr: "nats:4222"

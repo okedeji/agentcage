@@ -1,0 +1,43 @@
+{{- if .Values.opa.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-opa
+  labels:
+    app: agentcage-opa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentcage-opa
+  template:
+    metadata:
+      labels:
+        app: agentcage-opa
+    spec:
+      containers:
+        - name: opa
+          image: "{{ .Values.opa.image.repository }}:{{ .Values.opa.image.tag }}"
+          args: ["run", "--server", "--addr", ":8181"]
+          ports:
+            - containerPort: 8181
+          volumeMounts:
+            - name: policies
+              mountPath: /policies
+              readOnly: true
+      volumes:
+        - name: policies
+          configMap:
+            name: {{ .Release.Name }}-policies
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-opa
+spec:
+  selector:
+    app: agentcage-opa
+  ports:
+    - port: 8181
+      targetPort: 8181
+{{- end }}

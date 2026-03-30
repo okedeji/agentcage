@@ -1,0 +1,54 @@
+{{- if .Values.spire.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-spire-server
+  labels:
+    app: agentcage-spire-server
+spec:
+  replicas: 1
+  serviceName: spire-server
+  selector:
+    matchLabels:
+      app: agentcage-spire-server
+  template:
+    metadata:
+      labels:
+        app: agentcage-spire-server
+    spec:
+      containers:
+        - name: spire-server
+          image: "{{ .Values.spire.server.image.repository }}:{{ .Values.spire.server.image.tag }}"
+          args: ["-config", "/etc/spire/server.conf"]
+          ports:
+            - containerPort: 8081
+          volumeMounts:
+            - name: config
+              mountPath: /etc/spire
+              readOnly: true
+            - name: data
+              mountPath: /opt/spire/data
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-spire-server-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-spire-server
+spec:
+  selector:
+    app: agentcage-spire-server
+  ports:
+    - port: 8081
+      targetPort: 8081
+{{- end }}
