@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,8 +13,10 @@ import (
 	"github.com/go-logr/logr"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
+	"google.golang.org/grpc"
 
 	agentcage "github.com/okedeji/agentcage"
+	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
@@ -34,6 +37,7 @@ func main() {
 func run() error {
 	configFile := flag.String("config", "", "path to agentcage.yaml override file")
 	temporalAddr := flag.String("temporal-addr", "localhost:7233", "Temporal server address")
+	grpcAddr := flag.String("grpc-addr", ":9090", "gRPC server listen address")
 	policyDir := flag.String("policy-dir", "policies/rego", "path to OPA Rego policy directory")
 	dev := flag.Bool("dev", false, "enable development mode (human-readable logs)")
 	flag.Parse()
@@ -78,7 +82,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("creating OPA engine from %s: %w", *policyDir, err)
 	}
-	_ = opaEngine
 
 	// --- Temporal client ---
 
@@ -92,25 +95,56 @@ func run() error {
 
 	// --- Domain servers ---
 
+	// Cage validator uses both Go-level validation and OPA policy evaluation.
 	cageValidator := func(c cage.Config) error {
-		return enforcement.ValidateCageConfig(c, cfg)
+		if err := enforcement.ValidateCageConfig(c, cfg); err != nil {
+			return err
+		}
+		decision, err := opaEngine.EvaluateCageConfig(context.Background(), c)
+		if err != nil {
+			return fmt.Errorf("evaluating cage config policy: %w", err)
+		}
+		if !decision.Allowed {
+			return fmt.Errorf("cage config rejected by policy: %s", decision.Reason)
+		}
+		scopeDecision, err := opaEngine.EvaluateScope(context.Background(), c.Scope, cfg.Infrastructure.InfraHosts)
+		if err != nil {
+			return fmt.Errorf("evaluating scope policy: %w", err)
+		}
+		if !scopeDecision.Allowed {
+			return fmt.Errorf("scope rejected by policy: %s", scopeDecision.Reason)
+		}
+		return nil
 	}
 	cageServer := cage.NewServer(temporalClient, cageValidator)
-	_ = cageServer
-
 	assessmentServer := assessment.NewServer(temporalClient)
-	_ = assessmentServer
 
 	iStore := intervention.NewMemStore()
 	notifier := &intervention.NoopNotifier{}
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iServer := intervention.NewServer(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
-	_ = iServer
 
 	poolManager := fleet.NewPoolManager()
 	demandLedger := fleet.NewDemandLedger()
 	fleetServer := fleet.NewServer(poolManager, demandLedger, log.WithValues("component", "fleet"))
+
+	configServer := config.NewConfigServer(cfg)
+
+	// --- gRPC server ---
+
+	grpcServer := grpc.NewServer()
+
+	// Proto service registration requires adapter types that bridge our
+	// domain servers to the generated gRPC interfaces. Until these adapters
+	// are built, we register the gRPC server without service implementations.
+	// The domain servers are ready — only the proto-to-domain mapping layer
+	// is missing. For now, log that the servers are wired and available.
+	_ = pb.CageService_ServiceDesc
+	_ = cageServer
+	_ = assessmentServer
+	_ = iServer
 	_ = fleetServer
+	_ = configServer
 
 	// --- Temporal workers ---
 
@@ -132,7 +166,22 @@ func run() error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	// --- Start workers ---
+	// --- Start gRPC server ---
+
+	lis, err := net.Listen("tcp", *grpcAddr)
+	if err != nil {
+		return fmt.Errorf("listening on %s: %w", *grpcAddr, err)
+	}
+
+	go func() {
+		log.Info("gRPC server listening", "addr", *grpcAddr)
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Error(err, "gRPC server failed")
+			cancel()
+		}
+	}()
+
+	// --- Start Temporal workers ---
 
 	errCh := make(chan error, 2)
 
@@ -156,6 +205,7 @@ func run() error {
 
 	log.Info("orchestrator started",
 		"temporal_addr", *temporalAddr,
+		"grpc_addr", *grpcAddr,
 		"policy_dir", *policyDir,
 		"dev_mode", *dev,
 	)
@@ -170,6 +220,7 @@ func run() error {
 	case <-ctx.Done():
 	}
 
+	grpcServer.GracefulStop()
 	cancel()
 
 	cageWorker.Stop()
