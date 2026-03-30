@@ -63,6 +63,24 @@ services:
       - "8181:8181"
     command: ["run", "--server", "--addr", ":8181"]
 
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.9.0
+    ports:
+      - "8081:8081"
+    command: ["-config", "/etc/spire/server.conf"]
+    volumes:
+      - spire_data:/opt/spire/data
+      - ./deploy/spire/server.conf:/etc/spire/server.conf
+
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent:1.9.0
+    command: ["-config", "/etc/spire/agent.conf"]
+    volumes:
+      - spire_socket:/run/spire
+      - ./deploy/spire/agent.conf:/etc/spire/agent.conf
+    depends_on:
+      - spire-server
+
   juice-shop:
     image: bkimminich/juice-shop:latest
     ports:
@@ -70,3 +88,5 @@ services:
 
 volumes:
   postgres_data:
+  spire_data:
+  spire_socket:
