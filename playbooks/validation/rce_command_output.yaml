@@ -1,0 +1,22 @@
+vulnerability_class: rce
+validation_type: command_output
+description: >
+  Confirms RCE by injecting a harmless command and checking
+  for its output in the response.
+payload_template:
+  method: "{{ candidate.method }}"
+  url: "{{ candidate.endpoint }}"
+  parameter: "{{ candidate.parameter }}"
+  value: "{{ candidate.evidence.base_value }}; id"
+confirmation:
+  type: response_contains
+  expected_pattern: "uid="
+max_requests: 3
+max_duration_seconds: 30
+safety_classification:
+  destructive: false
+  data_exfiltration: false
+  state_modification: false
+  rationale: >
+    The id command reads user identity only. No filesystem or
+    system state modification.

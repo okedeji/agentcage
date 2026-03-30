@@ -1,0 +1,21 @@
+vulnerability_class: xss
+validation_type: reflected
+description: >
+  Confirms reflected XSS by injecting a script tag and checking
+  if it appears in the response.
+payload_template:
+  method: "{{ candidate.method }}"
+  url: "{{ candidate.endpoint }}"
+  parameter: "{{ candidate.parameter }}"
+  value: "<script>alert(1)</script>"
+confirmation:
+  type: response_contains
+  expected_pattern: "<script>alert\\(1\\)</script>"
+max_requests: 3
+max_duration_seconds: 30
+safety_classification:
+  destructive: false
+  data_exfiltration: false
+  state_modification: false
+  rationale: >
+    Script executes in the browser only. Harmless to the server.

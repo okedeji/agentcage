@@ -1,0 +1,21 @@
+vulnerability_class: sqli
+validation_type: union_based
+description: >
+  Confirms SQL injection by injecting a UNION SELECT payload and
+  checking for data leakage indicators in the response.
+payload_template:
+  method: "{{ candidate.method }}"
+  url: "{{ candidate.endpoint }}"
+  parameter: "{{ candidate.parameter }}"
+  value: "{{ candidate.evidence.base_value }}' UNION SELECT NULL,NULL--"
+confirmation:
+  type: response_contains
+  expected_pattern: "null"
+max_requests: 3
+max_duration_seconds: 30
+safety_classification:
+  destructive: false
+  data_exfiltration: false
+  state_modification: false
+  rationale: >
+    UNION SELECT NULL returns no real data. Only confirms injectability.

@@ -1,0 +1,21 @@
+vulnerability_class: sqli
+validation_type: error_based
+description: >
+  Confirms SQL injection by injecting malformed SQL and checking
+  for database error messages in the response.
+payload_template:
+  method: "{{ candidate.method }}"
+  url: "{{ candidate.endpoint }}"
+  parameter: "{{ candidate.parameter }}"
+  value: "{{ candidate.evidence.base_value }}'"
+confirmation:
+  type: response_contains
+  expected_pattern: "(SQL|syntax|mysql|postgresql|sqlite|oracle|ORA-)"
+max_requests: 3
+max_duration_seconds: 30
+safety_classification:
+  destructive: false
+  data_exfiltration: false
+  state_modification: false
+  rationale: >
+    Single quote causes a syntax error. No data modification.

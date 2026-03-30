@@ -1,0 +1,22 @@
+vulnerability_class: path_traversal
+validation_type: file_read
+description: >
+  Confirms path traversal by reading a known file and checking
+  for expected content in the response.
+payload_template:
+  method: "{{ candidate.method }}"
+  url: "{{ candidate.endpoint }}"
+  parameter: "{{ candidate.parameter }}"
+  value: "../../etc/passwd"
+confirmation:
+  type: response_contains
+  expected_pattern: "root:"
+max_requests: 3
+max_duration_seconds: 30
+safety_classification:
+  destructive: false
+  data_exfiltration: true
+  state_modification: false
+  rationale: >
+    Reads /etc/passwd which is world-readable. Contains usernames
+    but not passwords on modern systems.

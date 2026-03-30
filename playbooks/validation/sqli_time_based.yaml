@@ -1,0 +1,23 @@
+vulnerability_class: sqli
+validation_type: time_based
+description: >
+  Confirms SQL injection by injecting a time delay payload and
+  measuring response latency. No data is read, modified, or deleted.
+payload_template:
+  method: "{{ candidate.method }}"
+  url: "{{ candidate.endpoint }}"
+  parameter: "{{ candidate.parameter }}"
+  value: "{{ candidate.evidence.base_value }}' OR SLEEP(5)--"
+confirmation:
+  type: response_time_delta
+  expected_delta_ms: 4500
+  tolerance_ms: 1000
+max_requests: 5
+max_duration_seconds: 30
+safety_classification:
+  destructive: false
+  data_exfiltration: false
+  state_modification: false
+  rationale: >
+    SLEEP() causes a time delay only. No data is selected, inserted,
+    updated, or deleted.

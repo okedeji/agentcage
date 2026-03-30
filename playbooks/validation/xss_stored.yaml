@@ -1,0 +1,23 @@
+vulnerability_class: xss
+validation_type: stored
+description: >
+  Confirms stored XSS by injecting a payload, then fetching the
+  page to check if the payload persists.
+payload_template:
+  method: "{{ candidate.method }}"
+  url: "{{ candidate.endpoint }}"
+  parameter: "{{ candidate.parameter }}"
+  value: "<img src=x onerror=alert(1)>"
+confirmation:
+  type: response_contains
+  expected_pattern: "<img src=x onerror=alert\\(1\\)>"
+  timeout_seconds: 10
+max_requests: 5
+max_duration_seconds: 30
+safety_classification:
+  destructive: false
+  data_exfiltration: false
+  state_modification: true
+  rationale: >
+    Stores a payload in the application. The payload is an image
+    tag with an error handler -- harmless but persists.

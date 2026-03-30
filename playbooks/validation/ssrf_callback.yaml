@@ -1,0 +1,22 @@
+vulnerability_class: ssrf
+validation_type: callback
+description: >
+  Confirms SSRF by causing the target to make an outbound HTTP
+  request to a controlled listener.
+payload_template:
+  method: "{{ candidate.method }}"
+  url: "{{ candidate.endpoint }}"
+  parameter: "{{ candidate.parameter }}"
+  value: "https://callback.agentcage.internal/{{ cage_id }}/confirm"
+confirmation:
+  type: http_callback_received
+  timeout_seconds: 10
+max_requests: 3
+max_duration_seconds: 30
+safety_classification:
+  destructive: false
+  data_exfiltration: false
+  state_modification: false
+  rationale: >
+    Target makes outbound request to controlled listener only.
+    No internal systems are probed.
