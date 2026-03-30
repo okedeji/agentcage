@@ -1,6 +1,6 @@
 syntax = "proto3";
 package agentcage.fleet.v1;
-option go_package = "github.com/okedeji/agentcage/api/proto/fleet";
+option go_package = "github.com/okedeji/agentcage/api/proto";
 
 service FleetService {
   rpc GetFleetStatus(GetFleetStatusRequest) returns (GetFleetStatusResponse);

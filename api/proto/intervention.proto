@@ -1,6 +1,6 @@
 syntax = "proto3";
 package agentcage.intervention.v1;
-option go_package = "github.com/okedeji/agentcage/api/proto/intervention";
+option go_package = "github.com/okedeji/agentcage/api/proto";
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
