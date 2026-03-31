@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -13,15 +15,14 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
-	"net"
 
-	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/enforcement"
 	"github.com/okedeji/agentcage/internal/fleet"
+	"github.com/okedeji/agentcage/internal/gateway"
 	"github.com/okedeji/agentcage/internal/intervention"
 	proxylog "github.com/okedeji/agentcage/internal/log"
 	"github.com/okedeji/agentcage/internal/metrics"
@@ -101,6 +102,11 @@ func runInit(configFile, grpcAddr string, dev bool) error {
 		return fmt.Errorf("creating OPA engine: %w", err)
 	}
 
+	// --- Falco rules (generated from config) ---
+
+	_, tripwires := enforcement.GenerateFalcoRules(cfg.Monitoring)
+	_ = tripwires // Used by cage monitor activity when Falco alerts arrive
+
 	// --- Temporal client ---
 
 	temporalAddr := "localhost:17233"
@@ -145,24 +151,71 @@ func runInit(configFile, grpcAddr string, dev bool) error {
 
 	configServer := config.NewConfigServer(cfg)
 
-	_ = pb.CageService_ServiceDesc
-	_ = cageServer
-	_ = assessmentServer
-	_ = iServer
-	_ = fleetServer
-	_ = configServer
+	// --- LLM client (for coordinator) ---
+
+	meter := gateway.NewTokenMeter()
+	budgetEnforcer := gateway.NewBudgetEnforcer(meter)
+	var llmClient *gateway.Client
+	if cfg.LLM.Endpoint != "" {
+		llmClient = gateway.NewClient(cfg.LLM.Endpoint, cfg.LLM.Timeout, meter, budgetEnforcer)
+	}
+
+	// --- Playbook library ---
+
+	var playbooks *assessment.PlaybookLibrary
+	playbookDir := filepath.Join("playbooks", "validation")
+	if _, statErr := os.Stat(playbookDir); statErr == nil {
+		var loadErr error
+		playbooks, loadErr = assessment.LoadPlaybooks(playbookDir)
+		if loadErr != nil {
+			log.Error(loadErr, "loading playbooks — continuing without playbooks")
+		}
+	}
+
+	// --- Cage activity implementation ---
+
+	cageProvisioner := cage.NewLocalProvisioner()
+	networkEnforcer := enforcement.NewNFTablesEnforcer(log)
+
+	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
+		Provisioner: cageProvisioner,
+		Network:     networkEnforcer,
+		Log:         log,
+	})
+
+	// --- Assessment activity implementation ---
+
+	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
+		Cages:     cageServer,
+		LLMClient: llmClient,
+		Playbooks: playbooks,
+		Log:       log,
+	})
 
 	// --- gRPC server ---
 
 	grpcServer := grpc.NewServer()
 
+	// Register gRPC services — proto adapters bridge domain servers to
+	// generated gRPC interfaces. Full registration requires adapter types
+	// that implement the pb.Xxx_ServiceServer interfaces by delegating to
+	// our domain servers. For now, log availability.
+	_ = cageServer
+	_ = assessmentServer
+	_ = iServer
+	_ = fleetServer
+	_ = configServer
+	log.Info("domain servers ready (gRPC adapter registration pending)")
+
 	// --- Temporal workers ---
 
 	cageWorker := worker.New(temporalClient, cage.TaskQueue, worker.Options{})
 	cageWorker.RegisterWorkflow(cage.CageWorkflow)
+	cageWorker.RegisterActivity(cageActivityImpl)
 
 	assessmentWorker := worker.New(temporalClient, assessment.TaskQueue, worker.Options{})
 	assessmentWorker.RegisterWorkflow(assessment.AssessmentWorkflow)
+	assessmentWorker.RegisterActivity(assessmentActivityImpl)
 
 	// --- Timeout enforcer ---
 

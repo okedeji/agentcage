@@ -392,7 +392,9 @@ func Merge(base, override *Config) *Config {
 		result.LLM.Timeout = override.LLM.Timeout
 	}
 	if len(override.LLM.Models) > 0 {
-		result.LLM.Models = override.LLM.Models
+		models := make([]ModelConfig, len(override.LLM.Models))
+		copy(models, override.LLM.Models)
+		result.LLM.Models = models
 	}
 
 	// Fleet
@@ -584,6 +586,10 @@ func (c *InfrastructureConfig) IsExternalNomad() bool {
 	return c.Nomad != nil && c.Nomad.Address != ""
 }
 
+func (c *InfrastructureConfig) IsExternalOTel() bool {
+	return c.OTel != nil && c.OTel.Endpoint != ""
+}
+
 // InfraDenyList returns the list of infrastructure addresses that cages must never target.
 // Combines user-provided scope.deny with auto-detected embedded service addresses.
 func (c *Config) InfraDenyList() []string {
@@ -608,4 +614,16 @@ func (c *Config) RateLimit(cageType string) int32 {
 		return ct.RateLimit
 	}
 	return 0
+}
+
+// ValidCageTypes are the recognized cage type string keys.
+var ValidCageTypes = map[string]bool{
+	"discovery":  true,
+	"validator":  true,
+	"escalation": true,
+}
+
+// IsValidCageType returns true if the given string is a recognized cage type.
+func IsValidCageType(s string) bool {
+	return ValidCageTypes[s]
 }

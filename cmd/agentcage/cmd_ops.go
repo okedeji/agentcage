@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/okedeji/agentcage/internal/embedded"
 )
@@ -203,7 +202,3 @@ func cmdAudit(args []string) {
 	}
 }
 
-func init() {
-	// Suppress unused import warnings for strings
-	_ = strings.TrimSpace
-}

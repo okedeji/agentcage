@@ -15,6 +15,7 @@ type CageEnv struct {
 	AssessmentID string   `json:"assessment_id"`
 	CageType     string   `json:"cage_type"`
 	Entrypoint   string   `json:"entrypoint"`
+	Objective    string   `json:"objective,omitempty"`
 	LLMEndpoint  string   `json:"llm_endpoint,omitempty"`
 	NATSAddr     string   `json:"nats_addr,omitempty"`
 	ScopeHosts   []string `json:"scope_hosts"`
@@ -81,6 +82,9 @@ func main() {
 	}
 	if env.TokenBudget > 0 {
 		setEnv("AGENTCAGE_TOKEN_BUDGET", fmt.Sprintf("%d", env.TokenBudget))
+	}
+	if env.Objective != "" {
+		setEnv("AGENTCAGE_OBJECTIVE", env.Objective)
 	}
 
 	// 6. Exec the agent entrypoint
