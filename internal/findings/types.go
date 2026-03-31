@@ -72,5 +72,6 @@ type Evidence struct {
 	Request    []byte
 	Response   []byte
 	Screenshot []byte
+	PoC        string
 	Metadata   map[string]string
 }

@@ -12,7 +12,7 @@ import (
 // was found, and decides what to test next.
 type CoordinatorState struct {
 	AssessmentID   string                       `json:"assessment_id"`
-	Scope          cage.Scope                   `json:"scope"`
+	Target         cage.Scope                   `json:"target"`
 	Iteration      int                          `json:"iteration"`
 	MaxIterations  int                          `json:"max_iterations"`
 	Findings       []FindingSummary             `json:"findings"`

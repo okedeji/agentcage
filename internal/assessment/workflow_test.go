@@ -50,7 +50,7 @@ func testInput() AssessmentWorkflowInput {
 		AssessmentID: "test-assessment-1",
 		Config: Config{
 			CustomerID:    "customer-1",
-			Scope:         cage.Scope{Hosts: []string{"target.example.com"}},
+			Target:        cage.Scope{Hosts: []string{"target.example.com"}},
 			TokenBudget:   1000000,
 			MaxDuration:   2 * time.Hour,
 			MaxChainDepth: 3,

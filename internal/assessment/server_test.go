@@ -15,7 +15,7 @@ import (
 func testConfig() Config {
 	return Config{
 		CustomerID:    "customer-1",
-		Scope:         cage.Scope{Hosts: []string{"target.example.com"}},
+		Target:        cage.Scope{Hosts: []string{"target.example.com"}},
 		TokenBudget:   500000,
 		MaxDuration:   1 * time.Hour,
 		MaxChainDepth: 3,

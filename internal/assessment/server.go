@@ -34,7 +34,7 @@ func (s *Server) CreateAssessment(ctx context.Context, config Config) (*Info, er
 	info := &Info{
 		ID:         assessmentID,
 		CustomerID: config.CustomerID,
-		Status:     StatusMapping,
+		Status:     StatusDiscovery,
 		Config:     config,
 		CreatedAt:  now,
 		UpdatedAt:  now,

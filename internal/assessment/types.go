@@ -12,9 +12,9 @@ type Status int
 
 const (
 	StatusUnspecified Status = iota
-	StatusMapping
-	StatusTesting
-	StatusValidating
+	StatusDiscovery
+	StatusExploitation
+	StatusValidation
 	StatusPendingReview
 	StatusApproved
 	StatusRejected
@@ -22,12 +22,12 @@ const (
 
 func (s Status) String() string {
 	switch s {
-	case StatusMapping:
-		return "mapping"
-	case StatusTesting:
-		return "testing"
-	case StatusValidating:
-		return "validating"
+	case StatusDiscovery:
+		return "discovery"
+	case StatusExploitation:
+		return "exploitation"
+	case StatusValidation:
+		return "validation"
 	case StatusPendingReview:
 		return "pending_review"
 	case StatusApproved:
@@ -63,12 +63,50 @@ func (f ComplianceFramework) String() string {
 
 type Config struct {
 	CustomerID    string
-	Scope         cage.Scope
+	Target        cage.Scope
 	CageDefaults  map[cage.Type]CageTypeConfig
 	TokenBudget   int64
 	MaxDuration   time.Duration
 	MaxChainDepth int32
 	Compliance    ComplianceFramework
+	Guidance      *Guidance
+}
+
+// Guidance provides optional practitioner context that shapes how agentcage
+// discovers, prioritizes, attacks, and validates — matching the four dimensions
+// of a penetration test methodology.
+type Guidance struct {
+	AttackSurface  *AttackSurfaceGuidance  `json:"attack_surface,omitempty"`
+	Priorities     *PrioritiesGuidance     `json:"priorities,omitempty"`
+	AttackStrategy *AttackStrategyGuidance `json:"attack_strategy,omitempty"`
+	Validation     *ValidationGuidance     `json:"validation,omitempty"`
+}
+
+// AttackSurfaceGuidance narrows or expands what the coordinator discovers.
+type AttackSurfaceGuidance struct {
+	Endpoints     []string `json:"endpoints,omitempty"`
+	APISpecs      []string `json:"api_specs,omitempty"`
+	LimitToListed bool     `json:"limit_to_listed,omitempty"`
+}
+
+// PrioritiesGuidance focuses testing on high-value areas.
+type PrioritiesGuidance struct {
+	Focus        []string `json:"focus,omitempty"`
+	Deprioritize []string `json:"deprioritize,omitempty"`
+	VulnClasses  []string `json:"vuln_classes,omitempty"`
+}
+
+// AttackStrategyGuidance provides exploit knowledge and payload hints.
+type AttackStrategyGuidance struct {
+	VulnClasses    []string `json:"vuln_classes,omitempty"`
+	KnownWeaknesses []string `json:"known_weaknesses,omitempty"`
+	Context        string   `json:"context,omitempty"`
+}
+
+// ValidationGuidance controls how findings are confirmed.
+type ValidationGuidance struct {
+	RequirePoC         bool `json:"require_poc,omitempty"`
+	HeadlessBrowserXSS bool `json:"headless_browser_xss,omitempty"`
 }
 
 type CageTypeConfig struct {
@@ -97,9 +135,9 @@ type Stats struct {
 }
 
 var validTransitions = map[Status][]Status{
-	StatusMapping:       {StatusTesting, StatusRejected},
-	StatusTesting:       {StatusValidating, StatusRejected},
-	StatusValidating:    {StatusPendingReview, StatusRejected},
+	StatusDiscovery:     {StatusExploitation, StatusRejected},
+	StatusExploitation:  {StatusValidation, StatusRejected},
+	StatusValidation:    {StatusPendingReview, StatusRejected},
 	StatusPendingReview: {StatusApproved, StatusRejected},
 }
 

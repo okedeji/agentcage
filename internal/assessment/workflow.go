@@ -59,7 +59,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 	// ===== Phase 1: Initial surface mapping (deterministic) =====
 
-	if err := updateStatus(ctx, input.AssessmentID, StatusMapping); err != nil {
+	if err := updateStatus(ctx, input.AssessmentID, StatusDiscovery); err != nil {
 		return failResult(result, "updating status to mapping: %v", err), nil
 	}
 
@@ -76,7 +76,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 	// ===== Phase 2: LLM-driven coordinator loop =====
 
-	if err := updateStatus(ctx, input.AssessmentID, StatusTesting); err != nil {
+	if err := updateStatus(ctx, input.AssessmentID, StatusExploitation); err != nil {
 		return failResult(result, "updating status to testing: %v", err), nil
 	}
 
@@ -96,7 +96,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 		state := CoordinatorState{
 			AssessmentID:   input.AssessmentID,
-			Scope:          cfg.Scope,
+			Target:         cfg.Target,
 			Iteration:      int(iteration),
 			MaxIterations:  int(maxIterations),
 			Findings:       SummarizeFindings(allFindings),
@@ -135,7 +135,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 	// ===== Phase 3: Validation (deterministic, playbook-driven) =====
 
-	if err := updateStatus(ctx, input.AssessmentID, StatusValidating); err != nil {
+	if err := updateStatus(ctx, input.AssessmentID, StatusValidation); err != nil {
 		return failResult(result, "updating status to validating: %v", err), nil
 	}
 
@@ -255,7 +255,7 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 	cageCfg := cage.Config{
 		AssessmentID: assessmentID,
 		Type:         cage.TypeDiscovery,
-		Scope:        cfg.Scope,
+		Scope:        cfg.Target,
 	}
 	if tc, ok := cfg.CageDefaults[cage.TypeDiscovery]; ok {
 		cageCfg.Resources = tc.Resources
@@ -449,7 +449,7 @@ func spawnEscalationCages(
 		escalationCfg := cage.Config{
 			AssessmentID:    assessmentID,
 			Type:            cage.TypeEscalation,
-			Scope:           cfg.Scope,
+			Scope:           cfg.Target,
 			ParentFindingID: f.ID,
 		}
 		if tc, ok := cfg.CageDefaults[cage.TypeEscalation]; ok {
