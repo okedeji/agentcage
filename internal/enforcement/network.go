@@ -18,8 +18,7 @@ type NetworkEnforcer interface {
 }
 
 // EgressRule is a deployment-agnostic representation of a cage's allowed
-// network destinations. The enforcer translates this to the appropriate
-// format: nftables rules for embedded mode, Cilium CRD for Kubernetes.
+// network destinations. The enforcer translates this to nftables rules.
 type EgressRule struct {
 	CageID   string
 	AllowIPs []string

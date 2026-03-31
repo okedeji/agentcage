@@ -3,7 +3,6 @@ set -euo pipefail
 
 # Variables from Terraform template
 NOMAD_VERSION="${nomad_version}"
-CILIUM_VERSION="${cilium_version}"
 SPIRE_VERSION="${spire_version}"
 FALCO_VERSION="${falco_version}"
 AGENTCAGE_VERSION="${agentcage_version}"
@@ -54,17 +53,6 @@ NOMADEOF
 
 systemctl enable nomad
 systemctl start nomad
-
-# Install Cilium CLI
-CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-curl -sSL "https://github.com/cilium/cilium-cli/releases/download/$${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz" | tar -xz -C /usr/local/bin
-
-# Configure Cilium agent (standalone mode)
-mkdir -p /etc/cilium
-cat > /etc/cilium/config.yaml <<CILIUMEOF
-enable-endpoint-health-checking: true
-enable-policy: "default"
-CILIUMEOF
 
 # Install SPIRE agent
 curl -sSL "https://github.com/spiffe/spire/releases/download/v$${SPIRE_VERSION}/spire-$${SPIRE_VERSION}-linux-amd64-musl.tar.gz" | tar -xz

@@ -1,6 +1,11 @@
-orchestrator:
+# agentcage Helm chart values
+#
+# For Kubernetes deployments where users bring their own infrastructure.
+# In embedded mode (agentcage init), these are managed automatically.
+
+agentcage:
   image:
-    repository: agentcage/orchestrator
+    repository: agentcage/agentcage
     tag: latest
   replicas: 1
   resources:
@@ -10,30 +15,25 @@ orchestrator:
     limits:
       cpu: 2000m
       memory: 2Gi
-  temporalAddr: temporal:7233
-  policyDir: /etc/agentcage/policies
 
-temporal:
-  enabled: true
+# External infrastructure — agentcage connects to these instead of
+# running embedded instances when deployed on Kubernetes.
 
-nats:
-  enabled: true
+infrastructure:
+  temporal:
+    address: temporal:7233
+  postgres:
+    url: "postgres://agentcage:agentcage@postgres:5432/agentcage?sslmode=disable"
+  nats:
+    url: "nats://nats:4222"
+  spire:
+    server_address: spire-server:8081
+    trust_domain: "agentcage.local"
+  vault:
+    enabled: false
+    address: ""
 
-vault:
-  enabled: false
-  externalAddr: ""
-
-postgres:
-  enabled: true
-  persistence:
-    size: 100Gi
-
-opa:
-  enabled: true
-  image:
-    repository: openpolicyagent/opa
-    tag: latest
-
+# SPIRE identity management
 spire:
   enabled: true
   server:
@@ -46,12 +46,12 @@ spire:
       tag: "1.9.0"
   trustDomain: "agentcage.local"
 
-cilium:
-  enabled: true
-
+# Falco runtime monitoring
 falco:
   enabled: true
 
+# Platform config — passed as ConfigMap
 config:
-  llmEndpoint: ""
-  natsAddr: "nats:4222"
+  llm:
+    endpoint: ""
+    api_key_env: ""

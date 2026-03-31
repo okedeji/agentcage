@@ -12,7 +12,6 @@ resource "aws_launch_template" "cage_host" {
 
   user_data = base64encode(templatefile("${path.module}/userdata.sh.tpl", {
     nomad_version     = "1.7.3"
-    cilium_version    = "1.15.0"
     spire_version     = "1.9.0"
     falco_version     = "0.37.0"
     agentcage_version = var.agentcage_version

@@ -1,11 +1,11 @@
 -- +migrate Up
-CREATE TYPE assessment_status AS ENUM ('mapping', 'testing', 'validating', 'pending_review', 'approved', 'rejected');
+CREATE TYPE assessment_status AS ENUM ('discovery', 'exploitation', 'validation', 'pending_review', 'approved', 'rejected');
 CREATE TYPE compliance_framework AS ENUM ('soc2', 'hipaa', 'pci_dss');
 
 CREATE TABLE assessments (
     id              TEXT PRIMARY KEY,
     customer_id     TEXT NOT NULL,
-    status          assessment_status NOT NULL DEFAULT 'mapping',
+    status          assessment_status NOT NULL DEFAULT 'discovery',
     config          JSONB NOT NULL,
     compliance      compliance_framework,
     total_cages     INTEGER NOT NULL DEFAULT 0,

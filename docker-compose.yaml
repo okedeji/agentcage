@@ -57,12 +57,6 @@ services:
     cap_add:
       - IPC_LOCK
 
-  opa:
-    image: openpolicyagent/opa:latest
-    ports:
-      - "8181:8181"
-    command: ["run", "--server", "--addr", ":8181"]
-
   spire-server:
     image: ghcr.io/spiffe/spire-server:1.9.0
     ports:

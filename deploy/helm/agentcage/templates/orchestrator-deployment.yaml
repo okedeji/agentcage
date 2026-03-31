@@ -1,38 +1,42 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-orchestrator
+  name: {{ .Release.Name }}-agentcage
   labels:
-    app: agentcage-orchestrator
+    app: agentcage
 spec:
-  replicas: {{ .Values.orchestrator.replicas }}
+  replicas: {{ .Values.agentcage.replicas }}
   selector:
     matchLabels:
-      app: agentcage-orchestrator
+      app: agentcage
   template:
     metadata:
       labels:
-        app: agentcage-orchestrator
+        app: agentcage
     spec:
       containers:
-        - name: orchestrator
-          image: "{{ .Values.orchestrator.image.repository }}:{{ .Values.orchestrator.image.tag }}"
+        - name: agentcage
+          image: "{{ .Values.agentcage.image.repository }}:{{ .Values.agentcage.image.tag }}"
           args:
-            - --temporal-addr={{ .Values.orchestrator.temporalAddr }}
-            - --policy-dir={{ .Values.orchestrator.policyDir }}
+            - init
+            - --config=/etc/agentcage/config.yaml
+            - --grpc-addr=:9090
+          ports:
+            - name: grpc
+              containerPort: 9090
+              protocol: TCP
           resources:
-            {{- toYaml .Values.orchestrator.resources | nindent 12 }}
+            {{- toYaml .Values.agentcage.resources | nindent 12 }}
           volumeMounts:
-            - name: policies
-              mountPath: /etc/agentcage/policies
-              readOnly: true
             - name: config
-              mountPath: /etc/agentcage/config
+              mountPath: /etc/agentcage
               readOnly: true
+            - name: data
+              mountPath: /root/.agentcage
       volumes:
-        - name: policies
-          configMap:
-            name: {{ .Release.Name }}-policies
         - name: config
           configMap:
             name: {{ .Release.Name }}-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data

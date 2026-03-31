@@ -11,36 +11,56 @@ import (
 )
 
 type config struct {
-	CageTypes         map[string]cageTypeConfig  `yaml:"cage_types"`
-	RateLimits        rateLimitsConfig           `yaml:"rate_limits"`
-	ActivityTimeouts  map[string]string          `yaml:"activity_timeouts"`
-	FalcoRules        map[string]any             `yaml:"falco_rules"`
-	TripwirePolicies  map[string]any             `yaml:"tripwire_policies"`
-	BlocklistPatterns map[string][]patternEntry  `yaml:"blocklist_patterns"`
-	Infrastructure    infrastructureConfig       `yaml:"infrastructure"`
+	Cages      map[string]cageTypeConfig  `yaml:"cages"`
+	Assessment assessmentConfig           `yaml:"assessment"`
+	Scope      scopeConfig                `yaml:"scope"`
+	Payload    map[string]payloadConfig   `yaml:"payload"`
+	Monitoring map[string]monitoringConfig `yaml:"monitoring"`
+	LLM        llmConfig                  `yaml:"llm"`
 }
 
 type cageTypeConfig struct {
 	MaxDuration string `yaml:"max_duration"`
 	MaxVCPUs    int32  `yaml:"max_vcpus"`
 	MaxMemoryMB int32  `yaml:"max_memory_mb"`
+	RateLimit   int32  `yaml:"rate_limit"`
 }
 
-type rateLimitsConfig struct {
-	MaxRequestsPerSecond int32 `yaml:"max_requests_per_second"`
+type assessmentConfig struct {
+	MaxDuration   string `yaml:"max_duration"`
+	TokenBudget   int64  `yaml:"token_budget"`
+	MaxIterations int32  `yaml:"max_iterations"`
+	ReviewTimeout string `yaml:"review_timeout"`
+}
+
+type scopeConfig struct {
+	Deny          []string `yaml:"deny"`
+	DenyWildcards bool     `yaml:"deny_wildcards"`
+	DenyLocalhost bool     `yaml:"deny_localhost"`
+}
+
+type payloadConfig struct {
+	Block []patternEntry `yaml:"block"`
 }
 
 type patternEntry struct {
 	Pattern string `yaml:"pattern"`
-	Message string `yaml:"message"`
+	Reason  string `yaml:"reason"`
 }
 
-type infrastructureConfig struct {
-	LLMEndpoint              string   `yaml:"llm_endpoint"`
-	ClassificationEndpoint   string   `yaml:"classification_endpoint"`
-	ClassificationThreshold  float64  `yaml:"classification_threshold"`
-	NATSAddr                 string   `yaml:"nats_addr"`
-	InfraHosts               []string `yaml:"infra_hosts"`
+type monitoringConfig struct {
+	Rules         map[string]monitoringRule `yaml:"rules"`
+	DefaultAction string                    `yaml:"default_action"`
+}
+
+type monitoringRule struct {
+	Detect string `yaml:"detect"`
+	Action string `yaml:"action"`
+}
+
+type llmConfig struct {
+	Endpoint  string `yaml:"endpoint"`
+	APIKeyEnv string `yaml:"api_key_env"`
 }
 
 func main() {
@@ -58,64 +78,53 @@ func main() {
 
 	var errs []string
 
-	// Required sections
-	if len(cfg.CageTypes) == 0 {
-		errs = append(errs, "cage_types section is empty or missing")
+	if len(cfg.Cages) == 0 {
+		errs = append(errs, "cages section is empty or missing")
 	}
-	if cfg.RateLimits.MaxRequestsPerSecond <= 0 {
-		errs = append(errs, "rate_limits.max_requests_per_second must be positive")
+	if len(cfg.Scope.Deny) == 0 {
+		errs = append(errs, "scope.deny is empty or missing")
 	}
-	if len(cfg.ActivityTimeouts) == 0 {
-		errs = append(errs, "activity_timeouts section is empty or missing")
+	if len(cfg.Payload) == 0 {
+		errs = append(errs, "payload section is empty or missing")
 	}
-	if len(cfg.FalcoRules) == 0 {
-		errs = append(errs, "falco_rules section is empty or missing")
-	}
-	if len(cfg.TripwirePolicies) == 0 {
-		errs = append(errs, "tripwire_policies section is empty or missing")
-	}
-	if len(cfg.BlocklistPatterns) == 0 {
-		errs = append(errs, "blocklist_patterns section is empty or missing")
-	}
-	if len(cfg.Infrastructure.InfraHosts) == 0 {
-		errs = append(errs, "infrastructure.infra_hosts is empty or missing")
+	if len(cfg.Monitoring) == 0 {
+		errs = append(errs, "monitoring section is empty or missing")
 	}
 
-	// Validate cage types have limits
-	for name, ct := range cfg.CageTypes {
+	for name, ct := range cfg.Cages {
 		if ct.MaxDuration == "" {
-			errs = append(errs, fmt.Sprintf("cage_types.%s.max_duration is missing", name))
+			errs = append(errs, fmt.Sprintf("cages.%s.max_duration is missing", name))
 		}
 		if ct.MaxVCPUs <= 0 {
-			errs = append(errs, fmt.Sprintf("cage_types.%s.max_vcpus must be positive", name))
+			errs = append(errs, fmt.Sprintf("cages.%s.max_vcpus must be positive", name))
 		}
 		if ct.MaxMemoryMB <= 0 {
-			errs = append(errs, fmt.Sprintf("cage_types.%s.max_memory_mb must be positive", name))
+			errs = append(errs, fmt.Sprintf("cages.%s.max_memory_mb must be positive", name))
 		}
 	}
 
-	// Validate activity timeouts are present (non-empty string means parseable by Go duration)
-	requiredTimeouts := []string{
-		"validate_scope", "issue_identity", "fetch_secrets", "provision_vm",
-		"apply_policy", "start_agent", "export_audit_log", "teardown_vm",
-		"revoke_svid", "revoke_vault_token", "verify_cleanup",
-		"heartbeat_provision_vm", "heartbeat_monitor_cage",
-	}
-	for _, name := range requiredTimeouts {
-		v, ok := cfg.ActivityTimeouts[name]
-		if !ok || v == "" {
-			errs = append(errs, fmt.Sprintf("activity_timeouts.%s is missing", name))
-		}
-	}
-
-	// Validate blocklist patterns compile as valid regex
-	for vulnClass, patterns := range cfg.BlocklistPatterns {
-		for i, p := range patterns {
+	for vulnClass, pc := range cfg.Payload {
+		for i, p := range pc.Block {
 			if _, err := regexp.Compile(p.Pattern); err != nil {
-				errs = append(errs, fmt.Sprintf("blocklist_patterns.%s[%d]: invalid regex %q: %v", vulnClass, i, p.Pattern, err))
+				errs = append(errs, fmt.Sprintf("payload.%s.block[%d]: invalid regex %q: %v", vulnClass, i, p.Pattern, err))
 			}
-			if p.Message == "" {
-				errs = append(errs, fmt.Sprintf("blocklist_patterns.%s[%d]: empty message", vulnClass, i))
+			if p.Reason == "" {
+				errs = append(errs, fmt.Sprintf("payload.%s.block[%d]: empty reason", vulnClass, i))
+			}
+		}
+	}
+
+	validActions := map[string]bool{"log": true, "human_review": true, "kill": true}
+	for cageType, mc := range cfg.Monitoring {
+		if mc.DefaultAction != "" && !validActions[mc.DefaultAction] {
+			errs = append(errs, fmt.Sprintf("monitoring.%s.default_action: invalid action %q", cageType, mc.DefaultAction))
+		}
+		for ruleName, rule := range mc.Rules {
+			if rule.Detect == "" {
+				errs = append(errs, fmt.Sprintf("monitoring.%s.rules.%s: detect is empty", cageType, ruleName))
+			}
+			if !validActions[rule.Action] {
+				errs = append(errs, fmt.Sprintf("monitoring.%s.rules.%s: invalid action %q", cageType, ruleName, rule.Action))
 			}
 		}
 	}
