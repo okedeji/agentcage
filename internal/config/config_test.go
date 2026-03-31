@@ -10,52 +10,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func loadEmbeddedYAML(t *testing.T) []byte {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "agentcage.yaml"))
-	require.NoError(t, err)
-	return data
-}
-
-func testDefault(t *testing.T) *Config {
-	t.Helper()
-	cfg, err := Default(loadEmbeddedYAML(t))
-	require.NoError(t, err)
-	return cfg
-}
-
-func TestDefault_ReturnsPopulatedConfig(t *testing.T) {
-	cfg := testDefault(t)
+func TestDefaults_ReturnsPopulatedConfig(t *testing.T) {
+	cfg := Defaults()
 	require.NotNil(t, cfg)
-	assert.NotEmpty(t, cfg.CageTypes)
-	assert.NotEmpty(t, cfg.TripwirePolicies)
-	assert.NotEmpty(t, cfg.BlocklistPatterns)
-	assert.NotEmpty(t, cfg.Infrastructure.InfraHosts)
+	assert.NotEmpty(t, cfg.Cages)
+	assert.NotEmpty(t, cfg.Monitoring)
+	assert.NotEmpty(t, cfg.Payload)
+	assert.NotEmpty(t, cfg.Scope.Deny)
 }
 
-func TestDefault_HasThreeCageTypes(t *testing.T) {
-	cfg := testDefault(t)
-	require.Len(t, cfg.CageTypes, 3)
+func TestDefaults_HasThreeCageTypes(t *testing.T) {
+	cfg := Defaults()
+	require.Len(t, cfg.Cages, 3)
 
-	disc := cfg.CageTypes["discovery"]
+	disc := cfg.Cages["discovery"]
 	assert.Equal(t, 30*time.Minute, disc.MaxDuration)
 	assert.Equal(t, int32(4), disc.MaxVCPUs)
 	assert.Equal(t, int32(8192), disc.MaxMemoryMB)
+	assert.True(t, disc.RequiresLLM)
 
-	val := cfg.CageTypes["validator"]
+	val := cfg.Cages["validator"]
 	assert.Equal(t, 60*time.Second, val.MaxDuration)
 	assert.Equal(t, int32(1), val.MaxVCPUs)
 	assert.Equal(t, int32(1024), val.MaxMemoryMB)
+	assert.True(t, val.RequiresParentFinding)
 
-	esc := cfg.CageTypes["escalation"]
+	esc := cfg.Cages["escalation"]
 	assert.Equal(t, 15*time.Minute, esc.MaxDuration)
 	assert.Equal(t, int32(2), esc.MaxVCPUs)
 	assert.Equal(t, int32(4096), esc.MaxMemoryMB)
+	assert.Equal(t, int32(3), esc.MaxChainDepth)
 }
 
-func TestDefault_HasAllActivityTimeouts(t *testing.T) {
-	cfg := testDefault(t)
-	at := cfg.ActivityTimeouts
+func TestDefaults_HasAllActivityTimeouts(t *testing.T) {
+	cfg := Defaults()
+	at := cfg.Timeouts
 
 	assert.Equal(t, 5*time.Second, at.ValidateScope)
 	assert.Equal(t, 10*time.Second, at.IssueIdentity)
@@ -72,42 +61,72 @@ func TestDefault_HasAllActivityTimeouts(t *testing.T) {
 	assert.Equal(t, 30*time.Second, at.HeartbeatMonitorCage)
 }
 
-func TestDefault_HasThreeTripwirePolicySets(t *testing.T) {
-	cfg := testDefault(t)
-	require.Len(t, cfg.TripwirePolicies, 3)
-	assert.Contains(t, cfg.TripwirePolicies, "discovery")
-	assert.Contains(t, cfg.TripwirePolicies, "validator")
-	assert.Contains(t, cfg.TripwirePolicies, "escalation")
+func TestDefaults_HasThreeMonitoringSets(t *testing.T) {
+	cfg := Defaults()
+	require.Len(t, cfg.Monitoring, 3)
+	assert.Contains(t, cfg.Monitoring, "discovery")
+	assert.Contains(t, cfg.Monitoring, "validator")
+	assert.Contains(t, cfg.Monitoring, "escalation")
 }
 
-func TestDefault_HasFourBlocklistPatternSets(t *testing.T) {
-	cfg := testDefault(t)
-	require.Len(t, cfg.BlocklistPatterns, 4)
-	assert.Contains(t, cfg.BlocklistPatterns, "sqli")
-	assert.Contains(t, cfg.BlocklistPatterns, "rce")
-	assert.Contains(t, cfg.BlocklistPatterns, "ssrf")
-	assert.Contains(t, cfg.BlocklistPatterns, "xss")
+func TestDefaults_HasFourPayloadSets(t *testing.T) {
+	cfg := Defaults()
+	require.Len(t, cfg.Payload, 4)
+	assert.Contains(t, cfg.Payload, "sqli")
+	assert.Contains(t, cfg.Payload, "rce")
+	assert.Contains(t, cfg.Payload, "ssrf")
+	assert.Contains(t, cfg.Payload, "xss")
 }
 
-func TestDefault_InvalidYAML(t *testing.T) {
-	_, err := Default([]byte("{{invalid yaml"))
+func TestDefaults_ScopeDenyIncludesPrivateRanges(t *testing.T) {
+	cfg := Defaults()
+	assert.Contains(t, cfg.Scope.Deny, "10.0.0.0/8")
+	assert.Contains(t, cfg.Scope.Deny, "172.16.0.0/12")
+	assert.Contains(t, cfg.Scope.Deny, "192.168.0.0/16")
+	assert.Contains(t, cfg.Scope.Deny, "127.0.0.0/8")
+	assert.Contains(t, cfg.Scope.Deny, "169.254.169.254")
+	assert.True(t, cfg.Scope.DenyWildcards)
+	assert.True(t, cfg.Scope.DenyLocalhost)
+}
+
+func TestDefaults_AssessmentDefaults(t *testing.T) {
+	cfg := Defaults()
+	assert.Equal(t, 4*time.Hour, cfg.Assessment.MaxDuration)
+	assert.Equal(t, int64(500000), cfg.Assessment.TokenBudget)
+	assert.Equal(t, int32(20), cfg.Assessment.MaxIterations)
+	assert.Equal(t, 24*time.Hour, cfg.Assessment.ReviewTimeout)
+}
+
+func TestDefaults_InfrastructureAllEmbedded(t *testing.T) {
+	cfg := Defaults()
+	infra := cfg.Infrastructure
+	assert.False(t, infra.IsExternalPostgres())
+	assert.False(t, infra.IsExternalNATS())
+	assert.False(t, infra.IsExternalTemporal())
+	assert.False(t, infra.IsExternalSPIRE())
+	assert.False(t, infra.IsExternalVault())
+	assert.False(t, infra.IsExternalFalco())
+	assert.False(t, infra.IsExternalNomad())
+}
+
+func TestParse_InvalidYAML(t *testing.T) {
+	_, err := Parse([]byte("{{invalid yaml"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parsing embedded default config")
+	assert.Contains(t, err.Error(), "parsing config")
 }
 
 func TestLoad_ValidFile(t *testing.T) {
 	content := `
-cage_types:
+cages:
   discovery:
     max_duration: 45m
     max_vcpus: 8
     max_memory_mb: 16384
-rate_limits:
-  max_requests_per_second: 500
-activity_timeouts:
+llm:
+  endpoint: "https://api.example.com/v1"
+  api_key_env: "MY_KEY"
+timeouts:
   provision_vm: 60s
-infrastructure:
-  llm_endpoint: custom-llm.example.com
 `
 	path := writeTempFile(t, content)
 
@@ -115,12 +134,12 @@ infrastructure:
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	assert.Equal(t, 45*time.Minute, cfg.CageTypes["discovery"].MaxDuration)
-	assert.Equal(t, int32(8), cfg.CageTypes["discovery"].MaxVCPUs)
-	assert.Equal(t, int32(16384), cfg.CageTypes["discovery"].MaxMemoryMB)
-	assert.Equal(t, int32(500), cfg.RateLimits.MaxRequestsPerSecond)
-	assert.Equal(t, 60*time.Second, cfg.ActivityTimeouts.ProvisionVM)
-	assert.Equal(t, "custom-llm.example.com", cfg.Infrastructure.LLMEndpoint)
+	assert.Equal(t, 45*time.Minute, cfg.Cages["discovery"].MaxDuration)
+	assert.Equal(t, int32(8), cfg.Cages["discovery"].MaxVCPUs)
+	assert.Equal(t, int32(16384), cfg.Cages["discovery"].MaxMemoryMB)
+	assert.Equal(t, "https://api.example.com/v1", cfg.LLM.Endpoint)
+	assert.Equal(t, "MY_KEY", cfg.LLM.APIKeyEnv)
+	assert.Equal(t, 60*time.Second, cfg.Timeouts.ProvisionVM)
 }
 
 func TestLoad_NonExistentFile(t *testing.T) {
@@ -137,66 +156,165 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	assert.Contains(t, err.Error(), "parsing config file")
 }
 
+func TestLoad_InfrastructureOverrides(t *testing.T) {
+	content := `
+infrastructure:
+  postgres:
+    url: "postgres://user:pass@prod-db:5432/agentcage"
+  nats:
+    url: "nats://prod-nats:4222"
+  temporal:
+    address: "temporal.prod:7233"
+  spire:
+    server_address: "spire.prod:8081"
+    trust_domain: "company.internal"
+  vault:
+    address: "https://vault.prod:8200"
+    auth_path: "auth/jwt"
+    role: "agentcage"
+`
+	path := writeTempFile(t, content)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+
+	assert.True(t, cfg.Infrastructure.IsExternalPostgres())
+	assert.Equal(t, "postgres://user:pass@prod-db:5432/agentcage", cfg.Infrastructure.Postgres.URL)
+	assert.True(t, cfg.Infrastructure.IsExternalNATS())
+	assert.True(t, cfg.Infrastructure.IsExternalTemporal())
+	assert.True(t, cfg.Infrastructure.IsExternalSPIRE())
+	assert.Equal(t, "company.internal", cfg.Infrastructure.SPIRE.TrustDomain)
+	assert.True(t, cfg.Infrastructure.IsExternalVault())
+}
+
+func TestLoad_ComplianceConfig(t *testing.T) {
+	content := `
+compliance:
+  framework: soc2
+  audit_retention: "7y"
+  max_concurrent_cages: 500
+  require_intervention: true
+  intervention_timeout: 30m
+`
+	path := writeTempFile(t, content)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+
+	require.NotNil(t, cfg.Compliance)
+	assert.Equal(t, "soc2", cfg.Compliance.Framework)
+	assert.Equal(t, int32(500), cfg.Compliance.MaxConcurrentCages)
+	assert.True(t, cfg.Compliance.RequireIntervention)
+}
+
 func TestMerge_PartialOverride(t *testing.T) {
-	base := testDefault(t)
+	base := Defaults()
 	override := &Config{
-		CageTypes: map[string]CageTypeConfig{
+		Cages: map[string]CageTypeConfig{
 			"discovery": {MaxVCPUs: 8},
 		},
-		ActivityTimeouts: ActivityTimeoutsConfig{
+		Timeouts: ActivityTimeoutsConfig{
 			ProvisionVM: 60 * time.Second,
 		},
 	}
 
 	result := Merge(base, override)
 
-	assert.Equal(t, int32(8), result.CageTypes["discovery"].MaxVCPUs)
-	assert.Equal(t, 30*time.Minute, result.CageTypes["discovery"].MaxDuration, "unoverridden fields keep defaults")
-	assert.Equal(t, int32(8192), result.CageTypes["discovery"].MaxMemoryMB, "unoverridden fields keep defaults")
-	assert.Equal(t, 60*time.Second, result.ActivityTimeouts.ProvisionVM)
-	assert.Equal(t, 5*time.Second, result.ActivityTimeouts.ValidateScope, "unoverridden timeouts keep defaults")
+	assert.Equal(t, int32(8), result.Cages["discovery"].MaxVCPUs)
+	assert.Equal(t, 30*time.Minute, result.Cages["discovery"].MaxDuration, "unoverridden fields keep defaults")
+	assert.Equal(t, int32(8192), result.Cages["discovery"].MaxMemoryMB, "unoverridden fields keep defaults")
+	assert.Equal(t, 60*time.Second, result.Timeouts.ProvisionVM)
+	assert.Equal(t, 5*time.Second, result.Timeouts.ValidateScope, "unoverridden timeouts keep defaults")
 }
 
 func TestMerge_NewCageType(t *testing.T) {
-	base := testDefault(t)
+	base := Defaults()
 	override := &Config{
-		CageTypes: map[string]CageTypeConfig{
+		Cages: map[string]CageTypeConfig{
 			"recon": {MaxDuration: 10 * time.Minute, MaxVCPUs: 2, MaxMemoryMB: 2048},
 		},
 	}
 
 	result := Merge(base, override)
-	require.Contains(t, result.CageTypes, "recon")
-	assert.Equal(t, 10*time.Minute, result.CageTypes["recon"].MaxDuration)
-	assert.Contains(t, result.CageTypes, "discovery", "existing cage types preserved")
+	require.Contains(t, result.Cages, "recon")
+	assert.Equal(t, 10*time.Minute, result.Cages["recon"].MaxDuration)
+	assert.Contains(t, result.Cages, "discovery", "existing cage types preserved")
 }
 
 func TestMerge_EmptyOverride(t *testing.T) {
-	base := testDefault(t)
+	base := Defaults()
 	override := &Config{}
 
 	result := Merge(base, override)
 
-	assert.Equal(t, base.RateLimits, result.RateLimits)
-	assert.Equal(t, base.ActivityTimeouts, result.ActivityTimeouts)
-	assert.Equal(t, base.Infrastructure.LLMEndpoint, result.Infrastructure.LLMEndpoint)
-	assert.Len(t, result.CageTypes, 3)
-	assert.Len(t, result.TripwirePolicies, 3)
-	assert.Len(t, result.BlocklistPatterns, 4)
+	assert.Equal(t, base.LLM, result.LLM)
+	assert.Equal(t, base.Timeouts, result.Timeouts)
+	assert.Len(t, result.Cages, 3)
+	assert.Len(t, result.Monitoring, 3)
+	assert.Len(t, result.Payload, 4)
 }
 
 func TestMerge_DoesNotMutateBase(t *testing.T) {
-	base := testDefault(t)
-	originalVCPUs := base.CageTypes["discovery"].MaxVCPUs
+	base := Defaults()
+	originalVCPUs := base.Cages["discovery"].MaxVCPUs
 
 	override := &Config{
-		CageTypes: map[string]CageTypeConfig{
+		Cages: map[string]CageTypeConfig{
 			"discovery": {MaxVCPUs: 16},
 		},
 	}
 
 	_ = Merge(base, override)
-	assert.Equal(t, originalVCPUs, base.CageTypes["discovery"].MaxVCPUs)
+	assert.Equal(t, originalVCPUs, base.Cages["discovery"].MaxVCPUs)
+}
+
+func TestMerge_InfrastructureOverride(t *testing.T) {
+	base := Defaults()
+	override := &Config{
+		Infrastructure: InfrastructureConfig{
+			Postgres: &PostgresConfig{URL: "postgres://prod:5432/ac"},
+		},
+	}
+
+	result := Merge(base, override)
+	assert.True(t, result.Infrastructure.IsExternalPostgres())
+	assert.Equal(t, "postgres://prod:5432/ac", result.Infrastructure.Postgres.URL)
+	assert.False(t, result.Infrastructure.IsExternalNATS(), "unset services stay embedded")
+}
+
+func TestMerge_LLMOverride(t *testing.T) {
+	base := Defaults()
+	override := &Config{
+		LLM: LLMConfig{
+			Endpoint:  "https://api.anthropic.com/v1",
+			APIKeyEnv: "ANTHROPIC_API_KEY",
+			Models: []ModelConfig{
+				{Name: "claude-sonnet-4-20250514", Priority: 1},
+			},
+		},
+	}
+
+	result := Merge(base, override)
+	assert.Equal(t, "https://api.anthropic.com/v1", result.LLM.Endpoint)
+	assert.Equal(t, "ANTHROPIC_API_KEY", result.LLM.APIKeyEnv)
+	assert.Len(t, result.LLM.Models, 1)
+	assert.Equal(t, 30*time.Second, result.LLM.Timeout, "default timeout preserved")
+}
+
+func TestBlocklistPatterns(t *testing.T) {
+	cfg := Defaults()
+	patterns := cfg.BlocklistPatterns()
+	require.Len(t, patterns, 4)
+	assert.NotEmpty(t, patterns["sqli"])
+	assert.NotEmpty(t, patterns["rce"])
+	assert.NotEmpty(t, patterns["ssrf"])
+	assert.NotEmpty(t, patterns["xss"])
+}
+
+func TestRateLimit(t *testing.T) {
+	cfg := Defaults()
+	assert.Equal(t, int32(1000), cfg.RateLimit("discovery"))
+	assert.Equal(t, int32(100), cfg.RateLimit("validator"))
+	assert.Equal(t, int32(500), cfg.RateLimit("escalation"))
+	assert.Equal(t, int32(0), cfg.RateLimit("nonexistent"))
 }
 
 func writeTempFile(t *testing.T, content string) string {

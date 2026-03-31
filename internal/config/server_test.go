@@ -12,28 +12,41 @@ import (
 
 func testBaseConfig() *Config {
 	return &Config{
-		CageTypes: map[string]CageTypeConfig{
+		Cages: map[string]CageTypeConfig{
 			"discovery": {
 				MaxDuration: 1 * time.Hour,
 				MaxVCPUs:    2,
 				MaxMemoryMB: 512,
+				RateLimit:   100,
 			},
 			"validator": {
 				MaxDuration: 30 * time.Minute,
 				MaxVCPUs:    4,
 				MaxMemoryMB: 1024,
+				RateLimit:   50,
 			},
 		},
-		RateLimits: RateLimitsConfig{
-			MaxRequestsPerSecond: 100,
-		},
-		ActivityTimeouts: ActivityTimeoutsConfig{
+		Timeouts: ActivityTimeoutsConfig{
 			ValidateScope: 5 * time.Second,
 			ProvisionVM:   30 * time.Second,
 		},
-		Infrastructure: InfrastructureConfig{
-			NATSAddr: "nats://localhost:4222",
+		LLM: LLMConfig{
+			Endpoint: "https://api.example.com/v1",
+			Timeout:  30 * time.Second,
 		},
+		Scope: ScopeConfig{
+			Deny:          []string{"10.0.0.0/8"},
+			DenyWildcards: true,
+			DenyLocalhost: true,
+		},
+		Assessment: AssessmentConfig{
+			MaxDuration:   4 * time.Hour,
+			TokenBudget:   100000,
+			MaxIterations: 10,
+			ReviewTimeout: 24 * time.Hour,
+		},
+		Payload:    defaultPayload(),
+		Monitoring: map[string]MonitoringConfig{},
 	}
 }
 
@@ -48,7 +61,7 @@ func TestGetConfig(t *testing.T) {
 func TestGetValue_KnownPath(t *testing.T) {
 	srv := NewConfigServer(testBaseConfig())
 
-	val, err := srv.GetValue(context.Background(), "cage_types.validator.max_vcpus")
+	val, err := srv.GetValue(context.Background(), "cages.validator.max_vcpus")
 	require.NoError(t, err)
 	assert.Equal(t, "4", val)
 }
@@ -56,15 +69,15 @@ func TestGetValue_KnownPath(t *testing.T) {
 func TestGetValue_TopLevel(t *testing.T) {
 	srv := NewConfigServer(testBaseConfig())
 
-	val, err := srv.GetValue(context.Background(), "infrastructure.nats_addr")
+	val, err := srv.GetValue(context.Background(), "llm.endpoint")
 	require.NoError(t, err)
-	assert.Equal(t, "nats://localhost:4222", val)
+	assert.Equal(t, "https://api.example.com/v1", val)
 }
 
 func TestGetValue_UnknownPath(t *testing.T) {
 	srv := NewConfigServer(testBaseConfig())
 
-	_, err := srv.GetValue(context.Background(), "cage_types.nonexistent.max_vcpus")
+	_, err := srv.GetValue(context.Background(), "cages.nonexistent.max_vcpus")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -73,38 +86,38 @@ func TestUpdateValue(t *testing.T) {
 	srv := NewConfigServer(testBaseConfig())
 	ctx := context.Background()
 
-	err := srv.UpdateValue(ctx, "infrastructure.nats_addr", "nats://prod:4222")
+	err := srv.UpdateValue(ctx, "llm.endpoint", "https://api.prod.com/v1")
 	require.NoError(t, err)
 
-	val, err := srv.GetValue(ctx, "infrastructure.nats_addr")
+	val, err := srv.GetValue(ctx, "llm.endpoint")
 	require.NoError(t, err)
-	assert.Equal(t, "nats://prod:4222", val)
+	assert.Equal(t, "https://api.prod.com/v1", val)
 }
 
 func TestUpdateValue_PreservesOtherFields(t *testing.T) {
 	srv := NewConfigServer(testBaseConfig())
 	ctx := context.Background()
 
-	err := srv.UpdateValue(ctx, "infrastructure.nats_addr", "nats://prod:4222")
+	err := srv.UpdateValue(ctx, "llm.endpoint", "https://api.prod.com/v1")
 	require.NoError(t, err)
 
 	cfg := srv.GetConfig(ctx)
-	assert.Equal(t, int32(100), cfg.RateLimits.MaxRequestsPerSecond)
+	assert.Equal(t, int32(100), cfg.Cages["discovery"].RateLimit)
 }
 
 func TestResetConfig(t *testing.T) {
 	srv := NewConfigServer(testBaseConfig())
 	ctx := context.Background()
 
-	err := srv.UpdateValue(ctx, "infrastructure.nats_addr", "nats://prod:4222")
+	err := srv.UpdateValue(ctx, "llm.endpoint", "https://api.prod.com/v1")
 	require.NoError(t, err)
 
 	err = srv.ResetConfig(ctx)
 	require.NoError(t, err)
 
-	val, err := srv.GetValue(ctx, "infrastructure.nats_addr")
+	val, err := srv.GetValue(ctx, "llm.endpoint")
 	require.NoError(t, err)
-	assert.Equal(t, "nats://localhost:4222", val)
+	assert.Equal(t, "https://api.example.com/v1", val)
 }
 
 func TestConcurrentAccess(t *testing.T) {
@@ -120,7 +133,7 @@ func TestConcurrentAccess(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			_ = srv.UpdateValue(ctx, "infrastructure.nats_addr", "nats://concurrent:4222")
+			_ = srv.UpdateValue(ctx, "llm.endpoint", "https://concurrent.com/v1")
 		}()
 	}
 	wg.Wait()
