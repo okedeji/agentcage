@@ -16,9 +16,9 @@ func ValidateCageConfig(cageConfig cage.Config, limits *config.Config) error {
 	var errs []error
 
 	errs = append(errs, validateScope(cageConfig.Scope)...)
-	errs = append(errs, validateRateLimits(cageConfig.RateLimits, limits.RateLimits.MaxRequestsPerSecond)...)
+	errs = append(errs, validateRateLimits(cageConfig.RateLimits, limits.RateLimit(cageConfig.Type.String()))...)
 
-	typeLimits, hasType := limits.CageTypes[cageConfig.Type.String()]
+	typeLimits, hasType := limits.Cages[cageConfig.Type.String()]
 	errs = append(errs, validateTimeLimits(cageConfig.Type, cageConfig.TimeLimits, hasType, typeLimits)...)
 	errs = append(errs, validateResources(cageConfig.Type, cageConfig.Resources, hasType, typeLimits)...)
 	errs = append(errs, validateRequiredFields(cageConfig)...)

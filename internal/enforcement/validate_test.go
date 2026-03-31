@@ -2,8 +2,6 @@ package enforcement
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,11 +14,7 @@ import (
 
 func testLimits(t *testing.T) *config.Config {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "agentcage.yaml"))
-	require.NoError(t, err)
-	cfg, err := config.Default(data)
-	require.NoError(t, err)
-	return cfg
+	return config.Defaults()
 }
 
 func validDiscoveryConfig() cage.Config {

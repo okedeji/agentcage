@@ -2,7 +2,6 @@ package enforcement
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -31,11 +30,8 @@ func newEngine(t *testing.T) *OPAEngine {
 
 func testInfraHosts(t *testing.T) []string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "agentcage.yaml"))
-	require.NoError(t, err)
-	cfg, err := config.Default(data)
-	require.NoError(t, err)
-	return cfg.Infrastructure.InfraHosts
+	cfg := config.Defaults()
+	return cfg.InfraDenyList()
 }
 
 func TestOPAScope(t *testing.T) {

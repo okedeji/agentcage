@@ -26,12 +26,21 @@ type OPAEngine struct {
 	complianceQueries map[string]rego.PreparedEvalQuery
 }
 
+// NewOPAEngine loads Rego policy files from a directory on disk.
+// Kept for backward compatibility — prefer NewOPAEngineFromModules with
+// generated policies.
 func NewOPAEngine(policyDir string) (*OPAEngine, error) {
 	modules, err := loadRegoFiles(policyDir)
 	if err != nil {
 		return nil, fmt.Errorf("loading rego files from %s: %w", policyDir, err)
 	}
+	return NewOPAEngineFromModules(modules)
+}
 
+// NewOPAEngineFromModules compiles Rego modules provided as a map of
+// virtual-filename to Rego source. Use GenerateRegoModules to produce the map
+// from the unified config.
+func NewOPAEngineFromModules(modules map[string]string) (*OPAEngine, error) {
 	e := &OPAEngine{
 		payloadQueries:    make(map[string]rego.PreparedEvalQuery),
 		complianceQueries: make(map[string]rego.PreparedEvalQuery),
