@@ -15,7 +15,7 @@ func cmdRun(args []string) {
 	maxDuration := fs.String("max-duration", "", "assessment time limit (e.g. 30m, 4h)")
 	compliance := fs.String("compliance", "", "compliance framework (soc2, hipaa, pci_dss)")
 	config := fs.String("config", "", "path to config YAML override file")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *agent == "" || *target == "" {
 		fmt.Fprintln(os.Stderr, "usage: agentcage run --agent <path.cage> --target <host>")

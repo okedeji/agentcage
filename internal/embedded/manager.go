@@ -86,7 +86,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.log.Info("starting", "service", svc.Name())
 		if err := svc.Start(ctx); err != nil {
 			m.log.Error(err, "failed to start, rolling back", "service", svc.Name())
-			m.stopReverse(ctx, started)
+			_ = m.stopReverse(ctx, started)
 			return fmt.Errorf("starting %s: %w", svc.Name(), err)
 		}
 		m.log.Info("started", "service", svc.Name())

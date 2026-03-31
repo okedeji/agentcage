@@ -40,7 +40,7 @@ func TestChatCompletion_Success(t *testing.T) {
 	resp := validLLMResponse()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -92,7 +92,7 @@ func TestChatCompletion_MissingUsageData(t *testing.T) {
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -130,7 +130,7 @@ func TestChatCompletion_Timeout(t *testing.T) {
 
 func TestChatCompletion_InvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json at all"))
+		_, _ = w.Write([]byte("not json at all"))
 	}))
 	defer srv.Close()
 
@@ -150,13 +150,13 @@ func TestChatCompletion_RequestBodySentCorrectly(t *testing.T) {
 	var received LLMRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		json.Unmarshal(body, &received)
+		_ = json.Unmarshal(body, &received)
 
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 		resp := validLLMResponse()
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 

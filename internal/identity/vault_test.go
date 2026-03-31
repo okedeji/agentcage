@@ -29,7 +29,7 @@ func TestVaultClient_Authenticate_Success(t *testing.T) {
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -60,7 +60,7 @@ func TestVaultClient_Authenticate_Success(t *testing.T) {
 func TestVaultClient_Authenticate_Rejected(t *testing.T) {
 	server := newMockVaultServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"errors": []string{"permission denied"},
 		})
 	})
@@ -90,7 +90,7 @@ func TestVaultClient_Fetch_Success(t *testing.T) {
 				},
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -119,7 +119,7 @@ func TestVaultClient_Fetch_Success(t *testing.T) {
 func TestVaultClient_Fetch_Forbidden(t *testing.T) {
 	server := newMockVaultServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"errors": []string{"permission denied"},
 		})
 	})
@@ -164,7 +164,7 @@ func TestVaultClient_Revoke_AlreadyRevoked(t *testing.T) {
 	server := newMockVaultServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/auth/token/revoke-self" {
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"errors": []string{"permission denied"},
 			})
 			return

@@ -89,8 +89,8 @@ func GenerateNFTRules(rule EgressRule) string {
 	b.WriteString(fmt.Sprintf("table inet %s {\n", tableName))
 
 	// Default: drop all egress from this cage's TAP device
-	b.WriteString(fmt.Sprintf("  chain egress {\n"))
-	b.WriteString(fmt.Sprintf("    type filter hook output priority 0; policy drop;\n\n"))
+	b.WriteString("  chain egress {\n")
+	b.WriteString("    type filter hook output priority 0; policy drop;\n\n")
 
 	// Allow established/related connections
 	b.WriteString("    ct state established,related accept\n\n")

@@ -44,7 +44,7 @@ check-secrets:
 check-config:
 	$(GO) run scripts/check_config.go
 
-ci: vet check-secrets check-config test build
+ci: vet lint check-secrets check-config test build
 
 tidy:
 	$(GO) mod tidy

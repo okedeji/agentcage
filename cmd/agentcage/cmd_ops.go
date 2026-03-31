@@ -27,7 +27,7 @@ func cmdTest(args []string) {
 	target := fs.String("target", "", "single target endpoint")
 	vulnClass := fs.String("vuln-class", "", "vulnerability class to test")
 	followLogs := fs.Bool("follow-logs", false, "stream cage logs to terminal")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *agent == "" || *target == "" {
 		fmt.Fprintln(os.Stderr, "usage: agentcage test --agent <path.cage> --target <endpoint> [--vuln-class sqli] [--follow-logs]")
@@ -54,7 +54,7 @@ func cmdFindings(args []string) {
 	fs := flag.NewFlagSet("findings", flag.ExitOnError)
 	assessmentID := fs.String("assessment", "", "assessment ID")
 	severity := fs.String("severity", "", "filter by severity (critical,high,medium,low,info)")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	fmt.Printf("Findings")
 	if *assessmentID != "" {
@@ -71,7 +71,7 @@ func cmdReport(args []string) {
 	fs := flag.NewFlagSet("report", flag.ExitOnError)
 	assessmentID := fs.String("assessment", "", "assessment ID")
 	format := fs.String("format", "text", "output format: text, json")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	fmt.Printf("Report (format=%s)", *format)
 	if *assessmentID != "" {
@@ -84,7 +84,7 @@ func cmdReport(args []string) {
 func cmdInterventions(args []string) {
 	fs := flag.NewFlagSet("interventions", flag.ExitOnError)
 	status := fs.String("status", "pending", "filter by status: pending, resolved, timed_out")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	fmt.Printf("Interventions (status=%s):\n", *status)
 	fmt.Println("  (requires connection to orchestrator gRPC — pending)")
@@ -95,7 +95,7 @@ func cmdResolve(args []string) {
 	interventionID := fs.String("id", "", "intervention ID")
 	action := fs.String("action", "", "action: resume, kill, allow, block")
 	rationale := fs.String("rationale", "", "reason for the decision")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *interventionID == "" || *action == "" {
 		fmt.Fprintln(os.Stderr, "usage: agentcage resolve --id <intervention-id> --action <resume|kill|allow|block> [--rationale reason]")
@@ -119,9 +119,9 @@ func cmdDB(args []string) {
 	fs := flag.NewFlagSet("db", flag.ExitOnError)
 	showURL := fs.Bool("url", false, "print connection string only")
 	query := fs.String("query", "", "run a SQL query")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
-	dbURL := fmt.Sprintf("postgres://agentcage:agentcage-embedded@localhost:15432/agentcage?sslmode=disable")
+	dbURL := "postgres://agentcage:agentcage-embedded@localhost:15432/agentcage?sslmode=disable"
 
 	if *showURL {
 		fmt.Println(dbURL)
@@ -155,7 +155,7 @@ func cmdLogs(args []string) {
 	fs := flag.NewFlagSet("logs", flag.ExitOnError)
 	cageID := fs.String("cage", "", "cage ID to stream logs from")
 	service := fs.String("service", "", "service log: postgres, temporal, spire, vault, falco")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *service != "" {
 		logFile := embedded.LogDir() + "/" + *service + ".log"

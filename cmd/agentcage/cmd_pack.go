@@ -13,7 +13,7 @@ import (
 func cmdPack(args []string) {
 	fs := flag.NewFlagSet("pack", flag.ExitOnError)
 	output := fs.String("output", "", "output .cage file path (default: <dir-name>.cage)")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: agentcage pack <directory> [--output path.cage]")

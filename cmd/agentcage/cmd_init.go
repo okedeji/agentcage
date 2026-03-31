@@ -32,7 +32,7 @@ func cmdInit(args []string) {
 	configFile := fs.String("config", "", "path to config YAML override file")
 	grpcAddr := fs.String("grpc-addr", ":9090", "gRPC server listen address")
 	dev := fs.Bool("dev", false, "enable development mode")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if err := runInit(*configFile, *grpcAddr, *dev); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)

@@ -29,9 +29,8 @@ func TestGenerateFalcoRules_DiscoveryRules(t *testing.T) {
 	discovery := rules["discovery"]
 	assert.NotEmpty(t, discovery)
 
-	var ruleNames []string
 	for _, r := range discovery {
-		ruleNames = append(ruleNames, r.Rule)
+		assert.NotEmpty(t, r.Rule)
 		assert.NotEmpty(t, r.Condition)
 		assert.NotEmpty(t, r.Output)
 		assert.NotEmpty(t, r.Priority)
