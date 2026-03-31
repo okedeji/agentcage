@@ -1,0 +1,18 @@
+{
+  "name": "@agentcage/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the agentcage autonomous security agent platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.10.0",
+    "@grpc/proto-loader": "^0.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
