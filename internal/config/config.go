@@ -320,11 +320,11 @@ func Defaults() *Config {
 			"discovery": {
 				Rules: map[string]MonitoringRule{
 					"privileged_shell":      {Detect: "root shell spawn", Action: "human_review"},
-					"sensitive_file_write":  {Detect: "write to /etc, /proc, /sys", Action: "log"},
+					"sensitive_file_write":  {Detect: "write to /etc, /proc, /sys", Action: "human_review"},
 					"privilege_escalation":  {Detect: "setuid, setgid, sudo", Action: "kill"},
-					"fork_bomb":            {Detect: "rapid process forking", Action: "log"},
+					"fork_bomb":            {Detect: "rapid process forking", Action: "human_review"},
 				},
-				DefaultAction: "log",
+				DefaultAction: "human_review",
 			},
 			"validator": {
 				Rules: map[string]MonitoringRule{
@@ -398,6 +398,11 @@ func defaultPayload() map[string]PayloadConfig {
 		}},
 		"xss": {Block: []PatternEntry{
 			{Pattern: `(?i)\bDROP\s+(TABLE|DATABASE)`, Reason: "destructive SQL in XSS context"},
+			{Pattern: `(?i)<script[^>]*>.*?(document\.cookie|document\.location|window\.location)`, Reason: "cookie/session theft or redirect via script tag"},
+			{Pattern: `(?i)\bon\w+\s*=\s*["']?.*?(document\.cookie|fetch\s*\(|XMLHttpRequest)`, Reason: "data exfiltration via event handler"},
+			{Pattern: `(?i)<iframe[^>]+src\s*=\s*["']?https?://`, Reason: "external iframe injection"},
+			{Pattern: `(?i)<form[^>]+action\s*=\s*["']?https?://`, Reason: "phishing form with external action"},
+			{Pattern: `(?i)<meta[^>]+http-equiv\s*=\s*["']?refresh[^>]+url\s*=`, Reason: "meta refresh redirect"},
 		}},
 	}
 }

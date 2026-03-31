@@ -38,7 +38,7 @@ func TestGenerateFalcoRules_DiscoveryRules(t *testing.T) {
 		assert.Contains(t, r.Tags, "discovery")
 	}
 
-	assert.Equal(t, TripwireLogAndContinue, tripwires["discovery"].DefaultAction)
+	assert.Equal(t, TripwireHumanReview, tripwires["discovery"].DefaultAction)
 }
 
 func TestGenerateFalcoRules_ValidatorStrict(t *testing.T) {
