@@ -23,4 +23,5 @@ type Activities interface {
 	UpdateFindingStatus(ctx context.Context, findingID string, status findings.Status) error
 	UpdateAssessmentStatus(ctx context.Context, assessmentID string, status Status) error
 	GenerateReport(ctx context.Context, assessmentID string, validated []findings.Finding) ([]byte, error)
+	PlanNextActions(ctx context.Context, state CoordinatorState) (CoordinatorDecision, error)
 }

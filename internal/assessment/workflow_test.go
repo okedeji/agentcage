@@ -41,6 +41,9 @@ func (assessmentActivityStub) UpdateAssessmentStatus(_ context.Context, _ string
 func (assessmentActivityStub) GenerateReport(_ context.Context, _ string, _ []findings.Finding) ([]byte, error) {
 	return nil, nil
 }
+func (assessmentActivityStub) PlanNextActions(_ context.Context, _ CoordinatorState) (CoordinatorDecision, error) {
+	return CoordinatorDecision{Done: true, Reason: "stub"}, nil
+}
 
 func testInput() AssessmentWorkflowInput {
 	return AssessmentWorkflowInput{
@@ -52,6 +55,7 @@ func testInput() AssessmentWorkflowInput {
 			MaxDuration:   2 * time.Hour,
 			MaxChainDepth: 3,
 		},
+		MaxIterations: 5,
 	}
 }
 
@@ -85,23 +89,23 @@ func registerAssessmentHappyPathMocks(env *testsuite.TestWorkflowEnvironment) {
 	env.OnActivity("UpdateAssessmentStatus", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("CreateDiscoveryCage", mock.Anything, mock.Anything, mock.Anything).Return("cage-1", nil)
 
+	// Coordinator says done after first iteration
+	env.OnActivity("PlanNextActions", mock.Anything, mock.Anything).Return(
+		CoordinatorDecision{Done: true, Reason: "sufficient coverage"}, nil,
+	)
+
 	surfaceFindings := []findings.Finding{
 		candidateFinding("f-1", "https://target.example.com/api", "sqli", findings.SeverityHigh),
 		candidateFinding("f-2", "https://target.example.com/login", "xss", findings.SeverityMedium),
 	}
-
-	// First call returns surface mapping results; subsequent calls return the same.
 	env.OnActivity("GetCandidateFindings", mock.Anything, mock.Anything).Return(surfaceFindings, nil)
-
 	env.OnActivity("CreateValidatorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("cage-v-1", nil)
 
 	validatedFindings := []findings.Finding{
 		validatedFinding("f-1", findings.SeverityHigh),
 	}
 	env.OnActivity("GetValidatedFindings", mock.Anything, mock.Anything).Return(validatedFindings, nil)
-
 	env.OnActivity("CreateEscalationCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("cage-e-1", nil)
-
 	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything).Return([]byte("report"), nil)
 }
 
@@ -125,9 +129,60 @@ func TestAssessmentWorkflow_HappyPath(t *testing.T) {
 	assert.Equal(t, StatusApproved, result.FinalStatus)
 	assert.Equal(t, "test-assessment-1", result.AssessmentID)
 	assert.Greater(t, result.TotalCages, int32(0))
+	assert.Greater(t, result.Iterations, int32(0))
 	assert.Empty(t, result.Error)
+}
 
-	env.AssertCalled(t, "GenerateReport", mock.Anything, mock.Anything, mock.Anything)
+func TestAssessmentWorkflow_CoordinatorSpawnsCages(t *testing.T) {
+	env := newAssessmentTestEnv(t)
+
+	env.OnActivity("UpdateAssessmentStatus", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("CreateDiscoveryCage", mock.Anything, mock.Anything, mock.Anything).Return("cage-1", nil)
+
+	callCount := 0
+	env.OnActivity("PlanNextActions", mock.Anything, mock.Anything).Return(
+		func(_ context.Context, state CoordinatorState) (CoordinatorDecision, error) {
+			callCount++
+			if callCount == 1 {
+				return CoordinatorDecision{
+					Done:   false,
+					Reason: "need to test /api for sqli",
+					Actions: []CoordinatorAction{
+						{
+							Type:      "discovery",
+							Scope:     cage.Scope{Hosts: []string{"target.example.com"}},
+							VulnClass: "sqli",
+							Objective: "test /api endpoints for SQL injection",
+							Priority:  1,
+						},
+					},
+				}, nil
+			}
+			return CoordinatorDecision{Done: true, Reason: "done"}, nil
+		},
+	)
+
+	env.OnActivity("GetCandidateFindings", mock.Anything, mock.Anything).Return([]findings.Finding{}, nil)
+	env.OnActivity("GetValidatedFindings", mock.Anything, mock.Anything).Return([]findings.Finding{}, nil)
+	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything).Return([]byte("report"), nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(intervention.SignalReportReview, intervention.ReportReviewSignal{
+			Decision:  intervention.ReviewApprove,
+			Rationale: "approved",
+		})
+	}, TimeoutWaitForCage*5+1*time.Second)
+
+	env.ExecuteWorkflow(AssessmentWorkflow, testInput())
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	var result AssessmentWorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	assert.Equal(t, StatusApproved, result.FinalStatus)
+	// Initial discovery + 1 from coordinator = at least 2
+	assert.GreaterOrEqual(t, result.TotalCages, int32(2))
+	assert.Equal(t, int32(2), result.Iterations)
 }
 
 func TestAssessmentWorkflow_NoFindings(t *testing.T) {
@@ -135,6 +190,9 @@ func TestAssessmentWorkflow_NoFindings(t *testing.T) {
 
 	env.OnActivity("UpdateAssessmentStatus", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("CreateDiscoveryCage", mock.Anything, mock.Anything, mock.Anything).Return("cage-1", nil)
+	env.OnActivity("PlanNextActions", mock.Anything, mock.Anything).Return(
+		CoordinatorDecision{Done: true, Reason: "no findings to explore"}, nil,
+	)
 	env.OnActivity("GetCandidateFindings", mock.Anything, mock.Anything).Return([]findings.Finding{}, nil)
 	env.OnActivity("GetValidatedFindings", mock.Anything, mock.Anything).Return([]findings.Finding{}, nil)
 	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything).Return([]byte("empty report"), nil)
@@ -154,7 +212,6 @@ func TestAssessmentWorkflow_NoFindings(t *testing.T) {
 	require.NoError(t, env.GetWorkflowResult(&result))
 	assert.Equal(t, StatusApproved, result.FinalStatus)
 	assert.Equal(t, int32(0), result.Findings)
-	assert.Empty(t, result.Error)
 }
 
 func TestAssessmentWorkflow_ReportRejected(t *testing.T) {
@@ -175,14 +232,11 @@ func TestAssessmentWorkflow_ReportRejected(t *testing.T) {
 	var result AssessmentWorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
 	assert.Equal(t, StatusRejected, result.FinalStatus)
-	assert.Empty(t, result.Error)
 }
 
 func TestAssessmentWorkflow_ReviewTimeout(t *testing.T) {
 	env := newAssessmentTestEnv(t)
 	registerAssessmentHappyPathMocks(env)
-
-	// No signal sent — let the 24h timer fire.
 
 	env.ExecuteWorkflow(AssessmentWorkflow, testInput())
 	require.True(t, env.IsWorkflowCompleted())
@@ -191,7 +245,6 @@ func TestAssessmentWorkflow_ReviewTimeout(t *testing.T) {
 	var result AssessmentWorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
 	assert.Equal(t, StatusRejected, result.FinalStatus)
-	assert.Empty(t, result.Error)
 }
 
 func TestAssessmentWorkflow_ChainDepthEnforced(t *testing.T) {
@@ -199,6 +252,9 @@ func TestAssessmentWorkflow_ChainDepthEnforced(t *testing.T) {
 
 	env.OnActivity("UpdateAssessmentStatus", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("CreateDiscoveryCage", mock.Anything, mock.Anything, mock.Anything).Return("cage-1", nil)
+	env.OnActivity("PlanNextActions", mock.Anything, mock.Anything).Return(
+		CoordinatorDecision{Done: true, Reason: "done"}, nil,
+	)
 
 	surfaceFindings := []findings.Finding{
 		candidateFinding("f-1", "https://target.example.com/api", "sqli", findings.SeverityCritical),

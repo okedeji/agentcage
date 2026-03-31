@@ -20,15 +20,18 @@ const (
 	TimeoutUpdateStatus    = 5 * time.Second
 	TimeoutGenerateReport  = 30 * time.Second
 	TimeoutUpdateFinding   = 5 * time.Second
+	TimeoutPlanNextActions = 60 * time.Second
 	TimeoutReviewDeadline  = 24 * time.Hour
 	TimeoutWaitForCage     = 10 * time.Minute
 	DefaultMaxConcurrent   = int32(10)
 	DefaultMaxChainDepth   = int32(3)
+	DefaultMaxIterations   = int32(20)
 )
 
 type AssessmentWorkflowInput struct {
-	AssessmentID string
-	Config       Config
+	AssessmentID  string
+	Config        Config
+	MaxIterations int32
 }
 
 type AssessmentWorkflowResult struct {
@@ -36,6 +39,7 @@ type AssessmentWorkflowResult struct {
 	FinalStatus  Status
 	TotalCages   int32
 	Findings     int32
+	Iterations   int32
 	Error        string
 }
 
@@ -43,12 +47,17 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	result := AssessmentWorkflowResult{AssessmentID: input.AssessmentID}
 	cfg := input.Config
 
+	maxIterations := input.MaxIterations
+	if maxIterations <= 0 {
+		maxIterations = DefaultMaxIterations
+	}
+
 	maxChainDepth := cfg.MaxChainDepth
 	if maxChainDepth <= 0 {
 		maxChainDepth = DefaultMaxChainDepth
 	}
 
-	// --- Surface mapping phase ---
+	// ===== Phase 1: Initial surface mapping (deterministic) =====
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusMapping); err != nil {
 		return failResult(result, "updating status to mapping: %v", err), nil
@@ -59,56 +68,89 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		return failResult(result, "creating discovery cage for surface mapping: %v", err), nil
 	}
 	result.TotalCages++
-
 	_ = discoveryCageID
+
 	if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
 		return failResult(result, "waiting for surface mapping cage: %v", err), nil
 	}
 
-	candidates, err := getCandidateFindings(ctx, input.AssessmentID)
-	if err != nil {
-		return failResult(result, "fetching candidate findings after surface mapping: %v", err), nil
-	}
-
-	// --- Task matrix generation (deterministic, no I/O) ---
-
-	matrix := buildTaskMatrix(candidates)
-
-	// --- Testing phase ---
+	// ===== Phase 2: LLM-driven coordinator loop =====
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusTesting); err != nil {
 		return failResult(result, "updating status to testing: %v", err), nil
 	}
 
-	maxConcurrent := maxConcurrentForType(cfg, cage.TypeDiscovery)
-	cagesSpawned, err := spawnDiscoveryCages(ctx, input.AssessmentID, cfg, matrix, maxConcurrent)
-	if err != nil {
-		return failResult(result, "spawning discovery cages: %v", err), nil
-	}
-	result.TotalCages += cagesSpawned
+	coverage := make(map[string][]string)
+	var cagesCompleted []CageSummary
+	startTime := workflow.Now(ctx)
 
-	if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
-		return failResult(result, "waiting for discovery cages: %v", err), nil
+	for iteration := int32(0); iteration < maxIterations; iteration++ {
+		result.Iterations = iteration + 1
+
+		allFindings, err := getAllFindings(ctx, input.AssessmentID)
+		if err != nil {
+			return failResult(result, "fetching findings for coordinator (iteration %d): %v", iteration, err), nil
+		}
+
+		elapsed := workflow.Now(ctx).Sub(startTime)
+
+		state := CoordinatorState{
+			AssessmentID:   input.AssessmentID,
+			Scope:          cfg.Scope,
+			Iteration:      int(iteration),
+			MaxIterations:  int(maxIterations),
+			Findings:       SummarizeFindings(allFindings),
+			CagesCompleted: cagesCompleted,
+			Coverage:       coverage,
+			TokenBudget:    cfg.TokenBudget,
+			TimeElapsed:    elapsed,
+			TimeLimit:      cfg.MaxDuration,
+		}
+
+		// Call LLM coordinator
+		decision, err := planNextActions(ctx, state)
+		if err != nil {
+			return failResult(result, "coordinator planning (iteration %d): %v", iteration, err), nil
+		}
+
+		if decision.Done {
+			break
+		}
+
+		// Spawn cages from coordinator decisions
+		maxConcurrent := maxConcurrentForType(cfg, cage.TypeDiscovery)
+		spawned, completedSummaries, err := spawnCoordinatorActions(ctx, input.AssessmentID, cfg, decision.Actions, maxConcurrent)
+		if err != nil {
+			return failResult(result, "spawning cages (iteration %d): %v", iteration, err), nil
+		}
+		result.TotalCages += spawned
+		cagesCompleted = append(cagesCompleted, completedSummaries...)
+		coverage = UpdateCoverage(coverage, decision.Actions)
+
+		// Wait for cages to complete
+		if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
+			return failResult(result, "waiting for cages (iteration %d): %v", iteration, err), nil
+		}
 	}
 
-	// --- Validation phase ---
+	// ===== Phase 3: Validation (deterministic, playbook-driven) =====
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusValidating); err != nil {
 		return failResult(result, "updating status to validating: %v", err), nil
 	}
 
-	candidates, err = getCandidateFindings(ctx, input.AssessmentID)
+	candidates, err := getCandidateFindings(ctx, input.AssessmentID)
 	if err != nil {
 		return failResult(result, "fetching candidate findings for validation: %v", err), nil
 	}
 
-	validatedCount, validatorCages, err := validateFindings(ctx, input.AssessmentID, candidates)
+	_, validatorCages, err := validateFindings(ctx, input.AssessmentID, candidates)
 	if err != nil {
 		return failResult(result, "validating findings: %v", err), nil
 	}
 	result.TotalCages += validatorCages
 
-	// --- Escalation phase ---
+	// ===== Phase 4: Escalation =====
 
 	validated, err := getValidatedFindings(ctx, input.AssessmentID)
 	if err != nil {
@@ -123,14 +165,13 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	escalationCages := spawnEscalationCages(ctx, input.AssessmentID, cfg, validated, chainDepths, maxChainDepth)
 	result.TotalCages += escalationCages
 
-	// --- Report generation phase ---
+	// ===== Phase 5: Report generation + human review =====
 
 	validated, err = getValidatedFindings(ctx, input.AssessmentID)
 	if err != nil {
 		return failResult(result, "fetching validated findings for report: %v", err), nil
 	}
 	result.Findings = int32(len(validated))
-	_ = validatedCount
 
 	if err := generateReport(ctx, input.AssessmentID, validated); err != nil {
 		return failResult(result, "generating draft report: %v", err), nil
@@ -139,8 +180,6 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	if err := updateStatus(ctx, input.AssessmentID, StatusPendingReview); err != nil {
 		return failResult(result, "updating status to pending_review: %v", err), nil
 	}
-
-	// --- Human review phase ---
 
 	decision, err := waitForReportReview(ctx)
 	if err != nil {
@@ -161,7 +200,6 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		result.FinalStatus = StatusRejected
 
 	case intervention.ReviewRequestRetest:
-		// Retest requested findings then re-generate report and auto-approve.
 		retestCages, retestErr := retestFindings(ctx, input.AssessmentID, cfg, decision.Adjustments)
 		if retestErr != nil {
 			return failResult(result, "retesting findings: %v", retestErr), nil
@@ -191,6 +229,8 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 	return result, nil
 }
+
+// --- Activity helpers ---
 
 func assessmentActivityOptions(timeout time.Duration) workflow.ActivityOptions {
 	return workflow.ActivityOptions{
@@ -223,10 +263,21 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 
 	var cageID string
 	err := workflow.ExecuteActivity(actCtx, "CreateDiscoveryCage", assessmentID, cageCfg).Get(ctx, &cageID)
-	if err != nil {
-		return "", err
-	}
-	return cageID, nil
+	return cageID, err
+}
+
+func planNextActions(ctx workflow.Context, state CoordinatorState) (CoordinatorDecision, error) {
+	actCtx := withActivityTimeout(ctx, TimeoutPlanNextActions)
+	var decision CoordinatorDecision
+	err := workflow.ExecuteActivity(actCtx, "PlanNextActions", state).Get(ctx, &decision)
+	return decision, err
+}
+
+func getAllFindings(ctx workflow.Context, assessmentID string) ([]findings.Finding, error) {
+	actCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+	var result []findings.Finding
+	err := workflow.ExecuteActivity(actCtx, "GetCandidateFindings", assessmentID).Get(ctx, &result)
+	return result, err
 }
 
 func getCandidateFindings(ctx workflow.Context, assessmentID string) ([]findings.Finding, error) {
@@ -248,17 +299,6 @@ func generateReport(ctx workflow.Context, assessmentID string, validated []findi
 	return workflow.ExecuteActivity(actCtx, "GenerateReport", assessmentID, validated).Get(ctx, nil)
 }
 
-func buildTaskMatrix(candidates []findings.Finding) []TaskMatrixEntry {
-	var matrix []TaskMatrixEntry
-	for _, f := range candidates {
-		matrix = append(matrix, TaskMatrixEntry{
-			Endpoint:  f.Endpoint,
-			VulnClass: f.VulnClass,
-		})
-	}
-	return matrix
-}
-
 func maxConcurrentForType(cfg Config, cageType cage.Type) int32 {
 	if tc, ok := cfg.CageDefaults[cageType]; ok && tc.MaxConcurrent > 0 {
 		return tc.MaxConcurrent
@@ -266,52 +306,81 @@ func maxConcurrentForType(cfg Config, cageType cage.Type) int32 {
 	return DefaultMaxConcurrent
 }
 
-func spawnDiscoveryCages(
+// spawnCoordinatorActions creates cages from coordinator decisions.
+func spawnCoordinatorActions(
 	ctx workflow.Context,
 	assessmentID string,
 	cfg Config,
-	matrix []TaskMatrixEntry,
+	actions []CoordinatorAction,
 	maxConcurrent int32,
-) (int32, error) {
-	if len(matrix) == 0 {
-		return 0, nil
-	}
-
+) (int32, []CageSummary, error) {
 	var spawned int32
+	var summaries []CageSummary
+
 	batchSize := int(maxConcurrent)
 
-	for i := 0; i < len(matrix); i += batchSize {
+	for i := 0; i < len(actions); i += batchSize {
 		end := i + batchSize
-		if end > len(matrix) {
-			end = len(matrix)
+		if end > len(actions) {
+			end = len(actions)
 		}
-		batch := matrix[i:end]
+		batch := actions[i:end]
 
 		futures := make([]workflow.Future, 0, len(batch))
-		for _, entry := range batch {
+		for _, action := range batch {
 			actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
-			cageCfg := cage.Config{
-				AssessmentID: assessmentID,
-				Type:         cage.TypeDiscovery,
-				Scope:        cage.Scope{Hosts: []string{entry.Endpoint}},
+
+			cageType := cage.TypeDiscovery
+			switch action.Type {
+			case "validator":
+				cageType = cage.TypeValidator
+			case "escalation":
+				cageType = cage.TypeEscalation
 			}
-			if tc, ok := cfg.CageDefaults[cage.TypeDiscovery]; ok {
+
+			cageCfg := cage.Config{
+				AssessmentID:    assessmentID,
+				Type:            cageType,
+				Scope:           action.Scope,
+				ParentFindingID: action.FindingID,
+				InputContext:     []byte(action.Objective),
+			}
+			if tc, ok := cfg.CageDefaults[cageType]; ok {
 				cageCfg.Resources = tc.Resources
 			}
-			f := workflow.ExecuteActivity(actCtx, "CreateDiscoveryCage", assessmentID, cageCfg)
+
+			var activityName string
+			switch action.Type {
+			case "discovery":
+				activityName = "CreateDiscoveryCage"
+			case "validator":
+				activityName = "CreateValidatorCage"
+			case "escalation":
+				activityName = "CreateEscalationCage"
+			default:
+				activityName = "CreateDiscoveryCage"
+			}
+
+			f := workflow.ExecuteActivity(actCtx, activityName, assessmentID, cageCfg)
 			futures = append(futures, f)
 		}
 
-		for _, f := range futures {
+		for j, f := range futures {
 			var cageID string
 			if err := f.Get(ctx, &cageID); err != nil {
-				return spawned, fmt.Errorf("creating discovery cage: %w", err)
+				return spawned, summaries, fmt.Errorf("creating cage for action %q: %w", batch[j].Objective, err)
 			}
 			spawned++
+			summaries = append(summaries, CageSummary{
+				CageID:    cageID,
+				CageType:  batch[j].Type,
+				VulnClass: batch[j].VulnClass,
+				Objective: batch[j].Objective,
+			})
 		}
 	}
 
-	return spawned, nil
+	return spawned, summaries, nil
 }
 
 func validateFindings(
@@ -390,7 +459,6 @@ func spawnEscalationCages(
 		var cageID string
 		err := workflow.ExecuteActivity(actCtx, "CreateEscalationCage", assessmentID, f, escalationCfg).Get(ctx, &cageID)
 		if err != nil {
-			// Best-effort: escalation failure should not abort the assessment.
 			continue
 		}
 		spawned++
@@ -412,7 +480,7 @@ func waitForReportReview(ctx workflow.Context) (*intervention.ReportReviewSignal
 		ch.Receive(ctx, &signal)
 	})
 	sel.AddFuture(timer, func(f workflow.Future) {
-		_ = f.Get(ctx, nil) // best-effort, nothing actionable if timer errors
+		_ = f.Get(ctx, nil)
 		timedOut = true
 	})
 	sel.Select(ctx)
