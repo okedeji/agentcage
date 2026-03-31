@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -180,6 +181,56 @@ type ActivityTimeoutsConfig struct {
 	VerifyCleanup        time.Duration `yaml:"verify_cleanup"`
 	HeartbeatProvisionVM time.Duration `yaml:"heartbeat_provision_vm"`
 	HeartbeatMonitorCage time.Duration `yaml:"heartbeat_monitor_cage"`
+}
+
+// DefaultPath returns ~/.agentcage/config.yaml.
+func DefaultPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolving home directory: %w", err)
+	}
+	return filepath.Join(home, ".agentcage", "config.yaml"), nil
+}
+
+// WriteDefaults writes the default config to path, creating parent directories.
+// Returns false if the file already exists.
+func WriteDefaults(path string) (bool, error) {
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return false, fmt.Errorf("creating config directory: %w", err)
+	}
+	data, err := yaml.Marshal(Defaults())
+	if err != nil {
+		return false, fmt.Errorf("marshaling default config: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return false, fmt.Errorf("writing config file: %w", err)
+	}
+	return true, nil
+}
+
+// Resolve returns the first config file path that exists, or "" if none found.
+func Resolve(explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if envPath := os.Getenv("AGENTCAGE_CONFIG"); envPath != "" {
+		return envPath
+	}
+	home, err := os.UserHomeDir()
+	if err == nil {
+		userPath := filepath.Join(home, ".agentcage", "config.yaml")
+		if _, err := os.Stat(userPath); err == nil {
+			return userPath
+		}
+	}
+	systemPath := "/etc/agentcage/config.yaml"
+	if _, err := os.Stat(systemPath); err == nil {
+		return systemPath
+	}
+	return ""
 }
 
 // Parse reads configuration from raw YAML bytes.

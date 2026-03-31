@@ -44,11 +44,23 @@ func cmdInit(args []string) {
 func runInit(configFile, grpcAddr string, dev bool) error {
 	// --- Configuration ---
 
+	defaultPath, err := config.DefaultPath()
+	if err != nil {
+		return fmt.Errorf("resolving default config path: %w", err)
+	}
+	created, err := config.WriteDefaults(defaultPath)
+	if err != nil {
+		return fmt.Errorf("writing default config: %w", err)
+	}
+	if created {
+		fmt.Printf("Config written to %s\n", defaultPath)
+	}
+
 	cfg := config.Defaults()
-	if configFile != "" {
-		override, err := config.Load(configFile)
+	if resolved := config.Resolve(configFile); resolved != "" {
+		override, err := config.Load(resolved)
 		if err != nil {
-			return fmt.Errorf("loading config override: %w", err)
+			return fmt.Errorf("loading config %s: %w", resolved, err)
 		}
 		cfg = config.Merge(cfg, override)
 	}
