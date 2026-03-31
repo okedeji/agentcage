@@ -27,8 +27,9 @@ type NetworkPolicy interface {
 }
 
 // ActivityImpl provides concrete implementations of all cage lifecycle
-// activities. It wires together the real Firecracker provisioner, network
-// enforcer, identity providers, and audit chain.
+// activities. All dependency fields are optional — nil dependencies are
+// handled gracefully (logged and skipped) to support dev mode where
+// SPIRE, Vault, or Falco may not be available.
 type ActivityImpl struct {
 	provisioner VMProvisioner
 	rootfs      *RootfsBuilder
@@ -65,14 +66,26 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 }
 
 func (a *ActivityImpl) ValidateScope(ctx context.Context, config Config) error {
+	if a.validator == nil {
+		a.log.V(1).Info("scope validation skipped — no validator configured")
+		return nil
+	}
 	return a.validator.ValidateScope(ctx, config.Scope)
 }
 
 func (a *ActivityImpl) ValidateCageType(ctx context.Context, config Config) error {
+	if a.validator == nil {
+		a.log.V(1).Info("cage type validation skipped — no validator configured")
+		return nil
+	}
 	return a.validator.ValidateCageConfig(ctx, config)
 }
 
 func (a *ActivityImpl) IssueIdentity(ctx context.Context, cageID string, ttl time.Duration) (*identity.SVID, error) {
+	if a.identity == nil {
+		a.log.V(1).Info("identity issuance skipped — no SPIRE configured", "cage_id", cageID)
+		return &identity.SVID{ID: "dev-" + cageID, SpiffeID: "spiffe://agentcage.local/cage/" + cageID, CageID: cageID}, nil
+	}
 	svid, err := a.identity.Issue(ctx, cageID, ttl)
 	if err != nil {
 		return nil, fmt.Errorf("cage %s: issuing SVID: %w", cageID, err)
@@ -82,6 +95,10 @@ func (a *ActivityImpl) IssueIdentity(ctx context.Context, cageID string, ttl tim
 }
 
 func (a *ActivityImpl) FetchSecrets(ctx context.Context, svid *identity.SVID, assessmentID string) (*identity.VaultToken, error) {
+	if a.secrets == nil {
+		a.log.V(1).Info("secret fetch skipped — no Vault configured", "cage_id", svid.CageID)
+		return &identity.VaultToken{CageID: svid.CageID}, nil
+	}
 	token, err := a.secrets.Authenticate(ctx, svid)
 	if err != nil {
 		return nil, fmt.Errorf("authenticating with Vault: %w", err)
@@ -91,6 +108,9 @@ func (a *ActivityImpl) FetchSecrets(ctx context.Context, svid *identity.SVID, as
 }
 
 func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error) {
+	if a.provisioner == nil {
+		return nil, fmt.Errorf("cage %s: no VM provisioner configured", vmConfig.CageID)
+	}
 	handle, err := a.provisioner.Provision(ctx, vmConfig)
 	if err != nil {
 		return nil, fmt.Errorf("cage %s: provisioning VM: %w", vmConfig.CageID, err)
@@ -100,6 +120,10 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 }
 
 func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, scope Scope, extras []string) error {
+	if a.network == nil {
+		a.log.V(1).Info("network policy skipped — no enforcer configured", "cage_id", cageID)
+		return nil
+	}
 	if err := a.network.Apply(ctx, cageID, scope, extras); err != nil {
 		return fmt.Errorf("cage %s: applying network policy: %w", cageID, err)
 	}
@@ -108,13 +132,11 @@ func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, sc
 }
 
 func (a *ActivityImpl) StartPayloadProxy(_ context.Context, vmHandle *VMHandle, vulnClass string) error {
-	// Payload proxy is started by cage-init inside the VM.
 	a.log.Info("payload proxy started by cage-init", "cage_id", vmHandle.CageID, "vuln_class", vulnClass)
 	return nil
 }
 
 func (a *ActivityImpl) StartAgent(_ context.Context, vmHandle *VMHandle, config Config) error {
-	// Agent is started by cage-init inside the VM via the entrypoint.
 	a.log.Info("agent started by cage-init", "cage_id", vmHandle.CageID, "type", config.Type)
 	return nil
 }
@@ -137,6 +159,9 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Co
 			return StopReasonTimeout, nil
 
 		case <-ticker.C:
+			if a.provisioner == nil {
+				continue
+			}
 			status, err := a.provisioner.Status(ctx, cageID)
 			if err != nil {
 				a.log.Error(err, "checking VM status", "cage_id", cageID)
@@ -156,6 +181,9 @@ func (a *ActivityImpl) ExportAuditLog(_ context.Context, cageID string) error {
 }
 
 func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
+	if a.provisioner == nil {
+		return nil
+	}
 	if err := a.provisioner.Terminate(ctx, vmID); err != nil {
 		return fmt.Errorf("terminating VM %s: %w", vmID, err)
 	}
@@ -164,6 +192,9 @@ func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
 }
 
 func (a *ActivityImpl) RevokeSVID(ctx context.Context, svidID string) error {
+	if a.identity == nil {
+		return nil
+	}
 	if err := a.identity.Revoke(ctx, svidID); err != nil {
 		return fmt.Errorf("revoking SVID %s: %w", svidID, err)
 	}
@@ -171,6 +202,9 @@ func (a *ActivityImpl) RevokeSVID(ctx context.Context, svidID string) error {
 }
 
 func (a *ActivityImpl) RevokeVaultToken(ctx context.Context, token *identity.VaultToken) error {
+	if a.secrets == nil {
+		return nil
+	}
 	if err := a.secrets.Revoke(ctx, token); err != nil {
 		return fmt.Errorf("revoking Vault token: %w", err)
 	}
@@ -178,6 +212,9 @@ func (a *ActivityImpl) RevokeVaultToken(ctx context.Context, token *identity.Vau
 }
 
 func (a *ActivityImpl) RemoveNetworkPolicy(ctx context.Context, cageID string) error {
+	if a.network == nil {
+		return nil
+	}
 	if err := a.network.Remove(ctx, cageID); err != nil {
 		return fmt.Errorf("cage %s: removing network policy: %w", cageID, err)
 	}
@@ -185,12 +222,14 @@ func (a *ActivityImpl) RemoveNetworkPolicy(ctx context.Context, cageID string) e
 }
 
 func (a *ActivityImpl) VerifyCleanup(ctx context.Context, cageID string) error {
-	status, err := a.provisioner.Status(ctx, cageID)
-	if err != nil {
-		return fmt.Errorf("cage %s: checking VM status during cleanup: %w", cageID, err)
-	}
-	if status == VMStatusRunning {
-		return fmt.Errorf("cage %s: VM still running after teardown", cageID)
+	if a.provisioner != nil {
+		status, err := a.provisioner.Status(ctx, cageID)
+		if err != nil {
+			return fmt.Errorf("cage %s: checking VM status during cleanup: %w", cageID, err)
+		}
+		if status == VMStatusRunning {
+			return fmt.Errorf("cage %s: VM still running after teardown", cageID)
+		}
 	}
 
 	if a.rootfs != nil {
