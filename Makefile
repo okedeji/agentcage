@@ -4,14 +4,19 @@ GO := go
 GOFLAGS := -trimpath
 BINDIR := bin
 
-CMDS := orchestrator payload-proxy findings-sidecar cage-cli
-
 all: vet build
 
-build: $(addprefix build-,$(CMDS))
+build: build-agentcage build-cage-internal
 
-build-%:
-	$(GO) build $(GOFLAGS) -o $(BINDIR)/$* ./cmd/$*/
+build-agentcage:
+	$(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage ./cmd/agentcage/
+
+CAGE_INTERNAL := cage-init payload-proxy findings-sidecar
+
+build-cage-internal: $(addprefix build-cage-internal-,$(CAGE_INTERNAL))
+
+build-cage-internal-%:
+	CGO_ENABLED=0 $(GO) build $(GOFLAGS) -o $(BINDIR)/cage-internal/$* ./cmd/cage-internal/$*/
 
 clean:
 	rm -rf $(BINDIR)
