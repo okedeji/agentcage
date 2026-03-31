@@ -86,7 +86,7 @@ func GenerateNFTRules(rule EgressRule) string {
 	var b strings.Builder
 
 	tableName := fmt.Sprintf("cage-%s", rule.CageID)
-	b.WriteString(fmt.Sprintf("table inet %s {\n", tableName))
+	fmt.Fprintf(&b, "table inet %s {\n", tableName)
 
 	// Default: drop all egress from this cage's TAP device
 	b.WriteString("  chain egress {\n")
@@ -100,7 +100,7 @@ func GenerateNFTRules(rule EgressRule) string {
 
 	// Allow specific IPs
 	for _, cidr := range rule.AllowIPs {
-		b.WriteString(fmt.Sprintf("    ip daddr %s accept\n", cidr))
+		fmt.Fprintf(&b, "    ip daddr %s accept\n", cidr)
 	}
 
 	// Allow DNS resolution for FQDNs (port 53)
@@ -113,7 +113,7 @@ func GenerateNFTRules(rule EgressRule) string {
 	// Port restrictions (if specified, only allow these ports)
 	if len(rule.AllowPorts) > 0 {
 		ports := strings.Join(rule.AllowPorts, ", ")
-		b.WriteString(fmt.Sprintf("\n    tcp dport { %s } accept\n", ports))
+		fmt.Fprintf(&b, "\n    tcp dport { %s } accept\n", ports)
 	} else if len(rule.AllowIPs) > 0 || len(rule.AllowFQDNs) > 0 {
 		// No port restriction — allow all ports to allowed destinations
 		b.WriteString("\n    # No port restriction — all ports allowed to permitted destinations\n")

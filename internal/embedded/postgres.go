@@ -141,7 +141,7 @@ func (p *PostgresService) Health(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("postgres not reachable: %w", err)
 	}
-	conn.Close()
+	_ = conn.Close()
 	return nil
 }
 
@@ -150,7 +150,7 @@ func (p *PostgresService) waitReady(ctx context.Context) error {
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", "localhost:"+postgresPort, 500*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil
 		}
 		select {
@@ -168,7 +168,7 @@ func (p *PostgresService) ensureDatabase(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("connecting to postgres: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var exists bool
 	err = db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", postgresDB).Scan(&exists)

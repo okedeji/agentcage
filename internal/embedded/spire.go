@@ -141,7 +141,7 @@ func (s *SPIREService) Health(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("spire server not reachable: %w", err)
 	}
-	conn.Close()
+	_ = conn.Close()
 	return nil
 }
 
@@ -150,7 +150,7 @@ func (s *SPIREService) waitServerReady(ctx context.Context) error {
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", "localhost:"+spireServerPort, 500*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil
 		}
 		select {
@@ -213,7 +213,7 @@ func writeSpireServerConf(path, dataDir, port, trustDomain string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return spireServerTemplate.Execute(f, map[string]string{
 		"DataDir":     dataDir,
 		"Port":        port,
@@ -226,7 +226,7 @@ func writeSpireAgentConf(path, dataDir, socketDir, serverPort, trustDomain strin
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return spireAgentTemplate.Execute(f, map[string]string{
 		"DataDir":     dataDir,
 		"SocketDir":   socketDir,

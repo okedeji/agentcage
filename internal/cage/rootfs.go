@@ -62,7 +62,7 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	if err := os.MkdirAll(mountDir, 0755); err != nil {
 		return "", fmt.Errorf("creating mount directory: %w", err)
 	}
-	defer os.RemoveAll(mountDir)
+	defer func() { _ = os.RemoveAll(mountDir) }()
 
 	if err := mountExt4(ctx, rootfsPath, mountDir); err != nil {
 		return "", fmt.Errorf("mounting rootfs: %w", err)

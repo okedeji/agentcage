@@ -47,7 +47,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: listening on %s: %v\n", *socketPath, err)
 		os.Exit(1)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	logger.Info("findings sidecar started", "socket", *socketPath)
 
@@ -62,7 +62,7 @@ func main() {
 }
 
 func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID string, logger logr.Logger) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 

@@ -279,7 +279,7 @@ func firecrackerAPI(ctx context.Context, socketPath, method, path string, body a
 	if err != nil {
 		return fmt.Errorf("sending request to %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		var errBody bytes.Buffer

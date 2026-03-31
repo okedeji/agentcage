@@ -98,7 +98,7 @@ func (v *VaultService) Health(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("vault not reachable: %w", err)
 	}
-	conn.Close()
+	_ = conn.Close()
 	return nil
 }
 
@@ -107,7 +107,7 @@ func (v *VaultService) waitReady(ctx context.Context) error {
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", "localhost:"+vaultPort, 500*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil
 		}
 		select {

@@ -39,7 +39,7 @@ func Pack(dir string, w io.Writer) (*BundleManifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening Cagefile in %s: %w", dir, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	manifest, err := Parse(f)
 	if err != nil {
@@ -65,10 +65,10 @@ func Pack(dir string, w io.Writer) (*BundleManifest, error) {
 	}
 
 	gw := gzip.NewWriter(w)
-	defer gw.Close()
+	defer func() { _ = gw.Close() }()
 
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	// Write manifest.json
 	manifestBytes, err := json.MarshalIndent(bundleManifest, "", "  ")
@@ -94,7 +94,7 @@ func PackToFile(dir, outPath string) (*BundleManifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating bundle file %s: %w", outPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	return Pack(dir, f)
 }
@@ -105,7 +105,7 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening gzip: %w", err)
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	tr := tar.NewReader(gr)
 
@@ -145,10 +145,10 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 			}
 
 			if _, err := io.Copy(out, tr); err != nil {
-				out.Close()
+				_ = out.Close()
 				return nil, fmt.Errorf("extracting %s: %w", target, err)
 			}
-			out.Close()
+			_ = out.Close()
 
 			// Parse manifest
 			if header.Name == "manifest.json" {
@@ -177,7 +177,7 @@ func UnpackFile(bundlePath, destDir string) (*BundleManifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening bundle %s: %w", bundlePath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return Unpack(f, destDir)
 }
 

@@ -51,7 +51,7 @@ func (c *Client) ChatCompletion(ctx context.Context, cageID string, tokenBudget 
 	if err != nil {
 		return nil, fmt.Errorf("sending request to LLM gateway: %w", err)
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {

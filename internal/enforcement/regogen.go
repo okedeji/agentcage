@@ -41,7 +41,7 @@ func generateScopeRego(scope config.ScopeConfig, infraHosts []string) string {
 
 	for _, cidr := range scope.Deny {
 		if strings.Contains(cidr, "/") {
-			b.WriteString(fmt.Sprintf("deny contains msg if {\n\tsome h\n\tnet.cidr_contains(%q, input.hosts[h])\n\tmsg := sprintf(\"private IP range not allowed: %%s\", [input.hosts[h]])\n}\n\n", cidr))
+			fmt.Fprintf(&b, "deny contains msg if {\n\tsome h\n\tnet.cidr_contains(%q, input.hosts[h])\n\tmsg := sprintf(\"private IP range not allowed: %%s\", [input.hosts[h]])\n}\n\n", cidr)
 		}
 	}
 
@@ -81,23 +81,23 @@ func generateCageTypesRego(cages map[string]config.CageTypeConfig) string {
 		maxSeconds := int(ct.MaxDuration.Seconds())
 
 		if !ct.RequiresLLM {
-			b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.cage_type == %q\n\tinput.llm_config != null\n\tmsg := \"%s cages must not have LLM access\"\n}\n\n", name, name))
+			fmt.Fprintf(&b, "deny contains msg if {\n\tinput.cage_type == %q\n\tinput.llm_config != null\n\tmsg := \"%s cages must not have LLM access\"\n}\n\n", name, name)
 		}
 		if ct.RequiresLLM {
-			b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.cage_type == %q\n\tinput.llm_config == null\n\tmsg := \"%s cages require LLM gateway configuration\"\n}\n\n", name, name))
+			fmt.Fprintf(&b, "deny contains msg if {\n\tinput.cage_type == %q\n\tinput.llm_config == null\n\tmsg := \"%s cages require LLM gateway configuration\"\n}\n\n", name, name)
 		}
 
-		b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.cage_type == %q\n\tinput.time_limit_seconds > %d\n\tmsg := sprintf(\"%s cage time limit cannot exceed %d seconds, got %%d\", [input.time_limit_seconds])\n}\n\n",
-			name, maxSeconds, name, maxSeconds))
+		fmt.Fprintf(&b, "deny contains msg if {\n\tinput.cage_type == %q\n\tinput.time_limit_seconds > %d\n\tmsg := sprintf(\"%s cage time limit cannot exceed %d seconds, got %%d\", [input.time_limit_seconds])\n}\n\n",
+			name, maxSeconds, name, maxSeconds)
 
-		b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.cage_type == %q\n\tinput.resources.vcpus > %d\n\tmsg := sprintf(\"%s cage cannot exceed %d vCPUs, got %%d\", [input.resources.vcpus])\n}\n\n",
-			name, ct.MaxVCPUs, name, ct.MaxVCPUs))
+		fmt.Fprintf(&b, "deny contains msg if {\n\tinput.cage_type == %q\n\tinput.resources.vcpus > %d\n\tmsg := sprintf(\"%s cage cannot exceed %d vCPUs, got %%d\", [input.resources.vcpus])\n}\n\n",
+			name, ct.MaxVCPUs, name, ct.MaxVCPUs)
 
-		b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.cage_type == %q\n\tinput.resources.memory_mb > %d\n\tmsg := sprintf(\"%s cage cannot exceed %d MB RAM, got %%d\", [input.resources.memory_mb])\n}\n\n",
-			name, ct.MaxMemoryMB, name, ct.MaxMemoryMB))
+		fmt.Fprintf(&b, "deny contains msg if {\n\tinput.cage_type == %q\n\tinput.resources.memory_mb > %d\n\tmsg := sprintf(\"%s cage cannot exceed %d MB RAM, got %%d\", [input.resources.memory_mb])\n}\n\n",
+			name, ct.MaxMemoryMB, name, ct.MaxMemoryMB)
 
 		if ct.RequiresParentFinding {
-			b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.cage_type == %q\n\tinput.parent_finding_id == \"\"\n\tmsg := \"%s cages require a parent finding ID\"\n}\n\n", name, name))
+			fmt.Fprintf(&b, "deny contains msg if {\n\tinput.cage_type == %q\n\tinput.parent_finding_id == \"\"\n\tmsg := \"%s cages require a parent finding ID\"\n}\n\n", name, name)
 		}
 	}
 
@@ -110,7 +110,7 @@ func generateCageTypesRego(cages map[string]config.CageTypeConfig) string {
 	}
 	if maxRate > 0 {
 		b.WriteString("deny contains msg if {\n\tinput.rate_limit_rps <= 0\n\tmsg := \"rate limit must be positive\"\n}\n\n")
-		b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.rate_limit_rps > %d\n\tmsg := sprintf(\"rate limit cannot exceed %d req/s, got %%d\", [input.rate_limit_rps])\n}\n", maxRate, maxRate))
+		fmt.Fprintf(&b, "deny contains msg if {\n\tinput.rate_limit_rps > %d\n\tmsg := sprintf(\"rate limit cannot exceed %d req/s, got %%d\", [input.rate_limit_rps])\n}\n", maxRate, maxRate)
 	}
 
 	return b.String()
@@ -118,10 +118,10 @@ func generateCageTypesRego(cages map[string]config.CageTypeConfig) string {
 
 func generatePayloadRego(class string, pc config.PayloadConfig) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("package agentcage.payload.%s\n\n", class))
+	fmt.Fprintf(&b, "package agentcage.payload.%s\n\n", class)
 
 	for _, entry := range pc.Block {
-		b.WriteString(fmt.Sprintf("deny contains msg if {\n\tregex.match(`%s`, input.payload)\n\tmsg := %q\n}\n\n", entry.Pattern, entry.Reason))
+		fmt.Fprintf(&b, "deny contains msg if {\n\tregex.match(`%s`, input.payload)\n\tmsg := %q\n}\n\n", entry.Pattern, entry.Reason)
 	}
 
 	return b.String()
@@ -132,22 +132,22 @@ func generateComplianceRego(comp *config.ComplianceConfig) string {
 	framework := comp.Framework
 	upper := strings.ToUpper(framework)
 
-	b.WriteString(fmt.Sprintf("package agentcage.compliance.%s\n\n", framework))
+	fmt.Fprintf(&b, "package agentcage.compliance.%s\n\n", framework)
 
 	if comp.MaxConcurrentCages > 0 {
-		b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.max_concurrent_cages > %d\n\tmsg := sprintf(\"%s: maximum concurrent cages is %d, got %%d\", [input.max_concurrent_cages])\n}\n\n",
-			comp.MaxConcurrentCages, upper, comp.MaxConcurrentCages))
+		fmt.Fprintf(&b, "deny contains msg if {\n\tinput.max_concurrent_cages > %d\n\tmsg := sprintf(\"%s: maximum concurrent cages is %d, got %%d\", [input.max_concurrent_cages])\n}\n\n",
+			comp.MaxConcurrentCages, upper, comp.MaxConcurrentCages)
 	}
 
-	b.WriteString(fmt.Sprintf("deny contains msg if {\n\tnot input.audit_log_enabled\n\tmsg := \"%s: audit logging must be enabled\"\n}\n\n", upper))
+	fmt.Fprintf(&b, "deny contains msg if {\n\tnot input.audit_log_enabled\n\tmsg := \"%s: audit logging must be enabled\"\n}\n\n", upper)
 
 	if comp.RequireIntervention {
-		b.WriteString(fmt.Sprintf("deny contains msg if {\n\tnot input.intervention_enabled\n\tmsg := \"%s: human intervention must be enabled\"\n}\n\n", upper))
+		fmt.Fprintf(&b, "deny contains msg if {\n\tnot input.intervention_enabled\n\tmsg := \"%s: human intervention must be enabled\"\n}\n\n", upper)
 
 		if comp.InterventionTimeout > 0 {
 			minutes := int(comp.InterventionTimeout.Minutes())
-			b.WriteString(fmt.Sprintf("deny contains msg if {\n\tinput.intervention_timeout_minutes > %d\n\tmsg := sprintf(\"%s: intervention timeout cannot exceed %d minutes, got %%d\", [input.intervention_timeout_minutes])\n}\n",
-				minutes, upper, minutes))
+			fmt.Fprintf(&b, "deny contains msg if {\n\tinput.intervention_timeout_minutes > %d\n\tmsg := sprintf(\"%s: intervention timeout cannot exceed %d minutes, got %%d\", [input.intervention_timeout_minutes])\n}\n",
+				minutes, upper, minutes)
 		}
 	}
 

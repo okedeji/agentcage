@@ -121,7 +121,7 @@ func main() {
 				http.Error(w, "failed to read request body", http.StatusBadGateway)
 				return
 			}
-			r.Body.Close()
+			_ = r.Body.Close()
 			if len(bodyBytes) > maxBodySize {
 				logger.Info("request body too large", "method", r.Method, "url", r.URL.String(), "size", len(bodyBytes))
 				http.Error(w, "request body exceeds 10MB limit", http.StatusRequestEntityTooLarge)

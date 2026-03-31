@@ -53,7 +53,7 @@ func TestCollectFromCage_SingleLine(t *testing.T) {
 
 	_, err := fmt.Fprintln(pw, `{"source":"payload-proxy","msg":"started"}`)
 	require.NoError(t, err)
-	pw.Close()
+	_ = pw.Close()
 
 	require.NoError(t, <-done)
 
@@ -78,7 +78,7 @@ func TestCollectFromCage_MultipleLines(t *testing.T) {
 		_, err := fmt.Fprintf(pw, `{"source":"agent","seq":%d}`+"\n", i)
 		require.NoError(t, err)
 	}
-	pw.Close()
+	_ = pw.Close()
 
 	require.NoError(t, <-done)
 
@@ -110,7 +110,7 @@ func TestCollectFromCage_ContextCancellation(t *testing.T) {
 	// Give the scanner time to process the line before cancelling.
 	time.Sleep(50 * time.Millisecond)
 	cancel()
-	pw.Close()
+	_ = pw.Close()
 
 	require.NoError(t, <-done)
 	assert.GreaterOrEqual(t, len(sink.getLines()), 1)
@@ -126,7 +126,7 @@ func TestCollectFromCage_ReaderClose(t *testing.T) {
 		done <- collector.CollectFromCage(context.Background(), "cage-4", pr)
 	}()
 
-	pw.Close()
+	_ = pw.Close()
 	require.NoError(t, <-done)
 }
 
@@ -142,9 +142,9 @@ func TestCollectFromCage_ConcurrentCages(t *testing.T) {
 		wg.Add(1)
 
 		go func(cageID string, pw *io.PipeWriter) {
-			defer pw.Close()
+			defer func() { _ = pw.Close() }()
 			for i := range 3 {
-				fmt.Fprintf(pw, `{"source":"agent","cage":"%s","seq":%d}`+"\n", cageID, i)
+				_, _ = fmt.Fprintf(pw, `{"source":"agent","cage":"%s","seq":%d}`+"\n", cageID, i)
 			}
 		}(id, pw)
 
@@ -181,7 +181,7 @@ func TestCollectFromCage_UnknownSource(t *testing.T) {
 
 	_, err := fmt.Fprintln(pw, `not json at all`)
 	require.NoError(t, err)
-	pw.Close()
+	_ = pw.Close()
 
 	require.NoError(t, <-done)
 

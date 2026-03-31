@@ -154,7 +154,7 @@ func (s *PGStore) ListInterventions(ctx context.Context, filters ListFilters) ([
 	if err != nil {
 		return nil, "", fmt.Errorf("listing interventions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []Request
 	for rows.Next() {

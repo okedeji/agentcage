@@ -94,7 +94,7 @@ func downloadBinary(ctx context.Context, url, dest string) error {
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("downloading %s: status %d", url, resp.StatusCode)
@@ -104,7 +104,7 @@ func downloadBinary(ctx context.Context, url, dest string) error {
 	if err != nil {
 		return fmt.Errorf("creating file %s: %w", dest, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
 		return fmt.Errorf("writing %s: %w", dest, err)
@@ -151,7 +151,7 @@ func (s *subprocess) start(ctx context.Context) error {
 
 	s.log.Info("starting", "bin", s.cmd.Path, "args", s.cmd.Args[1:])
 	if err := s.cmd.Start(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("starting %s: %w", s.name, err)
 	}
 
@@ -189,7 +189,7 @@ func (s *subprocess) stop(ctx context.Context) error {
 		return fmt.Errorf("timed out stopping %s after 5s", s.name)
 	case err := <-done:
 		if s.logFile != nil {
-			s.logFile.Close()
+			_ = s.logFile.Close()
 		}
 		pidPath := filepath.Join(RunDir(), s.name+".pid")
 		_ = os.Remove(pidPath)

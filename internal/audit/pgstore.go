@@ -49,7 +49,7 @@ func (s *PGStore) GetEntries(ctx context.Context, cageID string) ([]Entry, error
 	if err != nil {
 		return nil, fmt.Errorf("querying audit entries for cage %s: %w", cageID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var entries []Entry
 	for rows.Next() {

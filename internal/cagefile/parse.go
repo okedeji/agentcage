@@ -120,37 +120,37 @@ func ParseString(s string) (*Manifest, error) {
 
 func (m *Manifest) validate() error {
 	if m.Runtime == "" {
-		return fmt.Errorf("Cagefile: runtime is required")
+		return fmt.Errorf("cagefile: runtime is required")
 	}
 	if m.Entrypoint == "" {
-		return fmt.Errorf("Cagefile: entrypoint is required")
+		return fmt.Errorf("cagefile: entrypoint is required")
 	}
 
 	switch m.Runtime {
 	case "python3":
 		if len(m.NpmDeps) > 0 {
-			return fmt.Errorf("Cagefile: npm dependencies are not valid for python3 runtime")
+			return fmt.Errorf("cagefile: npm dependencies are not valid for python3 runtime")
 		}
 		if len(m.GoDeps) > 0 {
-			return fmt.Errorf("Cagefile: go-deps are not valid for python3 runtime")
+			return fmt.Errorf("cagefile: go-deps are not valid for python3 runtime")
 		}
 	case "node":
 		if len(m.PipDeps) > 0 {
-			return fmt.Errorf("Cagefile: pip dependencies are not valid for node runtime")
+			return fmt.Errorf("cagefile: pip dependencies are not valid for node runtime")
 		}
 		if len(m.GoDeps) > 0 {
-			return fmt.Errorf("Cagefile: go-deps are not valid for node runtime")
+			return fmt.Errorf("cagefile: go-deps are not valid for node runtime")
 		}
 	case "go":
 		if len(m.PipDeps) > 0 {
-			return fmt.Errorf("Cagefile: pip dependencies are not valid for go runtime")
+			return fmt.Errorf("cagefile: pip dependencies are not valid for go runtime")
 		}
 		if len(m.NpmDeps) > 0 {
-			return fmt.Errorf("Cagefile: npm dependencies are not valid for go runtime")
+			return fmt.Errorf("cagefile: npm dependencies are not valid for go runtime")
 		}
 	case "static":
 		if len(m.PipDeps) > 0 || len(m.NpmDeps) > 0 || len(m.GoDeps) > 0 {
-			return fmt.Errorf("Cagefile: language dependencies are not valid for static runtime")
+			return fmt.Errorf("cagefile: language dependencies are not valid for static runtime")
 		}
 	}
 

@@ -87,7 +87,7 @@ func (t *TemporalService) Health(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("temporal not reachable: %w", err)
 	}
-	conn.Close()
+	_ = conn.Close()
 	return nil
 }
 
@@ -96,7 +96,7 @@ func (t *TemporalService) waitReady(ctx context.Context) error {
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", "localhost:"+temporalPort, 500*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil
 		}
 		select {
