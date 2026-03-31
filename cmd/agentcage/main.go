@@ -57,7 +57,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Printf(`agentcage %s — kubectl for autonomous security agents
+	fmt.Printf(`agentcage %s - orchestrate AI security agents in sandboxed cages
 
 Usage: agentcage <command> [options]
 
