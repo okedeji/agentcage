@@ -1,17 +1,15 @@
 package enforcement
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 )
 
+// ProxyEngine inspects outbound payloads against compiled regex blocklist
+// patterns. Used by the payload-proxy inside each cage.
 type ProxyEngine struct {
-	vulnClass   string
-	patterns    []*compiledPattern
-	batcher     *PayloadBatcher
-	threshold   float64
-	onUncertain PayloadDecision
+	vulnClass string
+	patterns  []*compiledPattern
 }
 
 type compiledPattern struct {
@@ -19,13 +17,9 @@ type compiledPattern struct {
 	message string
 }
 
-type ProxyClassifyConfig struct {
-	Batcher     *PayloadBatcher
-	Threshold   float64
-	OnUncertain PayloadDecision
-}
-
-func NewProxyEngine(vulnClass string, patterns map[string]string, classify *ProxyClassifyConfig) (*ProxyEngine, error) {
+// NewProxyEngine compiles the provided patterns and returns an engine that
+// inspects payloads for the given vulnerability class.
+func NewProxyEngine(vulnClass string, patterns map[string]string) (*ProxyEngine, error) {
 	compiled := make([]*compiledPattern, 0, len(patterns))
 	for pattern, message := range patterns {
 		re, err := regexp.Compile(pattern)
@@ -38,20 +32,14 @@ func NewProxyEngine(vulnClass string, patterns map[string]string, classify *Prox
 		})
 	}
 
-	e := &ProxyEngine{
+	return &ProxyEngine{
 		vulnClass: vulnClass,
 		patterns:  compiled,
-	}
-
-	if classify != nil {
-		e.batcher = classify.Batcher
-		e.threshold = classify.Threshold
-		e.onUncertain = classify.OnUncertain
-	}
-
-	return e, nil
+	}, nil
 }
 
+// Inspect checks a request body and URL against all blocklist patterns.
+// Returns PayloadBlock with the matching pattern's message, or PayloadAllow.
 func (e *ProxyEngine) Inspect(method, url string, body []byte) (PayloadDecision, string) {
 	content := string(body)
 	for _, p := range e.patterns {
@@ -63,32 +51,4 @@ func (e *ProxyEngine) Inspect(method, url string, body []byte) (PayloadDecision,
 		}
 	}
 	return PayloadAllow, ""
-}
-
-func (e *ProxyEngine) InspectWithClassification(ctx context.Context, method, url string, body []byte) (PayloadDecision, string, error) {
-	decision, reason := e.Inspect(method, url, body)
-	if decision == PayloadBlock {
-		return PayloadBlock, reason, nil
-	}
-
-	if e.batcher == nil {
-		return PayloadAllow, "", nil
-	}
-
-	resultCh := e.batcher.Submit(ClassificationPayload{
-		VulnClass: e.vulnClass,
-		Method:    method,
-		URL:       url,
-		Body:      string(body),
-	})
-
-	select {
-	case result := <-resultCh:
-		if result.Confidence >= e.threshold {
-			return PayloadAllow, "", nil
-		}
-		return e.onUncertain, result.Reason, nil
-	case <-ctx.Done():
-		return PayloadBlock, "classification timeout", ctx.Err()
-	}
 }
