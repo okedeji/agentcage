@@ -70,6 +70,30 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	}
 	defer unmountExt4(ctx, mountDir) //nolint:errcheck
 
+	// Install user-requested Alpine packages
+	if len(bundle.Packages) > 0 {
+		if err := installPackages(ctx, mountDir, bundle.Packages); err != nil {
+			return "", fmt.Errorf("installing packages: %w", err)
+		}
+	}
+
+	// Install language-specific dependencies
+	if len(bundle.PipDeps) > 0 {
+		if err := installPipDeps(ctx, mountDir, bundle.PipDeps); err != nil {
+			return "", fmt.Errorf("installing pip dependencies: %w", err)
+		}
+	}
+	if len(bundle.NpmDeps) > 0 {
+		if err := installNpmDeps(ctx, mountDir, bundle.NpmDeps); err != nil {
+			return "", fmt.Errorf("installing npm dependencies: %w", err)
+		}
+	}
+	if len(bundle.GoDeps) > 0 {
+		if err := installGoDeps(ctx, mountDir, bundle.GoDeps); err != nil {
+			return "", fmt.Errorf("installing go dependencies: %w", err)
+		}
+	}
+
 	// Inject agent files
 	agentDir := filepath.Join(mountDir, "opt", "agent")
 	if err := os.MkdirAll(agentDir, 0755); err != nil {
@@ -125,6 +149,43 @@ func unmountExt4(ctx context.Context, mountPoint string) error {
 	cmd := exec.CommandContext(ctx, "umount", mountPoint)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("umount %s: %w\n%s", mountPoint, err, out)
+	}
+	return nil
+}
+
+func installPackages(ctx context.Context, mountDir string, packages []string) error {
+	args := append([]string{mountDir, "apk", "add", "--no-cache"}, packages...)
+	cmd := exec.CommandContext(ctx, "chroot", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("apk add %v: %w\n%s", packages, err, out)
+	}
+	return nil
+}
+
+func installPipDeps(ctx context.Context, mountDir string, deps []string) error {
+	args := append([]string{mountDir, "pip3", "install", "--no-cache-dir"}, deps...)
+	cmd := exec.CommandContext(ctx, "chroot", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("pip install %v: %w\n%s", deps, err, out)
+	}
+	return nil
+}
+
+func installNpmDeps(ctx context.Context, mountDir string, deps []string) error {
+	args := append([]string{mountDir, "npm", "install", "-g"}, deps...)
+	cmd := exec.CommandContext(ctx, "chroot", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("npm install %v: %w\n%s", deps, err, out)
+	}
+	return nil
+}
+
+func installGoDeps(ctx context.Context, mountDir string, deps []string) error {
+	for _, dep := range deps {
+		cmd := exec.CommandContext(ctx, "chroot", mountDir, "go", "install", dep)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("go install %s: %w\n%s", dep, err, out)
+		}
 	}
 	return nil
 }

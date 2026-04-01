@@ -20,6 +20,7 @@ type BundleManifest struct {
 	Runtime    string   `json:"runtime"`
 	Entrypoint string   `json:"entrypoint"`
 	SystemDeps []string `json:"system_deps,omitempty"`
+	Packages   []string `json:"packages,omitempty"`
 	PipDeps    []string `json:"pip_deps,omitempty"`
 	NpmDeps    []string `json:"npm_deps,omitempty"`
 	GoDeps     []string `json:"go_deps,omitempty"`
@@ -58,6 +59,7 @@ func Pack(dir string, w io.Writer) (*BundleManifest, error) {
 		Runtime:    manifest.Runtime,
 		Entrypoint: manifest.Entrypoint,
 		SystemDeps: manifest.SystemDeps,
+		Packages:   manifest.Packages,
 		PipDeps:    manifest.PipDeps,
 		NpmDeps:    manifest.NpmDeps,
 		GoDeps:     manifest.GoDeps,

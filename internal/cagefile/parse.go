@@ -15,23 +15,22 @@ var SupportedRuntimes = map[string]bool{
 	"static":  true,
 }
 
-// Supported system-level tools that agentcage ships in its base layers.
-var SupportedTools = map[string]bool{
-	"chromium":    true,
-	"nmap":        true,
-	"sqlmap":      true,
-	"nikto":       true,
-	"ffuf":        true,
-	"interactsh":  true,
-	"curl":        true,
-	"wget":        true,
-}
+// SupportedTools is derived from ToolPackages — the single source of truth
+// for what the base cage rootfs ships.
+var SupportedTools = func() map[string]bool {
+	m := make(map[string]bool, len(ToolPackages))
+	for tool := range ToolPackages {
+		m[tool] = true
+	}
+	return m
+}()
 
 // Manifest is the parsed representation of a Cagefile.
 type Manifest struct {
 	Runtime    string   `json:"runtime"`
 	Entrypoint string   `json:"entrypoint"`
 	SystemDeps []string `json:"system_deps,omitempty"`
+	Packages   []string `json:"packages,omitempty"`
 	PipDeps    []string `json:"pip_deps,omitempty"`
 	NpmDeps    []string `json:"npm_deps,omitempty"`
 	GoDeps     []string `json:"go_deps,omitempty"`
@@ -91,6 +90,9 @@ func Parse(r io.Reader) (*Manifest, error) {
 				}
 			}
 			m.SystemDeps = append(m.SystemDeps, deps...)
+
+		case "packages":
+			m.Packages = append(m.Packages, strings.Fields(value)...)
 
 		case "pip":
 			m.PipDeps = append(m.PipDeps, strings.Fields(value)...)
