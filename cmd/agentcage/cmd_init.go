@@ -29,6 +29,8 @@ import (
 	"github.com/okedeji/agentcage/internal/metrics"
 )
 
+var _ = cmdInit
+
 func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
@@ -267,6 +269,11 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 	}()
 
+	pidFile := filepath.Join(embedded.RunDir(), "agentcage.pid")
+	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		log.Error(err, "writing PID file")
+	}
+
 	fmt.Printf("\nagentcage ready.\n")
 	fmt.Printf("  gRPC:     %s\n", grpcAddr)
 	fmt.Printf("  Temporal: %s\n", temporalAddr)
@@ -297,6 +304,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		log.Error(err, "error stopping embedded services")
 	}
 
+	_ = os.Remove(pidFile)
 	fmt.Println("agentcage stopped.")
 	return nil
 }

@@ -5,23 +5,39 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 
 	"github.com/okedeji/agentcage/internal/embedded"
 )
 
-// cmdStop handles the native Linux stop path.
-// On darwin, platformStop in platform_darwin.go handles VM shutdown instead.
 var _ = cmdStop
 
-func cmdStop(args []string) {
-	fmt.Println("Stopping agentcage...")
-	// TODO: Signal the running init process via PID file
+func cmdStop(_ []string) {
 	pidFile := embedded.RunDir() + "/agentcage.pid"
-	if _, err := os.Stat(pidFile); os.IsNotExist(err) {
-		fmt.Println("agentcage is not running.")
-		return
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "agentcage is not running.")
+		os.Exit(1)
 	}
-	fmt.Println("(PID-based stop pending — kill the init process for now)")
+
+	var pid int
+	if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid PID file: %v\n", err)
+		os.Exit(1)
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "process %d not found: %v\n", pid, err)
+		os.Exit(1)
+	}
+
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to stop agentcage (pid %d): %v\n", pid, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Sent stop signal to agentcage (pid %d).\n", pid)
 }
 
 func cmdTest(args []string) {
