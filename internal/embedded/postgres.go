@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	postgresVersion = "16"
-	postgresPort    = "15432"
-	postgresUser    = "agentcage"
-	postgresDB      = "agentcage"
+	postgresMajorVersion = "16"
+	postgresVersion      = "16.6.0"
+	postgresPort         = "15432"
+	postgresUser         = "agentcage"
+	postgresDB           = "agentcage"
 )
 
 // PostgresService manages an embedded PostgreSQL instance.
@@ -63,7 +64,7 @@ func (p *PostgresService) Download(ctx context.Context) error {
 
 	// Check common installation paths
 	for _, candidate := range []string{
-		"/usr/lib/postgresql/" + postgresVersion + "/bin",
+		"/usr/lib/postgresql/" + postgresMajorVersion + "/bin",
 		"/usr/bin",
 	} {
 		if _, err := os.Stat(filepath.Join(candidate, "postgres")); err == nil {
@@ -81,10 +82,13 @@ func (p *PostgresService) Download(ctx context.Context) error {
 	}
 
 	arch := runtime.GOARCH
+	if arch == "arm64" {
+		arch = "arm64v8"
+	}
 	osName := runtime.GOOS
 
 	url := fmt.Sprintf(
-		"https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-%s-%s/%s.0/embedded-postgres-binaries-%s-%s-%s.0.jar",
+		"https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-%s-%s/%s/embedded-postgres-binaries-%s-%s-%s.jar",
 		osName, arch, postgresVersion, osName, arch, postgresVersion,
 	)
 
@@ -92,7 +96,7 @@ func (p *PostgresService) Download(ctx context.Context) error {
 
 	archivePath := filepath.Join(BinDir(), "postgres-"+postgresVersion+".jar")
 	if err := downloadBinary(ctx, url, archivePath); err != nil {
-		return fmt.Errorf("downloading postgres: %w — install PostgreSQL %s or provide infrastructure.postgres.url in config", err, postgresVersion)
+		return fmt.Errorf("downloading postgres: %w — install PostgreSQL %s or provide infrastructure.postgres.url in config", err, postgresMajorVersion)
 	}
 
 	if err := extractPostgresBinaries(archivePath, pgDir); err != nil {
@@ -113,8 +117,8 @@ func (p *PostgresService) Start(ctx context.Context) error {
 	versionFile := filepath.Join(pgData, "PG_VERSION")
 	if raw, err := os.ReadFile(versionFile); err == nil {
 		dataVersion := strings.TrimSpace(string(raw))
-		if dataVersion != postgresVersion {
-			return fmt.Errorf("postgres data directory is version %s but binary is version %s. run pg_upgrade or remove %s to reinitialize", dataVersion, postgresVersion, pgData)
+		if dataVersion != postgresMajorVersion {
+			return fmt.Errorf("postgres data directory is version %s but binary is version %s. run pg_upgrade or remove %s to reinitialize", dataVersion, postgresMajorVersion, pgData)
 		}
 	}
 
