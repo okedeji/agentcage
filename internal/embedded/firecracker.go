@@ -52,7 +52,7 @@ func (f *FirecrackerDownloader) downloadFirecracker(ctx context.Context) error {
 
 	arch := archSuffix()
 	if runtime.GOOS != "linux" {
-		f.log.Info("firecracker only runs on Linux — skipping download (dev mode)")
+		f.log.Info("firecracker only runs on Linux — skipping download (local mode)")
 		if err := os.WriteFile(dest, []byte("#!/bin/sh\necho 'firecracker requires linux'"), 0755); err != nil {
 			return fmt.Errorf("creating stub: %w", err)
 		}
@@ -73,7 +73,7 @@ func (f *FirecrackerDownloader) downloadKernel(ctx context.Context) error {
 	}
 
 	if runtime.GOOS != "linux" {
-		f.log.Info("kernel only needed on Linux — skipping download (dev mode)")
+		f.log.Info("kernel only needed on Linux — skipping download (local mode)")
 		if err := os.WriteFile(dest, []byte{}, 0644); err != nil {
 			return fmt.Errorf("creating stub kernel: %w", err)
 		}

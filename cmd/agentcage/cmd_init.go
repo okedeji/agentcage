@@ -32,16 +32,16 @@ func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
 	grpcAddr := fs.String("grpc-addr", ":9090", "gRPC server listen address")
-	dev := fs.Bool("dev", false, "enable development mode")
+	logFormat := fs.String("log-format", "json", "log output format (json or text)")
 	_ = fs.Parse(args)
 
-	if err := runInit(*configFile, *grpcAddr, *dev); err != nil {
+	if err := runInit(*configFile, *grpcAddr, *logFormat); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runInit(configFile, grpcAddr string, dev bool) error {
+func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Configuration ---
 
 	defaultPath, err := config.DefaultPath()
@@ -71,7 +71,7 @@ func runInit(configFile, grpcAddr string, dev bool) error {
 		log    logr.Logger
 		logErr error
 	)
-	if dev {
+	if logFormat == "text" {
 		log, logErr = proxylog.NewDev()
 	} else {
 		log, logErr = proxylog.New()
@@ -95,9 +95,9 @@ func runInit(configFile, grpcAddr string, dev bool) error {
 		return fmt.Errorf("downloading dependencies: %w", err)
 	}
 
-	fmt.Println("\nStarting embedded services...")
+	fmt.Println("\nStarting local services...")
 	if err := mgr.Start(ctx); err != nil {
-		return fmt.Errorf("starting embedded services: %w", err)
+		return fmt.Errorf("starting local services: %w", err)
 	}
 
 	// --- Metrics ---

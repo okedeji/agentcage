@@ -51,8 +51,8 @@ func (f *FalcoService) Start(ctx context.Context) error {
 	bin := filepath.Join(BinDir(), "falco")
 
 	// Falco requires root/privileged access for syscall monitoring.
-	// In embedded mode, we start it and let it fail gracefully if
-	// privileges are insufficient (dev mode on laptop vs production).
+	// In local mode, we start it and let it fail gracefully if
+	// privileges are insufficient.
 	f.proc = newSubprocess("falco", f.log, bin,
 		"--modern-bpf",
 		"--json-output",
@@ -60,7 +60,7 @@ func (f *FalcoService) Start(ctx context.Context) error {
 
 	if err := f.proc.start(ctx); err != nil {
 		f.log.Info("falco failed to start — syscall monitoring unavailable (may require root)", "error", err)
-		// Non-fatal: agentcage can run without Falco in dev mode
+		// Non-fatal: agentcage can run without Falco in local mode
 		return nil
 	}
 

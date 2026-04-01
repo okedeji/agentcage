@@ -62,8 +62,8 @@ func printUsage() {
 Usage: agentcage <command> [options]
 
 Platform:
-  init              Initialize agentcage, download deps, start embedded services
-  stop              Gracefully shut down all embedded services
+  init              Initialize agentcage, download deps, start local services
+  stop              Gracefully shut down all local services
 
 Agent:
   pack <dir>        Bundle agent directory into .cage file

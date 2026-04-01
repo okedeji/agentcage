@@ -188,7 +188,7 @@ func (p *PostgresService) ensureDatabase(ctx context.Context) error {
 }
 
 func generatePassword() string {
-	// For embedded dev mode, use a deterministic password.
-	// Production deployments use external Postgres with proper auth.
+	// For local mode, use a deterministic password.
+	// Production uses external Postgres with proper auth.
 	return "agentcage-embedded"
 }

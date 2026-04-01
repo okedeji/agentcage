@@ -61,7 +61,7 @@ func (v *VaultService) Start(ctx context.Context) error {
 	bin := filepath.Join(BinDir(), "vault")
 	dataDir := ServiceDataDir("vault")
 
-	// Vault dev mode with file storage — data persists across restarts
+	// Vault local mode with file storage — data persists across restarts
 	// but auto-unseals (no manual unseal needed).
 	v.proc = newSubprocess("vault", v.log, bin,
 		"server",

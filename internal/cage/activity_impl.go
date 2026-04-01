@@ -28,7 +28,7 @@ type NetworkPolicy interface {
 
 // ActivityImpl provides concrete implementations of all cage lifecycle
 // activities. All dependency fields are optional — nil dependencies are
-// handled gracefully (logged and skipped) to support dev mode where
+// handled gracefully (logged and skipped) to support local mode where
 // SPIRE, Vault, or Falco may not be available.
 type ActivityImpl struct {
 	provisioner VMProvisioner
