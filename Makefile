@@ -15,6 +15,9 @@ build-linux-vm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINDIR)/vm/agentcage-linux-arm64 ./cmd/agentcage/
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINDIR)/vm/agentcage-linux-amd64 ./cmd/agentcage/
 
+build-vm-rootfs:
+	./scripts/build-vm-rootfs.sh $(BINDIR)/vm/rootfs-$(shell uname -m).img
+
 CAGE_INTERNAL := cage-init payload-proxy findings-sidecar
 
 build-cage-internal: $(addprefix build-cage-internal-,$(CAGE_INTERNAL))

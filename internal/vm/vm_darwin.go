@@ -22,7 +22,7 @@ type LinuxVM struct {
 // Boot creates and starts a Linux VM with the given configuration.
 func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 	bootLoader, err := vz.NewLinuxBootLoader(cfg.KernelPath,
-		vz.WithCommandLine("console=hvc0 root=/dev/vda rw init=/sbin/init"),
+		vz.WithCommandLine("console=hvc0 root=/dev/vda rw init=/sbin/init-agentcage"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating boot loader: %w", err)
@@ -34,9 +34,7 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 	}
 
 	// Disk (rootfs)
-	diskAttachment, err := vz.NewDiskImageStorageDeviceAttachmentWithCacheAndSync(
-		cfg.RootfsPath, false, vz.DiskImageCachingModeAutomatic, vz.DiskImageSynchronizationModeFsync,
-	)
+	diskAttachment, err := vz.NewDiskImageStorageDeviceAttachment(cfg.RootfsPath, false)
 	if err != nil {
 		return nil, fmt.Errorf("creating disk attachment: %w", err)
 	}
@@ -55,6 +53,11 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating network device: %w", err)
 	}
+	mac, err := vz.NewRandomLocallyAdministeredMACAddress()
+	if err != nil {
+		return nil, fmt.Errorf("creating MAC address: %w", err)
+	}
+	netDevice.SetMACAddress(mac)
 	vmCfg.SetNetworkDevicesVirtualMachineConfiguration([]*vz.VirtioNetworkDeviceConfiguration{netDevice})
 
 	// VirtioFS (shared directory)
@@ -66,7 +69,7 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 		vmCfg.SetDirectorySharingDevicesVirtualMachineConfiguration([]vz.DirectorySharingDeviceConfiguration{shareDevice})
 	}
 
-	// Serial console (for capturing VM boot output)
+	// Serial console
 	serialPort, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating serial port: %w", err)
@@ -123,17 +126,12 @@ func (v *LinuxVM) Shutdown(ctx context.Context) error {
 		return v.machine.Stop()
 	}
 
-	done := make(chan struct{})
-	go func() {
-		for v.machine.State() != vz.VirtualMachineStateStopped {
-			time.Sleep(200 * time.Millisecond)
-		}
-		close(done)
-	}()
-
 	select {
-	case <-done:
-		return nil
+	case newState := <-v.machine.StateChangedNotify():
+		if newState == vz.VirtualMachineStateStopped {
+			return nil
+		}
+		return v.machine.Stop()
 	case <-ctx.Done():
 		return v.machine.Stop()
 	case <-time.After(10 * time.Second):
@@ -152,8 +150,10 @@ func (v *LinuxVM) IsRunning() bool {
 }
 
 func (v *LinuxVM) Wait() error {
-	for v.machine.State() == vz.VirtualMachineStateRunning {
-		time.Sleep(500 * time.Millisecond)
+	for newState := range v.machine.StateChangedNotify() {
+		if newState == vz.VirtualMachineStateStopped {
+			return nil
+		}
 	}
 	return nil
 }

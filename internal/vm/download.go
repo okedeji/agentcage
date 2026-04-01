@@ -19,7 +19,7 @@ func EnsureAssets(ctx context.Context, agentcageVersion string) error {
 	if err := ensureKernel(ctx); err != nil {
 		return fmt.Errorf("ensuring kernel: %w", err)
 	}
-	if err := ensureRootfs(ctx); err != nil {
+	if err := ensureRootfs(ctx, agentcageVersion); err != nil {
 		return fmt.Errorf("ensuring rootfs: %w", err)
 	}
 	if err := ensureLinuxBinary(ctx, agentcageVersion); err != nil {
@@ -42,7 +42,7 @@ func ensureKernel(ctx context.Context) error {
 	return download(ctx, url, dest)
 }
 
-func ensureRootfs(ctx context.Context) error {
+func ensureRootfs(ctx context.Context, version string) error {
 	dest := RootfsPath()
 	if _, err := os.Stat(dest); err == nil {
 		return nil
@@ -50,8 +50,8 @@ func ensureRootfs(ctx context.Context) error {
 
 	arch := runtime.GOARCH
 	url := fmt.Sprintf(
-		"https://github.com/okedeji/agentcage/releases/download/vm-assets/rootfs-%s-%s.img",
-		alpineVersion, arch,
+		"https://github.com/okedeji/agentcage/releases/download/v%s/rootfs-%s.img",
+		version, arch,
 	)
 	return download(ctx, url, dest)
 }
