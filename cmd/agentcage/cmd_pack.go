@@ -36,7 +36,7 @@ func cmdPack(args []string) {
 
 	fmt.Printf("Packing %s...\n", dir)
 
-	manifest, err := cagefile.PackToFile(dir, outPath)
+	manifest, err := cagefile.PackToFile(dir, version, outPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

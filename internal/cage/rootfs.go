@@ -32,14 +32,16 @@ type CageEnv struct {
 // RootfsBuilder assembles a Firecracker-bootable ext4 rootfs from a base
 // image and a .cage bundle.
 type RootfsBuilder struct {
-	baseRootfsPath string // path to the base ext4 image
-	workDir        string // directory for assembled rootfs copies
+	baseRootfsPath string
+	workDir        string
+	version        string
 }
 
-func NewRootfsBuilder(baseRootfsPath, workDir string) *RootfsBuilder {
+func NewRootfsBuilder(baseRootfsPath, workDir, version string) *RootfsBuilder {
 	return &RootfsBuilder{
 		baseRootfsPath: baseRootfsPath,
 		workDir:        workDir,
+		version:        version,
 	}
 }
 
@@ -50,6 +52,10 @@ func NewRootfsBuilder(baseRootfsPath, workDir string) *RootfsBuilder {
 //
 // Returns the path to the assembled rootfs.
 func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cagefile.BundleManifest, bundleFilesDir string, env CageEnv) (string, error) {
+	if err := cagefile.CheckCompatibility(bundle, b.version); err != nil {
+		return "", fmt.Errorf("cage %s: %w", cageID, err)
+	}
+
 	rootfsPath := filepath.Join(b.workDir, cageID+".ext4")
 
 	// Copy base rootfs — use cp --reflink=auto for copy-on-write on

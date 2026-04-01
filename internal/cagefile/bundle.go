@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -34,7 +35,7 @@ type BundleManifest struct {
 //
 //	manifest.json
 //	files/          (agent source code)
-func Pack(dir string, w io.Writer) (*BundleManifest, error) {
+func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 	cagefilePath := filepath.Join(dir, "Cagefile")
 	f, err := os.Open(cagefilePath)
 	if err != nil {
@@ -55,7 +56,7 @@ func Pack(dir string, w io.Writer) (*BundleManifest, error) {
 
 	bundleManifest := &BundleManifest{
 		Name:       filepath.Base(dir),
-		Version:    "1.0.0",
+		Version:    version,
 		Runtime:    manifest.Runtime,
 		Entrypoint: manifest.Entrypoint,
 		SystemDeps: manifest.SystemDeps,
@@ -91,14 +92,14 @@ func Pack(dir string, w io.Writer) (*BundleManifest, error) {
 }
 
 // PackToFile packs a directory into a .cage file on disk.
-func PackToFile(dir, outPath string) (*BundleManifest, error) {
+func PackToFile(dir, version, outPath string) (*BundleManifest, error) {
 	f, err := os.Create(outPath)
 	if err != nil {
 		return nil, fmt.Errorf("creating bundle file %s: %w", outPath, err)
 	}
 	defer func() { _ = f.Close() }()
 
-	return Pack(dir, f)
+	return Pack(dir, version, f)
 }
 
 // Unpack extracts a .cage bundle to a destination directory.
@@ -171,6 +172,29 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 	}
 
 	return manifest, nil
+}
+
+// CheckCompatibility verifies the bundle was packed with a compatible agentcage version.
+func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
+	bundleMajor, err := majorVersion(bundle.Version)
+	if err != nil {
+		return fmt.Errorf("invalid bundle version %q: %w", bundle.Version, err)
+	}
+	currentMajor, err := majorVersion(currentVersion)
+	if err != nil {
+		return fmt.Errorf("invalid current version %q: %w", currentVersion, err)
+	}
+	if bundleMajor > currentMajor {
+		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d) — upgrade agentcage",
+			bundle.Version, bundleMajor, currentVersion, currentMajor)
+	}
+	return nil
+}
+
+func majorVersion(v string) (int, error) {
+	v = strings.TrimPrefix(v, "v")
+	parts := strings.SplitN(v, ".", 2)
+	return strconv.Atoi(parts[0])
 }
 
 // UnpackFile extracts a .cage file to a destination directory.
