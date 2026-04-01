@@ -46,10 +46,23 @@ func cmdPack(args []string) {
 	sizeMB := float64(outInfo.Size()) / (1024 * 1024)
 
 	fmt.Printf("\n  Bundle:     %s (%.1f MB)\n", outPath, sizeMB)
+	fmt.Printf("  Version:    %s\n", manifest.Version)
 	fmt.Printf("  Runtime:    %s\n", manifest.Runtime)
 	fmt.Printf("  Entrypoint: %s\n", manifest.Entrypoint)
 	if len(manifest.SystemDeps) > 0 {
 		fmt.Printf("  Deps:       %s\n", strings.Join(manifest.SystemDeps, ", "))
+	}
+	if len(manifest.Packages) > 0 {
+		fmt.Printf("  Packages:   %s\n", strings.Join(manifest.Packages, ", "))
+	}
+	if len(manifest.PipDeps) > 0 {
+		fmt.Printf("  Pip:        %s\n", strings.Join(manifest.PipDeps, ", "))
+	}
+	if len(manifest.NpmDeps) > 0 {
+		fmt.Printf("  Npm:        %s\n", strings.Join(manifest.NpmDeps, ", "))
+	}
+	if len(manifest.GoDeps) > 0 {
+		fmt.Printf("  Go:         %s\n", strings.Join(manifest.GoDeps, ", "))
 	}
 	fmt.Printf("  Hash:       %s\n", manifest.FilesHash)
 	fmt.Println("\nReady. Use 'agentcage run --agent", outPath, "--target <host>' to start an assessment.")
