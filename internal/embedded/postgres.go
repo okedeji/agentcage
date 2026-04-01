@@ -1,13 +1,19 @@
 package embedded
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -47,7 +53,7 @@ func (p *PostgresService) URL() string {
 }
 
 func (p *PostgresService) Download(ctx context.Context) error {
-	// Check if postgres is already available on the system
+	// Prefer system postgres if available
 	path, err := exec.LookPath("postgres")
 	if err == nil {
 		p.binPath = filepath.Dir(path)
@@ -55,23 +61,62 @@ func (p *PostgresService) Download(ctx context.Context) error {
 		return nil
 	}
 
-	// For embedded postgres, we rely on the system package manager or
-	// a pre-built binary. In production this would use embedded-postgres-go
-	// or download a static build.
-	p.binPath = "/usr/lib/postgresql/" + postgresVersion + "/bin"
-	if _, err := os.Stat(filepath.Join(p.binPath, "postgres")); err == nil {
-		return nil
+	// Check common installation paths
+	for _, candidate := range []string{
+		"/usr/lib/postgresql/" + postgresVersion + "/bin",
+		"/usr/bin",
+	} {
+		if _, err := os.Stat(filepath.Join(candidate, "postgres")); err == nil {
+			p.binPath = candidate
+			return nil
+		}
 	}
-	p.binPath = "/usr/bin"
-	if _, err := os.Stat(filepath.Join(p.binPath, "postgres")); err == nil {
+
+	// Download embedded postgres binaries
+	pgDir := filepath.Join(BinDir(), "postgres-"+postgresVersion)
+	pgBin := filepath.Join(pgDir, "bin", "postgres")
+	if _, err := os.Stat(pgBin); err == nil {
+		p.binPath = filepath.Join(pgDir, "bin")
 		return nil
 	}
 
-	return fmt.Errorf("postgres not found — install PostgreSQL %s or provide infrastructure.postgres.url in config", postgresVersion)
+	arch := runtime.GOARCH
+	osName := runtime.GOOS
+
+	url := fmt.Sprintf(
+		"https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-%s-%s/%s.0/embedded-postgres-binaries-%s-%s-%s.0.jar",
+		osName, arch, postgresVersion, osName, arch, postgresVersion,
+	)
+
+	p.log.Info("downloading postgres", "version", postgresVersion, "url", url)
+
+	archivePath := filepath.Join(BinDir(), "postgres-"+postgresVersion+".jar")
+	if err := downloadBinary(ctx, url, archivePath); err != nil {
+		return fmt.Errorf("downloading postgres: %w — install PostgreSQL %s or provide infrastructure.postgres.url in config", err, postgresVersion)
+	}
+
+	if err := extractPostgresBinaries(archivePath, pgDir); err != nil {
+		_ = os.Remove(archivePath)
+		return fmt.Errorf("extracting postgres: %w", err)
+	}
+	_ = os.Remove(archivePath)
+
+	p.binPath = filepath.Join(pgDir, "bin")
+	p.log.Info("postgres downloaded", "path", p.binPath)
+	return nil
 }
 
 func (p *PostgresService) Start(ctx context.Context) error {
 	pgData := filepath.Join(p.dataDir, "pgdata")
+
+	// Verify data directory version matches the binary we're about to use
+	versionFile := filepath.Join(pgData, "PG_VERSION")
+	if raw, err := os.ReadFile(versionFile); err == nil {
+		dataVersion := strings.TrimSpace(string(raw))
+		if dataVersion != postgresVersion {
+			return fmt.Errorf("postgres data directory is version %s but binary is version %s. run pg_upgrade or remove %s to reinitialize", dataVersion, postgresVersion, pgData)
+		}
+	}
 
 	// Initialize data directory if it doesn't exist
 	if _, err := os.Stat(filepath.Join(pgData, "PG_VERSION")); os.IsNotExist(err) {
@@ -184,6 +229,79 @@ func (p *PostgresService) ensureDatabase(ctx context.Context) error {
 		p.log.Info("created database", "name", postgresDB)
 	}
 
+	return nil
+}
+
+// extractPostgresBinaries unpacks the zonky embedded-postgres jar (a zip
+// containing a tar.gz of the postgres installation) into destDir.
+func extractPostgresBinaries(jarPath, destDir string) error {
+	zr, err := zip.OpenReader(jarPath)
+	if err != nil {
+		return fmt.Errorf("opening jar: %w", err)
+	}
+	defer func() { _ = zr.Close() }()
+
+	for _, f := range zr.File {
+		if !strings.HasSuffix(f.Name, ".tar.gz") {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("opening %s in jar: %w", f.Name, err)
+		}
+		err = extractTarGz(rc, destDir)
+		_ = rc.Close()
+		return err
+	}
+	return fmt.Errorf("no .tar.gz found in jar")
+}
+
+func extractTarGz(r io.Reader, destDir string) error {
+	gr, err := gzip.NewReader(r)
+	if err != nil {
+		return fmt.Errorf("opening gzip: %w", err)
+	}
+	defer func() { _ = gr.Close() }()
+
+	tr := tar.NewReader(gr)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading tar: %w", err)
+		}
+
+		target := filepath.Join(destDir, hdr.Name)
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)) {
+			return fmt.Errorf("path traversal in tar: %s", hdr.Name)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
+				return fmt.Errorf("creating directory %s: %w", target, err)
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return fmt.Errorf("creating parent for %s: %w", target, err)
+			}
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
+			if err != nil {
+				return fmt.Errorf("creating file %s: %w", target, err)
+			}
+			if _, err := io.Copy(f, tr); err != nil {
+				_ = f.Close()
+				return fmt.Errorf("writing %s: %w", target, err)
+			}
+			_ = f.Close()
+		case tar.TypeSymlink:
+			if err := os.Symlink(hdr.Linkname, target); err != nil {
+				return fmt.Errorf("creating symlink %s: %w", target, err)
+			}
+		}
+	}
 	return nil
 }
 
