@@ -49,6 +49,11 @@ func LogDir() string {
 	return filepath.Join(DataDir(), "logs")
 }
 
+// VMDir returns the directory where VM assets (kernel, rootfs, linux binary) are stored.
+func VMDir() string {
+	return filepath.Join(DataDir(), "vm")
+}
+
 // RunDir returns the directory for runtime state (PID files, sockets).
 func RunDir() string {
 	return filepath.Join(DataDir(), "run")
@@ -70,6 +75,7 @@ func EnsureDirs() error {
 		ServiceDataDir("nats"),
 		ServiceDataDir("spire"),
 		ServiceDataDir("vault"),
+		VMDir(),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {

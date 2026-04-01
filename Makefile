@@ -11,6 +11,10 @@ build: build-agentcage build-cage-internal
 build-agentcage:
 	$(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage ./cmd/agentcage/
 
+build-linux-vm:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINDIR)/vm/agentcage-linux-arm64 ./cmd/agentcage/
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINDIR)/vm/agentcage-linux-amd64 ./cmd/agentcage/
+
 CAGE_INTERNAL := cage-init payload-proxy findings-sidecar
 
 build-cage-internal: $(addprefix build-cage-internal-,$(CAGE_INTERNAL))

@@ -1,0 +1,23 @@
+syntax = "proto3";
+package agentcage.control.v1;
+option go_package = "github.com/okedeji/agentcage/api/proto";
+
+service ControlService {
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Stop(StopRequest) returns (StopResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string version = 1;
+  string status = 2;
+}
+
+message StopRequest {}
+message StopResponse {}
+
+message HealthRequest {}
+message HealthResponse {
+  map<string, string> services = 1;
+}

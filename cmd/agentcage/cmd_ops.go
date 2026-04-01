@@ -9,6 +9,10 @@ import (
 	"github.com/okedeji/agentcage/internal/embedded"
 )
 
+// cmdStop handles the native Linux stop path.
+// On darwin, platformStop in platform_darwin.go handles VM shutdown instead.
+var _ = cmdStop
+
 func cmdStop(args []string) {
 	fmt.Println("Stopping agentcage...")
 	// TODO: Signal the running init process via PID file

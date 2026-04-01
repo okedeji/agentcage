@@ -16,43 +16,56 @@ func main() {
 	cmd := os.Args[1]
 	args := os.Args[2:]
 
+	// On macOS, init/stop are handled by the platform layer (VM lifecycle).
+	// Commands that talk to gRPC are proxied to the VM.
+	// pack, version, help always run locally.
 	switch cmd {
 	case "init":
-		cmdInit(args)
+		platformInit(args)
 	case "stop":
-		cmdStop(args)
+		platformStop(args)
 	case "pack":
 		cmdPack(args)
-	case "run":
-		cmdRun(args)
-	case "test":
-		cmdTest(args)
-	case "status":
-		cmdStatus(args)
-	case "findings":
-		cmdFindings(args)
-	case "report":
-		cmdReport(args)
-	case "interventions":
-		cmdInterventions(args)
-	case "resolve":
-		cmdResolve(args)
-	case "fleet":
-		cmdFleet(args)
-	case "db":
-		cmdDB(args)
-	case "logs":
-		cmdLogs(args)
-	case "audit":
-		cmdAudit(args)
 	case "version":
 		fmt.Printf("agentcage %s\n", version)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", cmd)
-		printUsage()
-		os.Exit(1)
+		if isProxyCommand(cmd) {
+			// On darwin, these proxy to the VM's gRPC.
+			// On linux, isProxyCommand returns false so we fall through.
+			fmt.Fprintf(os.Stderr, "agentcage is not running. Run 'agentcage init' first.\n")
+			os.Exit(1)
+		}
+
+		switch cmd {
+		case "run":
+			cmdRun(args)
+		case "test":
+			cmdTest(args)
+		case "status":
+			cmdStatus(args)
+		case "findings":
+			cmdFindings(args)
+		case "report":
+			cmdReport(args)
+		case "interventions":
+			cmdInterventions(args)
+		case "resolve":
+			cmdResolve(args)
+		case "fleet":
+			cmdFleet(args)
+		case "db":
+			cmdDB(args)
+		case "logs":
+			cmdLogs(args)
+		case "audit":
+			cmdAudit(args)
+		default:
+			fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", cmd)
+			printUsage()
+			os.Exit(1)
+		}
 	}
 }
 

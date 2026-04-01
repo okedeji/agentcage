@@ -82,7 +82,7 @@ func (s *SPIREService) Download(ctx context.Context) error {
 	}
 	_ = os.Remove(archivePath)
 
-	// SPIRE extracts into a versioned directory — move binaries to BinDir
+	// SPIRE extracts into a versioned directory. Move binaries to BinDir
 	extractedDir := filepath.Join(BinDir(), "spire-"+spireVersion)
 	for _, bin := range []string{"spire-server", "spire-agent"} {
 		src := filepath.Join(extractedDir, "bin", bin)

@@ -16,6 +16,7 @@ import (
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
 
+	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
@@ -207,6 +208,9 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- gRPC server ---
 
 	grpcServer := grpc.NewServer()
+
+	// Control service — enables VM-based shutdown and health checks
+	pb.RegisterControlServiceServer(grpcServer, newControlServer(cancel))
 
 	// Register gRPC services — proto adapters bridge domain servers to
 	// generated gRPC interfaces. Full registration requires adapter types

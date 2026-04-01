@@ -27,8 +27,8 @@ type AssessmentStatus int32
 
 const (
 	AssessmentStatus_ASSESSMENT_STATUS_UNSPECIFIED    AssessmentStatus = 0
-	AssessmentStatus_ASSESSMENT_STATUS_DISCOVERY        AssessmentStatus = 1
-	AssessmentStatus_ASSESSMENT_STATUS_EXPLOITATION        AssessmentStatus = 2
+	AssessmentStatus_ASSESSMENT_STATUS_DISCOVERY      AssessmentStatus = 1
+	AssessmentStatus_ASSESSMENT_STATUS_EXPLOITATION   AssessmentStatus = 2
 	AssessmentStatus_ASSESSMENT_STATUS_VALIDATION     AssessmentStatus = 3
 	AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW AssessmentStatus = 4
 	AssessmentStatus_ASSESSMENT_STATUS_APPROVED       AssessmentStatus = 5
@@ -48,8 +48,8 @@ var (
 	}
 	AssessmentStatus_value = map[string]int32{
 		"ASSESSMENT_STATUS_UNSPECIFIED":    0,
-		"ASSESSMENT_STATUS_DISCOVERY":        1,
-		"ASSESSMENT_STATUS_EXPLOITATION":        2,
+		"ASSESSMENT_STATUS_DISCOVERY":      1,
+		"ASSESSMENT_STATUS_EXPLOITATION":   2,
 		"ASSESSMENT_STATUS_VALIDATION":     3,
 		"ASSESSMENT_STATUS_PENDING_REVIEW": 4,
 		"ASSESSMENT_STATUS_APPROVED":       5,
@@ -690,11 +690,11 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x15GetAssessmentResponse\x12G\n" +
 	"\n" +
 	"assessment\x18\x01 \x01(\v2'.agentcage.assessment.v1.AssessmentInfoR\n" +
-	"assessment*\xfb\x01\n" +
+	"assessment*\x82\x02\n" +
 	"\x10AssessmentStatus\x12!\n" +
-	"\x1dASSESSMENT_STATUS_UNSPECIFIED\x10\x00\x12\x1d\n" +
-	"\x19ASSESSMENT_STATUS_DISCOVERY\x10\x01\x12\x1d\n" +
-	"\x19ASSESSMENT_STATUS_EXPLOITATION\x10\x02\x12 \n" +
+	"\x1dASSESSMENT_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bASSESSMENT_STATUS_DISCOVERY\x10\x01\x12\"\n" +
+	"\x1eASSESSMENT_STATUS_EXPLOITATION\x10\x02\x12 \n" +
 	"\x1cASSESSMENT_STATUS_VALIDATION\x10\x03\x12$\n" +
 	" ASSESSMENT_STATUS_PENDING_REVIEW\x10\x04\x12\x1e\n" +
 	"\x1aASSESSMENT_STATUS_APPROVED\x10\x05\x12\x1e\n" +
