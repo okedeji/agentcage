@@ -139,9 +139,9 @@ func newSubprocess(name string, log logr.Logger, binPath string, args ...string)
 	}
 }
 
-func (s *subprocess) start(ctx context.Context) error {
+func (s *subprocess) start(_ context.Context) error {
 	logPath := filepath.Join(LogDir(), s.name+".log")
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("opening log file %s: %w", logPath, err)
 	}
