@@ -19,12 +19,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func platformInit(args []string) {
-	if runtime.GOOS != "darwin" {
-		cmdInit(args)
-		return
-	}
-
+func platformInit(_ []string) {
 	if runtime.GOARCH == "amd64" {
 		fmt.Println("WARNING: Intel Mac detected. Firecracker cannot create nested microVMs (no KVM).")
 		fmt.Println("         SPIRE, Falco, and other services will work. Agent cages will use mock isolation.")
@@ -67,17 +62,22 @@ func platformInit(args []string) {
 		os.Exit(1)
 	}
 
-	// Start local TCP proxy: localhost:9090 -> VM:9090
-	proxyAddr := ":9090"
+	vmIP := machine.IP()
 	go func() {
-		if err := tcpProxy(proxyAddr, machine.GRPCAddr()); err != nil {
-			fmt.Fprintf(os.Stderr, "gRPC proxy error: %v\n", err)
+		if err := tcpProxy(":9090", net.JoinHostPort(vmIP, "9090")); err != nil {
+			fmt.Fprintf(os.Stderr, "gRPC proxy failed on :9090: %v\n  Check: lsof -i :9090\n", err)
 			cancel()
+		}
+	}()
+	go func() {
+		if err := tcpProxy(":15432", net.JoinHostPort(vmIP, "15432")); err != nil {
+			fmt.Fprintf(os.Stderr, "Postgres proxy failed on :15432: %v\n  Check: lsof -i :15432\n", err)
 		}
 	}()
 
 	fmt.Printf("\nagentcage ready (running inside Linux VM).\n")
-	fmt.Printf("  gRPC:     localhost%s\n", proxyAddr)
+	fmt.Printf("  gRPC:     localhost:9090\n")
+	fmt.Printf("  Postgres: localhost:15432\n")
 	fmt.Printf("  VM:       Apple Virtualization.framework (%s)\n", runtime.GOARCH)
 	fmt.Printf("  Data:     %s\n\n", home)
 	fmt.Println("Press Ctrl+C to stop.")

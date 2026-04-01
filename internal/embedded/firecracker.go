@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/go-logr/logr"
 )
 
 const (
-	firecrackerVersion = "1.6.0"
+	firecrackerVersion = "1.14.1"
 	kernelVersion      = "6.1"
 )
 
@@ -51,19 +50,37 @@ func (f *FirecrackerDownloader) downloadFirecracker(ctx context.Context) error {
 	}
 
 	arch := archSuffix()
-	if runtime.GOOS != "linux" {
-		f.log.Info("firecracker only runs on Linux — skipping download (local mode)")
-		if err := os.WriteFile(dest, []byte("#!/bin/sh\necho 'firecracker requires linux'"), 0755); err != nil {
-			return fmt.Errorf("creating stub: %w", err)
-		}
-		return nil
-	}
-
-	url := fmt.Sprintf("https://github.com/firecracker-microvm/firecracker/releases/download/v%s/firecracker-v%s-%s",
+	url := fmt.Sprintf("https://github.com/firecracker-microvm/firecracker/releases/download/v%s/firecracker-v%s-%s.tgz",
 		firecrackerVersion, firecrackerVersion, arch)
 
-	f.log.Info("downloading firecracker", "version", firecrackerVersion, "arch", arch)
-	return downloadBinary(ctx, url, dest)
+	f.log.Info("downloading firecracker", "version", firecrackerVersion, "url", url)
+
+	archivePath := filepath.Join(BinDir(), "firecracker-"+firecrackerVersion+".tgz")
+	if err := downloadBinary(ctx, url, archivePath); err != nil {
+		return fmt.Errorf("downloading firecracker: %w", err)
+	}
+
+	archive, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("opening firecracker archive: %w", err)
+	}
+	defer func() { _ = archive.Close() }()
+
+	extractDir := filepath.Join(BinDir(), "firecracker-extract")
+	if err := extractTarGz(archive, extractDir); err != nil {
+		_ = os.Remove(archivePath)
+		return fmt.Errorf("extracting firecracker: %w", err)
+	}
+	_ = os.Remove(archivePath)
+
+	src := filepath.Join(extractDir, fmt.Sprintf("release-v%s-%s", firecrackerVersion, arch), "firecracker-v"+firecrackerVersion+"-"+arch)
+	if err := os.Rename(src, dest); err != nil {
+		_ = os.RemoveAll(extractDir)
+		return fmt.Errorf("moving firecracker binary: %w", err)
+	}
+	_ = os.RemoveAll(extractDir)
+
+	return nil
 }
 
 func (f *FirecrackerDownloader) downloadKernel(ctx context.Context) error {
@@ -72,17 +89,9 @@ func (f *FirecrackerDownloader) downloadKernel(ctx context.Context) error {
 		return nil
 	}
 
-	if runtime.GOOS != "linux" {
-		f.log.Info("kernel only needed on Linux — skipping download (local mode)")
-		if err := os.WriteFile(dest, []byte{}, 0644); err != nil {
-			return fmt.Errorf("creating stub kernel: %w", err)
-		}
-		return nil
-	}
-
 	arch := archSuffix()
-	url := fmt.Sprintf("https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/%s/kernels/vmlinux-%s.bin",
-		arch, kernelVersion)
+	url := fmt.Sprintf("https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/%s/kernels/vmlinux.bin",
+		arch)
 
 	f.log.Info("downloading linux kernel", "version", kernelVersion, "arch", arch)
 	return downloadBinary(ctx, url, dest)

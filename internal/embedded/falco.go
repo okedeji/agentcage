@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/go-logr/logr"
 )
@@ -30,14 +29,6 @@ func (f *FalcoService) IsExternal() bool   { return false }
 func (f *FalcoService) Download(ctx context.Context) error {
 	dest := filepath.Join(BinDir(), "falco")
 	if _, err := os.Stat(dest); err == nil {
-		return nil
-	}
-
-	if runtime.GOOS != "linux" {
-		f.log.Info("Falco only runs on Linux — skipping download (local mode)")
-		if err := os.WriteFile(dest, []byte("#!/bin/sh\necho 'falco requires linux'"), 0755); err != nil {
-			return fmt.Errorf("creating stub falco: %w", err)
-		}
 		return nil
 	}
 

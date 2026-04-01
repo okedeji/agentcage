@@ -47,18 +47,6 @@ func (s *SPIREService) Download(ctx context.Context) error {
 		}
 	}
 
-	if runtime.GOOS != "linux" {
-		s.log.Info("SPIRE only publishes Linux binaries — skipping download (local mode)")
-		for _, dest := range []string{serverBin, agentBin} {
-			if _, err := os.Stat(dest); os.IsNotExist(err) {
-				if err := os.WriteFile(dest, []byte("#!/bin/sh\necho 'spire requires linux'"), 0755); err != nil {
-					return fmt.Errorf("creating stub %s: %w", dest, err)
-				}
-			}
-		}
-		return nil
-	}
-
 	arch := runtime.GOARCH
 	url := fmt.Sprintf("https://github.com/spiffe/spire/releases/download/v%s/spire-%s-linux-%s-glibc.tar.gz",
 		spireVersion, spireVersion, arch)
@@ -97,11 +85,6 @@ func (s *SPIREService) Download(ctx context.Context) error {
 }
 
 func (s *SPIREService) Start(ctx context.Context) error {
-	if runtime.GOOS != "linux" {
-		s.log.Info("SPIRE requires Linux — identity services unavailable (local mode)")
-		return nil
-	}
-
 	dataDir := ServiceDataDir("spire")
 	socketDir := filepath.Join(RunDir(), "spire")
 	if err := os.MkdirAll(socketDir, 0755); err != nil {
