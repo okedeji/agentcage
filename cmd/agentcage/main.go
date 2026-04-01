@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 )
 
 const version = "0.1.0"
@@ -32,10 +34,8 @@ func main() {
 		printUsage()
 	default:
 		if isProxyCommand(cmd) {
-			// On darwin, these proxy to the VM's gRPC.
-			// On linux, isProxyCommand returns false so we fall through.
-			fmt.Fprintf(os.Stderr, "agentcage is not running. Run 'agentcage init' first.\n")
-			os.Exit(1)
+			agentgrpc.Proxy(cmd, args)
+			return
 		}
 
 		switch cmd {

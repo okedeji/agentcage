@@ -116,7 +116,7 @@ func platformInit(args []string) {
 	fmt.Println("agentcage stopped.")
 }
 
-func platformStop(args []string) {
+func platformStop(_ []string) {
 	conn, err := grpc.NewClient("localhost:9090",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -141,7 +141,7 @@ func platformStop(args []string) {
 func isProxyCommand(cmd string) bool {
 	switch cmd {
 	case "run", "test", "status", "findings", "report",
-		"interventions", "resolve", "fleet", "db", "logs", "audit":
+		"interventions", "resolve", "fleet":
 		return true
 	}
 	return false

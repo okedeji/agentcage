@@ -16,10 +16,10 @@ import (
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
 
-	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
+	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/enforcement"
 	"github.com/okedeji/agentcage/internal/fleet"
@@ -209,19 +209,16 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	grpcServer := grpc.NewServer()
 
-	// Control service — enables VM-based shutdown and health checks
-	pb.RegisterControlServiceServer(grpcServer, newControlServer(cancel))
-
-	// Register gRPC services — proto adapters bridge domain servers to
-	// generated gRPC interfaces. Full registration requires adapter types
-	// that implement the pb.Xxx_ServiceServer interfaces by delegating to
-	// our domain servers. For now, log availability.
-	_ = cageServer
-	_ = assessmentServer
-	_ = iServer
-	_ = fleetServer
+	agentgrpc.Register(grpcServer, agentgrpc.Services{
+		Cages:         cageServer,
+		Assessments:   assessmentServer,
+		Interventions: iServer,
+		Fleet:         fleetServer,
+		Cancel:        cancel,
+		Version:       version,
+	})
 	_ = configServer
-	log.Info("domain servers ready (gRPC adapter registration pending)")
+	log.Info("gRPC services registered")
 
 	// --- Temporal workers ---
 
