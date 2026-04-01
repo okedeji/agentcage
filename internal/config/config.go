@@ -183,8 +183,11 @@ type ActivityTimeoutsConfig struct {
 	HeartbeatMonitorCage time.Duration `yaml:"heartbeat_monitor_cage"`
 }
 
-// DefaultPath returns ~/.agentcage/config.yaml.
+// DefaultPath returns the default config file path under the agentcage home directory.
 func DefaultPath() (string, error) {
+	if d := os.Getenv("AGENTCAGE_HOME"); d != "" {
+		return filepath.Join(d, "config.yaml"), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolving home directory: %w", err)
@@ -218,6 +221,12 @@ func Resolve(explicit string) string {
 	}
 	if envPath := os.Getenv("AGENTCAGE_CONFIG"); envPath != "" {
 		return envPath
+	}
+	if d := os.Getenv("AGENTCAGE_HOME"); d != "" {
+		homePath := filepath.Join(d, "config.yaml")
+		if _, err := os.Stat(homePath); err == nil {
+			return homePath
+		}
 	}
 	home, err := os.UserHomeDir()
 	if err == nil {
@@ -670,16 +679,4 @@ func (c *Config) RateLimit(cageType string) int32 {
 		return ct.RateLimit
 	}
 	return 0
-}
-
-// ValidCageTypes are the recognized cage type string keys.
-var ValidCageTypes = map[string]bool{
-	"discovery":  true,
-	"validator":  true,
-	"escalation": true,
-}
-
-// IsValidCageType returns true if the given string is a recognized cage type.
-func IsValidCageType(s string) bool {
-	return ValidCageTypes[s]
 }
