@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	spireVersion    = "1.9.0"
+	spireVersion    = "1.14.1"
 	spireServerPort = "18081"
 	spireTrustDomain = "agentcage.local"
 )
@@ -41,37 +41,67 @@ func (s *SPIREService) Download(ctx context.Context) error {
 	serverBin := filepath.Join(BinDir(), "spire-server")
 	agentBin := filepath.Join(BinDir(), "spire-agent")
 
-	// Skip if already downloaded
 	if _, err := os.Stat(serverBin); err == nil {
 		if _, err := os.Stat(agentBin); err == nil {
 			return nil
 		}
 	}
 
-	arch := archSuffix()
-	osName := runtime.GOOS
-	base := fmt.Sprintf("https://github.com/spiffe/spire/releases/download/v%s/spire-%s-%s-%s.tar.gz",
-		spireVersion, spireVersion, osName, arch)
-
-	// Download the tarball, extract server and agent binaries.
-	// For now, just download and mark as stub — real extraction would use
-	// archive/tar + compress/gzip.
-	_ = base
-	_ = ctx
-
-	// Stub: create placeholder binaries that will be replaced with real download
-	for _, dest := range []string{serverBin, agentBin} {
-		if _, err := os.Stat(dest); os.IsNotExist(err) {
-			if err := os.WriteFile(dest, []byte("#!/bin/sh\necho stub"), 0755); err != nil {
-				return fmt.Errorf("creating stub %s: %w", dest, err)
+	if runtime.GOOS != "linux" {
+		s.log.Info("SPIRE only publishes Linux binaries — skipping download (local mode)")
+		for _, dest := range []string{serverBin, agentBin} {
+			if _, err := os.Stat(dest); os.IsNotExist(err) {
+				if err := os.WriteFile(dest, []byte("#!/bin/sh\necho 'spire requires linux'"), 0755); err != nil {
+					return fmt.Errorf("creating stub %s: %w", dest, err)
+				}
 			}
 		}
+		return nil
 	}
+
+	arch := runtime.GOARCH
+	url := fmt.Sprintf("https://github.com/spiffe/spire/releases/download/v%s/spire-%s-linux-%s-glibc.tar.gz",
+		spireVersion, spireVersion, arch)
+
+	s.log.Info("downloading spire", "version", spireVersion, "url", url)
+
+	archivePath := filepath.Join(BinDir(), "spire-"+spireVersion+".tar.gz")
+	if err := downloadBinary(ctx, url, archivePath); err != nil {
+		return fmt.Errorf("downloading spire: %w", err)
+	}
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("opening spire archive: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	if err := extractTarGz(f, BinDir()); err != nil {
+		_ = os.Remove(archivePath)
+		return fmt.Errorf("extracting spire: %w", err)
+	}
+	_ = os.Remove(archivePath)
+
+	// SPIRE extracts into a versioned directory — move binaries to BinDir
+	extractedDir := filepath.Join(BinDir(), "spire-"+spireVersion)
+	for _, bin := range []string{"spire-server", "spire-agent"} {
+		src := filepath.Join(extractedDir, "bin", bin)
+		dst := filepath.Join(BinDir(), bin)
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("moving %s to bin dir: %w", bin, err)
+		}
+	}
+	_ = os.RemoveAll(extractedDir)
 
 	return nil
 }
 
 func (s *SPIREService) Start(ctx context.Context) error {
+	if runtime.GOOS != "linux" {
+		s.log.Info("SPIRE requires Linux — identity services unavailable (local mode)")
+		return nil
+	}
+
 	dataDir := ServiceDataDir("spire")
 	socketDir := filepath.Join(RunDir(), "spire")
 	if err := os.MkdirAll(socketDir, 0755); err != nil {
