@@ -10,7 +10,7 @@ import (
 	"github.com/go-logr/logr"
 )
 
-const falcoVersion = "0.37.0"
+const falcoVersion = "0.43.0"
 
 // FalcoService manages an embedded Falco runtime security monitor.
 // Falco watches syscalls from cage VMs and emits alerts that agentcage's
@@ -33,17 +33,45 @@ func (f *FalcoService) Download(ctx context.Context) error {
 		return nil
 	}
 
-	arch := archSuffix()
-	osName := runtime.GOOS
-	url := fmt.Sprintf("https://download.falco.org/packages/bin/%s/%s/falco-%s-%s-%s.tar.gz",
-		osName, arch, falcoVersion, osName, arch)
-
-	// Stub: real implementation would download and extract the tarball.
-	_ = url
-
-	if err := os.WriteFile(dest, []byte("#!/bin/sh\necho stub"), 0755); err != nil {
-		return fmt.Errorf("creating stub falco: %w", err)
+	if runtime.GOOS != "linux" {
+		f.log.Info("Falco only runs on Linux — skipping download (local mode)")
+		if err := os.WriteFile(dest, []byte("#!/bin/sh\necho 'falco requires linux'"), 0755); err != nil {
+			return fmt.Errorf("creating stub falco: %w", err)
+		}
+		return nil
 	}
+
+	arch := archSuffix()
+	url := fmt.Sprintf("https://download.falco.org/packages/bin/%s/falco-%s-%s.tar.gz",
+		arch, falcoVersion, arch)
+
+	f.log.Info("downloading falco", "version", falcoVersion, "url", url)
+
+	archivePath := filepath.Join(BinDir(), "falco-"+falcoVersion+".tar.gz")
+	if err := downloadBinary(ctx, url, archivePath); err != nil {
+		return fmt.Errorf("downloading falco: %w", err)
+	}
+
+	falcoDir := filepath.Join(BinDir(), "falco-"+falcoVersion)
+	archive, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("opening falco archive: %w", err)
+	}
+	defer func() { _ = archive.Close() }()
+
+	if err := extractTarGz(archive, falcoDir); err != nil {
+		_ = os.Remove(archivePath)
+		return fmt.Errorf("extracting falco: %w", err)
+	}
+	_ = os.Remove(archivePath)
+
+	// Move falco binary to BinDir
+	src := filepath.Join(falcoDir, "usr", "bin", "falco")
+	if err := os.Rename(src, dest); err != nil {
+		return fmt.Errorf("moving falco binary: %w", err)
+	}
+	_ = os.RemoveAll(falcoDir)
+
 	return nil
 }
 
