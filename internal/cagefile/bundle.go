@@ -244,6 +244,11 @@ func addDirToTar(tw *tar.Writer, srcDir, prefix string) error {
 	})
 }
 
+// HashDir computes a SHA256 hash of all files in a directory.
+func HashDir(dir string) (string, error) {
+	return hashDir(dir)
+}
+
 func hashDir(dir string) (string, error) {
 	h := sha256.New()
 

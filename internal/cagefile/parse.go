@@ -41,7 +41,8 @@ type Manifest struct {
 // Cagefile format:
 //
 //	runtime python3
-//	deps chromium nmap sqlmap
+//	deps chromium nmap
+//	packages masscan nuclei
 //	pip requests playwright httpx
 //	npm puppeteer
 //	entrypoint python3 solver.py
@@ -92,7 +93,12 @@ func Parse(r io.Reader) (*Manifest, error) {
 			m.SystemDeps = append(m.SystemDeps, deps...)
 
 		case "packages":
-			m.Packages = append(m.Packages, strings.Fields(value)...)
+			for _, pkg := range strings.Fields(value) {
+				if SupportedTools[pkg] {
+					return nil, fmt.Errorf("line %d: %q is already a pre-installed tool — use 'deps %s' instead", lineNum, pkg, pkg)
+				}
+				m.Packages = append(m.Packages, pkg)
+			}
 
 		case "pip":
 			m.PipDeps = append(m.PipDeps, strings.Fields(value)...)

@@ -94,7 +94,17 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 		}
 	}
 
-	// Inject agent files
+	// Verify bundle integrity before injecting into rootfs
+	if bundle.FilesHash != "" {
+		hash, hashErr := cagefile.HashDir(bundleFilesDir)
+		if hashErr != nil {
+			return "", fmt.Errorf("hashing agent files for verification: %w", hashErr)
+		}
+		if "sha256:"+hash != bundle.FilesHash {
+			return "", fmt.Errorf("cage %s: agent files hash mismatch — bundle may be tampered (expected %s, got sha256:%s)", cageID, bundle.FilesHash, hash)
+		}
+	}
+
 	agentDir := filepath.Join(mountDir, "opt", "agent")
 	if err := os.MkdirAll(agentDir, 0755); err != nil {
 		return "", fmt.Errorf("creating agent directory: %w", err)
