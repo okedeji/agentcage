@@ -13,13 +13,11 @@ import (
 )
 
 const (
-	temporalVersion = "0.3.0"
+	temporalVersion = "1.3.0"
 	temporalPort    = "17233"
 )
 
-// TemporalService manages an embedded Temporalite instance.
-// Temporalite is a single-binary, SQLite-backed Temporal server designed
-// for development and lightweight production use.
+// TemporalService manages a local Temporal dev server via the Temporal CLI.
 type TemporalService struct {
 	proc *subprocess
 	log  logr.Logger
@@ -37,30 +35,48 @@ func (t *TemporalService) Address() string {
 }
 
 func (t *TemporalService) Download(ctx context.Context) error {
-	dest := filepath.Join(BinDir(), "temporalite")
+	dest := filepath.Join(BinDir(), "temporal")
 	if _, err := os.Stat(dest); err == nil {
 		return nil
 	}
 
 	arch := runtime.GOARCH
 	osName := runtime.GOOS
-	url := fmt.Sprintf("https://github.com/temporalio/temporalite/releases/download/v%s/temporalite_%s_%s_%s",
-		temporalVersion, temporalVersion, osName, arch)
+	archiveName := fmt.Sprintf("temporal_cli_%s_%s_%s.tar.gz", temporalVersion, osName, arch)
+	url := fmt.Sprintf("https://github.com/temporalio/cli/releases/download/v%s/%s",
+		temporalVersion, archiveName)
 
-	return downloadBinary(ctx, url, dest)
+	archivePath := filepath.Join(BinDir(), archiveName)
+	if err := downloadBinary(ctx, url, archivePath); err != nil {
+		return fmt.Errorf("downloading temporal CLI: %w", err)
+	}
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("opening temporal archive: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	if err := extractTarGz(f, BinDir()); err != nil {
+		_ = os.Remove(archivePath)
+		return fmt.Errorf("extracting temporal CLI: %w", err)
+	}
+	_ = os.Remove(archivePath)
+
+	return nil
 }
 
 func (t *TemporalService) Start(ctx context.Context) error {
-	bin := filepath.Join(BinDir(), "temporalite")
+	bin := filepath.Join(BinDir(), "temporal")
 	dataDir := ServiceDataDir("temporal")
 
 	t.proc = newSubprocess("temporal", t.log, bin,
-		"start",
-		"--ephemeral",
+		"server", "start-dev",
 		"--namespace", "default",
 		"--port", temporalPort,
 		"--db-filename", filepath.Join(dataDir, "temporal.db"),
 		"--log-format", "json",
+		"--headless",
 	)
 
 	if err := t.proc.start(ctx); err != nil {
