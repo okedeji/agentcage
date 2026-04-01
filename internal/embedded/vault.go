@@ -1,8 +1,10 @@
 package embedded
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,7 +15,7 @@ import (
 )
 
 const (
-	vaultVersion = "1.15.4"
+	vaultVersion = "1.21.4"
 	vaultPort    = "18200"
 )
 
@@ -46,23 +48,58 @@ func (v *VaultService) Download(ctx context.Context) error {
 	url := fmt.Sprintf("https://releases.hashicorp.com/vault/%s/vault_%s_%s_%s.zip",
 		vaultVersion, vaultVersion, osName, arch)
 
-	// Download and unzip. For now stub — real implementation would use
-	// archive/zip to extract the vault binary.
-	_ = url
+	v.log.Info("downloading vault", "version", vaultVersion, "url", url)
 
-	// Stub: create placeholder
-	if err := os.WriteFile(dest, []byte("#!/bin/sh\necho stub"), 0755); err != nil {
-		return fmt.Errorf("creating stub vault: %w", err)
+	archivePath := filepath.Join(BinDir(), "vault-"+vaultVersion+".zip")
+	if err := downloadBinary(ctx, url, archivePath); err != nil {
+		return fmt.Errorf("downloading vault: %w", err)
 	}
+
+	if err := extractVaultBinary(archivePath, dest); err != nil {
+		_ = os.Remove(archivePath)
+		return fmt.Errorf("extracting vault: %w", err)
+	}
+	_ = os.Remove(archivePath)
+
 	return nil
+}
+
+func extractVaultBinary(zipPath, dest string) error {
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return fmt.Errorf("opening zip: %w", err)
+	}
+	defer func() { _ = zr.Close() }()
+
+	for _, f := range zr.File {
+		if filepath.Base(f.Name) != "vault" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("opening vault in zip: %w", err)
+		}
+		defer func() { _ = rc.Close() }()
+
+		out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		if err != nil {
+			return fmt.Errorf("creating %s: %w", dest, err)
+		}
+		defer func() { _ = out.Close() }()
+
+		if _, err := io.Copy(out, rc); err != nil {
+			return fmt.Errorf("writing vault binary: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("vault binary not found in zip")
 }
 
 func (v *VaultService) Start(ctx context.Context) error {
 	bin := filepath.Join(BinDir(), "vault")
-	dataDir := ServiceDataDir("vault")
 
-	// Vault local mode with file storage — data persists across restarts
-	// but auto-unseals (no manual unseal needed).
+	// Dev mode: in-memory storage, auto-unsealed, root token preset.
+	// Data does not persist across restarts — acceptable for local mode.
 	v.proc = newSubprocess("vault", v.log, bin,
 		"server",
 		"-dev",
@@ -71,7 +108,6 @@ func (v *VaultService) Start(ctx context.Context) error {
 	)
 	v.proc.cmd.Env = append(os.Environ(),
 		"VAULT_DEV_ROOT_TOKEN_ID=agentcage-dev-token",
-		"VAULT_STORAGE_FILE_PATH="+filepath.Join(dataDir, "vault-data"),
 	)
 
 	if err := v.proc.start(ctx); err != nil {
