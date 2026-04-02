@@ -80,7 +80,7 @@ func (p *MockProvisioner) Provision(ctx context.Context, config VMConfig) (*VMHa
 	handle := &VMHandle{
 		ID:         id,
 		CageID:     config.CageID,
-		IPAddress:  fmt.Sprintf("10.0.0.%d", len(p.vms)+2),
+		IPAddress:  fmt.Sprintf("172.20.0.%d", len(p.vms)+2),
 		SocketPath: fmt.Sprintf("/tmp/firecracker/%s.sock", id),
 		StartedAt:  time.Now(),
 	}
