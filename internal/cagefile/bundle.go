@@ -283,6 +283,9 @@ func hashDir(dir string) (string, error) {
 		if err != nil || info.IsDir() {
 			return err
 		}
+		if info.Name() == "Cagefile" && filepath.Dir(path) == dir {
+			return nil
+		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
 			return err
