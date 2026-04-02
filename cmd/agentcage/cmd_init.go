@@ -371,17 +371,13 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Start workers ---
 
-	errCh := make(chan error, 2)
-	go func() {
-		if wErr := cageWorker.Run(worker.InterruptCh()); wErr != nil {
-			errCh <- fmt.Errorf("cage worker: %w", wErr)
-		}
-	}()
-	go func() {
-		if wErr := assessmentWorker.Run(worker.InterruptCh()); wErr != nil {
-			errCh <- fmt.Errorf("assessment worker: %w", wErr)
-		}
-	}()
+	if err := cageWorker.Start(); err != nil {
+		return fmt.Errorf("starting cage worker: %w", err)
+	}
+	if err := assessmentWorker.Start(); err != nil {
+		cageWorker.Stop()
+		return fmt.Errorf("starting assessment worker: %w", err)
+	}
 	go func() {
 		if tErr := timeoutEnforcer.Run(ctx); tErr != nil {
 			log.Error(tErr, "timeout enforcer stopped")
@@ -407,8 +403,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	select {
 	case sig := <-sigCh:
 		log.Info("received signal, shutting down", "signal", sig.String())
-	case wErr := <-errCh:
-		log.Error(wErr, "worker failed, shutting down")
 	case <-ctx.Done():
 	}
 
