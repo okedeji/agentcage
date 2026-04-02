@@ -133,6 +133,9 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 		}
 
 		switch header.Typeflag {
+		case tar.TypeSymlink, tar.TypeLink, tar.TypeChar, tar.TypeBlock, tar.TypeFifo:
+			return nil, fmt.Errorf("rejected unsafe entry in bundle: %s (type %d)", header.Name, header.Typeflag)
+
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0755); err != nil {
 				return nil, fmt.Errorf("creating directory %s: %w", target, err)
