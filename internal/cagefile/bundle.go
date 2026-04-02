@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -274,8 +275,7 @@ func HashDir(dir string) (string, error) {
 }
 
 func hashDir(dir string) (string, error) {
-	h := sha256.New()
-
+	var files []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
@@ -284,16 +284,24 @@ func hashDir(dir string) (string, error) {
 		if err != nil {
 			return err
 		}
-		h.Write([]byte(rel))
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		h.Write(data)
+		files = append(files, rel)
 		return nil
 	})
 	if err != nil {
 		return "", err
+	}
+
+	sort.Strings(files)
+
+	h := sha256.New()
+	for _, rel := range files {
+		// Normalize path separators so the hash is identical across platforms
+		h.Write([]byte(filepath.ToSlash(rel)))
+		data, err := os.ReadFile(filepath.Join(dir, rel))
+		if err != nil {
+			return "", err
+		}
+		h.Write(data)
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
