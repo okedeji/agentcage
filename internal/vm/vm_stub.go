@@ -18,5 +18,6 @@ func Boot(_ context.Context, _ Config) (*LinuxVM, error) {
 
 func (v *LinuxVM) Shutdown(_ context.Context) error { return errNotSupported }
 func (v *LinuxVM) IP() string                       { return "" }
+func (v *LinuxVM) GRPCAddr() string                 { return "" }
 func (v *LinuxVM) Wait() error                      { return errNotSupported }
 func (v *LinuxVM) IsRunning() bool                  { return false }
