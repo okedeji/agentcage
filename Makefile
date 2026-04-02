@@ -1,4 +1,4 @@
-.PHONY: all build clean proto test vet lint check-secrets check-config ci
+.PHONY: all build clean proto test vet lint check-secrets check-config check-checksums checksums ci
 
 GO := go
 GOFLAGS := -trimpath
@@ -53,6 +53,12 @@ check-secrets:
 
 check-config:
 	$(GO) run scripts/check_config.go
+
+checksums:
+	./scripts/embed-checksums.sh $(ASSETS_DIR)
+
+check-checksums:
+	$(GO) run scripts/check_checksums.go $(ASSETS_DIR)
 
 ci: vet lint check-secrets check-config test build
 

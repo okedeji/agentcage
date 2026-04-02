@@ -53,8 +53,12 @@ jobs:
           name: vm-rootfs-${{ matrix.arch }}
           path: rootfs-${{ matrix.arch }}.img
 
+  # Darwin builds happen AFTER linux + rootfs so checksums can be embedded.
+  # The darwin binary is what users download on macOS — it must contain the
+  # checksums for the VM assets it will fetch at runtime.
   build-darwin:
     runs-on: macos-latest
+    needs: [build-linux, build-vm-rootfs]
     strategy:
       matrix:
         goarch: [amd64, arm64]
@@ -63,6 +67,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Embed asset checksums into source
+        run: ./scripts/embed-checksums.sh release-assets
+      - name: Verify checksums match assets
+        run: go run scripts/check_checksums.go release-assets
       - name: Build agentcage binary
         run: |
           CGO_ENABLED=1 GOOS=darwin GOARCH=${{ matrix.goarch }} \
