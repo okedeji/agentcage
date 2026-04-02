@@ -24,6 +24,19 @@ func (t Type) String() string {
 	}
 }
 
+func TypeFromString(s string) Type {
+	switch s {
+	case "discovery":
+		return TypeDiscovery
+	case "validator":
+		return TypeValidator
+	case "escalation":
+		return TypeEscalation
+	default:
+		return TypeUnspecified
+	}
+}
+
 type State int
 
 const (

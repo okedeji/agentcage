@@ -26,42 +26,68 @@ type NetworkPolicy interface {
 	Remove(ctx context.Context, cageID string) error
 }
 
+// TripwirePolicy represents the action to take when a behavioral alert fires.
+type TripwirePolicy int
+
+const (
+	TripwireLogAndContinue    TripwirePolicy = 1
+	TripwireHumanReview       TripwirePolicy = 2
+	TripwireImmediateTeardown TripwirePolicy = 3
+)
+
+// AlertEvent represents a behavioral monitoring alert (e.g., from Falco).
+type AlertEvent struct {
+	RuleName string
+	Priority string
+	Output   string
+	CageID   string
+}
+
+// AlertHandler evaluates behavioral alerts and returns the tripwire policy.
+// Defined here to avoid a circular dependency with the enforcement package.
+type AlertHandler interface {
+	HandleAlert(ctx context.Context, cageType Type, alert AlertEvent) (TripwirePolicy, error)
+}
+
 // ActivityImpl provides concrete implementations of all cage lifecycle
 // activities. All dependency fields are optional — nil dependencies are
 // handled gracefully (logged and skipped) to support local mode where
 // SPIRE, Vault, or Falco may not be available.
 type ActivityImpl struct {
-	provisioner VMProvisioner
-	rootfs      *RootfsBuilder
-	network     NetworkPolicy
-	validator   ScopeValidator
-	identity    identity.SVIDIssuer
-	secrets     identity.SecretFetcher
-	auditStore  audit.Store
-	log         logr.Logger
+	provisioner  VMProvisioner
+	rootfs       *RootfsBuilder
+	network      NetworkPolicy
+	validator    ScopeValidator
+	alertHandler AlertHandler
+	identity     identity.SVIDIssuer
+	secrets      identity.SecretFetcher
+	auditStore   audit.Store
+	log          logr.Logger
 }
 
 type ActivityImplConfig struct {
-	Provisioner VMProvisioner
-	Rootfs      *RootfsBuilder
-	Network     NetworkPolicy
-	Validator   ScopeValidator
-	Identity    identity.SVIDIssuer
-	Secrets     identity.SecretFetcher
-	AuditStore  audit.Store
-	Log         logr.Logger
+	Provisioner  VMProvisioner
+	Rootfs       *RootfsBuilder
+	Network      NetworkPolicy
+	Validator    ScopeValidator
+	AlertHandler AlertHandler
+	Identity     identity.SVIDIssuer
+	Secrets      identity.SecretFetcher
+	AuditStore   audit.Store
+	Log          logr.Logger
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 	return &ActivityImpl{
-		provisioner: cfg.Provisioner,
-		rootfs:      cfg.Rootfs,
-		network:     cfg.Network,
-		validator:   cfg.Validator,
-		identity:    cfg.Identity,
-		secrets:     cfg.Secrets,
-		auditStore:  cfg.AuditStore,
-		log:         cfg.Log.WithValues("component", "cage-activities"),
+		provisioner:  cfg.Provisioner,
+		rootfs:       cfg.Rootfs,
+		network:      cfg.Network,
+		validator:    cfg.Validator,
+		alertHandler: cfg.AlertHandler,
+		identity:     cfg.Identity,
+		secrets:      cfg.Secrets,
+		auditStore:   cfg.AuditStore,
+		log:          cfg.Log.WithValues("component", "cage-activities"),
 	}
 }
 
@@ -173,6 +199,22 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Co
 			}
 		}
 	}
+}
+
+// EvaluateAlert determines the response to a behavioral monitoring alert.
+// Called by the Falco gRPC alert stream consumer when an alert fires for a cage.
+// Returns the tripwire policy that the workflow should act on.
+func (a *ActivityImpl) EvaluateAlert(ctx context.Context, cageType Type, alert AlertEvent) (TripwirePolicy, error) {
+	if a.alertHandler == nil {
+		a.log.V(1).Info("alert handling skipped — no handler configured", "cage_id", alert.CageID, "rule", alert.RuleName)
+		return TripwireLogAndContinue, nil
+	}
+	policy, err := a.alertHandler.HandleAlert(ctx, cageType, alert)
+	if err != nil {
+		return 0, fmt.Errorf("cage %s: evaluating alert %s: %w", alert.CageID, alert.RuleName, err)
+	}
+	a.log.Info("alert evaluated", "cage_id", alert.CageID, "rule", alert.RuleName, "policy", policy)
+	return policy, nil
 }
 
 func (a *ActivityImpl) ExportAuditLog(_ context.Context, cageID string) error {

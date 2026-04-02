@@ -121,7 +121,8 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Falco rules (generated from config) ---
 
 	_, tripwires := enforcement.GenerateFalcoRules(cfg.Monitoring)
-	_ = tripwires // Used by cage monitor activity when Falco alerts arrive
+	falcoHandler := enforcement.NewFalcoHandlerFromGenerated(tripwires)
+	alertHandler := enforcement.NewFalcoAlertAdapter(falcoHandler)
 
 	// --- Temporal client ---
 
@@ -194,9 +195,10 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	networkEnforcer := enforcement.NewNFTablesEnforcer(log)
 
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
-		Provisioner: cageProvisioner,
-		Network:     networkEnforcer,
-		Log:         log,
+		Provisioner:  cageProvisioner,
+		Network:      networkEnforcer,
+		AlertHandler: alertHandler,
+		Log:          log,
 	})
 
 	// --- Assessment activity implementation ---
