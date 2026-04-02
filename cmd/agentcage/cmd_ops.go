@@ -140,7 +140,11 @@ func cmdDB(args []string) {
 	query := fs.String("query", "", "run a SQL query")
 	_ = fs.Parse(args)
 
-	dbURL := "postgres://agentcage:agentcage-embedded@localhost:15432/agentcage?sslmode=disable"
+	dbURL, urlErr := embedded.PostgresURL()
+	if urlErr != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", urlErr)
+		os.Exit(1)
+	}
 
 	if *showURL {
 		fmt.Println(dbURL)

@@ -5,7 +5,9 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -309,8 +311,56 @@ func extractTarGz(r io.Reader, destDir string) error {
 	return nil
 }
 
+// passwordPath returns the path where the generated Postgres password is stored.
+func passwordPath() string {
+	return filepath.Join(DataDir(), "secrets", "pg_password")
+}
+
+// PostgresURL returns the connection string for the embedded Postgres,
+// reading the password from disk. Usable by any command that needs DB access.
+func PostgresURL() (string, error) {
+	pw, err := readPassword()
+	if err != nil {
+		return "", fmt.Errorf("reading embedded Postgres password: %w", err)
+	}
+	return fmt.Sprintf("postgres://%s:%s@localhost:%s/%s?sslmode=disable",
+		postgresUser, pw, postgresPort, postgresDB), nil
+}
+
 func generatePassword() string {
-	// For local mode, use a deterministic password.
-	// Production uses external Postgres with proper auth.
-	return "agentcage-embedded"
+	path := passwordPath()
+
+	// Return existing password if already generated
+	if data, err := os.ReadFile(path); err == nil {
+		pw := strings.TrimSpace(string(data))
+		if pw != "" {
+			return pw
+		}
+	}
+
+	// Generate a random 32-byte hex password
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "agentcage-fallback"
+	}
+	pw := hex.EncodeToString(b)
+
+	// Persist it
+	dir := filepath.Dir(path)
+	_ = os.MkdirAll(dir, 0700)
+	_ = os.WriteFile(path, []byte(pw), 0600)
+
+	return pw
+}
+
+func readPassword() (string, error) {
+	data, err := os.ReadFile(passwordPath())
+	if err != nil {
+		return "", err
+	}
+	pw := strings.TrimSpace(string(data))
+	if pw == "" {
+		return "", fmt.Errorf("password file is empty")
+	}
+	return pw, nil
 }

@@ -113,9 +113,15 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Database ---
 
-	dbURL := "postgres://agentcage:agentcage-embedded@localhost:15432/agentcage?sslmode=disable"
+	var dbURL string
 	if cfg.Infrastructure.IsExternalPostgres() {
 		dbURL = cfg.Infrastructure.Postgres.URL
+	} else {
+		var urlErr error
+		dbURL, urlErr = embedded.PostgresURL()
+		if urlErr != nil {
+			return fmt.Errorf("resolving embedded Postgres URL: %w", urlErr)
+		}
 	}
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
