@@ -20,6 +20,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/okedeji/agentcage/internal/audit"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
@@ -244,11 +245,13 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 
 	networkEnforcer := enforcement.NewNFTablesEnforcer(log)
+	auditStore := audit.NewPGStore(db)
 
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
 		Provisioner:  cageProvisioner,
 		Network:      networkEnforcer,
 		AlertHandler: alertHandler,
+		AuditStore:   auditStore,
 		Log:          log,
 	})
 
