@@ -72,6 +72,7 @@ func platformInit(_ []string) {
 	go func() {
 		if err := tcpProxy(ctx, ":15432", net.JoinHostPort(vmIP, "15432")); err != nil && ctx.Err() == nil {
 			fmt.Fprintf(os.Stderr, "Postgres proxy failed on :15432: %v\n  Check: lsof -i :15432\n", err)
+			cancel()
 		}
 	}()
 
