@@ -127,6 +127,10 @@ func (s *SPIREService) Start(ctx context.Context) error {
 		return fmt.Errorf("starting SPIRE agent: %w", err)
 	}
 
+	if err := s.waitAgentReady(ctx); err != nil {
+		return fmt.Errorf("waiting for SPIRE agent socket: %w", err)
+	}
+
 	s.log.Info("spire ready", "server_port", spireServerPort, "agent_socket", s.AgentSocket())
 	return nil
 }
@@ -156,6 +160,22 @@ func (s *SPIREService) Health(ctx context.Context) error {
 	}
 	_ = conn.Close()
 	return nil
+}
+
+func (s *SPIREService) waitAgentReady(ctx context.Context) error {
+	socket := s.AgentSocket()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(socket); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("spire agent socket %s did not appear within 15s", socket)
 }
 
 func (s *SPIREService) waitServerReady(ctx context.Context) error {
