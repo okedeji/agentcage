@@ -162,30 +162,20 @@ func (v *LinuxVM) GRPCAddr() string {
 	return net.JoinHostPort(v.IP(), fmt.Sprintf("%d", grpcPort))
 }
 
-// waitForGRPC polls the VM's gRPC port until it accepts connections.
+// waitForGRPC scans the NAT subnet for the VM's gRPC port.
+// Apple Virtualization.framework assigns IPs from 192.168.64.0/24 via DHCP.
+// Other VMs (Docker, UTM) may consume lower addresses, so we scan the full
+// range in parallel rather than guessing a handful of candidates.
 func (v *LinuxVM) waitForGRPC(ctx context.Context) error {
-	candidates := []string{
-		"192.168.64.2",
-		"192.168.64.3",
-		"192.168.64.4",
-		"192.168.64.5",
-		"192.168.64.6",
-		"192.168.64.7",
-		"192.168.64.8",
-	}
-
+	port := fmt.Sprintf("%d", grpcPort)
 	deadline := time.Now().Add(90 * time.Second)
+
 	for time.Now().Before(deadline) {
-		for _, ip := range candidates {
-			addr := net.JoinHostPort(ip, fmt.Sprintf("%d", grpcPort))
-			conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
-			if err == nil {
-				_ = conn.Close()
-				v.mu.Lock()
-				v.ip = ip
-				v.mu.Unlock()
-				return nil
-			}
+		if ip, ok := v.scanSubnet(ctx, port); ok {
+			v.mu.Lock()
+			v.ip = ip
+			v.mu.Unlock()
+			return nil
 		}
 		select {
 		case <-ctx.Done():
@@ -193,7 +183,44 @@ func (v *LinuxVM) waitForGRPC(ctx context.Context) error {
 		case <-time.After(2 * time.Second):
 		}
 	}
-	return fmt.Errorf("gRPC not reachable after 90s on any candidate IP")
+	return fmt.Errorf("gRPC not reachable after 90s on 192.168.64.0/24")
+}
+
+// scanSubnet tries every host in 192.168.64.2-254 concurrently.
+// Returns the first IP that accepts a TCP connection on the given port.
+func (v *LinuxVM) scanSubnet(_ context.Context, port string) (string, bool) {
+	type result struct{ ip string }
+	found := make(chan result, 1)
+
+	var wg sync.WaitGroup
+	for i := 2; i <= 254; i++ {
+		ip := fmt.Sprintf("192.168.64.%d", i)
+		wg.Add(1)
+		go func(ip string) {
+			defer wg.Done()
+			conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, port), 1*time.Second)
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+			select {
+			case found <- result{ip: ip}:
+			default:
+			}
+		}(ip)
+	}
+
+	// Close found channel once all goroutines finish so the select below
+	// can detect "nobody found anything" via channel close.
+	go func() {
+		wg.Wait()
+		close(found)
+	}()
+
+	if r, ok := <-found; ok {
+		return r.ip, true
+	}
+	return "", false
 }
 
 func configureVirtioFS(shareDir, tag string) (*vz.VirtioFileSystemDeviceConfiguration, error) {
