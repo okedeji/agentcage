@@ -64,13 +64,13 @@ func platformInit(_ []string) {
 
 	vmIP := machine.IP()
 	go func() {
-		if err := tcpProxy(":9090", net.JoinHostPort(vmIP, "9090")); err != nil {
+		if err := tcpProxy(ctx, ":9090", net.JoinHostPort(vmIP, "9090")); err != nil && ctx.Err() == nil {
 			fmt.Fprintf(os.Stderr, "gRPC proxy failed on :9090: %v\n  Check: lsof -i :9090\n", err)
 			cancel()
 		}
 	}()
 	go func() {
-		if err := tcpProxy(":15432", net.JoinHostPort(vmIP, "15432")); err != nil {
+		if err := tcpProxy(ctx, ":15432", net.JoinHostPort(vmIP, "15432")); err != nil && ctx.Err() == nil {
 			fmt.Fprintf(os.Stderr, "Postgres proxy failed on :15432: %v\n  Check: lsof -i :15432\n", err)
 		}
 	}()
@@ -148,12 +148,17 @@ func isProxyCommand(cmd string) bool {
 }
 
 // tcpProxy listens on listenAddr and proxies connections to targetAddr.
-func tcpProxy(listenAddr, targetAddr string) error {
+// It closes the listener when ctx is cancelled, causing Accept to return.
+func tcpProxy(ctx context.Context, listenAddr, targetAddr string) error {
 	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", listenAddr, err)
 	}
-	defer func() { _ = ln.Close() }()
+
+	go func() {
+		<-ctx.Done()
+		_ = ln.Close()
+	}()
 
 	for {
 		clientConn, err := ln.Accept()
