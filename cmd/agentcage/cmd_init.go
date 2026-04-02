@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"net"
@@ -16,6 +17,8 @@ import (
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+
+	_ "github.com/lib/pq"
 
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
@@ -104,6 +107,23 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return fmt.Errorf("starting local services: %w", err)
 	}
 
+	// --- Database ---
+
+	dbURL := "postgres://agentcage:agentcage-embedded@localhost:15432/agentcage?sslmode=disable"
+	if cfg.Infrastructure.IsExternalPostgres() {
+		dbURL = cfg.Infrastructure.Postgres.URL
+	}
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if err := db.PingContext(ctx); err != nil {
+		return fmt.Errorf("connecting to database at %s: %w", dbURL, err)
+	}
+	log.Info("database connected", "url", dbURL)
+
 	// --- Metrics ---
 
 	if err := metrics.Init(); err != nil {
@@ -157,7 +177,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	cageServer := cage.NewServer(temporalClient, cageValidator)
 	assessmentServer := assessment.NewServer(temporalClient)
 
-	iStore := intervention.NewMemStore()
+	iStore := intervention.NewPGStore(db)
 	notifier := &intervention.NoopNotifier{}
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iServer := intervention.NewServer(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
