@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLocalProvisioner_Provision(t *testing.T) {
-	p := NewLocalProvisioner()
+func TestMockProvisioner_Provision(t *testing.T) {
+	p := NewMockProvisioner()
 	ctx := context.Background()
 
 	handle, err := p.Provision(ctx, VMConfig{
@@ -26,8 +26,8 @@ func TestLocalProvisioner_Provision(t *testing.T) {
 	assert.NotEmpty(t, handle.SocketPath)
 }
 
-func TestLocalProvisioner_ProvisionIdempotent(t *testing.T) {
-	p := NewLocalProvisioner()
+func TestMockProvisioner_ProvisionIdempotent(t *testing.T) {
+	p := NewMockProvisioner()
 	ctx := context.Background()
 	cfg := VMConfig{CageID: "cage-1", VCPUs: 2, MemoryMB: 512}
 
@@ -40,8 +40,8 @@ func TestLocalProvisioner_ProvisionIdempotent(t *testing.T) {
 	assert.Equal(t, first.ID, second.ID)
 }
 
-func TestLocalProvisioner_Terminate(t *testing.T) {
-	p := NewLocalProvisioner()
+func TestMockProvisioner_Terminate(t *testing.T) {
+	p := NewMockProvisioner()
 	ctx := context.Background()
 
 	handle, err := p.Provision(ctx, VMConfig{CageID: "cage-1"})
@@ -55,14 +55,14 @@ func TestLocalProvisioner_Terminate(t *testing.T) {
 	assert.Equal(t, VMStatusStopped, status)
 }
 
-func TestLocalProvisioner_TerminateNonExistent(t *testing.T) {
-	p := NewLocalProvisioner()
+func TestMockProvisioner_TerminateNonExistent(t *testing.T) {
+	p := NewMockProvisioner()
 	err := p.Terminate(context.Background(), "nonexistent-vm")
 	require.NoError(t, err)
 }
 
-func TestLocalProvisioner_StatusRunning(t *testing.T) {
-	p := NewLocalProvisioner()
+func TestMockProvisioner_StatusRunning(t *testing.T) {
+	p := NewMockProvisioner()
 	ctx := context.Background()
 
 	handle, err := p.Provision(ctx, VMConfig{CageID: "cage-1"})
@@ -73,8 +73,8 @@ func TestLocalProvisioner_StatusRunning(t *testing.T) {
 	assert.Equal(t, VMStatusRunning, status)
 }
 
-func TestLocalProvisioner_StatusUnknownVM(t *testing.T) {
-	p := NewLocalProvisioner()
+func TestMockProvisioner_StatusUnknownVM(t *testing.T) {
+	p := NewMockProvisioner()
 	status, err := p.Status(context.Background(), "unknown-vm")
 	require.NoError(t, err)
 	assert.Equal(t, VMStatusStopped, status)

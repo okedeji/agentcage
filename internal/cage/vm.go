@@ -50,12 +50,10 @@ type VMProvisioner interface {
 	Status(ctx context.Context, vmID string) (VMStatus, error)
 }
 
-// LocalProvisioner manages Firecracker VMs on the local host.
-// The actual Firecracker SDK integration requires KVM and is
-// implemented behind a build tag (//go:build integration).
-// This implementation provides the interface contract and basic
-// state tracking for workflow testing.
-type LocalProvisioner struct {
+// MockProvisioner is an in-memory VM provisioner for tests and CI
+// environments without KVM. It tracks VM state in maps but does not
+// create real VMs. The real provisioner is FirecrackerProvisioner.
+type MockProvisioner struct {
 	mu  sync.Mutex
 	vms map[string]*VMHandle
 	// byCageID enables idempotent provisioning: if a cage already
@@ -63,14 +61,14 @@ type LocalProvisioner struct {
 	byCageID map[string]string
 }
 
-func NewLocalProvisioner() *LocalProvisioner {
-	return &LocalProvisioner{
+func NewMockProvisioner() *MockProvisioner {
+	return &MockProvisioner{
 		vms:      make(map[string]*VMHandle),
 		byCageID: make(map[string]string),
 	}
 }
 
-func (p *LocalProvisioner) Provision(ctx context.Context, config VMConfig) (*VMHandle, error) {
+func (p *MockProvisioner) Provision(ctx context.Context, config VMConfig) (*VMHandle, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -91,7 +89,7 @@ func (p *LocalProvisioner) Provision(ctx context.Context, config VMConfig) (*VMH
 	return handle, nil
 }
 
-func (p *LocalProvisioner) Terminate(_ context.Context, vmID string) error {
+func (p *MockProvisioner) Terminate(_ context.Context, vmID string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -104,7 +102,7 @@ func (p *LocalProvisioner) Terminate(_ context.Context, vmID string) error {
 	return nil
 }
 
-func (p *LocalProvisioner) Status(_ context.Context, vmID string) (VMStatus, error) {
+func (p *MockProvisioner) Status(_ context.Context, vmID string) (VMStatus, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

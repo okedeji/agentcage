@@ -225,7 +225,24 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Cage activity implementation ---
 
-	cageProvisioner := cage.NewLocalProvisioner()
+	firecrackerBin := filepath.Join(embedded.BinDir(), "firecracker")
+	kernelBin := filepath.Join(embedded.BinDir(), "vmlinux")
+
+	var cageProvisioner cage.VMProvisioner
+	if _, kvmErr := os.Stat("/dev/kvm"); kvmErr == nil {
+		if _, fcErr := os.Stat(firecrackerBin); fcErr == nil {
+			cageProvisioner = cage.NewFirecrackerProvisioner(cage.FirecrackerConfig{
+				BinPath:    firecrackerBin,
+				KernelPath: kernelBin,
+			}, log)
+			log.Info("cage provisioner: firecracker", "bin", firecrackerBin, "kernel", kernelBin)
+		}
+	}
+	if cageProvisioner == nil {
+		cageProvisioner = cage.NewMockProvisioner()
+		log.Info("cage provisioner: Mock/test (no KVM or firecracker binary — cages will not be isolated)")
+	}
+
 	networkEnforcer := enforcement.NewNFTablesEnforcer(log)
 
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
