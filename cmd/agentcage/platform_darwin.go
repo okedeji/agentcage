@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -19,7 +20,20 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func platformInit(_ []string) {
+func platformInit(args []string) {
+	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	configFile := fs.String("config", "", "path to config YAML override file")
+	grpcAddr := fs.String("grpc-addr", "", "ignored on macOS")
+	logFormat := fs.String("log-format", "", "ignored on macOS")
+	_ = fs.Parse(args)
+
+	if *grpcAddr != "" {
+		fmt.Fprintln(os.Stderr, "warning: --grpc-addr is ignored on macOS (proxy always listens on :9090)")
+	}
+	if *logFormat != "" {
+		fmt.Fprintln(os.Stderr, "warning: --log-format is ignored on macOS (VM uses its own log config)")
+	}
+
 	if runtime.GOARCH == "amd64" {
 		fmt.Println("WARNING: Intel Mac detected. Firecracker cannot create nested microVMs (no KVM).")
 		fmt.Println("         SPIRE, Falco, and other services will work. Agent cages will use mock isolation.")
@@ -51,6 +65,21 @@ func platformInit(_ []string) {
 	if err := os.MkdirAll(home, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: creating home: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Copy config override into shared directory so the VM can read it
+	if *configFile != "" {
+		data, err := os.ReadFile(*configFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "agentcage init: reading config %s: %v\n", *configFile, err)
+			os.Exit(1)
+		}
+		dest := home + "/config.yaml"
+		if err := os.WriteFile(dest, data, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "agentcage init: writing config to shared dir: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Config copied to %s (shared with VM)\n", dest)
 	}
 
 	// Boot VM
