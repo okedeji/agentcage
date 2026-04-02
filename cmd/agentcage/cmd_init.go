@@ -178,7 +178,23 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	assessmentServer := assessment.NewServer(temporalClient)
 
 	iStore := intervention.NewPGStore(db)
-	notifier := &intervention.NoopNotifier{}
+
+	var notifiers []intervention.Notifier
+	notifiers = append(notifiers, intervention.NewLogNotifier(log))
+	if wh := cfg.Notifications.Webhook; wh != nil && wh.URL != "" {
+		timeout := wh.Timeout
+		if timeout == 0 {
+			timeout = 5 * time.Second
+		}
+		whNotifier := intervention.NewWebhookNotifier([]string{wh.URL}, timeout, log)
+		if len(wh.Headers) > 0 {
+			whNotifier.SetHeaders(wh.Headers)
+		}
+		notifiers = append(notifiers, whNotifier)
+		log.Info("webhook notifications enabled", "url", wh.URL)
+	}
+	notifier := intervention.NewMultiNotifier(log, notifiers...)
+
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iServer := intervention.NewServer(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
 

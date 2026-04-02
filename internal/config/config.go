@@ -22,7 +22,18 @@ type Config struct {
 	Payload        map[string]PayloadConfig   `yaml:"payload"`
 	Monitoring     map[string]MonitoringConfig `yaml:"monitoring"`
 	Compliance     *ComplianceConfig          `yaml:"compliance"`
+	Notifications  NotificationsConfig        `yaml:"notifications"`
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
+}
+
+type NotificationsConfig struct {
+	Webhook *WebhookConfig `yaml:"webhook,omitempty"`
+}
+
+type WebhookConfig struct {
+	URL     string            `yaml:"url"`
+	Headers map[string]string `yaml:"headers,omitempty"`
+	Timeout time.Duration     `yaml:"timeout,omitempty"`
 }
 
 type GRPCConfig struct {
