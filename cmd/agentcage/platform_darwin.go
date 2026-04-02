@@ -156,12 +156,16 @@ func platformStop(_ []string) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	client := pb.NewControlServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = client.Stop(ctx, &pb.StopRequest{})
-	if err != nil {
+	client := pb.NewControlServiceClient(conn)
+	if _, err := client.Ping(ctx, &pb.PingRequest{}); err != nil {
+		fmt.Fprintln(os.Stderr, "agentcage is not running.")
+		os.Exit(1)
+	}
+
+	if _, err := client.Stop(ctx, &pb.StopRequest{}); err != nil {
 		fmt.Fprintf(os.Stderr, "error stopping agentcage: %v\n", err)
 		os.Exit(1)
 	}
