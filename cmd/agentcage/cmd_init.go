@@ -20,6 +20,8 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/okedeji/agentcage/migrations"
+
 	"github.com/okedeji/agentcage/internal/audit"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
@@ -125,6 +127,14 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return fmt.Errorf("connecting to database at %s: %w", dbURL, err)
 	}
 	log.Info("database connected", "url", dbURL)
+
+	applied, err := migrations.Up(ctx, db)
+	if err != nil {
+		return fmt.Errorf("running migrations: %w", err)
+	}
+	for _, name := range applied {
+		log.Info("migration applied", "name", name)
+	}
 
 	// --- Metrics ---
 
