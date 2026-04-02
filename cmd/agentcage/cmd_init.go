@@ -223,15 +223,24 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		llmClient = gateway.NewClient(cfg.LLM.Endpoint, cfg.LLM.Timeout, meter, budgetEnforcer)
 	}
 
-	// --- Playbook library ---
+	// --- Proofs (validation rules) ---
 
-	var playbooks *assessment.PlaybookLibrary
-	playbookDir := filepath.Join("playbooks", "validation")
-	if _, statErr := os.Stat(playbookDir); statErr == nil {
+	proofDir := cfg.Assessment.ProofsDir
+	if proofDir == "" {
+		proofDir = proofsDir()
+	}
+	if err := seedDefaultProofs(proofDir); err != nil {
+		log.Error(err, "seeding default proofs")
+	}
+
+	var proofLib *assessment.PlaybookLibrary
+	if _, statErr := os.Stat(proofDir); statErr == nil {
 		var loadErr error
-		playbooks, loadErr = assessment.LoadPlaybooks(playbookDir)
+		proofLib, loadErr = assessment.LoadPlaybooks(proofDir)
 		if loadErr != nil {
-			log.Error(loadErr, "loading playbooks — continuing without playbooks")
+			log.Error(loadErr, "loading proofs — continuing without proofs")
+		} else {
+			log.Info("proofs loaded", "dir", proofDir, "count", len(proofLib.List()))
 		}
 	}
 
@@ -312,7 +321,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
 		Cages:     cageServer,
 		LLMClient: llmClient,
-		Playbooks: playbooks,
+		Playbooks: proofLib,
 		Log:       log,
 	})
 

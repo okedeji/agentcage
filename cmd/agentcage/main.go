@@ -59,6 +59,8 @@ func main() {
 			cmdDB(args)
 		case "logs":
 			cmdLogs(args)
+		case "proof":
+			cmdProof(args)
 		case "audit":
 			cmdAudit(args)
 		default:
@@ -92,6 +94,7 @@ Observe:
 Operate:
   interventions     List pending interventions
   resolve           Resolve an intervention (resume/kill/allow/block)
+  proof             Manage validation rules for confirming findings (add, list, validate)
   fleet             Show fleet status (hosts, pools, capacity)
   db                Open psql shell or show connection string
   audit verify      Verify audit chain integrity for a cage

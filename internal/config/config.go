@@ -156,6 +156,7 @@ type AssessmentConfig struct {
 	TokenBudget   int64         `yaml:"token_budget"`
 	MaxIterations int32         `yaml:"max_iterations"`
 	ReviewTimeout time.Duration `yaml:"review_timeout"`
+	ProofsDir     string        `yaml:"proofs_dir"`
 }
 
 // ScopeConfig defines what targets are allowed or denied.
