@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -66,17 +69,42 @@ func (e *NFTablesEnforcer) Apply(ctx context.Context, cageID string, scope cage.
 	nft := GenerateNFTRules(rules)
 	e.log.V(1).Info("applying nftables rules", "cage_id", cageID, "rule_count", strings.Count(nft, "\n"))
 
-	// In production, this would execute: nft -f <rules>
-	// For now, we generate the rules and log them. The actual execution
-	// is wired when Firecracker VM integration lands (T7).
-	_ = nft
-	return nil
+	// Delete existing rules for this cage first so retries are idempotent.
+	_ = e.Remove(ctx, cageID)
+
+	return e.execNFT(ctx, cageID, nft)
 }
 
 func (e *NFTablesEnforcer) Remove(ctx context.Context, cageID string) error {
-	e.log.V(1).Info("removing nftables rules", "cage_id", cageID)
+	tableName := fmt.Sprintf("cage-%s", cageID)
+	e.log.V(1).Info("removing nftables rules", "cage_id", cageID, "table", tableName)
 
-	// In production: nft delete table inet cage-{cageID}
+	cmd := exec.CommandContext(ctx, "nft", "delete", "table", "inet", tableName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if strings.Contains(string(output), "No such file or directory") {
+			return nil
+		}
+		return fmt.Errorf("cage %s: deleting nftables table %s: %s: %w", cageID, tableName, string(output), err)
+	}
+	return nil
+}
+
+func (e *NFTablesEnforcer) execNFT(ctx context.Context, cageID, rules string) error {
+	dir := os.TempDir()
+	ruleFile := filepath.Join(dir, fmt.Sprintf("cage-%s.nft", cageID))
+
+	if err := os.WriteFile(ruleFile, []byte(rules), 0600); err != nil {
+		return fmt.Errorf("cage %s: writing nftables rules: %w", cageID, err)
+	}
+	defer func() { _ = os.Remove(ruleFile) }()
+
+	cmd := exec.CommandContext(ctx, "nft", "-f", ruleFile)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("cage %s: applying nftables rules: %s: %w", cageID, string(output), err)
+	}
+	e.log.Info("nftables rules applied", "cage_id", cageID)
 	return nil
 }
 
