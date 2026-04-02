@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/okedeji/agentcage/api/proto"
@@ -21,11 +24,50 @@ type Client struct {
 	fleet      pb.FleetServiceClient
 }
 
+type ClientOption func(*clientOptions)
+
+type clientOptions struct {
+	tlsCertFile string
+	spireSocket string
+}
+
+// WithTLS configures TLS for the gRPC connection using the server's CA cert.
+func WithTLS(certFile string) ClientOption {
+	return func(o *clientOptions) { o.tlsCertFile = certFile }
+}
+
+// WithSPIRE configures mTLS via SPIRE Workload API.
+func WithSPIRE(agentSocket string) ClientOption {
+	return func(o *clientOptions) { o.spireSocket = agentSocket }
+}
+
 // NewClient connects to an agentcage orchestrator at the given address.
-func NewClient(addr string) (*Client, error) {
-	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+func NewClient(addr string, opts ...ClientOption) (*Client, error) {
+	var o clientOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	var creds grpc.DialOption
+	switch {
+	case o.spireSocket != "":
+		source, err := workloadapi.NewX509Source(context.Background(), workloadapi.WithClientOptions(workloadapi.WithAddr(o.spireSocket)))
+		if err != nil {
+			return nil, fmt.Errorf("connecting to SPIRE at %s: %w", o.spireSocket, err)
+		}
+		tlsCfg := tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
+	case o.tlsCertFile != "":
+		tc, err := credentials.NewClientTLSFromFile(o.tlsCertFile, "")
+		if err != nil {
+			return nil, fmt.Errorf("loading TLS cert %s: %w", o.tlsCertFile, err)
+		}
+		creds = grpc.WithTransportCredentials(tc)
+	default:
+		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+
+	conn, err := grpc.NewClient(addr, creds)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to agentcage at %s: %w", addr, err)
 	}

@@ -13,6 +13,7 @@ import (
 // One file in, everything else (Rego policies, Falco rules, SPIRE config) generated at startup.
 type Config struct {
 	Infrastructure InfrastructureConfig       `yaml:"infrastructure"`
+	GRPC           GRPCConfig                 `yaml:"grpc"`
 	LLM            LLMConfig                  `yaml:"llm"`
 	Fleet          FleetConfig                `yaml:"fleet"`
 	Cages          map[string]CageTypeConfig  `yaml:"cages"`
@@ -22,6 +23,28 @@ type Config struct {
 	Monitoring     map[string]MonitoringConfig `yaml:"monitoring"`
 	Compliance     *ComplianceConfig          `yaml:"compliance"`
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
+}
+
+type GRPCConfig struct {
+	TLS *TLSConfig `yaml:"tls"`
+}
+
+type TLSConfig struct {
+	CertFile string `yaml:"cert_file,omitempty"`
+	KeyFile  string `yaml:"key_file,omitempty"`
+	SPIRE    bool   `yaml:"spire,omitempty"`
+}
+
+func (c *GRPCConfig) TLSEnabled() bool {
+	return c.TLS != nil && (c.TLS.CertFile != "" || c.TLS.SPIRE)
+}
+
+func (c *GRPCConfig) UseSPIRETLS() bool {
+	return c.TLS != nil && c.TLS.SPIRE
+}
+
+func (c *GRPCConfig) UseFileTLS() bool {
+	return c.TLS != nil && c.TLS.CertFile != "" && c.TLS.KeyFile != "" && !c.TLS.SPIRE
 }
 
 // InfrastructureConfig holds connection overrides for external services.

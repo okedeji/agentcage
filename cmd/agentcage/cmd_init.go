@@ -15,6 +15,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
@@ -209,7 +210,28 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- gRPC server ---
 
-	grpcServer := grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+	switch {
+	case cfg.GRPC.UseSPIRETLS():
+		spireSocket := filepath.Join(embedded.RunDir(), "spire", "agent.sock")
+		if cfg.Infrastructure.IsExternalSPIRE() && cfg.Infrastructure.SPIRE.AgentSocket != "" {
+			spireSocket = cfg.Infrastructure.SPIRE.AgentSocket
+		}
+		tlsCfg, tlsErr := agentgrpc.SPIREServerTLS(ctx, "unix://"+spireSocket)
+		if tlsErr != nil {
+			return fmt.Errorf("configuring SPIRE mTLS: %w", tlsErr)
+		}
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+		log.Info("gRPC mTLS enabled via SPIRE", "socket", spireSocket)
+	case cfg.GRPC.UseFileTLS():
+		creds, tlsErr := credentials.NewServerTLSFromFile(cfg.GRPC.TLS.CertFile, cfg.GRPC.TLS.KeyFile)
+		if tlsErr != nil {
+			return fmt.Errorf("loading TLS credentials: %w", tlsErr)
+		}
+		grpcOpts = append(grpcOpts, grpc.Creds(creds))
+		log.Info("gRPC TLS enabled", "cert", cfg.GRPC.TLS.CertFile)
+	}
+	grpcServer := grpc.NewServer(grpcOpts...)
 
 	agentgrpc.Register(grpcServer, agentgrpc.Services{
 		Cages:         cageServer,
