@@ -106,16 +106,26 @@ func downloadBinary(ctx context.Context, url, dest string) error {
 		return fmt.Errorf("downloading %s: status %d", url, resp.StatusCode)
 	}
 
-	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	tmp := dest + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
-		return fmt.Errorf("creating file %s: %w", dest, err)
+		return fmt.Errorf("creating file %s: %w", tmp, err)
 	}
-	defer func() { _ = f.Close() }()
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return fmt.Errorf("writing %s: %w", dest, err)
 	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("closing %s: %w", tmp, err)
+	}
 
+	if err := os.Rename(tmp, dest); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("finalizing %s: %w", dest, err)
+	}
 	return nil
 }
 
