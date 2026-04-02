@@ -166,8 +166,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	demandLedger := fleet.NewDemandLedger()
 	fleetServer := fleet.NewServer(poolManager, demandLedger, log.WithValues("component", "fleet"))
 
-	configServer := config.NewConfigServer(cfg)
-
 	// --- LLM client (for coordinator) ---
 
 	meter := gateway.NewTokenMeter()
@@ -243,7 +241,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Cancel:        cancel,
 		Version:       version,
 	})
-	_ = configServer
 	log.Info("gRPC services registered")
 
 	// --- Temporal workers ---
