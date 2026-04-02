@@ -29,6 +29,7 @@ import (
 	"github.com/okedeji/agentcage/internal/enforcement"
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/gateway"
+	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/internal/intervention"
 	proxylog "github.com/okedeji/agentcage/internal/log"
 	"github.com/okedeji/agentcage/internal/metrics"
@@ -247,11 +248,52 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	networkEnforcer := enforcement.NewNFTablesEnforcer(log)
 	auditStore := audit.NewPGStore(db)
 
+	// --- Identity and secrets ---
+
+	var svidIssuer identity.SVIDIssuer
+	spireSocket := filepath.Join(embedded.RunDir(), "spire", "agent.sock")
+	if cfg.Infrastructure.IsExternalSPIRE() && cfg.Infrastructure.SPIRE.AgentSocket != "" {
+		spireSocket = cfg.Infrastructure.SPIRE.AgentSocket
+	}
+	if _, socketErr := os.Stat(spireSocket); socketErr == nil {
+		spireClient, spireErr := identity.NewSpireClient(ctx, spireSocket, "agentcage.local")
+		if spireErr != nil {
+			log.Error(spireErr, "connecting to SPIRE — cages will use dev identities")
+		} else {
+			svidIssuer = spireClient
+			defer func() { _ = spireClient.Close() }()
+			log.Info("SPIRE identity issuer connected", "socket", spireSocket)
+		}
+	}
+	if svidIssuer == nil {
+		log.Info("SPIRE not available — cages will use dev identities")
+	}
+
+	var secretFetcher identity.SecretFetcher
+	if cfg.Infrastructure.IsExternalVault() {
+		vaultClient, vaultErr := identity.NewVaultClient(
+			cfg.Infrastructure.Vault.Address,
+			"auth/jwt/login",
+			"cage",
+		)
+		if vaultErr != nil {
+			log.Error(vaultErr, "creating Vault client — cages will use dev secrets")
+		} else {
+			secretFetcher = vaultClient
+			log.Info("Vault secret fetcher connected", "addr", cfg.Infrastructure.Vault.Address)
+		}
+	}
+	if secretFetcher == nil {
+		log.Info("Vault not configured for production auth — cages will use dev secrets")
+	}
+
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
 		Provisioner:  cageProvisioner,
 		Network:      networkEnforcer,
 		AlertHandler: alertHandler,
 		AuditStore:   auditStore,
+		Identity:     svidIssuer,
+		Secrets:      secretFetcher,
 		Log:          log,
 	})
 
