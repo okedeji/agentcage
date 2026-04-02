@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 
 	"github.com/okedeji/agentcage/internal/embedded"
 )
@@ -29,6 +30,14 @@ func cmdStop(_ []string) {
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "process %d not found: %v\n", pid, err)
+		_ = os.Remove(pidFile)
+		os.Exit(1)
+	}
+
+	// Check if process is actually alive before signaling
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		fmt.Fprintln(os.Stderr, "agentcage is not running (stale PID file).")
+		_ = os.Remove(pidFile)
 		os.Exit(1)
 	}
 
@@ -37,7 +46,27 @@ func cmdStop(_ []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Sent stop signal to agentcage (pid %d).\n", pid)
+	fmt.Printf("Stopping agentcage (pid %d)...\n", pid)
+
+	// Wait up to 10 seconds for the process to exit
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			fmt.Println("agentcage stopped.")
+			_ = os.Remove(pidFile)
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	// Process didn't exit in time — force kill
+	fmt.Fprintf(os.Stderr, "agentcage did not stop within 10s, sending SIGKILL...\n")
+	if err := proc.Signal(syscall.SIGKILL); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to kill agentcage (pid %d): %v\n", pid, err)
+		os.Exit(1)
+	}
+	_ = os.Remove(pidFile)
+	fmt.Println("agentcage killed.")
 }
 
 func cmdTest(args []string) {
