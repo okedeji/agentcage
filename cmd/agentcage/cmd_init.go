@@ -131,14 +131,19 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 	defer func() { _ = db.Close() }()
 
+	fmt.Println("Connecting to database...")
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	log.Info("database connected", "url", redactDBURL(dbURL))
 
+	fmt.Println("Running database migrations...")
 	applied, err := migrations.Up(ctx, db)
 	if err != nil {
 		return fmt.Errorf("running migrations: %w", err)
+	}
+	if len(applied) > 0 {
+		fmt.Printf("  %d migration(s) applied.\n", len(applied))
 	}
 	for _, name := range applied {
 		log.Info("migration applied", "name", name)
@@ -153,6 +158,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		natsURL = embedded.NATSURL()
 	}
 
+	fmt.Println("Connecting to NATS findings bus...")
 	findingsBus, err := findings.NewNATSBus(natsURL)
 	if err != nil {
 		return fmt.Errorf("connecting to NATS at %s: %w", natsURL, err)
@@ -174,6 +180,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- OPA policy engine (generated from config) ---
 
+	fmt.Println("Configuring policy engine...")
 	modules := enforcement.GenerateRegoModules(cfg)
 	opaEngine, err := enforcement.NewOPAEngineFromModules(modules)
 	if err != nil {
@@ -182,6 +189,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Falco rules (generated from config) ---
 
+	fmt.Println("Generating Falco rules...")
 	_, tripwires := enforcement.GenerateFalcoRules(cfg.Monitoring)
 	falcoHandler := enforcement.NewFalcoHandlerFromGenerated(tripwires)
 	alertHandler := enforcement.NewFalcoAlertAdapter(falcoHandler)
@@ -193,6 +201,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		temporalAddr = cfg.Infrastructure.Temporal.Address
 	}
 
+	fmt.Println("Connecting to Temporal...")
 	temporalClient, err := client.Dial(client.Options{
 		HostPort: temporalAddr,
 	})
@@ -203,6 +212,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Domain servers ---
 
+	fmt.Println("Initializing domain services...")
 	cageValidator := func(c cage.Config) error {
 		if validErr := enforcement.ValidateCageConfig(c, cfg); validErr != nil {
 			return validErr
@@ -259,6 +269,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	if proofDir == "" {
 		proofDir = proofsDir()
 	}
+	fmt.Println("Loading validation rules...")
 	if err := seedDefaultProofs(proofDir); err != nil {
 		log.Error(err, "seeding default proofs")
 	}
@@ -276,6 +287,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Cage activity implementation ---
 
+	fmt.Println("Setting up cage provisioner...")
 	firecrackerBin := filepath.Join(embedded.BinDir(), "firecracker")
 	kernelBin := filepath.Join(embedded.BinDir(), "vmlinux")
 
@@ -299,6 +311,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Identity and secrets ---
 
+	fmt.Println("Connecting to identity and secrets services...")
 	var svidIssuer identity.SVIDIssuer
 	spireSocket := filepath.Join(embedded.RunDir(), "spire", "agent.sock")
 	if cfg.Infrastructure.IsExternalSPIRE() && cfg.Infrastructure.SPIRE.AgentSocket != "" {
@@ -397,6 +410,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Temporal workers ---
 
+	fmt.Println("Registering Temporal workers...")
 	cageWorker := worker.New(temporalClient, cage.TaskQueue, worker.Options{})
 	cageWorker.RegisterWorkflow(cage.CageWorkflow)
 	cageWorker.RegisterActivity(cageActivityImpl)
@@ -411,6 +425,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Start gRPC ---
 
+	fmt.Printf("Starting gRPC server on %s...\n", grpcAddr)
 	lis, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", grpcAddr, err)
@@ -425,6 +440,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Start workers ---
 
+	fmt.Println("Starting Temporal workers...")
 	if err := cageWorker.Start(); err != nil {
 		return fmt.Errorf("starting cage worker: %w", err)
 	}

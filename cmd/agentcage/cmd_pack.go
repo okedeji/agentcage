@@ -36,6 +36,7 @@ func cmdPack(args []string) {
 	}
 
 	fmt.Printf("Packing %s...\n", dir)
+	fmt.Println("  Scanning files and computing hashes...")
 
 	var maxSize int64
 	if *maxSizeMB > 0 {
