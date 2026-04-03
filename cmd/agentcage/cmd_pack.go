@@ -42,8 +42,10 @@ func cmdPack(args []string) {
 		os.Exit(1)
 	}
 
-	outInfo, _ := os.Stat(outPath)
-	sizeMB := float64(outInfo.Size()) / (1024 * 1024)
+	var sizeMB float64
+	if outInfo, statErr := os.Stat(outPath); statErr == nil {
+		sizeMB = float64(outInfo.Size()) / (1024 * 1024)
+	}
 
 	fmt.Printf("\n  Bundle:     %s (%.1f MB)\n", outPath, sizeMB)
 	fmt.Printf("  Version:    %s\n", manifest.Version)
