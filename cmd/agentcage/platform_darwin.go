@@ -9,13 +9,15 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"os/signal"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	pb "github.com/okedeji/agentcage/api/proto"
+	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/vm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -192,12 +194,27 @@ func platformInit(args []string) {
 }
 
 func platformStop(_ []string) {
+	pidFile := filepath.Join(embedded.RunDir(), "agentcage.pid")
+
+	// Try graceful shutdown via gRPC first
+	if stopped := stopViaGRPC(); stopped {
+		_ = os.Remove(pidFile)
+		return
+	}
+
+	// gRPC unreachable — fall back to PID file signal
+	fmt.Println("gRPC unreachable, falling back to process signal...")
+	stopViaPID(pidFile)
+}
+
+// stopViaGRPC sends a Stop RPC and waits for the server to become
+// unreachable. Returns true if shutdown was confirmed.
+func stopViaGRPC() bool {
 	conn, err := grpc.NewClient("localhost:9090",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "agentcage is not running.")
-		os.Exit(1)
+		return false
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -207,20 +224,19 @@ func platformStop(_ []string) {
 	client := pb.NewControlServiceClient(conn)
 	pingResp, err := client.Ping(ctx, &pb.PingRequest{})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "agentcage is not running.")
-		os.Exit(1)
+		return false
 	}
 	if pingResp.GetStatus() != "running" {
 		fmt.Fprintf(os.Stderr, "service on :9090 is not agentcage (status=%s).\n", pingResp.GetStatus())
 		os.Exit(1)
 	}
 
+	fmt.Println("Stopping agentcage...")
 	if _, err := client.Stop(ctx, &pb.StopRequest{}); err != nil {
-		fmt.Fprintf(os.Stderr, "error stopping agentcage: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "error sending stop: %v\n", err)
+		return false
 	}
 
-	// Wait for gRPC to become unreachable (confirms actual shutdown)
 	fmt.Println("Waiting for shutdown...")
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
@@ -229,11 +245,63 @@ func platformStop(_ []string) {
 		checkCancel()
 		if pingErr != nil {
 			fmt.Println("agentcage stopped.")
-			return
+			return true
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	fmt.Fprintln(os.Stderr, "warning: agentcage may still be shutting down (gRPC still reachable after 15s).")
+
+	fmt.Fprintln(os.Stderr, "gRPC still reachable after 15s.")
+	return false
+}
+
+// stopViaPID reads the PID file, sends SIGTERM, waits, then escalates
+// to SIGKILL if the process does not exit in time.
+func stopViaPID(pidFile string) {
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "agentcage is not running.")
+		os.Exit(1)
+	}
+
+	var pid int
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid PID file: %v\n", err)
+		os.Exit(1)
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "process %d not found: %v\n", pid, err)
+		_ = os.Remove(pidFile)
+		os.Exit(1)
+	}
+
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		fmt.Fprintln(os.Stderr, "agentcage is not running (stale PID file).")
+		_ = os.Remove(pidFile)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Stopping agentcage (pid %d)...\n", pid)
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to stop agentcage (pid %d): %v\n", pid, err)
+		os.Exit(1)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			fmt.Println("agentcage stopped.")
+			_ = os.Remove(pidFile)
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	fmt.Fprintf(os.Stderr, "agentcage did not stop within 10s, sending SIGKILL...\n")
+	_ = proc.Signal(syscall.SIGKILL)
+	_ = os.Remove(pidFile)
+	fmt.Println("agentcage killed.")
 }
 
 func isProxyCommand(cmd string) bool {
