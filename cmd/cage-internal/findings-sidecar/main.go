@@ -83,7 +83,7 @@ func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID stri
 			continue
 		}
 
-		findings.SanitizeFinding(&finding)
+		findings.SanitizeFinding(&finding, nil)
 
 		msg := findings.Message{
 			SchemaVersion: findings.CurrentSchemaVersion,

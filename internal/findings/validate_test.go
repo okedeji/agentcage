@@ -72,21 +72,49 @@ func TestValidateFinding_MultipleViolations(t *testing.T) {
 	assert.Contains(t, err.Error(), "severity")
 }
 
-func TestSanitizeFinding_Truncates(t *testing.T) {
+func TestSanitizeFinding_TruncatesTitleAndEvidence(t *testing.T) {
 	f := validFinding()
 	f.Title = strings.Repeat("a", 1000)
 	f.Description = strings.Repeat("b", 20000)
 	f.Evidence.Request = make([]byte, 2<<20)
 	f.Evidence.Response = make([]byte, 2<<20)
-	f.Evidence.Screenshot = make([]byte, 10<<20)
 
-	SanitizeFinding(&f)
+	SanitizeFinding(&f, nil)
 
 	assert.Len(t, f.Title, maxTitleLength)
-	assert.Len(t, f.Description, maxDescriptionLength)
+	assert.Len(t, f.Description, 20000, "description should not be truncated")
 	assert.Len(t, f.Evidence.Request, maxEvidenceRequestSize)
 	assert.Len(t, f.Evidence.Response, maxEvidenceResponseSize)
-	assert.Len(t, f.Evidence.Screenshot, maxEvidenceScreenshotSize)
+}
+
+func TestSanitizeFinding_DropsOversizedScreenshot(t *testing.T) {
+	f := validFinding()
+	f.Evidence.Screenshot = make([]byte, 10<<20)
+
+	SanitizeFinding(&f, nil)
+
+	assert.Nil(t, f.Evidence.Screenshot)
+	assert.Contains(t, f.Description, "screenshot dropped")
+}
+
+func TestSanitizeFinding_CustomScreenshotLimit(t *testing.T) {
+	f := validFinding()
+	f.Evidence.Screenshot = make([]byte, 2<<20) // 2MB
+
+	limits := &SanitizeLimits{MaxScreenshotSize: 1 << 20} // 1MB
+	SanitizeFinding(&f, limits)
+
+	assert.Nil(t, f.Evidence.Screenshot)
+	assert.Contains(t, f.Description, "screenshot dropped")
+}
+
+func TestSanitizeFinding_ScreenshotWithinLimit(t *testing.T) {
+	f := validFinding()
+	f.Evidence.Screenshot = make([]byte, 1<<20) // 1MB, under 5MB default
+
+	SanitizeFinding(&f, nil)
+
+	assert.Len(t, f.Evidence.Screenshot, 1<<20)
 }
 
 func TestSanitizeFinding_LeavesNormalUnchanged(t *testing.T) {
@@ -99,7 +127,7 @@ func TestSanitizeFinding_LeavesNormalUnchanged(t *testing.T) {
 	origReqLen := len(f.Evidence.Request)
 	origRespLen := len(f.Evidence.Response)
 
-	SanitizeFinding(&f)
+	SanitizeFinding(&f, nil)
 
 	assert.Equal(t, origTitle, f.Title)
 	assert.Equal(t, origDesc, f.Description)

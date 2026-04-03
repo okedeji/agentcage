@@ -8,11 +8,11 @@ import (
 var ErrInvalidFinding = errors.New("invalid finding")
 
 const (
-	maxEvidenceRequestSize    = 1 << 20     // 1MB
-	maxEvidenceResponseSize   = 1 << 20     // 1MB
-	maxEvidenceScreenshotSize = 5 << 20     // 5MB
-	maxTitleLength            = 500
-	maxDescriptionLength      = 10000
+	maxEvidenceRequestSize  = 1 << 20 // 1MB
+	maxEvidenceResponseSize = 1 << 20 // 1MB
+	maxTitleLength = 500
+
+	DefaultMaxScreenshotSize = 5 << 20 // 5MB
 )
 
 func ValidateFinding(f Finding) error {
@@ -52,20 +52,33 @@ func ValidateFinding(f Finding) error {
 	return nil
 }
 
-func SanitizeFinding(f *Finding) {
+// SanitizeLimits configures size limits for SanitizeFinding.
+type SanitizeLimits struct {
+	MaxScreenshotSize int64
+}
+
+// SanitizeFinding truncates oversized text fields and drops (not truncates)
+// oversized binary evidence.
+func SanitizeFinding(f *Finding, limits *SanitizeLimits) {
+	maxScreenshot := int64(DefaultMaxScreenshotSize)
+	if limits != nil && limits.MaxScreenshotSize > 0 {
+		maxScreenshot = limits.MaxScreenshotSize
+	}
+
 	if len(f.Evidence.Request) > maxEvidenceRequestSize {
 		f.Evidence.Request = f.Evidence.Request[:maxEvidenceRequestSize]
 	}
 	if len(f.Evidence.Response) > maxEvidenceResponseSize {
 		f.Evidence.Response = f.Evidence.Response[:maxEvidenceResponseSize]
 	}
-	if len(f.Evidence.Screenshot) > maxEvidenceScreenshotSize {
-		f.Evidence.Screenshot = f.Evidence.Screenshot[:maxEvidenceScreenshotSize]
-	}
 	if len(f.Title) > maxTitleLength {
 		f.Title = f.Title[:maxTitleLength]
 	}
-	if len(f.Description) > maxDescriptionLength {
-		f.Description = f.Description[:maxDescriptionLength]
+	if int64(len(f.Evidence.Screenshot)) > maxScreenshot {
+		f.Description += fmt.Sprintf(
+			"\n\n[warning: screenshot dropped — %d bytes exceeds %d byte limit]",
+			len(f.Evidence.Screenshot), maxScreenshot,
+		)
+		f.Evidence.Screenshot = nil
 	}
 }

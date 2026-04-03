@@ -152,11 +152,12 @@ type CageTypeConfig struct {
 
 // AssessmentConfig defines defaults for assessment execution.
 type AssessmentConfig struct {
-	MaxDuration   time.Duration `yaml:"max_duration"`
-	TokenBudget   int64         `yaml:"token_budget"`
-	MaxIterations int32         `yaml:"max_iterations"`
-	ReviewTimeout time.Duration `yaml:"review_timeout"`
-	ProofsDir     string        `yaml:"proofs_dir"`
+	MaxDuration       time.Duration `yaml:"max_duration"`
+	TokenBudget       int64         `yaml:"token_budget"`
+	MaxIterations     int32         `yaml:"max_iterations"`
+	ReviewTimeout     time.Duration `yaml:"review_timeout"`
+	ProofsDir         string        `yaml:"proofs_dir"`
+	MaxScreenshotSize int64         `yaml:"max_screenshot_size"`
 }
 
 // ScopeConfig defines what targets are allowed or denied.
@@ -336,10 +337,11 @@ func Defaults() *Config {
 			},
 		},
 		Assessment: AssessmentConfig{
-			MaxDuration:   4 * time.Hour,
-			TokenBudget:   500000,
-			MaxIterations: 20,
-			ReviewTimeout: 24 * time.Hour,
+			MaxDuration:       4 * time.Hour,
+			TokenBudget:       500000,
+			MaxIterations:     20,
+			ReviewTimeout:     24 * time.Hour,
+			MaxScreenshotSize: 5 << 20, // 5MB
 		},
 		Scope: ScopeConfig{
 			Deny: []string{
