@@ -105,6 +105,7 @@ type NomadConfig struct {
 
 type OTelConfig struct {
 	Endpoint string `yaml:"endpoint"`
+	Insecure bool   `yaml:"insecure"`
 }
 
 // LLMConfig configures the LLM provider connection.

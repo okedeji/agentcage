@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
@@ -176,6 +178,40 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	log.Info("findings bus connected", "url", natsURL)
 
 	// --- Metrics ---
+
+	fmt.Println("Initializing telemetry...")
+	if cfg.Infrastructure.IsExternalOTel() {
+		metricOpts := []otlpmetricgrpc.Option{
+			otlpmetricgrpc.WithEndpointURL(cfg.Infrastructure.OTel.Endpoint),
+		}
+		traceOpts := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpointURL(cfg.Infrastructure.OTel.Endpoint),
+		}
+		if cfg.Infrastructure.OTel.Insecure {
+			metricOpts = append(metricOpts, otlpmetricgrpc.WithInsecure())
+			traceOpts = append(traceOpts, otlptracegrpc.WithInsecure())
+		}
+		metricExp, metricErr := otlpmetricgrpc.New(ctx, metricOpts...)
+		if metricErr != nil {
+			return fmt.Errorf("creating OTLP metric exporter: %w", metricErr)
+		}
+		traceExp, traceErr := otlptracegrpc.New(ctx, traceOpts...)
+		if traceErr != nil {
+			return fmt.Errorf("creating OTLP trace exporter: %w", traceErr)
+		}
+		otelShutdown, setupErr := metrics.Setup(ctx, metricExp, traceExp)
+		if setupErr != nil {
+			return fmt.Errorf("setting up OTel providers: %w", setupErr)
+		}
+		defer func() {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			if err := otelShutdown(shutdownCtx); err != nil {
+				log.Error(err, "flushing OTel providers")
+			}
+		}()
+		log.Info("OTel telemetry enabled", "endpoint", cfg.Infrastructure.OTel.Endpoint)
+	}
 
 	if err := metrics.Init(); err != nil {
 		return fmt.Errorf("initializing metrics: %w", err)
