@@ -15,6 +15,24 @@ import (
 
 var _ = cmdStop
 
+// isProcessRunning checks whether a PID file exists and the process it
+// references is still alive. Used to prevent launching a second instance.
+func isProcessRunning(pidFile string) bool {
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return false
+	}
+	var pid int
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); err != nil {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
 // killOrphanedServices finds PID files left by embedded services and sends
 // SIGKILL to each. Called after the main agentcage process was force-killed
 // and its normal shutdown sequence (which stops children gracefully) was skipped.
@@ -220,6 +238,11 @@ func cmdDB(args []string) {
 		return
 	}
 
+	if _, err := exec.LookPath("psql"); err != nil {
+		fmt.Fprintln(os.Stderr, "error: psql not found. Install it with: brew install libpq (macOS) or apt install postgresql-client (Linux)")
+		os.Exit(1)
+	}
+
 	if *query != "" {
 		psql := exec.Command("psql", dbURL, "-c", *query)
 		psql.Stdout = os.Stdout
@@ -255,6 +278,7 @@ func cmdLogs(args []string) {
 			fmt.Fprintf(os.Stderr, "no log file for service %s\n", *service)
 			os.Exit(1)
 		}
+		fmt.Printf("Tailing %s logs (%s)...\n", *service, logFile)
 		tail := exec.Command("tail", "-f", logFile)
 		tail.Stdout = os.Stdout
 		tail.Stderr = os.Stderr

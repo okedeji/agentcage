@@ -35,24 +35,6 @@ func platformInit(args []string) {
 		fmt.Fprintln(os.Stderr, "warning: --log-format is ignored on macOS (VM uses its own log config)")
 	}
 
-	if runtime.GOARCH == "amd64" {
-		fmt.Println("WARNING: Intel Mac detected. Firecracker cannot create nested microVMs (no KVM).")
-		fmt.Println("         SPIRE, Falco, and other services will work. Agent cages will use mock isolation.")
-		fmt.Println()
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	fmt.Printf("Initializing agentcage v%s (macOS — booting Linux VM)...\n\n", version)
-
-	// Download VM assets
-	fmt.Println("Downloading VM assets...")
-	if err := vm.EnsureAssets(ctx, version); err != nil {
-		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
-		os.Exit(1)
-	}
-
 	// Resolve agentcage home for VirtioFS share
 	home := os.Getenv("AGENTCAGE_HOME")
 	if home == "" {
@@ -65,6 +47,25 @@ func platformInit(args []string) {
 	}
 	if err := os.MkdirAll(home, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: creating home: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Bail out if another instance is already running
+	pidFile := filepath.Join(home, "run", "agentcage.pid")
+	if isProcessRunning(pidFile) {
+		fmt.Fprintln(os.Stderr, "agentcage is already running. Run 'agentcage stop' first.")
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	fmt.Printf("Initializing agentcage v%s (macOS — booting Linux VM)...\n\n", version)
+
+	// Download VM assets
+	fmt.Println("Downloading VM assets...")
+	if err := vm.EnsureAssets(ctx, version); err != nil {
+		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -92,22 +93,48 @@ func platformInit(args []string) {
 		os.Exit(1)
 	}
 
+	// fatalf shuts down the VM and cleans up the PID file before exiting.
+	// os.Exit skips defers, so early-exit paths must call this directly.
+	fatalf := func(format string, args ...any) {
+		fmt.Fprintf(os.Stderr, format, args...)
+		_ = os.Remove(pidFile)
+		_ = machine.Shutdown(context.Background())
+		os.Exit(1)
+	}
+
 	// Write PID file so `agentcage stop` can find the host process
-	pidFile := filepath.Join(home, "run", "agentcage.pid")
 	_ = os.MkdirAll(filepath.Dir(pidFile), 0755)
 	_ = os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
 	defer func() { _ = os.Remove(pidFile) }()
 
+	// Forward localhost ports to the VM so CLI commands and users
+	// connect to localhost without knowing the VM's DHCP-assigned IP.
 	vmIP := machine.IP()
+	if vmIP == "" {
+		fatalf("agentcage init: VM booted but reported no IP address\n")
+	}
+
+	// Bind proxy listeners eagerly so we fail fast on port conflicts
+	// instead of timing out in waitForGRPCReady with a misleading error.
+	grpcLn, err := net.Listen("tcp", "127.0.0.1:9090")
+	if err != nil {
+		fatalf("agentcage init: port 9090 already in use — is another agentcage running?\n  Check: lsof -i :9090\n")
+	}
+	pgLn, err := net.Listen("tcp", "127.0.0.1:15432")
+	if err != nil {
+		_ = grpcLn.Close()
+		fatalf("agentcage init: port 15432 already in use\n  Check: lsof -i :15432\n")
+	}
+
 	go func() {
-		if err := tcpProxy(ctx, "127.0.0.1:9090", net.JoinHostPort(vmIP, "9090")); err != nil && ctx.Err() == nil {
-			fmt.Fprintf(os.Stderr, "gRPC proxy failed on 127.0.0.1:9090: %v\n  Check: lsof -i :9090\n", err)
+		if err := tcpProxyFromListener(ctx, grpcLn, net.JoinHostPort(vmIP, "9090")); err != nil && ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "gRPC proxy failed: %v\n", err)
 			cancel()
 		}
 	}()
 	go func() {
-		if err := tcpProxy(ctx, "127.0.0.1:15432", net.JoinHostPort(vmIP, "15432")); err != nil && ctx.Err() == nil {
-			fmt.Fprintf(os.Stderr, "Postgres proxy failed on 127.0.0.1:15432: %v\n  Check: lsof -i :15432\n", err)
+		if err := tcpProxyFromListener(ctx, pgLn, net.JoinHostPort(vmIP, "15432")); err != nil && ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "Postgres proxy failed: %v\n", err)
 			cancel()
 		}
 	}()
@@ -117,9 +144,10 @@ func platformInit(args []string) {
 	readyCtx, readyCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer readyCancel()
 	if err := waitForGRPCReady(readyCtx, machine.GRPCAddr()); err != nil {
-		fmt.Fprintf(os.Stderr, "agentcage init: VM services did not become ready: %v\n", err)
-		_ = machine.Shutdown(context.Background())
-		os.Exit(1)
+		if ctx.Err() != nil {
+			fatalf("agentcage init: proxy failed during startup — check port conflicts above\n")
+		}
+		fatalf("agentcage init: VM services did not become ready: %v\n", err)
 	}
 
 	fmt.Printf("\nagentcage ready (running inside Linux VM).\n")
@@ -140,7 +168,7 @@ func platformInit(args []string) {
 
 	fmt.Println("\nShutting down...")
 
-	// Send graceful stop to VM's agentcage
+	fmt.Println("Stopping services inside VM...")
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stopCancel()
 
@@ -153,7 +181,7 @@ func platformInit(args []string) {
 		_ = conn.Close()
 	}
 
-	// Shutdown VM
+	fmt.Println("Shutting down VM...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 	if err := machine.Shutdown(shutdownCtx); err != nil {
@@ -217,14 +245,9 @@ func isProxyCommand(cmd string) bool {
 	return false
 }
 
-// tcpProxy listens on listenAddr and proxies connections to targetAddr.
-// It closes the listener when ctx is cancelled, causing Accept to return.
-func tcpProxy(ctx context.Context, listenAddr, targetAddr string) error {
-	ln, err := net.Listen("tcp", listenAddr)
-	if err != nil {
-		return fmt.Errorf("listening on %s: %w", listenAddr, err)
-	}
-
+// tcpProxyFromListener proxies connections from an already-bound listener
+// to targetAddr. It closes the listener when ctx is cancelled.
+func tcpProxyFromListener(ctx context.Context, ln net.Listener, targetAddr string) error {
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
@@ -256,6 +279,8 @@ func tcpProxy(ctx context.Context, listenAddr, targetAddr string) error {
 }
 
 func waitForGRPCReady(ctx context.Context, addr string) error {
+	start := time.Now()
+	lastReport := start
 	for {
 		conn, err := grpc.NewClient(addr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -269,6 +294,11 @@ func waitForGRPCReady(ctx context.Context, addr string) error {
 			if pingErr == nil {
 				return nil
 			}
+		}
+
+		if time.Since(lastReport) >= 10*time.Second {
+			fmt.Printf("  Still waiting for services... (%ds elapsed)\n", int(time.Since(start).Seconds()))
+			lastReport = time.Now()
 		}
 
 		select {
