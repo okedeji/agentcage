@@ -60,6 +60,11 @@ func (n *NATSService) Start(_ context.Context) error {
 	return nil
 }
 
+// NATSURL returns the connection string for the embedded NATS server.
+func NATSURL() string {
+	return fmt.Sprintf("nats://localhost:%d", natsPort)
+}
+
 func (n *NATSService) Stop(_ context.Context) error {
 	if n.srv == nil {
 		return nil

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"os/signal"
 	"runtime"
 	"syscall"
@@ -91,19 +92,35 @@ func platformInit(args []string) {
 		os.Exit(1)
 	}
 
+	// Write PID file so `agentcage stop` can find the host process
+	pidFile := filepath.Join(home, "run", "agentcage.pid")
+	_ = os.MkdirAll(filepath.Dir(pidFile), 0755)
+	_ = os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+	defer func() { _ = os.Remove(pidFile) }()
+
 	vmIP := machine.IP()
 	go func() {
-		if err := tcpProxy(ctx, ":9090", net.JoinHostPort(vmIP, "9090")); err != nil && ctx.Err() == nil {
-			fmt.Fprintf(os.Stderr, "gRPC proxy failed on :9090: %v\n  Check: lsof -i :9090\n", err)
+		if err := tcpProxy(ctx, "127.0.0.1:9090", net.JoinHostPort(vmIP, "9090")); err != nil && ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "gRPC proxy failed on 127.0.0.1:9090: %v\n  Check: lsof -i :9090\n", err)
 			cancel()
 		}
 	}()
 	go func() {
-		if err := tcpProxy(ctx, ":15432", net.JoinHostPort(vmIP, "15432")); err != nil && ctx.Err() == nil {
-			fmt.Fprintf(os.Stderr, "Postgres proxy failed on :15432: %v\n  Check: lsof -i :15432\n", err)
+		if err := tcpProxy(ctx, "127.0.0.1:15432", net.JoinHostPort(vmIP, "15432")); err != nil && ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "Postgres proxy failed on 127.0.0.1:15432: %v\n  Check: lsof -i :15432\n", err)
 			cancel()
 		}
 	}()
+
+	// Wait for gRPC server inside VM to be fully ready (not just TCP-open)
+	fmt.Println("Waiting for services inside VM to be ready...")
+	readyCtx, readyCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer readyCancel()
+	if err := waitForGRPCReady(readyCtx, machine.GRPCAddr()); err != nil {
+		fmt.Fprintf(os.Stderr, "agentcage init: VM services did not become ready: %v\n", err)
+		_ = machine.Shutdown(context.Background())
+		os.Exit(1)
+	}
 
 	fmt.Printf("\nagentcage ready (running inside Linux VM).\n")
 	fmt.Printf("  gRPC:     localhost:9090\n")
@@ -160,8 +177,13 @@ func platformStop(_ []string) {
 	defer cancel()
 
 	client := pb.NewControlServiceClient(conn)
-	if _, err := client.Ping(ctx, &pb.PingRequest{}); err != nil {
+	pingResp, err := client.Ping(ctx, &pb.PingRequest{})
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "agentcage is not running.")
+		os.Exit(1)
+	}
+	if pingResp.GetStatus() != "running" {
+		fmt.Fprintf(os.Stderr, "service on :9090 is not agentcage (status=%s).\n", pingResp.GetStatus())
 		os.Exit(1)
 	}
 
@@ -169,7 +191,21 @@ func platformStop(_ []string) {
 		fmt.Fprintf(os.Stderr, "error stopping agentcage: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("agentcage stopped.")
+
+	// Wait for gRPC to become unreachable (confirms actual shutdown)
+	fmt.Println("Waiting for shutdown...")
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		checkCtx, checkCancel := context.WithTimeout(context.Background(), 1*time.Second)
+		_, pingErr := client.Ping(checkCtx, &pb.PingRequest{})
+		checkCancel()
+		if pingErr != nil {
+			fmt.Println("agentcage stopped.")
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	fmt.Fprintln(os.Stderr, "warning: agentcage may still be shutting down (gRPC still reachable after 15s).")
 }
 
 func isProxyCommand(cmd string) bool {
@@ -216,5 +252,29 @@ func tcpProxy(ctx context.Context, listenAddr, targetAddr string) error {
 			_, _ = io.Copy(clientConn, targetConn)
 			<-done
 		}()
+	}
+}
+
+func waitForGRPCReady(ctx context.Context, addr string) error {
+	for {
+		conn, err := grpc.NewClient(addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err == nil {
+			pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
+			client := pb.NewControlServiceClient(conn)
+			_, pingErr := client.Ping(pingCtx, &pb.PingRequest{})
+			pingCancel()
+			_ = conn.Close()
+			if pingErr == nil {
+				return nil
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for gRPC readiness at %s", addr)
+		case <-time.After(2 * time.Second):
+		}
 	}
 }

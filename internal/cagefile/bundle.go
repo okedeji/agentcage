@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // BundleManifest is the JSON metadata stored inside a .cage bundle.
@@ -47,6 +48,11 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 	manifest, err := Parse(f)
 	if err != nil {
 		return nil, fmt.Errorf("parsing Cagefile: %w", err)
+	}
+
+	// Validate entrypoint script exists in the agent directory
+	if err := validateEntrypointExists(dir, manifest.Entrypoint); err != nil {
+		return nil, err
 	}
 
 	// Compute hash of all agent files
@@ -218,8 +224,8 @@ func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
 	if err != nil {
 		return fmt.Errorf("invalid current version %q: %w", currentVersion, err)
 	}
-	if bundleMajor > currentMajor {
-		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d) — upgrade agentcage",
+	if bundleMajor != currentMajor {
+		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d) — major version mismatch",
 			bundle.Version, bundleMajor, currentVersion, currentMajor)
 	}
 	return nil
@@ -243,9 +249,10 @@ func UnpackFile(bundlePath, destDir string) (*BundleManifest, error) {
 
 func writeToTar(tw *tar.Writer, name string, data []byte) error {
 	header := &tar.Header{
-		Name: name,
-		Size: int64(len(data)),
-		Mode: 0644,
+		Name:    name,
+		Size:    int64(len(data)),
+		Mode:    0644,
+		ModTime: time.Now(),
 	}
 	if err := tw.WriteHeader(header); err != nil {
 		return err
@@ -265,6 +272,15 @@ func addDirToTar(tw *tar.Writer, srcDir, prefix string) error {
 			return nil
 		}
 
+		// Reject symlinks — they could reference files outside the agent directory
+		linfo, lstatErr := os.Lstat(path)
+		if lstatErr != nil {
+			return fmt.Errorf("stat %s: %w", path, lstatErr)
+		}
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks not allowed in agent directory: %s", path)
+		}
+
 		rel, err := filepath.Rel(srcDir, path)
 		if err != nil {
 			return err
@@ -280,25 +296,28 @@ func addDirToTar(tw *tar.Writer, srcDir, prefix string) error {
 				Name:     tarPath + "/",
 				Typeflag: tar.TypeDir,
 				Mode:     0755,
+				ModTime:  info.ModTime(),
 			}
 			return tw.WriteHeader(header)
 		}
 
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("reading %s: %w", path, err)
-		}
-
 		header := &tar.Header{
-			Name: tarPath,
-			Size: int64(len(data)),
-			Mode: int64(info.Mode()),
+			Name:    tarPath,
+			Size:    info.Size(),
+			Mode:    int64(info.Mode()),
+			ModTime: info.ModTime(),
 		}
 		if err := tw.WriteHeader(header); err != nil {
 			return err
 		}
-		_, err = tw.Write(data)
-		return err
+
+		file, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("opening %s: %w", path, err)
+		}
+		_, copyErr := io.Copy(tw, file)
+		_ = file.Close()
+		return copyErr
 	})
 }
 
@@ -315,6 +334,13 @@ func hashDir(dir string) (string, error) {
 		}
 		if info.Name() == "Cagefile" && filepath.Dir(path) == dir {
 			return nil
+		}
+		linfo, lstatErr := os.Lstat(path)
+		if lstatErr != nil {
+			return fmt.Errorf("stat %s: %w", path, lstatErr)
+		}
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks not allowed in agent directory: %s", path)
 		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
@@ -341,4 +367,17 @@ func hashDir(dir string) (string, error) {
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func validateEntrypointExists(dir, entrypoint string) error {
+	parts := strings.Fields(entrypoint)
+	if len(parts) < 2 {
+		return nil
+	}
+	script := parts[1]
+	path := filepath.Join(dir, script)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return fmt.Errorf("entrypoint script %q not found in %s", script, dir)
+	}
+	return nil
 }

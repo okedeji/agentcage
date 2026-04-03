@@ -70,6 +70,27 @@ func (s State) String() string {
 	}
 }
 
+func StateFromString(s string) State {
+	switch s {
+	case "pending":
+		return StatePending
+	case "provisioning":
+		return StateProvisioning
+	case "running":
+		return StateRunning
+	case "paused":
+		return StatePaused
+	case "tearing_down":
+		return StateTearingDown
+	case "completed":
+		return StateCompleted
+	case "failed":
+		return StateFailed
+	default:
+		return StatePending
+	}
+}
+
 type Config struct {
 	AssessmentID    string
 	Type            Type

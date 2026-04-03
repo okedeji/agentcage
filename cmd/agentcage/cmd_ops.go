@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -12,6 +14,43 @@ import (
 )
 
 var _ = cmdStop
+
+// killOrphanedServices finds PID files left by embedded services and sends
+// SIGKILL to each. Called after the main agentcage process was force-killed
+// and its normal shutdown sequence (which stops children gracefully) was skipped.
+func killOrphanedServices() {
+	runDir := embedded.RunDir()
+	entries, err := os.ReadDir(runDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".pid") || e.Name() == "agentcage.pid" {
+			continue
+		}
+		pidPath := filepath.Join(runDir, e.Name())
+		data, err := os.ReadFile(pidPath)
+		if err != nil {
+			continue
+		}
+		var pid int
+		if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); err != nil {
+			continue
+		}
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			_ = os.Remove(pidPath)
+			continue
+		}
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			_ = os.Remove(pidPath)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "  killing orphaned service %s (pid %d)\n", strings.TrimSuffix(e.Name(), ".pid"), pid)
+		_ = proc.Signal(syscall.SIGKILL)
+		_ = os.Remove(pidPath)
+	}
+}
 
 func cmdStop(_ []string) {
 	pidFile := embedded.RunDir() + "/agentcage.pid"
@@ -59,13 +98,14 @@ func cmdStop(_ []string) {
 		time.Sleep(250 * time.Millisecond)
 	}
 
-	// Process didn't exit in time — force kill
+	// Process didn't exit in time — force kill and clean up child services
 	fmt.Fprintf(os.Stderr, "agentcage did not stop within 10s, sending SIGKILL...\n")
 	if err := proc.Signal(syscall.SIGKILL); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to kill agentcage (pid %d): %v\n", pid, err)
 		os.Exit(1)
 	}
 	_ = os.Remove(pidFile)
+	killOrphanedServices()
 	fmt.Println("agentcage killed.")
 }
 

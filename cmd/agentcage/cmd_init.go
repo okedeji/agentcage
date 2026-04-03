@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -29,6 +30,7 @@ import (
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/enforcement"
+	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/gateway"
 	"github.com/okedeji/agentcage/internal/identity"
@@ -130,9 +132,9 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	defer func() { _ = db.Close() }()
 
 	if err := db.PingContext(ctx); err != nil {
-		return fmt.Errorf("connecting to database at %s: %w", dbURL, err)
+		return fmt.Errorf("connecting to database: %w", err)
 	}
-	log.Info("database connected", "url", dbURL)
+	log.Info("database connected", "url", redactDBURL(dbURL))
 
 	applied, err := migrations.Up(ctx, db)
 	if err != nil {
@@ -141,6 +143,28 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	for _, name := range applied {
 		log.Info("migration applied", "name", name)
 	}
+
+	// --- NATS findings bus ---
+
+	var natsURL string
+	if cfg.Infrastructure.IsExternalNATS() {
+		natsURL = cfg.Infrastructure.NATS.URL
+	} else {
+		natsURL = embedded.NATSURL()
+	}
+
+	findingsBus, err := findings.NewNATSBus(natsURL)
+	if err != nil {
+		return fmt.Errorf("connecting to NATS at %s: %w", natsURL, err)
+	}
+	defer findingsBus.Close()
+
+	findingStore := findings.NewPGFindingStore(db)
+	bloom := findings.NewBloomFilter(100000, 7)
+	findingsCoordinator := findings.NewCoordinator(findingStore, bloom, log.WithValues("component", "findings-coordinator"))
+	_ = findingsCoordinator // subscriptions are created per-assessment at workflow time
+
+	log.Info("findings bus connected", "url", natsURL)
 
 	// --- Metrics ---
 
@@ -192,8 +216,8 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 		return nil
 	}
-	cageServer := cage.NewServer(temporalClient, cageValidator)
-	assessmentServer := assessment.NewServer(temporalClient)
+	cageServer := cage.NewServer(temporalClient, cageValidator, db)
+	assessmentServer := assessment.NewServer(temporalClient, db)
 
 	iStore := intervention.NewPGStore(db)
 
@@ -312,8 +336,16 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		log.Info("Vault not configured for production auth — cages will use dev secrets")
 	}
 
+	baseRootfs := filepath.Join(embedded.VMDir(), "cage-rootfs.img")
+	rootfsWorkDir := filepath.Join(embedded.DataDir(), "rootfs-work")
+	if err := os.MkdirAll(rootfsWorkDir, 0755); err != nil {
+		return fmt.Errorf("creating rootfs work directory: %w", err)
+	}
+	rootfsBuilder := cage.NewRootfsBuilder(baseRootfs, rootfsWorkDir, version)
+
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
 		Provisioner:  cageProvisioner,
+		Rootfs:       rootfsBuilder,
 		Network:      networkEnforcer,
 		AlertHandler: alertHandler,
 		AuditStore:   auditStore,
@@ -326,6 +358,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
 		Cages:     cageServer,
+		Findings:  findingStore,
 		LLMClient: llmClient,
 		Playbooks: proofLib,
 		Log:       log,
@@ -336,10 +369,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	var grpcOpts []grpc.ServerOption
 	switch {
 	case cfg.GRPC.UseSPIRETLS():
-		spireSocket := filepath.Join(embedded.RunDir(), "spire", "agent.sock")
-		if cfg.Infrastructure.IsExternalSPIRE() && cfg.Infrastructure.SPIRE.AgentSocket != "" {
-			spireSocket = cfg.Infrastructure.SPIRE.AgentSocket
-		}
 		tlsCfg, tlsErr := agentgrpc.SPIREServerTLS(ctx, "unix://"+spireSocket)
 		if tlsErr != nil {
 			return fmt.Errorf("configuring SPIRE mTLS: %w", tlsErr)
@@ -433,8 +462,8 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	fmt.Println("\nShutting down...")
 
-	grpcServer.GracefulStop()
 	cancel()
+	grpcServer.GracefulStop()
 	cageWorker.Stop()
 	assessmentWorker.Stop()
 
@@ -445,4 +474,15 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	_ = os.Remove(pidFile)
 	fmt.Println("agentcage stopped.")
 	return nil
+}
+
+func redactDBURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "***"
+	}
+	if u.User != nil {
+		u.User = url.UserPassword(u.User.Username(), "***")
+	}
+	return u.String()
 }

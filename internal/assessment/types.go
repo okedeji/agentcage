@@ -39,6 +39,25 @@ func (s Status) String() string {
 	}
 }
 
+func StatusFromString(s string) Status {
+	switch s {
+	case "discovery":
+		return StatusDiscovery
+	case "exploitation":
+		return StatusExploitation
+	case "validation":
+		return StatusValidation
+	case "pending_review":
+		return StatusPendingReview
+	case "approved":
+		return StatusApproved
+	case "rejected":
+		return StatusRejected
+	default:
+		return StatusUnspecified
+	}
+}
+
 type ComplianceFramework int
 
 const (

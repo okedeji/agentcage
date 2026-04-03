@@ -2,6 +2,8 @@ package assessment
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -17,13 +19,15 @@ var ErrAssessmentNotFound = errors.New("assessment not found")
 
 type Server struct {
 	temporal    client.Client
+	db          *sql.DB
 	mu          sync.RWMutex
 	assessments map[string]*Info
 }
 
-func NewServer(temporal client.Client) *Server {
+func NewServer(temporal client.Client, db *sql.DB) *Server {
 	return &Server{
 		temporal:    temporal,
+		db:          db,
 		assessments: make(map[string]*Info),
 	}
 }
@@ -38,6 +42,10 @@ func (s *Server) CreateAssessment(ctx context.Context, config Config) (*Info, er
 		Config:     config,
 		CreatedAt:  now,
 		UpdatedAt:  now,
+	}
+
+	if err := s.persistAssessment(ctx, info); err != nil {
+		return nil, fmt.Errorf("persisting assessment %s: %w", assessmentID, err)
 	}
 
 	s.mu.Lock()
@@ -63,13 +71,64 @@ func (s *Server) CreateAssessment(ctx context.Context, config Config) (*Info, er
 	return info, nil
 }
 
-func (s *Server) GetAssessment(_ context.Context, assessmentID string) (*Info, error) {
+func (s *Server) GetAssessment(ctx context.Context, assessmentID string) (*Info, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	info, ok := s.assessments[assessmentID]
-	if !ok {
+	s.mu.RUnlock()
+	if ok {
+		return info, nil
+	}
+
+	info, err := s.loadAssessment(ctx, assessmentID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	s.assessments[assessmentID] = info
+	s.mu.Unlock()
+	return info, nil
+}
+
+func (s *Server) persistAssessment(ctx context.Context, info *Info) error {
+	if s.db == nil {
+		return nil
+	}
+	cfgJSON, err := json.Marshal(info.Config)
+	if err != nil {
+		return fmt.Errorf("marshaling assessment config: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO assessments (id, customer_id, status, config, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 ON CONFLICT (id) DO NOTHING`,
+		info.ID, info.CustomerID, info.Status.String(), cfgJSON, info.CreatedAt, info.UpdatedAt,
+	)
+	return err
+}
+
+func (s *Server) loadAssessment(ctx context.Context, assessmentID string) (*Info, error) {
+	if s.db == nil {
 		return nil, fmt.Errorf("assessment %s: %w", assessmentID, ErrAssessmentNotFound)
 	}
-	return info, nil
+
+	var (
+		info      Info
+		statusStr string
+		cfgJSON   []byte
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, customer_id, status, config, created_at, updated_at FROM assessments WHERE id = $1`,
+		assessmentID,
+	).Scan(&info.ID, &info.CustomerID, &statusStr, &cfgJSON, &info.CreatedAt, &info.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("assessment %s: %w", assessmentID, ErrAssessmentNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("loading assessment %s: %w", assessmentID, err)
+	}
+
+	info.Status = StatusFromString(statusStr)
+	_ = json.Unmarshal(cfgJSON, &info.Config)
+	return &info, nil
 }

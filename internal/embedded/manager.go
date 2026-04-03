@@ -3,6 +3,7 @@ package embedded
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -89,6 +90,12 @@ func (m *Manager) Start(ctx context.Context) error {
 			_ = m.stopReverse(ctx, started)
 			return fmt.Errorf("starting %s: %w", svc.Name(), err)
 		}
+		// Verify service is healthy before starting the next one
+		if err := waitForHealth(ctx, svc, m.log); err != nil {
+			m.log.Error(err, "health check failed, rolling back", "service", svc.Name())
+			_ = m.stopReverse(ctx, started)
+			return fmt.Errorf("health check for %s: %w", svc.Name(), err)
+		}
 		m.log.Info("started", "service", svc.Name())
 		started = append(started, svc)
 	}
@@ -132,4 +139,22 @@ func (m *Manager) stopReverse(ctx context.Context, services []Service) error {
 		return fmt.Errorf("errors during shutdown: %v", errs)
 	}
 	return nil
+}
+
+func waitForHealth(ctx context.Context, svc Service, log logr.Logger) error {
+	deadline := time.Now().Add(15 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if err := svc.Health(ctx); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("%s not healthy after 15s: %w", svc.Name(), lastErr)
 }

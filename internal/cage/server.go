@@ -2,6 +2,8 @@ package cage
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -22,14 +24,16 @@ type ConfigValidator func(Config) error
 type Server struct {
 	temporal client.Client
 	validate ConfigValidator
+	db       *sql.DB
 	mu       sync.RWMutex
 	cages    map[string]*Info
 }
 
-func NewServer(temporal client.Client, validate ConfigValidator) *Server {
+func NewServer(temporal client.Client, validate ConfigValidator, db *sql.DB) *Server {
 	return &Server{
 		temporal: temporal,
 		validate: validate,
+		db:       db,
 		cages:    make(map[string]*Info),
 	}
 }
@@ -49,6 +53,10 @@ func (s *Server) CreateCage(ctx context.Context, config Config) (*Info, error) {
 		Config:       config,
 		CreatedAt:    now,
 		UpdatedAt:    now,
+	}
+
+	if err := s.persistCage(ctx, info); err != nil {
+		return nil, fmt.Errorf("persisting cage %s: %w", cageID, err)
 	}
 
 	s.mu.Lock()
@@ -74,25 +82,32 @@ func (s *Server) CreateCage(ctx context.Context, config Config) (*Info, error) {
 	return info, nil
 }
 
-func (s *Server) GetCage(_ context.Context, cageID string) (*Info, error) {
+func (s *Server) GetCage(ctx context.Context, cageID string) (*Info, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	info, ok := s.cages[cageID]
-	if !ok {
-		return nil, fmt.Errorf("cage %s: %w", cageID, ErrCageNotFound)
+	s.mu.RUnlock()
+	if ok {
+		return info, nil
 	}
+
+	info, err := s.loadCage(ctx, cageID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	s.cages[cageID] = info
+	s.mu.Unlock()
 	return info, nil
 }
 
 func (s *Server) DestroyCage(ctx context.Context, cageID string, reason string) error {
-	s.mu.Lock()
-	info, ok := s.cages[cageID]
-	if !ok {
-		s.mu.Unlock()
-		return fmt.Errorf("cage %s: %w", cageID, ErrCageNotFound)
+	info, err := s.GetCage(ctx, cageID)
+	if err != nil {
+		return err
 	}
 
+	s.mu.Lock()
 	if err := ValidateTransition(info.State, StateTearingDown); err != nil {
 		s.mu.Unlock()
 		return fmt.Errorf("cage %s: %w", cageID, err)
@@ -101,6 +116,8 @@ func (s *Server) DestroyCage(ctx context.Context, cageID string, reason string) 
 	info.State = StateTearingDown
 	info.UpdatedAt = time.Now()
 	s.mu.Unlock()
+
+	_ = s.updateCageState(ctx, cageID, info.State)
 
 	signal := intervention.InterventionSignal{
 		Action:    intervention.ActionKill,
@@ -111,4 +128,60 @@ func (s *Server) DestroyCage(ctx context.Context, cageID string, reason string) 
 	}
 
 	return nil
+}
+
+func (s *Server) persistCage(ctx context.Context, info *Info) error {
+	if s.db == nil {
+		return nil
+	}
+	cfgJSON, err := json.Marshal(info.Config)
+	if err != nil {
+		return fmt.Errorf("marshaling cage config: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO cages (id, assessment_id, type, state, config, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (id) DO NOTHING`,
+		info.ID, info.AssessmentID, info.Type.String(), info.State.String(), cfgJSON, info.CreatedAt, info.UpdatedAt,
+	)
+	return err
+}
+
+func (s *Server) updateCageState(ctx context.Context, cageID string, state State) error {
+	if s.db == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE cages SET state = $1, updated_at = $2 WHERE id = $3`,
+		state.String(), time.Now(), cageID,
+	)
+	return err
+}
+
+func (s *Server) loadCage(ctx context.Context, cageID string) (*Info, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("cage %s: %w", cageID, ErrCageNotFound)
+	}
+
+	var (
+		info     Info
+		typStr   string
+		stateStr string
+		cfgJSON  []byte
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, assessment_id, type, state, config, created_at, updated_at FROM cages WHERE id = $1`,
+		cageID,
+	).Scan(&info.ID, &info.AssessmentID, &typStr, &stateStr, &cfgJSON, &info.CreatedAt, &info.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("cage %s: %w", cageID, ErrCageNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("loading cage %s: %w", cageID, err)
+	}
+
+	info.Type = TypeFromString(typStr)
+	info.State = StateFromString(stateStr)
+	_ = json.Unmarshal(cfgJSON, &info.Config)
+	return &info, nil
 }

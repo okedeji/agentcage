@@ -131,21 +131,29 @@ func (p *PostgresService) Start(ctx context.Context) error {
 		if _, err := exec.LookPath("initdb"); err == nil {
 			initdb = "initdb"
 		}
+		// Write a temporary password file for initdb --pwfile
+		pwFile := filepath.Join(p.dataDir, "pwfile.tmp")
+		if err := os.WriteFile(pwFile, []byte(p.password), 0600); err != nil {
+			return fmt.Errorf("writing password file: %w", err)
+		}
+
 		cmd := exec.CommandContext(ctx, initdb,
 			"-D", pgData,
 			"-U", postgresUser,
 			"--no-locale",
 			"-E", "UTF8",
+			"--auth=scram-sha-256",
+			"--pwfile="+pwFile,
 		)
-		cmd.Env = append(os.Environ(), "PGPASSWORD="+p.password)
 		out, err := cmd.CombinedOutput()
+		_ = os.Remove(pwFile)
 		if err != nil {
 			return fmt.Errorf("initdb: %w\n%s", err, out)
 		}
 
-		// Configure authentication
+		// Configure authentication — scram-sha-256 for all connections
 		hbaPath := filepath.Join(pgData, "pg_hba.conf")
-		hba := "local all all trust\nhost all all 127.0.0.1/32 trust\nhost all all ::1/128 trust\n"
+		hba := "local all all scram-sha-256\nhost all all 127.0.0.1/32 scram-sha-256\nhost all all ::1/128 scram-sha-256\n"
 		if err := os.WriteFile(hbaPath, []byte(hba), 0600); err != nil {
 			return fmt.Errorf("writing pg_hba.conf: %w", err)
 		}
@@ -214,7 +222,7 @@ func (p *PostgresService) waitReady(ctx context.Context) error {
 }
 
 func (p *PostgresService) ensureDatabase(ctx context.Context) error {
-	connStr := fmt.Sprintf("host=localhost port=%s user=%s dbname=postgres sslmode=disable", postgresPort, postgresUser)
+	connStr := fmt.Sprintf("host=localhost port=%s user=%s password=%s dbname=postgres sslmode=disable", postgresPort, postgresUser, p.password)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return fmt.Errorf("connecting to postgres: %w", err)
@@ -341,7 +349,8 @@ func generatePassword() string {
 	// Generate a random 32-byte hex password
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "agentcage-fallback"
+		fmt.Fprintf(os.Stderr, "fatal: crypto/rand failed: %v\n", err)
+		os.Exit(1)
 	}
 	pw := hex.EncodeToString(b)
 
