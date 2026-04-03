@@ -167,8 +167,11 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	findingStore := findings.NewPGFindingStore(db)
 	bloom := findings.NewBloomFilter(100000, 7)
-	findingsCoordinator := findings.NewCoordinator(findingStore, bloom, log.WithValues("component", "findings-coordinator"))
-	_ = findingsCoordinator // subscriptions are created per-assessment at workflow time
+	var sanitizeLimits *findings.SanitizeLimits
+	if cfg.Assessment.MaxScreenshotSize > 0 {
+		sanitizeLimits = &findings.SanitizeLimits{MaxScreenshotSize: cfg.Assessment.MaxScreenshotSize}
+	}
+	findingsCoordinator := findings.NewCoordinator(findingStore, bloom, sanitizeLimits, log.WithValues("component", "findings-coordinator"))
 
 	log.Info("findings bus connected", "url", natsURL)
 
@@ -370,11 +373,13 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Assessment activity implementation ---
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
-		Cages:     cageServer,
-		Findings:  findingStore,
-		LLMClient: llmClient,
-		Playbooks: proofLib,
-		Log:       log,
+		Cages:       cageServer,
+		Findings:    findingStore,
+		Bus:         findingsBus,
+		Coordinator: findingsCoordinator,
+		LLMClient:   llmClient,
+		Playbooks:   proofLib,
+		Log:         log,
 	})
 
 	// --- gRPC server ---

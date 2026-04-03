@@ -16,19 +16,23 @@ import (
 // lifecycle activities. It wires the cage server, findings store,
 // planner, and playbook library together.
 type ActivityImpl struct {
-	cages     *cage.Server
-	findings  findings.FindingStore
-	planner   *Planner
-	playbooks *PlaybookLibrary
-	log       logr.Logger
+	cages       *cage.Server
+	findings    findings.FindingStore
+	bus         findings.Bus
+	coordinator *findings.Coordinator
+	planner     *Planner
+	playbooks   *PlaybookLibrary
+	log         logr.Logger
 }
 
 type ActivityImplConfig struct {
-	Cages     *cage.Server
-	Findings  findings.FindingStore
-	LLMClient *gateway.Client
-	Playbooks *PlaybookLibrary
-	Log       logr.Logger
+	Cages       *cage.Server
+	Findings    findings.FindingStore
+	Bus         findings.Bus
+	Coordinator *findings.Coordinator
+	LLMClient   *gateway.Client
+	Playbooks   *PlaybookLibrary
+	Log         logr.Logger
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
@@ -37,11 +41,13 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		planner = NewPlanner(cfg.LLMClient)
 	}
 	return &ActivityImpl{
-		cages:     cfg.Cages,
-		findings:  cfg.Findings,
-		planner:   planner,
-		playbooks: cfg.Playbooks,
-		log:       cfg.Log.WithValues("component", "assessment-activities"),
+		cages:       cfg.Cages,
+		findings:    cfg.Findings,
+		bus:         cfg.Bus,
+		coordinator: cfg.Coordinator,
+		planner:     planner,
+		playbooks:   cfg.Playbooks,
+		log:         cfg.Log.WithValues("component", "assessment-activities"),
 	}
 }
 
@@ -82,20 +88,18 @@ func (a *ActivityImpl) CreateEscalationCage(ctx context.Context, assessmentID st
 }
 
 func (a *ActivityImpl) GetCandidateFindings(ctx context.Context, assessmentID string) ([]findings.Finding, error) {
-	// Query findings store for all candidate findings in this assessment.
-	// For now, returns empty — the findings bus populates the store as cages report.
 	a.log.V(1).Info("fetching candidate findings", "assessment_id", assessmentID)
-	return nil, nil
+	return a.findings.GetByAssessment(ctx, assessmentID, findings.StatusCandidate)
 }
 
 func (a *ActivityImpl) GetValidatedFindings(ctx context.Context, assessmentID string) ([]findings.Finding, error) {
 	a.log.V(1).Info("fetching validated findings", "assessment_id", assessmentID)
-	return nil, nil
+	return a.findings.GetByAssessment(ctx, assessmentID, findings.StatusValidated)
 }
 
 func (a *ActivityImpl) UpdateFindingStatus(ctx context.Context, findingID string, status findings.Status) error {
 	a.log.Info("finding status updated", "finding_id", findingID, "status", status)
-	return nil
+	return a.findings.UpdateStatus(ctx, findingID, status)
 }
 
 func (a *ActivityImpl) UpdateAssessmentStatus(ctx context.Context, assessmentID string, status Status) error {

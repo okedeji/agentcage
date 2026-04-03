@@ -10,16 +10,19 @@ import (
 type FindingStore interface {
 	SaveFinding(ctx context.Context, finding Finding) error
 	FindingExists(ctx context.Context, findingID string) (bool, error)
+	GetByAssessment(ctx context.Context, assessmentID string, status Status) ([]Finding, error)
+	UpdateStatus(ctx context.Context, findingID string, status Status) error
 }
 
 type Coordinator struct {
 	store  FindingStore
 	bloom  *BloomFilter
+	limits *SanitizeLimits
 	logger logr.Logger
 }
 
-func NewCoordinator(store FindingStore, bloom *BloomFilter, logger logr.Logger) *Coordinator {
-	return &Coordinator{store: store, bloom: bloom, logger: logger}
+func NewCoordinator(store FindingStore, bloom *BloomFilter, limits *SanitizeLimits, logger logr.Logger) *Coordinator {
+	return &Coordinator{store: store, bloom: bloom, limits: limits, logger: logger}
 }
 
 func (c *Coordinator) HandleMessage(ctx context.Context, msg Message) error {
@@ -28,7 +31,7 @@ func (c *Coordinator) HandleMessage(ctx context.Context, msg Message) error {
 		return nil
 	}
 
-	SanitizeFinding(&msg.Finding)
+	SanitizeFinding(&msg.Finding, c.limits)
 
 	if c.bloom.MayContain(msg.Finding.ID) {
 		exists, err := c.store.FindingExists(ctx, msg.Finding.ID)

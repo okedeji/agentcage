@@ -39,6 +39,28 @@ func (m *mockStore) FindingExists(_ context.Context, id string) (bool, error) {
 	return ok, nil
 }
 
+func (m *mockStore) GetByAssessment(_ context.Context, assessmentID string, status Status) ([]Finding, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []Finding
+	for _, f := range m.findings {
+		if f.AssessmentID == assessmentID && f.Status == status {
+			result = append(result, f)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockStore) UpdateStatus(_ context.Context, findingID string, status Status) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if f, ok := m.findings[findingID]; ok {
+		f.Status = status
+		m.findings[findingID] = f
+	}
+	return nil
+}
+
 func (m *mockStore) get(id string) (Finding, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -64,7 +86,7 @@ func newTestFinding() Finding {
 func TestCoordinator_ValidFinding(t *testing.T) {
 	store := newMockStore()
 	bloom := NewBloomFilter(1024, 3)
-	coord := NewCoordinator(store, bloom, logr.Discard())
+	coord := NewCoordinator(store, bloom, nil, logr.Discard())
 
 	msg := Message{SchemaVersion: CurrentSchemaVersion, Finding: newTestFinding()}
 	err := coord.HandleMessage(context.Background(), msg)
@@ -78,7 +100,7 @@ func TestCoordinator_ValidFinding(t *testing.T) {
 func TestCoordinator_InvalidFinding_Dropped(t *testing.T) {
 	store := newMockStore()
 	bloom := NewBloomFilter(1024, 3)
-	coord := NewCoordinator(store, bloom, logr.Discard())
+	coord := NewCoordinator(store, bloom, nil, logr.Discard())
 
 	f := newTestFinding()
 	f.ID = ""
@@ -94,7 +116,7 @@ func TestCoordinator_InvalidFinding_Dropped(t *testing.T) {
 func TestCoordinator_DuplicateBloomHitAndPostgresHit(t *testing.T) {
 	store := newMockStore()
 	bloom := NewBloomFilter(1024, 3)
-	coord := NewCoordinator(store, bloom, logr.Discard())
+	coord := NewCoordinator(store, bloom, nil, logr.Discard())
 
 	msg := Message{SchemaVersion: CurrentSchemaVersion, Finding: newTestFinding()}
 	require.NoError(t, coord.HandleMessage(context.Background(), msg))
@@ -110,7 +132,7 @@ func TestCoordinator_DuplicateBloomHitAndPostgresHit(t *testing.T) {
 func TestCoordinator_DuplicateBloomMissPostgresHit(t *testing.T) {
 	store := newMockStore()
 	bloom := NewBloomFilter(1024, 3)
-	coord := NewCoordinator(store, bloom, logr.Discard())
+	coord := NewCoordinator(store, bloom, nil, logr.Discard())
 
 	f := newTestFinding()
 	store.mu.Lock()
@@ -130,7 +152,7 @@ func TestCoordinator_StoreError_ReturnsError(t *testing.T) {
 	store := newMockStore()
 	store.saveErr = errors.New("connection refused")
 	bloom := NewBloomFilter(1024, 3)
-	coord := NewCoordinator(store, bloom, logr.Discard())
+	coord := NewCoordinator(store, bloom, nil, logr.Discard())
 
 	msg := Message{SchemaVersion: CurrentSchemaVersion, Finding: newTestFinding()}
 	err := coord.HandleMessage(context.Background(), msg)
@@ -141,7 +163,7 @@ func TestCoordinator_StoreError_ReturnsError(t *testing.T) {
 func TestCoordinator_FindingSanitized(t *testing.T) {
 	store := newMockStore()
 	bloom := NewBloomFilter(1024, 3)
-	coord := NewCoordinator(store, bloom, logr.Discard())
+	coord := NewCoordinator(store, bloom, nil, logr.Discard())
 
 	f := newTestFinding()
 	f.Evidence.Request = make([]byte, maxEvidenceRequestSize+100)
@@ -157,7 +179,7 @@ func TestCoordinator_FindingSanitized(t *testing.T) {
 func TestCoordinator_BloomUpdatedAfterSave(t *testing.T) {
 	store := newMockStore()
 	bloom := NewBloomFilter(1024, 3)
-	coord := NewCoordinator(store, bloom, logr.Discard())
+	coord := NewCoordinator(store, bloom, nil, logr.Discard())
 
 	msg := Message{SchemaVersion: CurrentSchemaVersion, Finding: newTestFinding()}
 	require.NoError(t, coord.HandleMessage(context.Background(), msg))
