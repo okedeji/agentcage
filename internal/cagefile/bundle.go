@@ -92,8 +92,25 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 	return bundleManifest, nil
 }
 
+// DefaultMaxBundleSize is the default size limit for agent directories (2GB).
+const DefaultMaxBundleSize int64 = 2 * 1024 * 1024 * 1024
+
 // PackToFile packs a directory into a .cage file on disk.
-func PackToFile(dir, version, outPath string) (*BundleManifest, error) {
+// maxSize limits the total size of files in the directory. Pass 0 to use DefaultMaxBundleSize.
+func PackToFile(dir, version, outPath string, maxSize int64) (*BundleManifest, error) {
+	if maxSize <= 0 {
+		maxSize = DefaultMaxBundleSize
+	}
+
+	size, err := DirSize(dir)
+	if err != nil {
+		return nil, fmt.Errorf("calculating directory size: %w", err)
+	}
+	if size > maxSize {
+		return nil, fmt.Errorf("directory is %.1f MB, exceeds max bundle size %.1f MB — use --max-size to increase the limit",
+			float64(size)/(1024*1024), float64(maxSize)/(1024*1024))
+	}
+
 	f, err := os.Create(outPath)
 	if err != nil {
 		return nil, fmt.Errorf("creating bundle file %s: %w", outPath, err)
@@ -101,6 +118,19 @@ func PackToFile(dir, version, outPath string) (*BundleManifest, error) {
 	defer func() { _ = f.Close() }()
 
 	return Pack(dir, version, f)
+}
+
+// DirSize returns the total size of all files in a directory tree.
+func DirSize(dir string) (int64, error) {
+	var total int64
+	err := filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		total += info.Size()
+		return nil
+	})
+	return total, err
 }
 
 // Unpack extracts a .cage bundle to a destination directory.

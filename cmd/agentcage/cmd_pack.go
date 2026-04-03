@@ -13,6 +13,7 @@ import (
 func cmdPack(args []string) {
 	fs := flag.NewFlagSet("pack", flag.ExitOnError)
 	output := fs.String("output", "", "output .cage file path (default: <dir-name>.cage)")
+	maxSizeMB := fs.Int64("max-size", 0, "max directory size in MB (default: 2048)")
 	_ = fs.Parse(args)
 
 	if fs.NArg() < 1 {
@@ -36,7 +37,12 @@ func cmdPack(args []string) {
 
 	fmt.Printf("Packing %s...\n", dir)
 
-	manifest, err := cagefile.PackToFile(dir, version, outPath)
+	var maxSize int64
+	if *maxSizeMB > 0 {
+		maxSize = *maxSizeMB * 1024 * 1024
+	}
+
+	manifest, err := cagefile.PackToFile(dir, version, outPath, maxSize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
