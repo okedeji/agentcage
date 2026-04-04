@@ -63,6 +63,8 @@ func main() {
 			cmdProof(args)
 		case "audit":
 			cmdAudit(args)
+		case "falco":
+			cmdFalco(args)
 		default:
 			fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", cmd)
 			printUsage()
@@ -98,6 +100,7 @@ Operate:
   fleet             Show fleet status (hosts, pools, capacity)
   db                Open psql shell or show connection string
   audit verify      Verify audit chain integrity for a cage
+  falco             Manage Falco rules (export-rules)
 
 Info:
   version           Show version info
