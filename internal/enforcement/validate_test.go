@@ -28,7 +28,7 @@ func validDiscoveryConfig() cage.Config {
 		Resources:  cage.ResourceLimits{VCPUs: 2, MemoryMB: 4096},
 		TimeLimits: cage.TimeLimits{MaxDuration: 20 * time.Minute},
 		RateLimits: cage.RateLimits{RequestsPerSecond: 100},
-		LLM:        &cage.LLMGatewayConfig{TokenBudget: 10000, RoutingStrategy: "round-robin"},
+		LLM:        &cage.LLMGatewayConfig{TokenBudget: 10000, RoutingStrategy: "round_robin"},
 	}
 }
 
@@ -52,7 +52,7 @@ func validEscalationConfig() cage.Config {
 		Resources:       cage.ResourceLimits{VCPUs: 2, MemoryMB: 2048},
 		TimeLimits:      cage.TimeLimits{MaxDuration: 10 * time.Minute},
 		RateLimits:      cage.RateLimits{RequestsPerSecond: 200},
-		LLM:             &cage.LLMGatewayConfig{TokenBudget: 5000, RoutingStrategy: "round-robin"},
+		LLM:             &cage.LLMGatewayConfig{TokenBudget: 5000, RoutingStrategy: "round_robin"},
 		ParentFindingID: "finding-456",
 	}
 }
