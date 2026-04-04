@@ -8,21 +8,21 @@ import (
 	"github.com/go-logr/logr"
 )
 
-type Server struct {
+type Service struct {
 	queue    *Queue
 	signaler WorkflowSignaler
 	logger   logr.Logger
 }
 
-func NewServer(queue *Queue, signaler WorkflowSignaler, logger logr.Logger) *Server {
-	return &Server{
+func NewService(queue *Queue, signaler WorkflowSignaler, logger logr.Logger) *Service {
+	return &Service{
 		queue:    queue,
 		signaler: signaler,
 		logger:   logger,
 	}
 }
 
-func (s *Server) ListInterventions(ctx context.Context, filters ListFilters) ([]Request, error) {
+func (s *Service) ListInterventions(ctx context.Context, filters ListFilters) ([]Request, error) {
 	items, err := s.queue.List(ctx, filters)
 	if err != nil {
 		return nil, fmt.Errorf("listing interventions: %w", err)
@@ -30,7 +30,7 @@ func (s *Server) ListInterventions(ctx context.Context, filters ListFilters) ([]
 	return items, nil
 }
 
-func (s *Server) ResolveCageIntervention(ctx context.Context, interventionID string, action Action, rationale string, adjustments map[string]string, operatorID string) error {
+func (s *Service) ResolveCageIntervention(ctx context.Context, interventionID string, action Action, rationale string, adjustments map[string]string, operatorID string) error {
 	req, err := s.queue.store.GetIntervention(ctx, interventionID)
 	if err != nil {
 		return fmt.Errorf("getting intervention %s: %w", interventionID, err)
@@ -73,7 +73,7 @@ func (s *Server) ResolveCageIntervention(ctx context.Context, interventionID str
 	return nil
 }
 
-func (s *Server) ResolveAssessmentReview(ctx context.Context, interventionID string, decision ReviewDecision, rationale string, adjustments []FindingAdjustment, operatorID string) error {
+func (s *Service) ResolveAssessmentReview(ctx context.Context, interventionID string, decision ReviewDecision, rationale string, adjustments []FindingAdjustment, operatorID string) error {
 	req, err := s.queue.store.GetIntervention(ctx, interventionID)
 	if err != nil {
 		return fmt.Errorf("getting intervention %s for review: %w", interventionID, err)

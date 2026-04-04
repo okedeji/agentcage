@@ -7,25 +7,25 @@ import (
 	"github.com/go-logr/logr"
 )
 
-type Server struct {
+type Service struct {
 	pool   *PoolManager
 	demand *DemandLedger
 	logger logr.Logger
 }
 
-func NewServer(pool *PoolManager, demand *DemandLedger, logger logr.Logger) *Server {
-	return &Server{
+func NewService(pool *PoolManager, demand *DemandLedger, logger logr.Logger) *Service {
+	return &Service{
 		pool:   pool,
 		demand: demand,
 		logger: logger,
 	}
 }
 
-func (s *Server) GetFleetStatus(_ context.Context) (FleetStatus, error) {
+func (s *Service) GetFleetStatus(_ context.Context) (FleetStatus, error) {
 	return s.pool.GetFleetStatus(), nil
 }
 
-func (s *Server) DrainHost(_ context.Context, hostID string, reason string) error {
+func (s *Service) DrainHost(_ context.Context, hostID string, reason string) error {
 	if _, err := s.pool.GetHost(hostID); err != nil {
 		return fmt.Errorf("draining host %s: %w", hostID, err)
 	}
@@ -36,7 +36,7 @@ func (s *Server) DrainHost(_ context.Context, hostID string, reason string) erro
 	return nil
 }
 
-func (s *Server) GetCapacity(_ context.Context) ([]PoolStatus, int32, error) {
+func (s *Service) GetCapacity(_ context.Context) ([]PoolStatus, int32, error) {
 	statuses := s.pool.GetPoolStatus()
 	var available int32
 	for _, ps := range statuses {

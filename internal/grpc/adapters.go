@@ -17,10 +17,10 @@ import (
 
 // Services holds references to all domain servers needed by gRPC adapters.
 type Services struct {
-	Cages         *cage.Server
-	Assessments   *assessment.Server
-	Interventions *intervention.Server
-	Fleet         *fleet.Server
+	Cages         *cage.Service
+	Assessments   *assessment.Service
+	Interventions *intervention.Service
+	Fleet         *fleet.Service
 	Cancel        context.CancelFunc
 	Version       string
 }
@@ -55,7 +55,7 @@ func (a *controlAdapter) Health(_ context.Context, _ *pb.HealthRequest) (*pb.Hea
 
 type cageAdapter struct {
 	pb.UnimplementedCageServiceServer
-	server *cage.Server
+	server *cage.Service
 }
 
 func (a *cageAdapter) CreateCage(ctx context.Context, req *pb.CreateCageRequest) (*pb.CreateCageResponse, error) {
@@ -83,7 +83,7 @@ func (a *cageAdapter) DestroyCage(ctx context.Context, req *pb.DestroyCageReques
 
 type assessmentAdapter struct {
 	pb.UnimplementedAssessmentServiceServer
-	server *assessment.Server
+	server *assessment.Service
 }
 
 func (a *assessmentAdapter) CreateAssessment(ctx context.Context, req *pb.CreateAssessmentRequest) (*pb.CreateAssessmentResponse, error) {
@@ -104,7 +104,7 @@ func (a *assessmentAdapter) GetAssessment(ctx context.Context, req *pb.GetAssess
 
 type interventionAdapter struct {
 	pb.UnimplementedInterventionServiceServer
-	server *intervention.Server
+	server *intervention.Service
 }
 
 func (a *interventionAdapter) ListInterventions(ctx context.Context, req *pb.ListInterventionsRequest) (*pb.ListInterventionsResponse, error) {
@@ -160,7 +160,7 @@ func (a *interventionAdapter) ResolveAssessmentReview(ctx context.Context, req *
 
 type fleetAdapter struct {
 	pb.UnimplementedFleetServiceServer
-	server *fleet.Server
+	server *fleet.Service
 }
 
 func (a *fleetAdapter) GetFleetStatus(ctx context.Context, _ *pb.GetFleetStatusRequest) (*pb.GetFleetStatusResponse, error) {

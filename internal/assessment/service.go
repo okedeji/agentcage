@@ -17,22 +17,22 @@ const TaskQueue = "assessment-lifecycle"
 
 var ErrAssessmentNotFound = errors.New("assessment not found")
 
-type Server struct {
+type Service struct {
 	temporal    client.Client
 	db          *sql.DB
 	mu          sync.RWMutex
 	assessments map[string]*Info
 }
 
-func NewServer(temporal client.Client, db *sql.DB) *Server {
-	return &Server{
+func NewService(temporal client.Client, db *sql.DB) *Service {
+	return &Service{
 		temporal:    temporal,
 		db:          db,
 		assessments: make(map[string]*Info),
 	}
 }
 
-func (s *Server) CreateAssessment(ctx context.Context, config Config) (*Info, error) {
+func (s *Service) CreateAssessment(ctx context.Context, config Config) (*Info, error) {
 	assessmentID := uuid.NewString()
 	now := time.Now()
 	info := &Info{
@@ -71,7 +71,7 @@ func (s *Server) CreateAssessment(ctx context.Context, config Config) (*Info, er
 	return info, nil
 }
 
-func (s *Server) GetAssessment(ctx context.Context, assessmentID string) (*Info, error) {
+func (s *Service) GetAssessment(ctx context.Context, assessmentID string) (*Info, error) {
 	s.mu.RLock()
 	info, ok := s.assessments[assessmentID]
 	s.mu.RUnlock()
@@ -90,7 +90,7 @@ func (s *Server) GetAssessment(ctx context.Context, assessmentID string) (*Info,
 	return info, nil
 }
 
-func (s *Server) persistAssessment(ctx context.Context, info *Info) error {
+func (s *Service) persistAssessment(ctx context.Context, info *Info) error {
 	if s.db == nil {
 		return nil
 	}
@@ -107,7 +107,7 @@ func (s *Server) persistAssessment(ctx context.Context, info *Info) error {
 	return err
 }
 
-func (s *Server) loadAssessment(ctx context.Context, assessmentID string) (*Info, error) {
+func (s *Service) loadAssessment(ctx context.Context, assessmentID string) (*Info, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("assessment %s: %w", assessmentID, ErrAssessmentNotFound)
 	}

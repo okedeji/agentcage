@@ -16,7 +16,7 @@ import (
 // lifecycle activities. It wires the cage server, findings store,
 // planner, and playbook library together.
 type ActivityImpl struct {
-	cages       *cage.Server
+	cages       *cage.Service
 	findings    findings.FindingStore
 	bus         findings.Bus
 	coordinator *findings.Coordinator
@@ -26,7 +26,7 @@ type ActivityImpl struct {
 }
 
 type ActivityImplConfig struct {
-	Cages       *cage.Server
+	Cages       *cage.Service
 	Findings    findings.FindingStore
 	Bus         findings.Bus
 	Coordinator *findings.Coordinator

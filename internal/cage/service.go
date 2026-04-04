@@ -21,7 +21,7 @@ var ErrCageNotFound = errors.New("cage not found")
 
 type ConfigValidator func(Config) error
 
-type Server struct {
+type Service struct {
 	temporal client.Client
 	validate ConfigValidator
 	db       *sql.DB
@@ -29,8 +29,8 @@ type Server struct {
 	cages    map[string]*Info
 }
 
-func NewServer(temporal client.Client, validate ConfigValidator, db *sql.DB) *Server {
-	return &Server{
+func NewService(temporal client.Client, validate ConfigValidator, db *sql.DB) *Service {
+	return &Service{
 		temporal: temporal,
 		validate: validate,
 		db:       db,
@@ -38,7 +38,7 @@ func NewServer(temporal client.Client, validate ConfigValidator, db *sql.DB) *Se
 	}
 }
 
-func (s *Server) CreateCage(ctx context.Context, config Config) (*Info, error) {
+func (s *Service) CreateCage(ctx context.Context, config Config) (*Info, error) {
 	if err := s.validate(config); err != nil {
 		return nil, fmt.Errorf("validating cage config: %w", err)
 	}
@@ -82,7 +82,7 @@ func (s *Server) CreateCage(ctx context.Context, config Config) (*Info, error) {
 	return info, nil
 }
 
-func (s *Server) GetCage(ctx context.Context, cageID string) (*Info, error) {
+func (s *Service) GetCage(ctx context.Context, cageID string) (*Info, error) {
 	s.mu.RLock()
 	info, ok := s.cages[cageID]
 	s.mu.RUnlock()
@@ -101,7 +101,7 @@ func (s *Server) GetCage(ctx context.Context, cageID string) (*Info, error) {
 	return info, nil
 }
 
-func (s *Server) DestroyCage(ctx context.Context, cageID string, reason string) error {
+func (s *Service) DestroyCage(ctx context.Context, cageID string, reason string) error {
 	info, err := s.GetCage(ctx, cageID)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func (s *Server) DestroyCage(ctx context.Context, cageID string, reason string) 
 	return nil
 }
 
-func (s *Server) persistCage(ctx context.Context, info *Info) error {
+func (s *Service) persistCage(ctx context.Context, info *Info) error {
 	if s.db == nil {
 		return nil
 	}
@@ -147,7 +147,7 @@ func (s *Server) persistCage(ctx context.Context, info *Info) error {
 	return err
 }
 
-func (s *Server) updateCageState(ctx context.Context, cageID string, state State) error {
+func (s *Service) updateCageState(ctx context.Context, cageID string, state State) error {
 	if s.db == nil {
 		return nil
 	}
@@ -158,7 +158,7 @@ func (s *Server) updateCageState(ctx context.Context, cageID string, state State
 	return err
 }
 
-func (s *Server) loadCage(ctx context.Context, cageID string) (*Info, error) {
+func (s *Service) loadCage(ctx context.Context, cageID string) (*Info, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("cage %s: %w", cageID, ErrCageNotFound)
 	}

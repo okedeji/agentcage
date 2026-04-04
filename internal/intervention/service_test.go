@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestServer() (*Server, *Queue, *mockSignaler) {
+func newTestServer() (*Service, *Queue, *mockSignaler) {
 	q, _, _ := newTestQueue()
 	sig := &mockSignaler{}
-	srv := NewServer(q, sig, logr.Discard())
+	srv := NewService(q, sig, logr.Discard())
 	return srv, q, sig
 }
 
