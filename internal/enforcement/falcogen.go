@@ -29,97 +29,100 @@ type GeneratedTripwire struct {
 // detectConditions maps human-readable detect strings from the config to
 // Falco condition syntax. agentcage owns this mapping — the user writes
 // "root shell spawn", agentcage translates to Falco syntax.
+// detectConditions maps rule names (matching config keys) to Falco detection
+// conditions. Users reference these by name in the monitoring config and set
+// the action — the detection logic is locked.
 var detectConditions = map[string]struct {
 	condition string
 	output    string
 	priority  string
 }{
-	"root shell spawn": {
+	"privileged_shell": {
 		condition: "spawned_process and proc.name in (bash, sh, dash, zsh) and proc.uid = 0 and container.id != host",
 		output:    "Privileged shell spawned (user=%user.name command=%proc.cmdline container=%container.id)",
 		priority:  "WARNING",
 	},
-	"any shell spawn": {
+	"any_shell": {
 		condition: "spawned_process and proc.name in (bash, sh, dash, zsh) and container.id != host",
 		output:    "Shell spawned (command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"write to /etc, /proc, /sys": {
+	"sensitive_file_write": {
 		condition: "open_write and (fd.name startswith /etc/ or fd.name startswith /proc/ or fd.name startswith /sys/) and container.id != host",
 		output:    "Sensitive file write (file=%fd.name command=%proc.cmdline container=%container.id)",
 		priority:  "WARNING",
 	},
-	"any filesystem write": {
+	"any_file_write": {
 		condition: "open_write and container.id != host",
 		output:    "File write (file=%fd.name command=%proc.cmdline container=%container.id)",
 		priority:  "WARNING",
 	},
-	"setuid, setgid, sudo": {
+	"privilege_escalation": {
 		condition: "(evt.type in (setuid, setgid, setreuid, setregid) or proc.name = sudo) and container.id != host",
 		output:    "Privilege escalation attempt (syscall=%evt.type command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"rapid process forking": {
+	"fork_bomb": {
 		condition: "evt.type = clone and container.id != host",
 		output:    "Process fork (command=%proc.cmdline parent=%proc.pname container=%container.id)",
 		priority:  "NOTICE",
 	},
-	"connection outside target scope": {
+	"unexpected_network": {
 		condition: "evt.type in (connect, sendto) and fd.type = ipv4 and container.id != host",
 		output:    "Network connection (dest=%fd.sip:%fd.sport command=%proc.cmdline container=%container.id)",
 		priority:  "NOTICE",
 	},
-	"SSH, RDP, SMB connections": {
+	"lateral_movement": {
 		condition: "evt.type in (connect, sendto) and fd.sport in (22, 3389, 445) and container.id != host",
 		output:    "Lateral movement attempt (dest=%fd.sip:%fd.sport command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"process not in allowlist": {
+	"unexpected_process": {
 		condition: "spawned_process and not proc.name in (%s) and container.id != host",
 		output:    "Unexpected process (process=%proc.name command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"kernel module load": {
+	"kernel_module": {
 		condition: "(evt.type in (init_module, finit_module) or proc.name in (insmod, modprobe)) and container.id != host",
 		output:    "Kernel module load attempt (command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"ptrace attach": {
+	"ptrace": {
 		condition: "evt.type = ptrace and evt.arg.request in (PTRACE_ATTACH, PTRACE_SEIZE) and container.id != host",
 		output:    "Ptrace attach to process (target=%proc.pid command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"mount operations": {
+	"mount": {
 		condition: "evt.type in (mount, umount2) and container.id != host",
 		output:    "Mount operation (command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"container escape": {
+	"container_escape": {
 		condition: "open_read and (fd.name startswith /var/run/docker.sock or fd.name startswith /proc/1/root or fd.name startswith /proc/1/ns) and container.id != host",
 		output:    "Container escape attempt (file=%fd.name command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"raw socket creation": {
+	"raw_socket": {
 		condition: "evt.type = socket and evt.arg.type in (SOCK_RAW, SOCK_PACKET) and container.id != host",
 		output:    "Raw socket created (command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"DNS exfiltration": {
+	"dns_exfil": {
 		condition: "evt.type in (connect, sendto) and fd.sport = 53 and fd.type = ipv4 and container.id != host",
 		output:    "DNS query (dest=%fd.sip command=%proc.cmdline container=%container.id)",
 		priority:  "NOTICE",
 	},
-	"large file read": {
+	"large_read": {
 		condition: "open_read and evt.rawres > 1048576 and container.id != host",
 		output:    "Large file read (file=%fd.name bytes=%evt.rawres command=%proc.cmdline container=%container.id)",
 		priority:  "WARNING",
 	},
-	"cron or at job creation": {
+	"persistence": {
 		condition: "(open_write and fd.name startswith /var/spool/cron) or (proc.name in (crontab, at, atd)) and container.id != host",
 		output:    "Persistence attempt via scheduled job (file=%fd.name command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
-	"binary download and execute": {
+	"download_exec": {
 		condition: "spawned_process and proc.name in (curl, wget) and proc.pcmdline contains chmod and container.id != host",
 		output:    "Download and execute (command=%proc.cmdline parent=%proc.pcmdline container=%container.id)",
 		priority:  "CRITICAL",
@@ -140,8 +143,8 @@ func GenerateFalcoRules(monitoring map[string]config.MonitoringConfig) (map[stri
 			DefaultAction: parseTripwireAction(mc.DefaultAction),
 		}
 
-		for ruleName, mr := range mc.Rules {
-			def, ok := detectConditions[mr.Detect]
+		for ruleName, action := range mc.Rules {
+			def, ok := detectConditions[ruleName]
 			if !ok {
 				continue
 			}
@@ -161,14 +164,14 @@ func GenerateFalcoRules(monitoring map[string]config.MonitoringConfig) (map[stri
 
 			rules = append(rules, FalcoRuleOutput{
 				Rule:      fullName,
-				Desc:      fmt.Sprintf("Detects %s in %s cages", mr.Detect, cageType),
+				Desc:      fmt.Sprintf("Detects %s in %s cages", humanizeRuleName(ruleName), cageType),
 				Condition: condition,
 				Output:    fmt.Sprintf("%s in %s cage (%s)", humanizeRuleName(ruleName), cageType, output),
 				Priority:  def.priority,
 				Tags:      []string{"agentcage", cageType, ruleName},
 			})
 
-			tripwire.Rules[fullName] = parseTripwireAction(mr.Action)
+			tripwire.Rules[fullName] = parseTripwireAction(action)
 		}
 
 		allRules[cageType] = rules

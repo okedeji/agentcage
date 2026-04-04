@@ -334,6 +334,14 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	cageValidator := func(c cage.Config) error {
 		if validErr := enforcement.ValidateCageConfig(c, cfg); validErr != nil {
+			alertDispatcher.Dispatch(context.Background(), alert.Event{
+				Source:       alert.SourcePolicy,
+				Category:     alert.CategoryCageConfigViolation,
+				Priority:     intervention.PriorityHigh,
+				AssessmentID: c.AssessmentID,
+				Description:  validErr.Error(),
+				Details:      map[string]any{"layer": "go"},
+			})
 			return validErr
 		}
 		scopeDecision, scopeErr := opaEngine.EvaluateScope(context.Background(), c.Scope, cfg.Scope.Deny)
@@ -343,11 +351,11 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		if !scopeDecision.Allowed {
 			alertDispatcher.Dispatch(context.Background(), alert.Event{
 				Source:       alert.SourcePolicy,
-				Category:     "scope",
+				Category:     alert.CategoryScopeViolation,
 				Priority:     intervention.PriorityCritical,
 				AssessmentID: c.AssessmentID,
 				Description:  scopeDecision.Reason,
-				Details:      map[string]any{"violations": scopeDecision.Violations},
+				Details:      map[string]any{"violations": scopeDecision.Violations, "layer": "opa"},
 			})
 			return fmt.Errorf("scope rejected: %s", scopeDecision.Reason)
 		}
@@ -358,11 +366,11 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		if !decision.Allowed {
 			alertDispatcher.Dispatch(context.Background(), alert.Event{
 				Source:       alert.SourcePolicy,
-				Category:     "cage_config",
+				Category:     alert.CategoryCageConfigViolation,
 				Priority:     intervention.PriorityMedium,
 				AssessmentID: c.AssessmentID,
 				Description:  decision.Reason,
-				Details:      map[string]any{"violations": decision.Violations},
+				Details:      map[string]any{"violations": decision.Violations, "layer": "opa"},
 			})
 			return fmt.Errorf("cage config rejected: %s", decision.Reason)
 		}
@@ -370,15 +378,15 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 	// --- Domain servers ---
 
-	cageServer := cage.NewServer(temporalClient, cageValidator, db)
-	assessmentServer := assessment.NewServer(temporalClient, db)
+	cageSvc := cage.NewService(temporalClient, cageValidator, db)
+	assessmentSvc := assessment.NewService(temporalClient, db)
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
-	iServer := intervention.NewServer(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
+	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
 
 	poolManager := fleet.NewPoolManager()
 	demandLedger := fleet.NewDemandLedger()
-	fleetServer := fleet.NewServer(poolManager, demandLedger, log.WithValues("component", "fleet"))
+	fleetSvc := fleet.NewService(poolManager, demandLedger, log.WithValues("component", "fleet"))
 
 	// --- LLM client (for coordinator) ---
 
@@ -504,7 +512,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Assessment activity implementation ---
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
-		Cages:       cageServer,
+		Cages:       cageSvc,
 		Findings:    findingStore,
 		Bus:         findingsBus,
 		Coordinator: findingsCoordinator,
@@ -535,10 +543,10 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	grpcServer := grpc.NewServer(grpcOpts...)
 
 	agentgrpc.Register(grpcServer, agentgrpc.Services{
-		Cages:         cageServer,
-		Assessments:   assessmentServer,
-		Interventions: iServer,
-		Fleet:         fleetServer,
+		Cages:         cageSvc,
+		Assessments:   assessmentSvc,
+		Interventions: iSvc,
+		Fleet:         fleetSvc,
 		Cancel:        cancel,
 		Version:       version,
 	})

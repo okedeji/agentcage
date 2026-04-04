@@ -190,17 +190,12 @@ type PatternEntry struct {
 }
 
 // MonitoringConfig defines behavioral monitoring rules for a cage type.
+// Rule keys must match predefined detection conditions in the enforcement
+// package. Users set the action (log, human_review, kill) per rule.
 type MonitoringConfig struct {
-	Rules            map[string]MonitoringRule `yaml:"rules"`
-	AllowedProcesses []string                  `yaml:"allowed_processes"`
-	DefaultAction    string                    `yaml:"default_action"`
-}
-
-// MonitoringRule is a human-readable behavioral detection rule.
-// agentcage generates Falco rules from these at startup.
-type MonitoringRule struct {
-	Detect string `yaml:"detect"`
-	Action string `yaml:"action"`
+	Rules            map[string]string `yaml:"rules"`
+	AllowedProcesses []string          `yaml:"allowed_processes"`
+	DefaultAction    string            `yaml:"default_action"`
 }
 
 // ComplianceConfig enables optional compliance framework enforcement.
@@ -382,55 +377,55 @@ func Defaults() *Config {
 		Payload: defaultPayload(),
 		Monitoring: map[string]MonitoringConfig{
 			"discovery": {
-				Rules: map[string]MonitoringRule{
-					"privileged_shell":     {Detect: "root shell spawn", Action: "human_review"},
-					"sensitive_file_write": {Detect: "write to /etc, /proc, /sys", Action: "human_review"},
-					"privilege_escalation": {Detect: "setuid, setgid, sudo", Action: "kill"},
-					"fork_bomb":           {Detect: "rapid process forking", Action: "human_review"},
-					"kernel_module":        {Detect: "kernel module load", Action: "kill"},
-					"ptrace":              {Detect: "ptrace attach", Action: "kill"},
-					"mount":               {Detect: "mount operations", Action: "kill"},
-					"container_escape":    {Detect: "container escape", Action: "kill"},
-					"raw_socket":          {Detect: "raw socket creation", Action: "human_review"},
-					"dns_exfil":           {Detect: "DNS exfiltration", Action: "log"},
-					"large_read":          {Detect: "large file read", Action: "log"},
-					"persistence":         {Detect: "cron or at job creation", Action: "kill"},
-					"download_exec":       {Detect: "binary download and execute", Action: "kill"},
+				Rules: map[string]string{
+					"privileged_shell":     "human_review",
+					"sensitive_file_write": "human_review",
+					"privilege_escalation": "kill",
+					"fork_bomb":           "human_review",
+					"kernel_module":        "kill",
+					"ptrace":              "kill",
+					"mount":               "kill",
+					"container_escape":    "kill",
+					"raw_socket":          "human_review",
+					"dns_exfil":           "log",
+					"large_read":          "log",
+					"persistence":         "kill",
+					"download_exec":       "kill",
 				},
 				DefaultAction: "human_review",
 			},
 			"validator": {
-				Rules: map[string]MonitoringRule{
-					"any_shell":            {Detect: "any shell spawn", Action: "kill"},
-					"any_file_write":       {Detect: "any filesystem write", Action: "human_review"},
-					"unexpected_network":   {Detect: "connection outside target scope", Action: "log"},
-					"privilege_escalation": {Detect: "setuid, setgid, sudo", Action: "kill"},
-					"unexpected_process":   {Detect: "process not in allowlist", Action: "kill"},
-					"kernel_module":        {Detect: "kernel module load", Action: "kill"},
-					"ptrace":              {Detect: "ptrace attach", Action: "kill"},
-					"mount":               {Detect: "mount operations", Action: "kill"},
-					"container_escape":    {Detect: "container escape", Action: "kill"},
-					"raw_socket":          {Detect: "raw socket creation", Action: "kill"},
-					"persistence":         {Detect: "cron or at job creation", Action: "kill"},
-					"download_exec":       {Detect: "binary download and execute", Action: "kill"},
+				Rules: map[string]string{
+					"any_shell":            "kill",
+					"any_file_write":       "human_review",
+					"unexpected_network":   "log",
+					"privilege_escalation": "kill",
+					"unexpected_process":   "kill",
+					"kernel_module":        "kill",
+					"ptrace":              "kill",
+					"mount":               "kill",
+					"container_escape":    "kill",
+					"raw_socket":          "kill",
+					"persistence":         "kill",
+					"download_exec":       "kill",
 				},
 				AllowedProcesses: []string{"agent", "payload-proxy", "findings-sidecar"},
 				DefaultAction:    "human_review",
 			},
 			"escalation": {
-				Rules: map[string]MonitoringRule{
-					"privileged_shell":     {Detect: "root shell spawn", Action: "human_review"},
-					"sensitive_file_write": {Detect: "write to /etc, /proc, /sys", Action: "human_review"},
-					"privilege_escalation": {Detect: "setuid, setgid, sudo", Action: "kill"},
-					"lateral_movement":    {Detect: "SSH, RDP, SMB connections", Action: "kill"},
-					"kernel_module":        {Detect: "kernel module load", Action: "kill"},
-					"ptrace":              {Detect: "ptrace attach", Action: "kill"},
-					"mount":               {Detect: "mount operations", Action: "kill"},
-					"container_escape":    {Detect: "container escape", Action: "kill"},
-					"raw_socket":          {Detect: "raw socket creation", Action: "human_review"},
-					"dns_exfil":           {Detect: "DNS exfiltration", Action: "log"},
-					"persistence":         {Detect: "cron or at job creation", Action: "kill"},
-					"download_exec":       {Detect: "binary download and execute", Action: "kill"},
+				Rules: map[string]string{
+					"privileged_shell":     "human_review",
+					"sensitive_file_write": "human_review",
+					"privilege_escalation": "kill",
+					"lateral_movement":    "kill",
+					"kernel_module":        "kill",
+					"ptrace":              "kill",
+					"mount":               "kill",
+					"container_escape":    "kill",
+					"raw_socket":          "human_review",
+					"dns_exfil":           "log",
+					"persistence":         "kill",
+					"download_exec":       "kill",
 				},
 				DefaultAction: "human_review",
 			},
@@ -714,7 +709,7 @@ func copyPayload(m map[string]PayloadConfig) map[string]PayloadConfig {
 func copyMonitoring(m map[string]MonitoringConfig) map[string]MonitoringConfig {
 	out := make(map[string]MonitoringConfig, len(m))
 	for k, v := range m {
-		rules := make(map[string]MonitoringRule, len(v.Rules))
+		rules := make(map[string]string, len(v.Rules))
 		for rk, rv := range v.Rules {
 			rules[rk] = rv
 		}

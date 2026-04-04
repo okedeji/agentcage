@@ -267,7 +267,7 @@ func (a *ActivityImpl) EvaluateAlert(ctx context.Context, cageType Type, assessm
 		default:
 			priority = 2 // medium
 		}
-		a.alertNotifier.Notify(ctx, "falco", alert.RuleName, alert.Output, alert.CageID, assessmentID, priority, map[string]any{
+		a.alertNotifier.Notify(ctx, "behavioral", alert.RuleName, alert.Output, alert.CageID, assessmentID, priority, map[string]any{
 			"rule":      alert.RuleName,
 			"priority":  alert.Priority,
 			"cage_type": cageType.String(),

@@ -15,13 +15,42 @@ import (
 type Source string
 
 const (
-	SourcePolicy Source = "policy"
-	SourceFalco  Source = "falco"
+	SourcePolicy     Source = "policy"
+	SourceBehavioral Source = "behavioral"
+)
+
+type Category string
+
+const (
+	// Policy categories
+	CategoryScopeViolation     Category = "scope_violation"
+	CategoryCageConfigViolation Category = "cage_config_violation"
+	CategoryComplianceViolation Category = "compliance_violation"
+
+	// Behavioral categories
+	CategoryPrivilegedShell     Category = "privileged_shell"
+	CategoryAnyShell            Category = "any_shell"
+	CategorySensitiveFileWrite  Category = "sensitive_file_write"
+	CategoryAnyFileWrite        Category = "any_file_write"
+	CategoryPrivilegeEscalation Category = "privilege_escalation"
+	CategoryForkBomb            Category = "fork_bomb"
+	CategoryUnexpectedNetwork   Category = "unexpected_network"
+	CategoryLateralMovement     Category = "lateral_movement"
+	CategoryUnexpectedProcess   Category = "unexpected_process"
+	CategoryKernelModule        Category = "kernel_module"
+	CategoryPtrace              Category = "ptrace"
+	CategoryMount               Category = "mount"
+	CategoryContainerEscape     Category = "container_escape"
+	CategoryRawSocket           Category = "raw_socket"
+	CategoryDNSExfil            Category = "dns_exfil"
+	CategoryLargeRead           Category = "large_read"
+	CategoryPersistence         Category = "persistence"
+	CategoryDownloadExec        Category = "download_exec"
 )
 
 type Event struct {
 	Source       Source
-	Category    string // "scope", "cage_config", "compliance", "privilege_escalation", etc.
+	Category    Category
 	Priority    intervention.Priority
 	CageID      string
 	AssessmentID string
@@ -47,7 +76,7 @@ func NewDispatcher(notifier intervention.Notifier, log logr.Logger) *Dispatcher 
 func (d *Dispatcher) Notify(ctx context.Context, source, category, description, cageID, assessmentID string, priority int, details map[string]any) {
 	d.Dispatch(ctx, Event{
 		Source:       Source(source),
-		Category:     category,
+		Category:     Category(category),
 		Priority:     intervention.Priority(priority),
 		CageID:       cageID,
 		AssessmentID: assessmentID,
@@ -87,7 +116,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, event Event) {
 
 func interventionType(source Source) intervention.Type {
 	switch source {
-	case SourceFalco:
+	case SourceBehavioral:
 		return intervention.TypeTripwireEscalation
 	case SourcePolicy:
 		return intervention.TypePolicyViolation
