@@ -106,6 +106,19 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Write Falco rules before starting services so the Falco daemon
+	// can load them at startup.
+	fmt.Println("Generating Falco rules...")
+	falcoRules, tripwires := enforcement.GenerateFalcoRules(cfg.Monitoring)
+	falcoHandler := enforcement.NewFalcoHandlerFromGenerated(tripwires)
+	alertHandler := enforcement.NewFalcoAlertAdapter(falcoHandler)
+
+	falcoRulesDir := filepath.Join(embedded.RunDir(), "falco", "rules.d")
+	if err := enforcement.WriteFalcoRules(falcoRules, falcoRulesDir); err != nil {
+		return fmt.Errorf("writing Falco rules: %w", err)
+	}
+	log.Info("Falco rules written", "dir", falcoRulesDir)
+
 	fmt.Println("Downloading dependencies...")
 	if err := mgr.Download(ctx); err != nil {
 		return fmt.Errorf("downloading dependencies: %w", err)
@@ -226,13 +239,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	if err != nil {
 		return fmt.Errorf("creating OPA engine: %w", err)
 	}
-
-	// --- Falco rules (generated from config) ---
-
-	fmt.Println("Generating Falco rules...")
-	_, tripwires := enforcement.GenerateFalcoRules(cfg.Monitoring)
-	falcoHandler := enforcement.NewFalcoHandlerFromGenerated(tripwires)
-	alertHandler := enforcement.NewFalcoAlertAdapter(falcoHandler)
 
 	// --- Temporal client ---
 

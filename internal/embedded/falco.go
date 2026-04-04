@@ -68,13 +68,17 @@ func (f *FalcoService) Download(ctx context.Context) error {
 
 func (f *FalcoService) Start(ctx context.Context) error {
 	bin := filepath.Join(BinDir(), "falco")
+	rulesDir := filepath.Join(RunDir(), "falco", "rules.d")
+	socketPath := filepath.Join(RunDir(), "falco", "falco.sock")
 
-	// Falco requires root/privileged access for syscall monitoring.
-	// In local mode, we start it and let it fail gracefully if
-	// privileges are insufficient.
+	_ = os.MkdirAll(filepath.Dir(socketPath), 0755)
+
 	f.proc = newSubprocess("falco", f.log, bin,
 		"--modern-bpf",
 		"--json-output",
+		"--rules-file", filepath.Join(rulesDir, "agentcage_rules.yaml"),
+		"--unbuffered",
+		"--unix-socket", socketPath,
 	)
 
 	if err := f.proc.start(ctx); err != nil {

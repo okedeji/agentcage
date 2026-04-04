@@ -2,6 +2,8 @@ package enforcement
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/okedeji/agentcage/internal/config"
@@ -77,6 +79,51 @@ var detectConditions = map[string]struct {
 		output:    "Unexpected process (process=%proc.name command=%proc.cmdline container=%container.id)",
 		priority:  "CRITICAL",
 	},
+	"kernel module load": {
+		condition: "(evt.type in (init_module, finit_module) or proc.name in (insmod, modprobe)) and container.id != host",
+		output:    "Kernel module load attempt (command=%proc.cmdline container=%container.id)",
+		priority:  "CRITICAL",
+	},
+	"ptrace attach": {
+		condition: "evt.type = ptrace and evt.arg.request in (PTRACE_ATTACH, PTRACE_SEIZE) and container.id != host",
+		output:    "Ptrace attach to process (target=%proc.pid command=%proc.cmdline container=%container.id)",
+		priority:  "CRITICAL",
+	},
+	"mount operations": {
+		condition: "evt.type in (mount, umount2) and container.id != host",
+		output:    "Mount operation (command=%proc.cmdline container=%container.id)",
+		priority:  "CRITICAL",
+	},
+	"container escape": {
+		condition: "open_read and (fd.name startswith /var/run/docker.sock or fd.name startswith /proc/1/root or fd.name startswith /proc/1/ns) and container.id != host",
+		output:    "Container escape attempt (file=%fd.name command=%proc.cmdline container=%container.id)",
+		priority:  "CRITICAL",
+	},
+	"raw socket creation": {
+		condition: "evt.type = socket and evt.arg.type in (SOCK_RAW, SOCK_PACKET) and container.id != host",
+		output:    "Raw socket created (command=%proc.cmdline container=%container.id)",
+		priority:  "CRITICAL",
+	},
+	"DNS exfiltration": {
+		condition: "evt.type in (connect, sendto) and fd.sport = 53 and fd.type = ipv4 and container.id != host",
+		output:    "DNS query (dest=%fd.sip command=%proc.cmdline container=%container.id)",
+		priority:  "NOTICE",
+	},
+	"large file read": {
+		condition: "open_read and evt.rawres > 1048576 and container.id != host",
+		output:    "Large file read (file=%fd.name bytes=%evt.rawres command=%proc.cmdline container=%container.id)",
+		priority:  "WARNING",
+	},
+	"cron or at job creation": {
+		condition: "(open_write and fd.name startswith /var/spool/cron) or (proc.name in (crontab, at, atd)) and container.id != host",
+		output:    "Persistence attempt via scheduled job (file=%fd.name command=%proc.cmdline container=%container.id)",
+		priority:  "CRITICAL",
+	},
+	"binary download and execute": {
+		condition: "spawned_process and proc.name in (curl, wget) and proc.pcmdline contains chmod and container.id != host",
+		output:    "Download and execute (command=%proc.cmdline parent=%proc.pcmdline container=%container.id)",
+		priority:  "CRITICAL",
+	},
 }
 
 // GenerateFalcoRules produces Falco rules and tripwire policies from the
@@ -129,6 +176,38 @@ func GenerateFalcoRules(monitoring map[string]config.MonitoringConfig) (map[stri
 	}
 
 	return allRules, allTripwires
+}
+
+// RenderFalcoYAML serializes generated rules to Falco YAML format.
+func RenderFalcoYAML(rules map[string][]FalcoRuleOutput) string {
+	var b strings.Builder
+	for _, ruleSet := range rules {
+		for _, r := range ruleSet {
+			fmt.Fprintf(&b, "- rule: %s\n", r.Rule)
+			fmt.Fprintf(&b, "  desc: %s\n", r.Desc)
+			fmt.Fprintf(&b, "  condition: %s\n", r.Condition)
+			fmt.Fprintf(&b, "  output: \"%s\"\n", r.Output)
+			fmt.Fprintf(&b, "  priority: %s\n", r.Priority)
+			if len(r.Tags) > 0 {
+				fmt.Fprintf(&b, "  tags: [%s]\n", strings.Join(r.Tags, ", "))
+			}
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+// WriteFalcoRules writes generated rules to a directory as Falco YAML.
+// The Falco daemon loads rules from this directory at startup.
+func WriteFalcoRules(rules map[string][]FalcoRuleOutput, dir string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("creating Falco rules directory %s: %w", dir, err)
+	}
+	dest := filepath.Join(dir, "agentcage_rules.yaml")
+	if err := os.WriteFile(dest, []byte(RenderFalcoYAML(rules)), 0644); err != nil {
+		return fmt.Errorf("writing Falco rules to %s: %w", dest, err)
+	}
+	return nil
 }
 
 func humanizeRuleName(name string) string {
