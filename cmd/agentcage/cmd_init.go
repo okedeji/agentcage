@@ -309,7 +309,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 	defer temporalClient.Close()
 
-	// --- Domain servers ---
+	// --- Notifications and alerts ---
 
 	fmt.Println("Initializing domain services...")
 
@@ -368,6 +368,8 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 		return nil
 	}
+	// --- Domain servers ---
+
 	cageServer := cage.NewServer(temporalClient, cageValidator, db)
 	assessmentServer := assessment.NewServer(temporalClient, db)
 

@@ -315,6 +315,7 @@ func Load(path string) (*Config, error) {
 // Used when no config file is provided — everything runs embedded.
 func Defaults() *Config {
 	return &Config{
+		Notifications: NotificationsConfig{},
 		LLM: LLMConfig{
 			Timeout: 30 * time.Second,
 		},
