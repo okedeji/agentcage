@@ -66,7 +66,7 @@ func TestGenerateScopeRego_ContainsExpectedRules(t *testing.T) {
 	assert.Contains(t, rego, "localhost")
 	assert.Contains(t, rego, "127.")
 	assert.Contains(t, rego, "::1")
-	assert.Contains(t, rego, "infrastructure_hosts")
+	assert.Contains(t, rego, "deny_hosts")
 }
 
 func TestGenerateCageTypesRego_ContainsAllTypes(t *testing.T) {

@@ -56,7 +56,7 @@ func validateScope(scope cage.Scope) []error {
 			continue
 		}
 		if isPrivateIP(ip) {
-			errs = append(errs, fmt.Errorf("scope host %q is a private IP address", host))
+			errs = append(errs, fmt.Errorf("scope host %q is a private IP address (override via scope.deny in config.yaml)", host))
 		}
 	}
 

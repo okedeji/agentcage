@@ -2,6 +2,7 @@ package enforcement
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/okedeji/agentcage/internal/config"
@@ -14,7 +15,7 @@ import (
 func GenerateRegoModules(cfg *config.Config) map[string]string {
 	modules := make(map[string]string)
 
-	modules["scope.rego"] = generateScopeRego(cfg.Scope, cfg.InfraDenyList())
+	modules["scope.rego"] = generateScopeRego(cfg.Scope)
 	modules["cage_types.rego"] = generateCageTypesRego(cfg.Cages)
 
 	for class, pc := range cfg.Payload {
@@ -28,7 +29,7 @@ func GenerateRegoModules(cfg *config.Config) map[string]string {
 	return modules
 }
 
-func generateScopeRego(scope config.ScopeConfig, infraHosts []string) string {
+func generateScopeRego(scope config.ScopeConfig) string {
 	var b strings.Builder
 	b.WriteString("package agentcage.scope\n\n")
 
@@ -41,7 +42,7 @@ func generateScopeRego(scope config.ScopeConfig, infraHosts []string) string {
 
 	for _, cidr := range scope.Deny {
 		if strings.Contains(cidr, "/") {
-			fmt.Fprintf(&b, "deny contains msg if {\n\tsome h\n\tnet.cidr_contains(%q, input.hosts[h])\n\tmsg := sprintf(\"private IP range not allowed: %%s\", [input.hosts[h]])\n}\n\n", cidr)
+			fmt.Fprintf(&b, "deny contains msg if {\n\tsome h\n\tnet.cidr_contains(%q, input.hosts[h])\n\tmsg := sprintf(\"private IP range not allowed: %%s (override via scope.deny in config.yaml)\", [input.hosts[h]])\n}\n\n", cidr)
 		}
 	}
 
@@ -50,24 +51,26 @@ func generateScopeRego(scope config.ScopeConfig, infraHosts []string) string {
 		b.WriteString("deny contains msg if {\n\tsome h\n\tstartswith(input.hosts[h], \"127.\")\n\tmsg := sprintf(\"loopback address not allowed: %s\", [input.hosts[h]])\n}\n\n")
 	}
 
-	for _, entry := range scope.Deny {
-		if entry == "::1" {
-			b.WriteString("deny contains msg if {\n\tsome h\n\tinput.hosts[h] == \"::1\"\n\tmsg := \"IPv6 loopback not allowed in scope\"\n}\n\n")
-			break
-		}
+	if slices.Contains(scope.Deny, "::1") {
+		b.WriteString("deny contains msg if {\n\tsome h\n\tinput.hosts[h] == \"::1\"\n\tmsg := \"IPv6 loopback not allowed in scope (override via scope.deny in config.yaml)\"\n}\n\n")
 	}
 
-	// Infrastructure hosts deny — exact match via set lookup
-	if len(infraHosts) > 0 {
-		var hostEntries []string
-		for _, h := range infraHosts {
-			if !strings.Contains(h, "/") && !strings.Contains(h, "*") {
-				hostEntries = append(hostEntries, h)
-			}
+	// Port validation
+	b.WriteString("deny contains msg if {\n\tsome p\n\tport := input.ports[p]\n\tnot regex.match(`^[0-9]+$`, port)\n\tmsg := sprintf(\"invalid port (must be numeric): %s\", [port])\n}\n\n")
+	b.WriteString("deny contains msg if {\n\tsome p\n\tport := input.ports[p]\n\tregex.match(`^[0-9]+$`, port)\n\tto_number(port) > 65535\n\tmsg := sprintf(\"port out of range (0-65535): %s\", [port])\n}\n\n")
+
+	// Path validation
+	b.WriteString("deny contains msg if {\n\tsome p\n\tinput.paths[p] == \"\"\n\tmsg := \"scope path must not be empty\"\n}\n\n")
+
+	// Exact-match deny for non-CIDR entries (hostnames, bare IPs)
+	var exactEntries []string
+	for _, entry := range scope.Deny {
+		if !strings.Contains(entry, "/") && !strings.Contains(entry, "*") {
+			exactEntries = append(exactEntries, entry)
 		}
-		if len(hostEntries) > 0 {
-			b.WriteString("deny contains msg if {\n\tsome h\n\tinput.infrastructure_hosts[input.hosts[h]]\n\tmsg := sprintf(\"cannot target agentcage infrastructure: %s\", [input.hosts[h]])\n}\n")
-		}
+	}
+	if len(exactEntries) > 0 {
+		b.WriteString("deny contains msg if {\n\tsome h\n\tinput.deny_hosts[input.hosts[h]]\n\tmsg := sprintf(\"host not allowed in scope: %s (override via scope.deny in config.yaml)\", [input.hosts[h]])\n}\n")
 	}
 
 	return b.String()
@@ -101,16 +104,13 @@ func generateCageTypesRego(cages map[string]config.CageTypeConfig) string {
 		}
 	}
 
-	// Global rate limit rules: find max across all cage types
-	var maxRate int32
-	for _, ct := range cages {
-		if ct.RateLimit > maxRate {
-			maxRate = ct.RateLimit
+	// Per-type rate limit rules
+	b.WriteString("deny contains msg if {\n\tinput.rate_limit_rps <= 0\n\tmsg := \"rate limit must be positive\"\n}\n\n")
+	for name, ct := range cages {
+		if ct.RateLimit > 0 {
+			fmt.Fprintf(&b, "deny contains msg if {\n\tinput.cage_type == %q\n\tinput.rate_limit_rps > %d\n\tmsg := sprintf(\"%s cage rate limit cannot exceed %d req/s, got %%d\", [input.rate_limit_rps])\n}\n\n",
+				name, ct.RateLimit, name, ct.RateLimit)
 		}
-	}
-	if maxRate > 0 {
-		b.WriteString("deny contains msg if {\n\tinput.rate_limit_rps <= 0\n\tmsg := \"rate limit must be positive\"\n}\n\n")
-		fmt.Fprintf(&b, "deny contains msg if {\n\tinput.rate_limit_rps > %d\n\tmsg := sprintf(\"rate limit cannot exceed %d req/s, got %%d\", [input.rate_limit_rps])\n}\n", maxRate, maxRate)
 	}
 
 	return b.String()

@@ -69,13 +69,16 @@ func TestDefaults_HasThreeMonitoringSets(t *testing.T) {
 	assert.Contains(t, cfg.Monitoring, "escalation")
 }
 
-func TestDefaults_HasFourPayloadSets(t *testing.T) {
+func TestDefaults_HasPayloadSets(t *testing.T) {
 	cfg := Defaults()
-	require.Len(t, cfg.Payload, 4)
+	require.Len(t, cfg.Payload, 7)
 	assert.Contains(t, cfg.Payload, "sqli")
 	assert.Contains(t, cfg.Payload, "rce")
 	assert.Contains(t, cfg.Payload, "ssrf")
 	assert.Contains(t, cfg.Payload, "xss")
+	assert.Contains(t, cfg.Payload, "path_traversal")
+	assert.Contains(t, cfg.Payload, "xxe")
+	assert.Contains(t, cfg.Payload, "ldap_injection")
 }
 
 func TestDefaults_ScopeDenyIncludesPrivateRanges(t *testing.T) {
@@ -84,7 +87,9 @@ func TestDefaults_ScopeDenyIncludesPrivateRanges(t *testing.T) {
 	assert.Contains(t, cfg.Scope.Deny, "172.16.0.0/12")
 	assert.Contains(t, cfg.Scope.Deny, "192.168.0.0/16")
 	assert.Contains(t, cfg.Scope.Deny, "127.0.0.0/8")
-	assert.Contains(t, cfg.Scope.Deny, "169.254.169.254")
+	assert.Contains(t, cfg.Scope.Deny, "169.254.0.0/16")
+	assert.Contains(t, cfg.Scope.Deny, "fc00::/7")
+	assert.Contains(t, cfg.Scope.Deny, "fe80::/10")
 	assert.True(t, cfg.Scope.DenyWildcards)
 	assert.True(t, cfg.Scope.DenyLocalhost)
 }
@@ -249,7 +254,7 @@ func TestMerge_EmptyOverride(t *testing.T) {
 	assert.Equal(t, base.Timeouts, result.Timeouts)
 	assert.Len(t, result.Cages, 3)
 	assert.Len(t, result.Monitoring, 3)
-	assert.Len(t, result.Payload, 4)
+	assert.Len(t, result.Payload, 7)
 }
 
 func TestMerge_DoesNotMutateBase(t *testing.T) {
@@ -302,11 +307,14 @@ func TestMerge_LLMOverride(t *testing.T) {
 func TestBlocklistPatterns(t *testing.T) {
 	cfg := Defaults()
 	patterns := cfg.BlocklistPatterns()
-	require.Len(t, patterns, 4)
+	require.Len(t, patterns, 7)
 	assert.NotEmpty(t, patterns["sqli"])
 	assert.NotEmpty(t, patterns["rce"])
 	assert.NotEmpty(t, patterns["ssrf"])
 	assert.NotEmpty(t, patterns["xss"])
+	assert.NotEmpty(t, patterns["path_traversal"])
+	assert.NotEmpty(t, patterns["xxe"])
+	assert.NotEmpty(t, patterns["ldap_injection"])
 }
 
 func TestRateLimit(t *testing.T) {

@@ -350,8 +350,14 @@ func Defaults() *Config {
 				"172.16.0.0/12",
 				"192.168.0.0/16",
 				"127.0.0.0/8",
+				"0.0.0.0",
+				"255.255.255.255",
+				"100.64.0.0/10",
+				"169.254.0.0/16",
 				"::1",
-				"169.254.169.254",
+				"fc00::/7",
+				"fe80::/10",
+				"fd00:ec2::254",
 				"orchestrator.agentcage.internal",
 				"vault.agentcage.internal",
 				"spire.agentcage.internal",
@@ -426,6 +432,11 @@ func defaultPayload() map[string]PayloadConfig {
 			{Pattern: `(?i)\bALTER\s+(TABLE|DATABASE|USER)`, Reason: "destructive SQL: ALTER"},
 			{Pattern: `(?i)\bGRANT\s+`, Reason: "privilege escalation: GRANT"},
 			{Pattern: `(?i)\bCREATE\s+(USER|ROLE)`, Reason: "privilege escalation: CREATE USER/ROLE"},
+			{Pattern: `(?i)\bINSERT\s+INTO\b`, Reason: "destructive SQL: INSERT"},
+			{Pattern: `(?i)\b(EXEC|EXECUTE)\s+`, Reason: "stored procedure execution"},
+			{Pattern: `(?i)\bxp_cmdshell\b`, Reason: "SQL Server command execution"},
+			{Pattern: `(?i)\bLOAD_FILE\s*\(`, Reason: "MySQL file read via LOAD_FILE"},
+			{Pattern: `(?i)\bINTO\s+(OUT|DUMP)FILE\b`, Reason: "MySQL file write via INTO OUTFILE"},
 		}},
 		"rce": {Block: []PatternEntry{
 			{Pattern: `(?i)\brm\s+-rf\b`, Reason: "destructive: rm -rf"},
@@ -435,13 +446,22 @@ func defaultPayload() map[string]PayloadConfig {
 			{Pattern: `(?i)\breboot\b`, Reason: "destructive: reboot"},
 			{Pattern: `(?i):\(\)\s*\{\s*:\|\s*:&\s*\}\s*;`, Reason: "fork bomb"},
 			{Pattern: `(?i)>\s*/etc/(passwd|shadow|sudoers)`, Reason: "write to sensitive system file"},
-			{Pattern: `(?i)\bcurl\s+.*\|\s*(bash|sh)`, Reason: "remote code download and execute"},
+			{Pattern: `(?i)\b(curl|wget)\s+.*\|\s*(bash|sh)`, Reason: "remote code download and execute"},
+			{Pattern: `(?i)\bchmod\s+(777|\+s)\b`, Reason: "permission escalation: chmod"},
+			{Pattern: `(?i)\biptables\s+-F\b`, Reason: "flush firewall rules"},
+			{Pattern: `(?i)\bkill\s+-9\b`, Reason: "force kill process"},
+			{Pattern: `(?i)\bpython[23]?\s+-c\b`, Reason: "inline Python execution"},
+			{Pattern: `(?i)\bperl\s+-e\b`, Reason: "inline Perl execution"},
 		}},
 		"ssrf": {Block: []PatternEntry{
 			{Pattern: `(?i)(^|=)https?://(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)`, Reason: "SSRF to private IP"},
 			{Pattern: `(?i)(^|=)https?://127\.`, Reason: "SSRF to loopback"},
+			{Pattern: `(?i)(^|=)https?://\[?::1\]?`, Reason: "SSRF to IPv6 loopback"},
+			{Pattern: `(?i)(^|=)https?://0\.0\.0\.0`, Reason: "SSRF to all-interfaces address"},
 			{Pattern: `(?i)(^|=)https?://localhost`, Reason: "SSRF to localhost"},
-			{Pattern: `(?i)(^|=)https?://169\.254\.169\.254`, Reason: "SSRF to cloud metadata"},
+			{Pattern: `(?i)(^|=)https?://169\.254\.`, Reason: "SSRF to link-local/cloud metadata"},
+			{Pattern: `(?i)(^|=)https?://fd00:ec2::254`, Reason: "SSRF to AWS IPv6 metadata"},
+			{Pattern: `(?i)(^|=)file://`, Reason: "SSRF via file:// protocol"},
 		}},
 		"xss": {Block: []PatternEntry{
 			{Pattern: `(?i)\bDROP\s+(TABLE|DATABASE)`, Reason: "destructive SQL in XSS context"},
@@ -450,6 +470,20 @@ func defaultPayload() map[string]PayloadConfig {
 			{Pattern: `(?i)<iframe[^>]+src\s*=\s*["']?https?://`, Reason: "external iframe injection"},
 			{Pattern: `(?i)<form[^>]+action\s*=\s*["']?https?://`, Reason: "phishing form with external action"},
 			{Pattern: `(?i)<meta[^>]+http-equiv\s*=\s*["']?refresh[^>]+url\s*=`, Reason: "meta refresh redirect"},
+		}},
+		"path_traversal": {Block: []PatternEntry{
+			{Pattern: `(?i)(\.\.[\\/]){2,}`, Reason: "path traversal: directory traversal sequence"},
+			{Pattern: `(?i)(\.\.[\\/])+(etc/(passwd|shadow|hosts)|windows[\\/]system32)`, Reason: "path traversal: sensitive system file"},
+			{Pattern: `(?i)%2e%2e[%2f/\\]`, Reason: "path traversal: URL-encoded traversal"},
+		}},
+		"xxe": {Block: []PatternEntry{
+			{Pattern: `(?i)<!DOCTYPE\s+[^>]*\[.*<!ENTITY`, Reason: "XXE: external entity declaration"},
+			{Pattern: `(?i)<!ENTITY\s+\S+\s+SYSTEM\s+`, Reason: "XXE: SYSTEM entity"},
+			{Pattern: `(?i)<!ENTITY\s+\S+\s+PUBLIC\s+`, Reason: "XXE: PUBLIC entity"},
+		}},
+		"ldap_injection": {Block: []PatternEntry{
+			{Pattern: `(?i)\)\s*\(\s*[&|!]`, Reason: "LDAP injection: filter manipulation"},
+			{Pattern: `(?i)\)\s*\(\s*\w+=\*\)`, Reason: "LDAP injection: wildcard enumeration"},
 		}},
 	}
 }
@@ -691,14 +725,6 @@ func (c *InfrastructureConfig) IsExternalNomad() bool {
 
 func (c *InfrastructureConfig) IsExternalOTel() bool {
 	return c.OTel != nil && c.OTel.Endpoint != ""
-}
-
-// InfraDenyList returns the list of infrastructure addresses that cages must never target.
-// Combines user-provided scope.deny with auto-detected embedded service addresses.
-func (c *Config) InfraDenyList() []string {
-	deny := make([]string, len(c.Scope.Deny))
-	copy(deny, c.Scope.Deny)
-	return deny
 }
 
 // BlocklistPatterns returns payload patterns in the format the proxy engine expects.
