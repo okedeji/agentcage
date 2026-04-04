@@ -49,45 +49,58 @@ type AlertHandler interface {
 	HandleAlert(ctx context.Context, cageType Type, alert AlertEvent) (TripwirePolicy, error)
 }
 
+// AlertNotifier dispatches alert notifications to operators.
+// Defined here so the cage package can send alerts without importing
+// the alert package (accept interfaces, return structs).
+type AlertNotifier interface {
+	Notify(ctx context.Context, source, category, description, cageID, assessmentID string, priority int, details map[string]any)
+}
+
 // ActivityImpl provides concrete implementations of all cage lifecycle
 // activities. All dependency fields are optional — nil dependencies are
 // handled gracefully (logged and skipped) to support local mode where
 // SPIRE, Vault, or Falco may not be available.
 type ActivityImpl struct {
-	provisioner  VMProvisioner
-	rootfs       *RootfsBuilder
-	network      NetworkPolicy
-	validator    ScopeValidator
-	alertHandler AlertHandler
-	identity     identity.SVIDIssuer
-	secrets      identity.SecretFetcher
-	auditStore   audit.Store
-	log          logr.Logger
+	provisioner   VMProvisioner
+	rootfs        *RootfsBuilder
+	network       NetworkPolicy
+	validator     ScopeValidator
+	alertHandler  AlertHandler
+	alertNotifier AlertNotifier
+	falcoReader   *FalcoAlertReader
+	identity      identity.SVIDIssuer
+	secrets       identity.SecretFetcher
+	auditStore    audit.Store
+	log           logr.Logger
 }
 
 type ActivityImplConfig struct {
-	Provisioner  VMProvisioner
-	Rootfs       *RootfsBuilder
-	Network      NetworkPolicy
-	Validator    ScopeValidator
-	AlertHandler AlertHandler
-	Identity     identity.SVIDIssuer
-	Secrets      identity.SecretFetcher
-	AuditStore   audit.Store
-	Log          logr.Logger
+	Provisioner   VMProvisioner
+	Rootfs        *RootfsBuilder
+	Network       NetworkPolicy
+	Validator     ScopeValidator
+	AlertHandler  AlertHandler
+	AlertNotifier AlertNotifier
+	FalcoReader   *FalcoAlertReader
+	Identity      identity.SVIDIssuer
+	Secrets       identity.SecretFetcher
+	AuditStore    audit.Store
+	Log           logr.Logger
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 	return &ActivityImpl{
-		provisioner:  cfg.Provisioner,
-		rootfs:       cfg.Rootfs,
-		network:      cfg.Network,
-		validator:    cfg.Validator,
-		alertHandler: cfg.AlertHandler,
-		identity:     cfg.Identity,
-		secrets:      cfg.Secrets,
-		auditStore:   cfg.AuditStore,
-		log:          cfg.Log.WithValues("component", "cage-activities"),
+		provisioner:   cfg.Provisioner,
+		rootfs:        cfg.Rootfs,
+		network:       cfg.Network,
+		validator:     cfg.Validator,
+		alertHandler:  cfg.AlertHandler,
+		alertNotifier: cfg.AlertNotifier,
+		falcoReader:   cfg.FalcoReader,
+		identity:      cfg.Identity,
+		secrets:       cfg.Secrets,
+		auditStore:    cfg.AuditStore,
+		log:           cfg.Log.WithValues("component", "cage-activities"),
 	}
 }
 
@@ -175,6 +188,20 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Co
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
+	// Start Falco alert stream if available
+	var alertCh <-chan AlertEvent
+	if a.falcoReader != nil {
+		var err error
+		alertCh, err = a.falcoReader.Stream(ctx, cageID)
+		if err != nil {
+			a.log.Error(err, "Falco alert stream unavailable — monitoring without behavioral alerts", "cage_id", cageID)
+		}
+	}
+	if alertCh == nil {
+		// No Falco — use a nil channel (never receives, doesn't block select)
+		alertCh = make(chan AlertEvent)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -183,6 +210,21 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Co
 		case <-deadline:
 			a.log.Info("cage timed out", "cage_id", cageID)
 			return StopReasonTimeout, nil
+
+		case alert, ok := <-alertCh:
+			if !ok {
+				a.log.V(1).Info("Falco alert stream closed", "cage_id", cageID)
+				alertCh = make(chan AlertEvent)
+				continue
+			}
+			policy, err := a.EvaluateAlert(ctx, config.Type, config.AssessmentID, alert)
+			if err != nil {
+				a.log.Error(err, "evaluating Falco alert", "cage_id", cageID, "rule", alert.RuleName)
+				continue
+			}
+			if policy == TripwireImmediateTeardown {
+				return StopReasonTripwire, nil
+			}
 
 		case <-ticker.C:
 			if a.provisioner == nil {
@@ -204,7 +246,7 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Co
 // EvaluateAlert determines the response to a behavioral monitoring alert.
 // Called by the Falco gRPC alert stream consumer when an alert fires for a cage.
 // Returns the tripwire policy that the workflow should act on.
-func (a *ActivityImpl) EvaluateAlert(ctx context.Context, cageType Type, alert AlertEvent) (TripwirePolicy, error) {
+func (a *ActivityImpl) EvaluateAlert(ctx context.Context, cageType Type, assessmentID string, alert AlertEvent) (TripwirePolicy, error) {
 	if a.alertHandler == nil {
 		a.log.V(1).Info("alert handling skipped — no handler configured", "cage_id", alert.CageID, "rule", alert.RuleName)
 		return TripwireLogAndContinue, nil
@@ -214,7 +256,39 @@ func (a *ActivityImpl) EvaluateAlert(ctx context.Context, cageType Type, alert A
 		return 0, fmt.Errorf("cage %s: evaluating alert %s: %w", alert.CageID, alert.RuleName, err)
 	}
 	a.log.Info("alert evaluated", "cage_id", alert.CageID, "rule", alert.RuleName, "policy", policy)
+
+	if a.alertNotifier != nil {
+		var priority int
+		switch policy {
+		case TripwireImmediateTeardown:
+			priority = 4 // critical
+		case TripwireHumanReview:
+			priority = 3 // high
+		default:
+			priority = 2 // medium
+		}
+		a.alertNotifier.Notify(ctx, "falco", alert.RuleName, alert.Output, alert.CageID, assessmentID, priority, map[string]any{
+			"rule":      alert.RuleName,
+			"priority":  alert.Priority,
+			"cage_type": cageType.String(),
+			"action":    tripwireActionName(policy),
+		})
+	}
+
 	return policy, nil
+}
+
+func tripwireActionName(p TripwirePolicy) string {
+	switch p {
+	case TripwireLogAndContinue:
+		return "log_and_continue"
+	case TripwireHumanReview:
+		return "human_review"
+	case TripwireImmediateTeardown:
+		return "immediate_teardown"
+	default:
+		return "unknown"
+	}
 }
 
 func (a *ActivityImpl) ExportAuditLog(_ context.Context, cageID string) error {
