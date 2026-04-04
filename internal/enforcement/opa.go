@@ -3,6 +3,7 @@ package enforcement
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,9 +14,9 @@ import (
 )
 
 type PolicyEngine interface {
-	EvaluateScope(ctx context.Context, scope cage.Scope, infraHosts []string) (PolicyDecision, error)
+	EvaluateScope(ctx context.Context, scope cage.Scope, denyList []string) (PolicyDecision, error)
 	EvaluateCageConfig(ctx context.Context, config cage.Config) (PolicyDecision, error)
-	EvaluatePayload(ctx context.Context, vulnClass string, payload string) (PayloadDecision, error)
+	EvaluatePayload(ctx context.Context, vulnClass string, payload string) (PayloadDecision, string, error)
 	EvaluateCompliance(ctx context.Context, framework string, input map[string]any) (PolicyDecision, error)
 }
 
@@ -79,16 +80,30 @@ func NewOPAEngineFromModules(modules map[string]string) (*OPAEngine, error) {
 	return e, nil
 }
 
-func (e *OPAEngine) EvaluateScope(ctx context.Context, scope cage.Scope, infraHosts []string) (PolicyDecision, error) {
-	infraSet := make(map[string]bool, len(infraHosts))
-	for _, h := range infraHosts {
-		infraSet[h] = true
+func (e *OPAEngine) EvaluateScope(ctx context.Context, scope cage.Scope, denyList []string) (PolicyDecision, error) {
+	denySet := make(map[string]bool, len(denyList))
+	for _, entry := range denyList {
+		if !strings.Contains(entry, "/") && !strings.Contains(entry, "*") {
+			denySet[entry] = true
+			if ip := net.ParseIP(entry); ip != nil {
+				denySet[ip.String()] = true
+			}
+		}
+	}
+	// Normalize input hosts so compressed IPv6 (::1) matches expanded forms
+	normalizedHosts := make([]string, len(scope.Hosts))
+	for i, h := range scope.Hosts {
+		if ip := net.ParseIP(h); ip != nil {
+			normalizedHosts[i] = ip.String()
+		} else {
+			normalizedHosts[i] = h
+		}
 	}
 	input := map[string]any{
-		"hosts":                scope.Hosts,
-		"ports":                scope.Ports,
-		"paths":                scope.Paths,
-		"infrastructure_hosts": infraSet,
+		"hosts":      normalizedHosts,
+		"ports":      scope.Ports,
+		"paths":      scope.Paths,
+		"deny_hosts": denySet,
 	}
 
 	violations, err := evaluate(ctx, e.scopeQuery, input)
@@ -128,10 +143,10 @@ func (e *OPAEngine) EvaluateCageConfig(ctx context.Context, config cage.Config) 
 	return policyDecisionFromViolations(violations), nil
 }
 
-func (e *OPAEngine) EvaluatePayload(ctx context.Context, vulnClass string, payload string) (PayloadDecision, error) {
+func (e *OPAEngine) EvaluatePayload(ctx context.Context, vulnClass string, payload string) (PayloadDecision, string, error) {
 	q, ok := e.payloadQueries[vulnClass]
 	if !ok {
-		return PayloadAllow, nil
+		return PayloadAllow, "", nil
 	}
 
 	input := map[string]any{
@@ -140,13 +155,13 @@ func (e *OPAEngine) EvaluatePayload(ctx context.Context, vulnClass string, paylo
 
 	violations, err := evaluate(ctx, q, input)
 	if err != nil {
-		return PayloadBlock, fmt.Errorf("evaluating payload policy for %s: %w", vulnClass, err)
+		return PayloadBlock, "", fmt.Errorf("evaluating payload policy for %s: %w", vulnClass, err)
 	}
 
 	if len(violations) > 0 {
-		return PayloadBlock, nil
+		return PayloadBlock, violations[0], nil
 	}
-	return PayloadAllow, nil
+	return PayloadAllow, "", nil
 }
 
 func (e *OPAEngine) EvaluateCompliance(ctx context.Context, framework string, input map[string]any) (PolicyDecision, error) {

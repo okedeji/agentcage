@@ -256,6 +256,13 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		if validErr := enforcement.ValidateCageConfig(c, cfg); validErr != nil {
 			return validErr
 		}
+		scopeDecision, scopeErr := opaEngine.EvaluateScope(context.Background(), c.Scope, cfg.Scope.Deny)
+		if scopeErr != nil {
+			return fmt.Errorf("evaluating scope policy: %w", scopeErr)
+		}
+		if !scopeDecision.Allowed {
+			return fmt.Errorf("scope rejected: %s", scopeDecision.Reason)
+		}
 		decision, evalErr := opaEngine.EvaluateCageConfig(context.Background(), c)
 		if evalErr != nil {
 			return fmt.Errorf("evaluating cage config policy: %w", evalErr)

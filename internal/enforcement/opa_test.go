@@ -2,8 +2,6 @@ package enforcement
 
 import (
 	"context"
-	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -14,30 +12,44 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 )
 
-func policyDir(t *testing.T) string {
-	t.Helper()
-	_, f, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	return filepath.Join(filepath.Dir(f), "..", "..", "policies", "rego")
-}
-
 func newEngine(t *testing.T) *OPAEngine {
 	t.Helper()
-	e, err := NewOPAEngine(policyDir(t))
+	cfg := config.Defaults()
+	modules := GenerateRegoModules(cfg)
+	e, err := NewOPAEngineFromModules(modules)
 	require.NoError(t, err)
 	return e
 }
 
-func testInfraHosts(t *testing.T) []string {
+func newEngineWithCompliance(t *testing.T, framework string) *OPAEngine {
 	t.Helper()
 	cfg := config.Defaults()
-	return cfg.InfraDenyList()
+	cfg.Compliance = &config.ComplianceConfig{Framework: framework}
+	switch framework {
+	case "soc2":
+		cfg.Compliance.MaxConcurrentCages = 500
+		cfg.Compliance.RequireIntervention = true
+		cfg.Compliance.InterventionTimeout = 30 * time.Minute
+	case "hipaa":
+		cfg.Compliance.MaxConcurrentCages = 200
+		cfg.Compliance.RequireIntervention = true
+	}
+	modules := GenerateRegoModules(cfg)
+	e, err := NewOPAEngineFromModules(modules)
+	require.NoError(t, err)
+	return e
+}
+
+func testDenyList(t *testing.T) []string {
+	t.Helper()
+	cfg := config.Defaults()
+	return cfg.Scope.Deny
 }
 
 func TestOPAScope(t *testing.T) {
 	e := newEngine(t)
 	ctx := context.Background()
-	infraHosts := testInfraHosts(t)
+	denyList := testDenyList(t)
 
 	tests := []struct {
 		name        string
@@ -105,16 +117,16 @@ func TestOPAScope(t *testing.T) {
 			wantSubstr:  "IPv6 loopback",
 		},
 		{
-			name:        "infrastructure vault",
+			name:        "denied host vault",
 			scope:       cage.Scope{Hosts: []string{"vault.agentcage.internal"}},
 			wantAllowed: false,
-			wantSubstr:  "infrastructure",
+			wantSubstr:  "not allowed in scope",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			decision, err := e.EvaluateScope(ctx, tt.scope, infraHosts)
+			decision, err := e.EvaluateScope(ctx, tt.scope, denyList)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantAllowed, decision.Allowed)
 			if tt.wantSubstr != "" {
@@ -243,7 +255,7 @@ func TestOPACageConfig(t *testing.T) {
 				ParentFindingID: "",
 			},
 			wantAllowed: false,
-			wantSubstr:  "confirmed finding",
+			wantSubstr:  "parent finding ID",
 		},
 		{
 			name: "rate limit zero",
@@ -353,18 +365,21 @@ func TestOPAPayload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := e.EvaluatePayload(ctx, tt.vulnClass, tt.payload)
+			result, reason, err := e.EvaluatePayload(ctx, tt.vulnClass, tt.payload)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantResult, result)
+			if tt.wantResult == PayloadBlock {
+				assert.NotEmpty(t, reason)
+			}
 		})
 	}
 }
 
 func TestOPACompliance(t *testing.T) {
-	e := newEngine(t)
 	ctx := context.Background()
 
 	t.Run("soc2 compliant", func(t *testing.T) {
+		e := newEngineWithCompliance(t, "soc2")
 		decision, err := e.EvaluateCompliance(ctx, "soc2", map[string]any{
 			"max_concurrent_cages":         100,
 			"audit_log_enabled":            true,
@@ -376,6 +391,7 @@ func TestOPACompliance(t *testing.T) {
 	})
 
 	t.Run("soc2 audit disabled", func(t *testing.T) {
+		e := newEngineWithCompliance(t, "soc2")
 		decision, err := e.EvaluateCompliance(ctx, "soc2", map[string]any{
 			"max_concurrent_cages":         100,
 			"audit_log_enabled":            false,
@@ -387,32 +403,57 @@ func TestOPACompliance(t *testing.T) {
 		assert.Contains(t, decision.Reason, "audit logging")
 	})
 
+	t.Run("soc2 too many concurrent cages", func(t *testing.T) {
+		e := newEngineWithCompliance(t, "soc2")
+		decision, err := e.EvaluateCompliance(ctx, "soc2", map[string]any{
+			"max_concurrent_cages":         600,
+			"audit_log_enabled":            true,
+			"intervention_enabled":         true,
+			"intervention_timeout_minutes": 15,
+		})
+		require.NoError(t, err)
+		assert.False(t, decision.Allowed)
+		assert.Contains(t, decision.Reason, "500")
+	})
+
+	t.Run("soc2 intervention not enabled", func(t *testing.T) {
+		e := newEngineWithCompliance(t, "soc2")
+		decision, err := e.EvaluateCompliance(ctx, "soc2", map[string]any{
+			"max_concurrent_cages":         100,
+			"audit_log_enabled":            true,
+			"intervention_enabled":         false,
+			"intervention_timeout_minutes": 15,
+		})
+		require.NoError(t, err)
+		assert.False(t, decision.Allowed)
+		assert.Contains(t, decision.Reason, "intervention")
+	})
+
 	t.Run("hipaa compliant", func(t *testing.T) {
+		e := newEngineWithCompliance(t, "hipaa")
 		decision, err := e.EvaluateCompliance(ctx, "hipaa", map[string]any{
-			"data_redaction_enabled": true,
-			"audit_log_enabled":     true,
-			"max_concurrent_cages":  50,
-			"encryption_at_rest":    true,
-			"intervention_enabled":  true,
+			"max_concurrent_cages": 50,
+			"audit_log_enabled":    true,
+			"intervention_enabled": true,
 		})
 		require.NoError(t, err)
 		assert.True(t, decision.Allowed)
 	})
 
-	t.Run("hipaa no redaction", func(t *testing.T) {
+	t.Run("hipaa too many cages", func(t *testing.T) {
+		e := newEngineWithCompliance(t, "hipaa")
 		decision, err := e.EvaluateCompliance(ctx, "hipaa", map[string]any{
-			"data_redaction_enabled": false,
-			"audit_log_enabled":     true,
-			"max_concurrent_cages":  50,
-			"encryption_at_rest":    true,
-			"intervention_enabled":  true,
+			"max_concurrent_cages": 300,
+			"audit_log_enabled":    true,
+			"intervention_enabled": true,
 		})
 		require.NoError(t, err)
 		assert.False(t, decision.Allowed)
-		assert.Contains(t, decision.Reason, "data redaction")
+		assert.Contains(t, decision.Reason, "200")
 	})
 
 	t.Run("unknown framework", func(t *testing.T) {
+		e := newEngine(t)
 		_, err := e.EvaluateCompliance(ctx, "pci_dss", map[string]any{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no compliance policy")
