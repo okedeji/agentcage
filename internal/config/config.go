@@ -27,7 +27,7 @@ type Config struct {
 }
 
 type NotificationsConfig struct {
-	Webhook *WebhookConfig `yaml:"webhook,omitempty"`
+	Webhooks []WebhookConfig `yaml:"webhooks,omitempty"`
 }
 
 type WebhookConfig struct {

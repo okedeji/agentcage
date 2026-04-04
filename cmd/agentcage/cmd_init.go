@@ -311,13 +311,16 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Notifications and alerts ---
 
-	fmt.Println("Initializing domain services...")
+	fmt.Println("Setting up notifications...")
 
 	iStore := intervention.NewPGStore(db)
 
 	var notifiers []intervention.Notifier
 	notifiers = append(notifiers, intervention.NewLogNotifier(log))
-	if wh := cfg.Notifications.Webhook; wh != nil && wh.URL != "" {
+	for _, wh := range cfg.Notifications.Webhooks {
+		if wh.URL == "" {
+			continue
+		}
 		timeout := wh.Timeout
 		if timeout == 0 {
 			timeout = 5 * time.Second
@@ -337,7 +340,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 			alertDispatcher.Dispatch(context.Background(), alert.Event{
 				Source:       alert.SourcePolicy,
 				Category:     alert.CategoryCageConfigViolation,
-				Priority:     intervention.PriorityHigh,
+				Priority:     intervention.PriorityCritical,
 				AssessmentID: c.AssessmentID,
 				Description:  validErr.Error(),
 				Details:      map[string]any{"layer": "go"},
@@ -346,6 +349,14 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 		scopeDecision, scopeErr := opaEngine.EvaluateScope(context.Background(), c.Scope, cfg.Scope.Deny)
 		if scopeErr != nil {
+			alertDispatcher.Dispatch(context.Background(), alert.Event{
+				Source:       alert.SourcePolicy,
+				Category:     alert.CategoryScopeViolation,
+				Priority:     intervention.PriorityCritical,
+				AssessmentID: c.AssessmentID,
+				Description:  fmt.Sprintf("OPA scope engine error: %v", scopeErr),
+				Details:      map[string]any{"layer": "opa", "error": scopeErr.Error()},
+			})
 			return fmt.Errorf("evaluating scope policy: %w", scopeErr)
 		}
 		if !scopeDecision.Allowed {
@@ -361,13 +372,21 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 		decision, evalErr := opaEngine.EvaluateCageConfig(context.Background(), c)
 		if evalErr != nil {
+			alertDispatcher.Dispatch(context.Background(), alert.Event{
+				Source:       alert.SourcePolicy,
+				Category:     alert.CategoryCageConfigViolation,
+				Priority:     intervention.PriorityCritical,
+				AssessmentID: c.AssessmentID,
+				Description:  fmt.Sprintf("OPA config engine error: %v", evalErr),
+				Details:      map[string]any{"layer": "opa", "error": evalErr.Error()},
+			})
 			return fmt.Errorf("evaluating cage config policy: %w", evalErr)
 		}
 		if !decision.Allowed {
 			alertDispatcher.Dispatch(context.Background(), alert.Event{
 				Source:       alert.SourcePolicy,
 				Category:     alert.CategoryCageConfigViolation,
-				Priority:     intervention.PriorityMedium,
+				Priority:     intervention.PriorityCritical,
 				AssessmentID: c.AssessmentID,
 				Description:  decision.Reason,
 				Details:      map[string]any{"violations": decision.Violations, "layer": "opa"},
@@ -626,6 +645,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	grpcServer.GracefulStop()
 	cageWorker.Stop()
 	assessmentWorker.Stop()
+	alertDispatcher.Close()
 
 	if err := mgr.Stop(context.Background()); err != nil {
 		log.Error(err, "error stopping embedded services")
