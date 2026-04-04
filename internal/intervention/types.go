@@ -8,6 +8,7 @@ const (
 	TypeTripwireEscalation Type = iota + 1
 	TypePayloadReview
 	TypeReportReview
+	TypePolicyViolation
 )
 
 func (t Type) String() string {
@@ -18,6 +19,8 @@ func (t Type) String() string {
 		return "payload_review"
 	case TypeReportReview:
 		return "report_review"
+	case TypePolicyViolation:
+		return "policy_violation"
 	default:
 		return "unknown"
 	}

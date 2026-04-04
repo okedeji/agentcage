@@ -25,6 +25,7 @@ import (
 
 	"github.com/okedeji/agentcage/migrations"
 
+	"github.com/okedeji/agentcage/internal/alert"
 	"github.com/okedeji/agentcage/internal/audit"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
@@ -252,28 +253,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Domain servers ---
 
 	fmt.Println("Initializing domain services...")
-	cageValidator := func(c cage.Config) error {
-		if validErr := enforcement.ValidateCageConfig(c, cfg); validErr != nil {
-			return validErr
-		}
-		scopeDecision, scopeErr := opaEngine.EvaluateScope(context.Background(), c.Scope, cfg.Scope.Deny)
-		if scopeErr != nil {
-			return fmt.Errorf("evaluating scope policy: %w", scopeErr)
-		}
-		if !scopeDecision.Allowed {
-			return fmt.Errorf("scope rejected: %s", scopeDecision.Reason)
-		}
-		decision, evalErr := opaEngine.EvaluateCageConfig(context.Background(), c)
-		if evalErr != nil {
-			return fmt.Errorf("evaluating cage config policy: %w", evalErr)
-		}
-		if !decision.Allowed {
-			return fmt.Errorf("cage config rejected: %s", decision.Reason)
-		}
-		return nil
-	}
-	cageServer := cage.NewServer(temporalClient, cageValidator, db)
-	assessmentServer := assessment.NewServer(temporalClient, db)
 
 	iStore := intervention.NewPGStore(db)
 
@@ -292,6 +271,46 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		log.Info("webhook notifications enabled", "url", wh.URL)
 	}
 	notifier := intervention.NewMultiNotifier(log, notifiers...)
+	alertDispatcher := alert.NewDispatcher(notifier, log)
+
+	cageValidator := func(c cage.Config) error {
+		if validErr := enforcement.ValidateCageConfig(c, cfg); validErr != nil {
+			return validErr
+		}
+		scopeDecision, scopeErr := opaEngine.EvaluateScope(context.Background(), c.Scope, cfg.Scope.Deny)
+		if scopeErr != nil {
+			return fmt.Errorf("evaluating scope policy: %w", scopeErr)
+		}
+		if !scopeDecision.Allowed {
+			alertDispatcher.Dispatch(context.Background(), alert.Event{
+				Source:       alert.SourcePolicy,
+				Category:     "scope",
+				Priority:     intervention.PriorityCritical,
+				AssessmentID: c.AssessmentID,
+				Description:  scopeDecision.Reason,
+				Details:      map[string]any{"violations": scopeDecision.Violations},
+			})
+			return fmt.Errorf("scope rejected: %s", scopeDecision.Reason)
+		}
+		decision, evalErr := opaEngine.EvaluateCageConfig(context.Background(), c)
+		if evalErr != nil {
+			return fmt.Errorf("evaluating cage config policy: %w", evalErr)
+		}
+		if !decision.Allowed {
+			alertDispatcher.Dispatch(context.Background(), alert.Event{
+				Source:       alert.SourcePolicy,
+				Category:     "cage_config",
+				Priority:     intervention.PriorityMedium,
+				AssessmentID: c.AssessmentID,
+				Description:  decision.Reason,
+				Details:      map[string]any{"violations": decision.Violations},
+			})
+			return fmt.Errorf("cage config rejected: %s", decision.Reason)
+		}
+		return nil
+	}
+	cageServer := cage.NewServer(temporalClient, cageValidator, db)
+	assessmentServer := assessment.NewServer(temporalClient, db)
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iServer := intervention.NewServer(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
@@ -402,15 +421,27 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 	rootfsBuilder := cage.NewRootfsBuilder(baseRootfs, rootfsWorkDir, version)
 
+	var falcoReader *cage.FalcoAlertReader
+	falcoSocket := filepath.Join(embedded.RunDir(), "falco", "falco.sock")
+	if cfg.Infrastructure.Falco != nil && cfg.Infrastructure.Falco.Socket != "" {
+		falcoSocket = cfg.Infrastructure.Falco.Socket
+	}
+	if _, socketErr := os.Stat(falcoSocket); socketErr == nil {
+		falcoReader = cage.NewFalcoAlertReader(falcoSocket, log)
+		log.Info("Falco alert reader configured", "socket", falcoSocket)
+	}
+
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
-		Provisioner:  cageProvisioner,
-		Rootfs:       rootfsBuilder,
-		Network:      networkEnforcer,
-		AlertHandler: alertHandler,
-		AuditStore:   auditStore,
-		Identity:     svidIssuer,
-		Secrets:      secretFetcher,
-		Log:          log,
+		Provisioner:   cageProvisioner,
+		Rootfs:        rootfsBuilder,
+		Network:       networkEnforcer,
+		AlertHandler:  alertHandler,
+		AlertNotifier: alertDispatcher,
+		FalcoReader:   falcoReader,
+		AuditStore:    auditStore,
+		Identity:      svidIssuer,
+		Secrets:       secretFetcher,
+		Log:           log,
 	})
 
 	// --- Assessment activity implementation ---
