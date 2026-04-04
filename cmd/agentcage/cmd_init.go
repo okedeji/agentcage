@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -242,15 +244,66 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Temporal client ---
 
+	spireSocket := filepath.Join(embedded.RunDir(), "spire", "agent.sock")
+	if cfg.Infrastructure.IsExternalSPIRE() && cfg.Infrastructure.SPIRE.AgentSocket != "" {
+		spireSocket = cfg.Infrastructure.SPIRE.AgentSocket
+	}
+
 	temporalAddr := "localhost:17233"
 	if cfg.Infrastructure.IsExternalTemporal() {
 		temporalAddr = cfg.Infrastructure.Temporal.Address
 	}
 
 	fmt.Println("Connecting to Temporal...")
-	temporalClient, err := client.Dial(client.Options{
+	temporalOpts := client.Options{
 		HostPort: temporalAddr,
-	})
+	}
+	if tc := cfg.Infrastructure.Temporal; tc != nil {
+		if tc.Namespace != "" {
+			temporalOpts.Namespace = tc.Namespace
+		}
+		if tc.TLS != nil {
+			switch {
+			case tc.TLS.Internal:
+				internalTLS, spireErr := agentgrpc.SPIREClientTLS(ctx, "unix://"+spireSocket)
+				if spireErr != nil {
+					return fmt.Errorf("configuring internal mTLS for Temporal: %w", spireErr)
+				}
+				temporalOpts.ConnectionOptions = client.ConnectionOptions{
+					TLS: internalTLS,
+				}
+				log.Info("Temporal mTLS enabled via internal identity provider")
+			case tc.TLS.CertFile != "":
+				cert, tlsErr := tls.LoadX509KeyPair(tc.TLS.CertFile, tc.TLS.KeyFile)
+				if tlsErr != nil {
+					return fmt.Errorf("loading Temporal TLS cert: %w", tlsErr)
+				}
+				tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+				if tc.TLS.CAFile != "" {
+					caCert, caErr := os.ReadFile(tc.TLS.CAFile)
+					if caErr != nil {
+						return fmt.Errorf("reading Temporal CA file: %w", caErr)
+					}
+					pool := x509.NewCertPool()
+					pool.AppendCertsFromPEM(caCert)
+					tlsCfg.RootCAs = pool
+				}
+				temporalOpts.ConnectionOptions = client.ConnectionOptions{
+					TLS: tlsCfg,
+				}
+				log.Info("Temporal mTLS enabled", "cert", tc.TLS.CertFile)
+			}
+		}
+		if tc.APIKeyEnvVar != "" {
+			apiKey := os.Getenv(tc.APIKeyEnvVar)
+			if apiKey == "" {
+				return fmt.Errorf("temporal API key env var %s is not set", tc.APIKeyEnvVar)
+			}
+			temporalOpts.Credentials = client.NewAPIKeyStaticCredentials(apiKey)
+			log.Info("Temporal API key auth enabled")
+		}
+	}
+	temporalClient, err := client.Dial(temporalOpts)
 	if err != nil {
 		return fmt.Errorf("connecting to Temporal at %s: %w", temporalAddr, err)
 	}
@@ -384,10 +437,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	fmt.Println("Connecting to identity and secrets services...")
 	var svidIssuer identity.SVIDIssuer
-	spireSocket := filepath.Join(embedded.RunDir(), "spire", "agent.sock")
-	if cfg.Infrastructure.IsExternalSPIRE() && cfg.Infrastructure.SPIRE.AgentSocket != "" {
-		spireSocket = cfg.Infrastructure.SPIRE.AgentSocket
-	}
 	if _, socketErr := os.Stat(spireSocket); socketErr == nil {
 		spireClient, spireErr := identity.NewSpireClient(ctx, spireSocket, "agentcage.local")
 		if spireErr != nil {
@@ -466,13 +515,13 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	var grpcOpts []grpc.ServerOption
 	switch {
-	case cfg.GRPC.UseSPIRETLS():
+	case cfg.GRPC.UseInternalTLS():
 		tlsCfg, tlsErr := agentgrpc.SPIREServerTLS(ctx, "unix://"+spireSocket)
 		if tlsErr != nil {
-			return fmt.Errorf("configuring SPIRE mTLS: %w", tlsErr)
+			return fmt.Errorf("configuring internal mTLS for gRPC: %w", tlsErr)
 		}
 		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
-		log.Info("gRPC mTLS enabled via SPIRE", "socket", spireSocket)
+		log.Info("gRPC mTLS enabled via internal identity provider")
 	case cfg.GRPC.UseFileTLS():
 		creds, tlsErr := credentials.NewServerTLSFromFile(cfg.GRPC.TLS.CertFile, cfg.GRPC.TLS.KeyFile)
 		if tlsErr != nil {

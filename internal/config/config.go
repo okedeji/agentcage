@@ -43,19 +43,19 @@ type GRPCConfig struct {
 type TLSConfig struct {
 	CertFile string `yaml:"cert_file,omitempty"`
 	KeyFile  string `yaml:"key_file,omitempty"`
-	SPIRE    bool   `yaml:"spire,omitempty"`
+	Internal bool   `yaml:"internal,omitempty"`
 }
 
 func (c *GRPCConfig) TLSEnabled() bool {
-	return c.TLS != nil && (c.TLS.CertFile != "" || c.TLS.SPIRE)
+	return c.TLS != nil && (c.TLS.CertFile != "" || c.TLS.Internal)
 }
 
-func (c *GRPCConfig) UseSPIRETLS() bool {
-	return c.TLS != nil && c.TLS.SPIRE
+func (c *GRPCConfig) UseInternalTLS() bool {
+	return c.TLS != nil && c.TLS.Internal
 }
 
 func (c *GRPCConfig) UseFileTLS() bool {
-	return c.TLS != nil && c.TLS.CertFile != "" && c.TLS.KeyFile != "" && !c.TLS.SPIRE
+	return c.TLS != nil && c.TLS.CertFile != "" && c.TLS.KeyFile != "" && !c.TLS.Internal
 }
 
 // InfrastructureConfig holds connection overrides for external services.
@@ -80,7 +80,17 @@ type NATSConfig struct {
 }
 
 type TemporalConfig struct {
-	Address string `yaml:"address"`
+	Address      string             `yaml:"address"`
+	Namespace    string             `yaml:"namespace"`
+	TLS          *TemporalTLSConfig `yaml:"tls,omitempty"`
+	APIKeyEnvVar string             `yaml:"api_key_env,omitempty"`
+}
+
+type TemporalTLSConfig struct {
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
+	CAFile   string `yaml:"ca_file,omitempty"`
+	Internal bool   `yaml:"internal,omitempty"`
 }
 
 type SPIREConfig struct {
