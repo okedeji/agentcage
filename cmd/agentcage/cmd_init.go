@@ -459,15 +459,14 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 	}()
 
-	fleetSvc := fleet.NewService(poolManager, demandLedger, hostProvisioner, log.WithValues("component", "fleet"))
-
-	// --- Domain servers ---
+	// --- Domain services ---
 
 	cageSvc := cage.NewService(temporalClient, cageValidator, db)
 	assessmentSvc := assessment.NewService(temporalClient, db, autoscaler)
+	fleetSvc := fleet.NewService(poolManager, demandLedger, hostProvisioner, log.WithValues("component", "fleet"))
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
-	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
+	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
 
 	// --- LLM client (for coordinator) ---
 
