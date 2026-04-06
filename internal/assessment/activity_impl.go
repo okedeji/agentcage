@@ -71,7 +71,14 @@ func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID str
 		ParentFindingID: finding.ID,
 	}
 	if proof != nil {
-		config.InputContext = []byte(proof.Description)
+		// Serialize the full structured proof so the validator cage receives
+		// the deterministic plan (payload, confirmation, safety, bounds), not
+		// just the human-readable description.
+		data, err := json.Marshal(proof)
+		if err != nil {
+			return "", fmt.Errorf("marshaling proof for finding %s: %w", finding.ID, err)
+		}
+		config.InputContext = data
 	}
 	info, err := a.cages.CreateCage(ctx, config)
 	if err != nil {
@@ -88,6 +95,14 @@ func (a *ActivityImpl) CreateEscalationCage(ctx context.Context, assessmentID st
 	}
 	a.log.Info("escalation cage created", "assessment_id", assessmentID, "cage_id", info.ID, "finding_id", finding.ID)
 	return info.ID, nil
+}
+
+func (a *ActivityImpl) GetFinding(ctx context.Context, findingID string) (findings.Finding, error) {
+	f, err := a.findings.GetByID(ctx, findingID)
+	if err != nil {
+		return findings.Finding{}, fmt.Errorf("loading finding %s: %w", findingID, err)
+	}
+	return f, nil
 }
 
 func (a *ActivityImpl) GetCandidateFindings(ctx context.Context, assessmentID string) ([]findings.Finding, error) {

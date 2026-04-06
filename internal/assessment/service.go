@@ -19,9 +19,10 @@ import (
 const TaskQueue = "assessment-lifecycle"
 
 var (
-	ErrAssessmentNotFound = errors.New("assessment not found")
-	ErrFindingNotFound    = errors.New("finding not found")
-	ErrProofUnavailable   = errors.New("no proof available for vuln class")
+	ErrAssessmentNotFound  = errors.New("assessment not found")
+	ErrFindingNotFound     = errors.New("finding not found")
+	ErrProofUnavailable    = errors.New("no proof available for vuln class")
+	ErrAssessmentFinalized = errors.New("assessment is finalized")
 )
 
 // FleetSignaler notifies the fleet about assessment lifecycle events.
@@ -116,6 +117,17 @@ func (s *Service) RevalidateFinding(ctx context.Context, findingID, vulnClass, p
 		return "", err
 	}
 
+	// Reject revalidation against assessments in a finalized state — a
+	// validator cage spawned now would mutate findings on a report that
+	// has already been approved or rejected.
+	parent, err := s.GetAssessment(ctx, finding.AssessmentID)
+	if err != nil {
+		return "", fmt.Errorf("loading parent assessment %s: %w", finding.AssessmentID, err)
+	}
+	if parent.Status == StatusApproved || parent.Status == StatusRejected {
+		return "", fmt.Errorf("%w: %s is %s", ErrAssessmentFinalized, parent.ID, parent.Status)
+	}
+
 	// Override vuln class if operator specified one
 	effectiveVulnClass := finding.VulnClass
 	if vulnClass != "" {
@@ -136,12 +148,17 @@ func (s *Service) RevalidateFinding(ctx context.Context, findingID, vulnClass, p
 		proof = available[0]
 	}
 
+	proofJSON, err := json.Marshal(proof)
+	if err != nil {
+		return "", fmt.Errorf("marshaling proof for finding %s: %w", findingID, err)
+	}
+
 	cageCfg := cage.Config{
 		AssessmentID:    finding.AssessmentID,
 		Type:            cage.TypeValidator,
 		Scope:           cage.Scope{Hosts: []string{finding.Endpoint}},
 		ParentFindingID: finding.ID,
-		InputContext:    []byte(proof.Description),
+		InputContext:    proofJSON,
 	}
 
 	info, err := s.cages.CreateCage(ctx, cageCfg)
@@ -153,26 +170,11 @@ func (s *Service) RevalidateFinding(ctx context.Context, findingID, vulnClass, p
 }
 
 func (s *Service) loadFinding(ctx context.Context, findingID string) (*findings.Finding, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("database not configured")
-	}
-	exists, err := s.findings.FindingExists(ctx, findingID)
+	f, err := s.findings.GetByID(ctx, findingID)
 	if err != nil {
-		return nil, fmt.Errorf("checking finding %s: %w", findingID, err)
-	}
-	if !exists {
-		return nil, fmt.Errorf("%w: %s", ErrFindingNotFound, findingID)
-	}
-	// Load the full finding from the store. The store doesn't have a
-	// GetByID method yet, so query the assessment-scoped findings and
-	// find by ID.
-	var f findings.Finding
-	err = s.db.QueryRowContext(ctx,
-		`SELECT id, assessment_id, cage_id, status, severity, vuln_class, endpoint
-		 FROM findings WHERE id = $1`,
-		findingID,
-	).Scan(&f.ID, &f.AssessmentID, &f.CageID, new(string), new(string), &f.VulnClass, &f.Endpoint)
-	if err != nil {
+		if errors.Is(err, findings.ErrFindingNotFound) {
+			return nil, fmt.Errorf("%w: %s", ErrFindingNotFound, findingID)
+		}
 		return nil, fmt.Errorf("loading finding %s: %w", findingID, err)
 	}
 	return &f, nil

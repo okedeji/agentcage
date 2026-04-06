@@ -27,7 +27,38 @@ const (
 	DefaultMaxConcurrent   = int32(10)
 	DefaultMaxChainDepth   = int32(3)
 	DefaultMaxIterations   = int32(20)
+
+	// MinValidatorWait is the floor for per-finding validator wait time —
+	// even a 5-second proof needs cage boot + teardown overhead.
+	MinValidatorWait = 60 * time.Second
+	// ValidatorWaitBuffer is added to the proof's MaxDurationSeconds to
+	// cover cage boot, payload proxy startup, and result reporting.
+	ValidatorWaitBuffer = 30 * time.Second
+
+	// MaxFindingsPerValidationPhase caps how many candidate findings the
+	// validation phase will process in a single assessment run. Beyond this,
+	// the workflow truncates and logs a warning — the operator can spawn
+	// follow-up validations manually via `agentcage findings validate`.
+	MaxFindingsPerValidationPhase = 500
 )
+
+// validatorWaitFor returns the duration the workflow should sleep after
+// spawning a validator cage for the given proof. Honors the proof's declared
+// max_duration_seconds with a small buffer, bounded by MinValidatorWait
+// (floor) and TimeoutWaitForCage (ceiling).
+func validatorWaitFor(proof *Proof) time.Duration {
+	if proof == nil || proof.MaxDurationSeconds <= 0 {
+		return TimeoutWaitForCage
+	}
+	d := time.Duration(proof.MaxDurationSeconds)*time.Second + ValidatorWaitBuffer
+	if d < MinValidatorWait {
+		return MinValidatorWait
+	}
+	if d > TimeoutWaitForCage {
+		return TimeoutWaitForCage
+	}
+	return d
+}
 
 type AssessmentWorkflowInput struct {
 	AssessmentID  string
@@ -405,6 +436,16 @@ func validateFindings(
 	var validatedCount int32
 	var cagesSpawned int32
 
+	// Bound the validation phase. Operators can revalidate the rest manually
+	// via `agentcage findings validate` once the report gates open.
+	if len(candidates) > MaxFindingsPerValidationPhase {
+		workflow.GetLogger(ctx).Info("validation phase truncated",
+			"assessment_id", assessmentID,
+			"candidates", len(candidates),
+			"cap", MaxFindingsPerValidationPhase)
+		candidates = candidates[:MaxFindingsPerValidationPhase]
+	}
+
 	for _, f := range candidates {
 		if f.Status != findings.StatusCandidate {
 			continue
@@ -430,7 +471,7 @@ func validateFindings(
 		}
 		cagesSpawned++
 
-		if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
+		if err := workflow.Sleep(ctx, validatorWaitFor(proof)); err != nil {
 			return validatedCount, cagesSpawned, fmt.Errorf("waiting for validator cage: %w", err)
 		}
 
@@ -528,23 +569,43 @@ func retestFindings(
 	adjustments []intervention.FindingAdjustment,
 ) (int32, error) {
 	var cages int32
+	maxWait := MinValidatorWait
 
 	for _, adj := range adjustments {
-		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
-		f := findings.Finding{
-			ID:           adj.FindingID,
-			AssessmentID: assessmentID,
+		// Load the real finding so the validator cage receives the correct
+		// endpoint, vuln class, and parent linkage — never spawn a retest
+		// against an empty Finding shell.
+		loadCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+		var f findings.Finding
+		if err := workflow.ExecuteActivity(loadCtx, "GetFinding", adj.FindingID).Get(ctx, &f); err != nil {
+			return cages, fmt.Errorf("loading finding %s for retest: %w", adj.FindingID, err)
 		}
+
+		// Look up the proof for this finding's vuln class. Skip if missing
+		// rather than spawning a no-op cage with no validation plan.
+		lookupCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+		var proof *Proof
+		_ = workflow.ExecuteActivity(lookupCtx, "LookupProof", f.VulnClass).Get(ctx, &proof)
+		if proof == nil {
+			workflow.GetLogger(ctx).Info("skipping retest: no proof for vuln class",
+				"finding_id", f.ID, "vuln_class", f.VulnClass)
+			continue
+		}
+
+		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 		var cageID string
-		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, (*Proof)(nil)).Get(ctx, &cageID)
+		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof).Get(ctx, &cageID)
 		if err != nil {
 			return cages, fmt.Errorf("creating retest cage for finding %s: %w", adj.FindingID, err)
 		}
 		cages++
+		if w := validatorWaitFor(proof); w > maxWait {
+			maxWait = w
+		}
 	}
 
 	if cages > 0 {
-		if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
+		if err := workflow.Sleep(ctx, maxWait); err != nil {
 			return cages, fmt.Errorf("waiting for retest cages: %w", err)
 		}
 	}

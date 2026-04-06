@@ -25,4 +25,5 @@ type Activities interface {
 	GenerateReport(ctx context.Context, assessmentID string, validated []findings.Finding) ([]byte, error)
 	PlanNextActions(ctx context.Context, state CoordinatorState) (CoordinatorDecision, error)
 	LookupProof(ctx context.Context, vulnClass string) (*Proof, error)
+	GetFinding(ctx context.Context, findingID string) (findings.Finding, error)
 }
