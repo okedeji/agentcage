@@ -42,8 +42,6 @@ func Proxy(cmd string, args []string) {
 		proxyTest(conn, args)
 	case "status":
 		proxyStatus(conn, args)
-	case "findings":
-		proxyFindings(conn, args)
 	case "report":
 		proxyReport(conn, args)
 	case "interventions":
@@ -186,44 +184,6 @@ func proxyStatus(conn *grpc.ClientConn, args []string) {
 	}
 }
 
-func proxyFindings(conn *grpc.ClientConn, args []string) {
-	if len(args) > 0 && args[0] == "validate" {
-		proxyFindingsValidate(conn, args[1:])
-		return
-	}
-	fmt.Fprintln(os.Stderr, "usage: agentcage findings validate <finding-id> [--vuln-class X] [--proof Y]")
-	fmt.Fprintln(os.Stderr, "       agentcage findings list (not yet wired)")
-	os.Exit(1)
-}
-
-func proxyFindingsValidate(conn *grpc.ClientConn, args []string) {
-	fs := flag.NewFlagSet("findings validate", flag.ExitOnError)
-	vulnClass := fs.String("vuln-class", "", "override the finding's vuln class")
-	proofName := fs.String("proof", "", "specific proof name (defaults to first available)")
-	_ = fs.Parse(args)
-
-	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: agentcage findings validate <finding-id> [--vuln-class X] [--proof Y]")
-		os.Exit(1)
-	}
-	findingID := fs.Arg(0)
-
-	client := pb.NewAssessmentServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	resp, err := client.RevalidateFinding(ctx, &pb.RevalidateFindingRequest{
-		FindingId: findingID,
-		VulnClass: *vulnClass,
-		ProofName: *proofName,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Validator cage spawned: %s\n", resp.GetCageId())
-}
-
 func proxyReport(_ *grpc.ClientConn, _ []string) {
 	fmt.Fprintln(os.Stderr, "report generation requires ReportService (not yet wired)")
 	os.Exit(1)
@@ -262,25 +222,71 @@ func proxyInterventions(conn *grpc.ClientConn, args []string) {
 		return
 	}
 	for _, item := range items {
-		fmt.Printf("  %s  cage=%s  %s  %s\n",
+		scope := "cage=" + item.GetCageId()
+		if item.GetType() == pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP {
+			scope = "assessment=" + item.GetAssessmentId()
+		}
+		fmt.Printf("  %s  %s  type=%s  %s  %s\n",
 			item.GetInterventionId(),
-			item.GetCageId(),
+			scope,
+			interventionTypeLabel(item.GetType()),
 			item.GetDescription(),
 			item.GetCreatedAt().AsTime().Format(time.RFC3339),
 		)
 	}
 }
 
+func interventionTypeLabel(t pb.InterventionType) string {
+	switch t {
+	case pb.InterventionType_INTERVENTION_TYPE_TRIPWIRE_ESCALATION:
+		return "tripwire"
+	case pb.InterventionType_INTERVENTION_TYPE_PAYLOAD_REVIEW:
+		return "payload_review"
+	case pb.InterventionType_INTERVENTION_TYPE_REPORT_REVIEW:
+		return "report_review"
+	case pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP:
+		return "proof_gap"
+	default:
+		return "unknown"
+	}
+}
+
 func proxyResolve(conn *grpc.ClientConn, args []string) {
 	fs := flag.NewFlagSet("resolve", flag.ExitOnError)
 	interventionID := fs.String("id", "", "intervention ID")
-	action := fs.String("action", "", "action: resume, kill, allow, block")
+	action := fs.String("action", "", "action: resume, kill, allow, block, retry, skip")
 	rationale := fs.String("rationale", "", "reason for the decision")
 	_ = fs.Parse(args)
 
 	if *interventionID == "" || *action == "" {
-		fmt.Fprintln(os.Stderr, "usage: agentcage resolve --id <intervention-id> --action <resume|kill|allow|block> [--rationale reason]")
+		fmt.Fprintln(os.Stderr, "usage: agentcage resolve --id <intervention-id> --action <resume|kill|allow|block|retry|skip> [--rationale reason]")
+		fmt.Fprintln(os.Stderr, "  retry/skip apply to proof_gap interventions")
 		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client := pb.NewInterventionServiceClient(conn)
+
+	// proof_gap actions take a different RPC path.
+	switch *action {
+	case "retry", "skip":
+		var pgAction pb.ProofGapAction
+		if *action == "retry" {
+			pgAction = pb.ProofGapAction_PROOF_GAP_ACTION_RETRY
+		} else {
+			pgAction = pb.ProofGapAction_PROOF_GAP_ACTION_SKIP
+		}
+		if _, err := client.ResolveProofGap(ctx, &pb.ResolveProofGapRequest{
+			InterventionId: *interventionID,
+			Action:         pgAction,
+			Rationale:      *rationale,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "error resolving proof_gap intervention: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Proof gap intervention %s resolved with action=%s\n", *interventionID, *action)
+		return
 	}
 
 	var pbAction pb.InterventionAction
@@ -298,16 +304,11 @@ func proxyResolve(conn *grpc.ClientConn, args []string) {
 		os.Exit(1)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	client := pb.NewInterventionServiceClient(conn)
-	_, err := client.ResolveCageIntervention(ctx, &pb.ResolveCageInterventionRequest{
+	if _, err := client.ResolveCageIntervention(ctx, &pb.ResolveCageInterventionRequest{
 		InterventionId: *interventionID,
 		Action:         pbAction,
 		Rationale:      *rationale,
-	})
-	if err != nil {
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "error resolving intervention: %v\n", err)
 		os.Exit(1)
 	}

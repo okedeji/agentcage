@@ -102,14 +102,6 @@ func (a *assessmentAdapter) GetAssessment(ctx context.Context, req *pb.GetAssess
 	return &pb.GetAssessmentResponse{Assessment: assessmentInfoToProto(info)}, nil
 }
 
-func (a *assessmentAdapter) RevalidateFinding(ctx context.Context, req *pb.RevalidateFindingRequest) (*pb.RevalidateFindingResponse, error) {
-	cageID, err := a.server.RevalidateFinding(ctx, req.GetFindingId(), req.GetVulnClass(), req.GetProofName())
-	if err != nil {
-		return nil, toGRPCError(err)
-	}
-	return &pb.RevalidateFindingResponse{CageId: cageID}, nil
-}
-
 type interventionAdapter struct {
 	pb.UnimplementedInterventionServiceServer
 	server *intervention.Service
@@ -148,6 +140,14 @@ func (a *interventionAdapter) ResolveCageIntervention(ctx context.Context, req *
 		return nil, toGRPCError(err)
 	}
 	return &pb.ResolveCageInterventionResponse{}, nil
+}
+
+func (a *interventionAdapter) ResolveProofGap(ctx context.Context, req *pb.ResolveProofGapRequest) (*pb.ResolveProofGapResponse, error) {
+	action := proofGapActionFromProto(req.GetAction())
+	if err := a.server.ResolveProofGap(ctx, req.GetInterventionId(), action, req.GetRationale(), "operator"); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.ResolveProofGapResponse{}, nil
 }
 
 func (a *interventionAdapter) ResolveAssessmentReview(ctx context.Context, req *pb.ResolveAssessmentReviewRequest) (*pb.ResolveAssessmentReviewResponse, error) {

@@ -206,8 +206,21 @@ func interventionTypeFromProto(t pb.InterventionType) intervention.Type {
 		return intervention.TypePayloadReview
 	case pb.InterventionType_INTERVENTION_TYPE_REPORT_REVIEW:
 		return intervention.TypeReportReview
+	case pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP:
+		return intervention.TypeProofGap
 	default:
 		return intervention.TypeTripwireEscalation
+	}
+}
+
+func proofGapActionFromProto(a pb.ProofGapAction) intervention.ProofGapAction {
+	switch a {
+	case pb.ProofGapAction_PROOF_GAP_ACTION_RETRY:
+		return intervention.ProofGapActionRetry
+	case pb.ProofGapAction_PROOF_GAP_ACTION_SKIP:
+		return intervention.ProofGapActionSkip
+	default:
+		return intervention.ProofGapActionSkip
 	}
 }
 
@@ -244,6 +257,7 @@ func reviewDecisionFromProto(d pb.ReviewDecision) intervention.ReviewDecision {
 func interventionToProto(r *intervention.Request) *pb.InterventionInfo {
 	info := &pb.InterventionInfo{
 		InterventionId: r.ID,
+		Type:           interventionTypeToProto(r.Type),
 		CageId:         r.CageID,
 		AssessmentId:   r.AssessmentID,
 		Description:    r.Description,
@@ -253,6 +267,21 @@ func interventionToProto(r *intervention.Request) *pb.InterventionInfo {
 		info.Timeout = durationpb.New(r.Timeout)
 	}
 	return info
+}
+
+func interventionTypeToProto(t intervention.Type) pb.InterventionType {
+	switch t {
+	case intervention.TypeTripwireEscalation:
+		return pb.InterventionType_INTERVENTION_TYPE_TRIPWIRE_ESCALATION
+	case intervention.TypePayloadReview:
+		return pb.InterventionType_INTERVENTION_TYPE_PAYLOAD_REVIEW
+	case intervention.TypeReportReview:
+		return pb.InterventionType_INTERVENTION_TYPE_REPORT_REVIEW
+	case intervention.TypeProofGap:
+		return pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP
+	default:
+		return pb.InterventionType_INTERVENTION_TYPE_UNSPECIFIED
+	}
 }
 
 func fleetStatusToProto(fs fleet.FleetStatus) *pb.FleetStatus {
