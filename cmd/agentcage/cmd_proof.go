@@ -140,13 +140,11 @@ func proofsDir() string {
 	return filepath.Join(embedded.DataDir(), "proofs")
 }
 
-// seedDefaultProofs copies the embedded default proof definitions into the
-// proofs directory if it doesn't exist yet.
+// seedDefaultProofs copies any embedded default proof definitions that are
+// missing from the proofs directory. Existing files are never overwritten,
+// so operator customizations are preserved across upgrades while new built-in
+// proofs added in later releases reach existing installs.
 func seedDefaultProofs(dir string) error {
-	if _, err := os.Stat(dir); err == nil {
-		return nil
-	}
-
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("creating proofs directory %s: %w", dir, err)
 	}
@@ -160,11 +158,15 @@ func seedDefaultProofs(dir string) error {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
 			continue
 		}
+		dest := filepath.Join(dir, e.Name())
+		if _, err := os.Stat(dest); err == nil {
+			// Operator already has this file (possibly customized) — leave it.
+			continue
+		}
 		data, err := proofs.Defaults.ReadFile(e.Name())
 		if err != nil {
 			return fmt.Errorf("reading embedded proof %s: %w", e.Name(), err)
 		}
-		dest := filepath.Join(dir, e.Name())
 		if err := os.WriteFile(dest, data, 0644); err != nil {
 			return fmt.Errorf("writing proof %s: %w", dest, err)
 		}
