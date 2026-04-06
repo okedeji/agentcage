@@ -7,24 +7,63 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
+const (
+	maxRetries     = 3
+	baseRetryDelay = 500 * time.Millisecond
+
+	// Number of consecutive auth failures before dispatching an alert.
+	// Single 401s can happen during key rotation; sustained failures
+	// indicate a real problem.
+	authFailureAlertThreshold = 3
+)
+
+// AlertNotifier dispatches gateway operational alerts. Satisfied by
+// alert.Dispatcher without gateway importing the alert package.
+type AlertNotifier interface {
+	Notify(ctx context.Context, source, category, description, cageID, assessmentID string, priority int, details map[string]any)
+}
+
 type Client struct {
 	endpoint   string
+	apiKey     string
 	httpClient *http.Client
 	meter      *TokenMeter
 	budget     *BudgetEnforcer
+	alerter    AlertNotifier
 	timeout    time.Duration
+
+	authFailMu    sync.Mutex
+	authFailures  int
+	authAlertSent bool
 }
 
-func NewClient(endpoint string, timeout time.Duration, meter *TokenMeter, budget *BudgetEnforcer) *Client {
+func NewClient(endpoint, apiKey string, timeout time.Duration, meter *TokenMeter, budget *BudgetEnforcer, alerter AlertNotifier) *Client {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	// Tuned for high-concurrency single-endpoint workload: thousands of cages
+	// all talking to one gateway. Default MaxIdleConnsPerHost=2 would force
+	// most requests to redo TCP+TLS handshakes.
+	transport := &http.Transport{
+		MaxIdleConns:        500,
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     90 * time.Second,
+	}
 	return &Client{
-		endpoint:   endpoint,
-		httpClient: &http.Client{},
-		meter:      meter,
-		budget:     budget,
-		timeout:    timeout,
+		endpoint: endpoint,
+		apiKey:   apiKey,
+		httpClient: &http.Client{
+			Transport: transport,
+			Timeout:   timeout + 5*time.Second, // belt-and-suspenders: hard cap above ctx timeout
+		},
+		meter:   meter,
+		budget:  budget,
+		alerter: alerter,
+		timeout: timeout,
 	}
 }
 
@@ -38,24 +77,9 @@ func (c *Client) ChatCompletion(ctx context.Context, cageID string, tokenBudget 
 		return nil, fmt.Errorf("marshaling LLM request: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
+	respBody, err := c.doWithRetry(ctx, body)
 	if err != nil {
-		return nil, fmt.Errorf("creating HTTP request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	httpResp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("sending request to LLM gateway: %w", err)
-	}
-	defer func() { _ = httpResp.Body.Close() }()
-
-	respBody, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading LLM gateway response: %w", err)
+		return nil, err
 	}
 
 	var resp LLMResponse
@@ -70,4 +94,86 @@ func (c *Client) ChatCompletion(ctx context.Context, cageID string, tokenBudget 
 	c.meter.Record(cageID, resp.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
 
 	return &resp, nil
+}
+
+func (c *Client) doWithRetry(ctx context.Context, body []byte) ([]byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := baseRetryDelay * time.Duration(1<<(attempt-1)) // 500ms, 1s, 2s
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
+			case <-time.After(delay):
+			}
+		}
+
+		reqCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.endpoint, bytes.NewReader(body))
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("creating HTTP request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if c.apiKey != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+		}
+
+		httpResp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			cancel()
+			lastErr = fmt.Errorf("sending request to LLM gateway (attempt %d): %w", attempt+1, err)
+			continue
+		}
+
+		respBody, readErr := io.ReadAll(httpResp.Body)
+		_ = httpResp.Body.Close()
+		cancel()
+
+		if readErr != nil {
+			lastErr = fmt.Errorf("reading LLM gateway response (attempt %d): %w", attempt+1, readErr)
+			continue
+		}
+
+		// Retry on 5xx (transient gateway/provider failures), give up on 4xx (client errors)
+		if httpResp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("LLM gateway returned HTTP %d (attempt %d)", httpResp.StatusCode, attempt+1)
+			continue
+		}
+		if httpResp.StatusCode == http.StatusUnauthorized || httpResp.StatusCode == http.StatusForbidden {
+			c.recordAuthFailure(ctx, httpResp.StatusCode)
+			return nil, fmt.Errorf("LLM gateway returned HTTP %d (auth)", httpResp.StatusCode)
+		}
+		if httpResp.StatusCode >= 400 {
+			return nil, fmt.Errorf("LLM gateway returned HTTP %d", httpResp.StatusCode)
+		}
+
+		c.resetAuthFailures()
+		return respBody, nil
+	}
+	return nil, fmt.Errorf("LLM gateway failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+func (c *Client) recordAuthFailure(ctx context.Context, status int) {
+	c.authFailMu.Lock()
+	c.authFailures++
+	count := c.authFailures
+	shouldAlert := count >= authFailureAlertThreshold && !c.authAlertSent
+	if shouldAlert {
+		c.authAlertSent = true
+	}
+	c.authFailMu.Unlock()
+
+	if shouldAlert && c.alerter != nil {
+		c.alerter.Notify(ctx, "behavioral", "gateway_auth_failed",
+			fmt.Sprintf("LLM gateway returned HTTP %d for %d consecutive requests — check API key", status, count),
+			"", "", 4, map[string]any{"status": status, "consecutive_failures": count})
+	}
+}
+
+func (c *Client) resetAuthFailures() {
+	c.authFailMu.Lock()
+	c.authFailures = 0
+	c.authAlertSent = false
+	c.authFailMu.Unlock()
 }

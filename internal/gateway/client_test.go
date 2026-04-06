@@ -32,7 +32,7 @@ func validLLMResponse() LLMResponse {
 func newTestClient(serverURL string) (*Client, *TokenMeter) {
 	meter := NewTokenMeter()
 	budget := NewBudgetEnforcer(meter)
-	client := NewClient(serverURL, 5*time.Second, meter, budget)
+	client := NewClient(serverURL, "", 5*time.Second, meter, budget, nil)
 	return client, meter
 }
 
@@ -116,7 +116,7 @@ func TestChatCompletion_Timeout(t *testing.T) {
 
 	meter := NewTokenMeter()
 	budget := NewBudgetEnforcer(meter)
-	client := NewClient(srv.URL, 50*time.Millisecond, meter, budget)
+	client := NewClient(srv.URL, "", 50*time.Millisecond, meter, budget, nil)
 
 	req := LLMRequest{
 		Model:    "gpt-4",

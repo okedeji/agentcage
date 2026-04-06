@@ -473,8 +473,18 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	meter := gateway.NewTokenMeter()
 	budgetEnforcer := gateway.NewBudgetEnforcer(meter)
 	var llmClient *gateway.Client
-	if cfg.LLM.Endpoint != "" {
-		llmClient = gateway.NewClient(cfg.LLM.Endpoint, cfg.LLM.Timeout, meter, budgetEnforcer)
+	if cfg.LLM.Endpoint == "" {
+		log.Info("WARNING: no LLM endpoint configured — assessment coordinator will not be able to plan cages")
+	} else {
+		var apiKey string
+		if cfg.LLM.APIKeyEnv != "" {
+			apiKey = os.Getenv(cfg.LLM.APIKeyEnv)
+			if apiKey == "" {
+				return fmt.Errorf("LLM API key env var %s is not set", cfg.LLM.APIKeyEnv)
+			}
+		}
+		llmClient = gateway.NewClient(cfg.LLM.Endpoint, apiKey, cfg.LLM.Timeout, meter, budgetEnforcer, alertDispatcher)
+		log.Info("LLM gateway client configured", "endpoint", cfg.LLM.Endpoint, "auth", apiKey != "")
 	}
 
 	// --- Proofs (validation rules) ---
