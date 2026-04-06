@@ -463,6 +463,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	cageSvc := cage.NewService(temporalClient, cageValidator, db)
 	fleetSvc := fleet.NewService(poolManager, demandLedger, hostProvisioner, log.WithValues("component", "fleet"))
+	assessmentSvc := assessment.NewService(temporalClient, db, autoscaler)
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
@@ -512,8 +513,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		os.Exit(1)
 	}
 	log.Info("proofs loaded", "dir", proofDir, "count", len(proofLib.List()))
-
-	assessmentSvc := assessment.NewService(temporalClient, db, autoscaler, cageSvc, findingStore, proofLib)
 
 	// --- Cage activity implementation ---
 
@@ -609,15 +608,20 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Assessment activity implementation ---
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
-		Cages:       cageSvc,
-		Findings:    findingStore,
-		Bus:         findingsBus,
-		Coordinator: findingsCoordinator,
-		Fleet:       autoscaler,
-		LLMClient:   llmClient,
-		Proofs:   proofLib,
-		Log:         log,
+		Cages:         cageSvc,
+		Findings:      findingStore,
+		Bus:           findingsBus,
+		Coordinator:   findingsCoordinator,
+		Fleet:         autoscaler,
+		LLMClient:     llmClient,
+		Proofs:        proofLib,
+		Interventions: iSvc,
+		Log:           log,
 	})
+
+	// Wire the proof library so retry-resolutions of proof_gap interventions
+	// reload it from disk before signaling the workflow.
+	iSvc.SetProofReloader(proofLib)
 
 	// --- gRPC server ---
 
