@@ -14,7 +14,7 @@ import (
 
 // ActivityImpl provides concrete implementations of all assessment
 // lifecycle activities. It wires the cage server, findings store,
-// planner, and playbook library together.
+// planner, and proof library together.
 type ActivityImpl struct {
 	cages       *cage.Service
 	findings    findings.FindingStore
@@ -22,7 +22,7 @@ type ActivityImpl struct {
 	coordinator *findings.Coordinator
 	fleet       FleetSignaler
 	planner     *Planner
-	playbooks   *PlaybookLibrary
+	proofs   *ProofLibrary
 	log         logr.Logger
 }
 
@@ -33,7 +33,7 @@ type ActivityImplConfig struct {
 	Coordinator *findings.Coordinator
 	Fleet       FleetSignaler
 	LLMClient   *gateway.Client
-	Playbooks   *PlaybookLibrary
+	Proofs   *ProofLibrary
 	Log         logr.Logger
 }
 
@@ -49,7 +49,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		coordinator: cfg.Coordinator,
 		fleet:       cfg.Fleet,
 		planner:     planner,
-		playbooks:   cfg.Playbooks,
+		proofs:   cfg.Proofs,
 		log:         cfg.Log.WithValues("component", "assessment-activities"),
 	}
 }
@@ -63,15 +63,15 @@ func (a *ActivityImpl) CreateDiscoveryCage(ctx context.Context, assessmentID str
 	return info.ID, nil
 }
 
-func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, playbook *Playbook) (string, error) {
+func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, proof *Proof) (string, error) {
 	config := cage.Config{
 		AssessmentID:    assessmentID,
 		Type:            cage.TypeValidator,
 		Scope:           cage.Scope{Hosts: []string{finding.Endpoint}},
 		ParentFindingID: finding.ID,
 	}
-	if playbook != nil {
-		config.InputContext = []byte(playbook.Description)
+	if proof != nil {
+		config.InputContext = []byte(proof.Description)
 	}
 	info, err := a.cages.CreateCage(ctx, config)
 	if err != nil {

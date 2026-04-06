@@ -69,7 +69,7 @@ func cmdProofList(args []string) {
 	_ = args
 	dir := proofsDir()
 
-	lib, err := assessment.LoadPlaybooks(dir)
+	lib, err := assessment.LoadProofs(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error loading proofs from %s: %v\n", dir, err)
 		os.Exit(1)
@@ -132,7 +132,7 @@ func validateProofBytes(data []byte, name string) error {
 		return fmt.Errorf("writing temp file: %w", err)
 	}
 
-	_, err = assessment.LoadPlaybooks(tmpDir)
+	_, err = assessment.LoadProofs(tmpDir)
 	return err
 }
 

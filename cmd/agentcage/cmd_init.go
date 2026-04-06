@@ -498,10 +498,10 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		log.Error(err, "seeding default proofs")
 	}
 
-	var proofLib *assessment.PlaybookLibrary
+	var proofLib *assessment.ProofLibrary
 	if _, statErr := os.Stat(proofDir); statErr == nil {
 		var loadErr error
-		proofLib, loadErr = assessment.LoadPlaybooks(proofDir)
+		proofLib, loadErr = assessment.LoadProofs(proofDir)
 		if loadErr != nil {
 			log.Error(loadErr, "loading proofs — continuing without proofs")
 		} else {
@@ -609,7 +609,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Coordinator: findingsCoordinator,
 		Fleet:       autoscaler,
 		LLMClient:   llmClient,
-		Playbooks:   proofLib,
+		Proofs:   proofLib,
 		Log:         log,
 	})
 

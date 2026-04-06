@@ -20,7 +20,7 @@ type assessmentActivityStub struct{}
 func (assessmentActivityStub) CreateDiscoveryCage(_ context.Context, _ string, _ cage.Config) (string, error) {
 	return "", nil
 }
-func (assessmentActivityStub) CreateValidatorCage(_ context.Context, _ string, _ findings.Finding, _ *Playbook) (string, error) {
+func (assessmentActivityStub) CreateValidatorCage(_ context.Context, _ string, _ findings.Finding, _ *Proof) (string, error) {
 	return "", nil
 }
 func (assessmentActivityStub) CreateEscalationCage(_ context.Context, _ string, _ findings.Finding, _ cage.Config) (string, error) {

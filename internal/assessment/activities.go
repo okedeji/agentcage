@@ -16,7 +16,7 @@ type TaskMatrixEntry struct {
 
 type Activities interface {
 	CreateDiscoveryCage(ctx context.Context, assessmentID string, config cage.Config) (string, error)
-	CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, playbook *Playbook) (string, error)
+	CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, proof *Proof) (string, error)
 	CreateEscalationCage(ctx context.Context, assessmentID string, finding findings.Finding, config cage.Config) (string, error)
 	GetCandidateFindings(ctx context.Context, assessmentID string) ([]findings.Finding, error)
 	GetValidatedFindings(ctx context.Context, assessmentID string) ([]findings.Finding, error)

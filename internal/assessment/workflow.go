@@ -134,7 +134,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 	}
 
-	// ===== Phase 3: Validation (deterministic, playbook-driven) =====
+	// ===== Phase 3: Validation (deterministic, proof-driven) =====
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusValidation); err != nil {
 		return failResult(result, "updating status to validating: %v", err), nil
@@ -412,7 +412,7 @@ func validateFindings(
 
 		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 		var cageID string
-		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, (*Playbook)(nil)).Get(ctx, &cageID)
+		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, (*Proof)(nil)).Get(ctx, &cageID)
 		if err != nil {
 			return validatedCount, cagesSpawned, fmt.Errorf("creating validator cage for finding %s: %w", f.ID, err)
 		}
@@ -524,7 +524,7 @@ func retestFindings(
 			AssessmentID: assessmentID,
 		}
 		var cageID string
-		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, (*Playbook)(nil)).Get(ctx, &cageID)
+		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, (*Proof)(nil)).Get(ctx, &cageID)
 		if err != nil {
 			return cages, fmt.Errorf("creating retest cage for finding %s: %w", adj.FindingID, err)
 		}
