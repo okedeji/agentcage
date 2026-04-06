@@ -454,6 +454,7 @@ type DrainHostRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	HostId        string                 `protobuf:"bytes,1,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
 	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	Force         bool                   `protobuf:"varint,3,opt,name=force,proto3" json:"force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -500,6 +501,13 @@ func (x *DrainHostRequest) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *DrainHostRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
 }
 
 type DrainHostResponse struct {

@@ -59,6 +59,7 @@ message GetFleetStatusResponse {
 message DrainHostRequest {
   string host_id = 1;
   string reason = 2;
+  bool force = 3;
 }
 
 message DrainHostResponse {}

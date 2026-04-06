@@ -27,7 +27,7 @@ func TestServer_GetFleetStatus(t *testing.T) {
 		CageSlotsUsed:  0,
 	})
 
-	srv := NewService(pool, NewDemandLedger(), logr.Discard())
+	srv := NewService(pool, NewDemandLedger(), nil, logr.Discard())
 	status, err := srv.GetFleetStatus(context.Background())
 	require.NoError(t, err)
 
@@ -44,8 +44,8 @@ func TestServer_DrainHost(t *testing.T) {
 		CageSlotsTotal: 16,
 	})
 
-	srv := NewService(pool, NewDemandLedger(), logr.Discard())
-	err := srv.DrainHost(context.Background(), "h-1", "maintenance")
+	srv := NewService(pool, NewDemandLedger(), nil, logr.Discard())
+	err := srv.DrainHost(context.Background(), "h-1", "maintenance", false)
 	require.NoError(t, err)
 
 	host, err := pool.GetHost("h-1")
@@ -55,9 +55,9 @@ func TestServer_DrainHost(t *testing.T) {
 
 func TestServer_DrainHost_Unknown(t *testing.T) {
 	pool := NewPoolManager()
-	srv := NewService(pool, NewDemandLedger(), logr.Discard())
+	srv := NewService(pool, NewDemandLedger(), nil, logr.Discard())
 
-	err := srv.DrainHost(context.Background(), "nonexistent", "test")
+	err := srv.DrainHost(context.Background(), "nonexistent", "test", false)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrHostNotFound))
 }
@@ -86,7 +86,7 @@ func TestServer_GetCapacity(t *testing.T) {
 		CageSlotsUsed:  2,
 	})
 
-	srv := NewService(pool, NewDemandLedger(), logr.Discard())
+	srv := NewService(pool, NewDemandLedger(), nil, logr.Discard())
 	statuses, available, err := srv.GetCapacity(context.Background())
 	require.NoError(t, err)
 

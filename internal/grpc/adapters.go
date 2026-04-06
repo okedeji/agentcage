@@ -172,7 +172,7 @@ func (a *fleetAdapter) GetFleetStatus(ctx context.Context, _ *pb.GetFleetStatusR
 }
 
 func (a *fleetAdapter) DrainHost(ctx context.Context, req *pb.DrainHostRequest) (*pb.DrainHostResponse, error) {
-	if err := a.server.DrainHost(ctx, req.GetHostId(), req.GetReason()); err != nil {
+	if err := a.server.DrainHost(ctx, req.GetHostId(), req.GetReason(), req.GetForce()); err != nil {
 		return nil, toGRPCError(err)
 	}
 	return &pb.DrainHostResponse{}, nil

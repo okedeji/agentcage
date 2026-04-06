@@ -24,6 +24,8 @@ func (m *mockProvisioner) Provision(_ context.Context) (*Host, error) {
 	defer m.mu.Unlock()
 
 	h := m.nextHost()
+	h.Pool = PoolProvisioning
+	h.State = HostInitializing
 	m.provisioned = append(m.provisioned, h)
 	return h, nil
 }
@@ -36,8 +38,19 @@ func (m *mockProvisioner) Drain(_ context.Context, hostID string) error {
 	return nil
 }
 
+func (m *mockProvisioner) Terminate(_ context.Context, hostID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.drained = append(m.drained, "terminated:"+hostID)
+	return nil
+}
+
+func (m *mockProvisioner) CheckReady(_ context.Context, _ string) (bool, error) {
+	return true, nil
+}
+
 func newTestAutoscaler(pool *PoolManager, demand *DemandLedger, prov *mockProvisioner, min, max int32) *Autoscaler {
-	return NewAutoscaler(pool, demand, prov, AutoscalerConfig{
+	return NewAutoscaler(pool, demand, prov, nil, AutoscalerConfig{
 		PollInterval: 30 * time.Second,
 		MinBuffer:    min,
 		MaxBuffer:    max,
@@ -71,17 +84,21 @@ func TestReconcile_WarmBelowMinimum(t *testing.T) {
 	prov := &mockProvisioner{nextHost: hostGenerator()}
 	a := newTestAutoscaler(pool, demand, prov, 3, 5)
 
+	// First reconcile provisions hosts into PoolProvisioning
 	a.reconcile(context.Background())
 
 	prov.mu.Lock()
-	defer prov.mu.Unlock()
 	assert.Len(t, prov.provisioned, 3)
+	prov.mu.Unlock()
+
+	// Second reconcile promotes them to PoolWarm (CheckReady returns true)
+	a.reconcile(context.Background())
 
 	warmHosts := pool.GetHostsByPool(PoolWarm)
 	assert.Len(t, warmHosts, 3)
 }
 
-func TestReconcile_WarmAboveMaximumNoDemand(t *testing.T) {
+func TestReconcile_WarmAboveTargetNoDemand(t *testing.T) {
 	pool := NewPoolManager()
 	demand := NewDemandLedger()
 	prov := &mockProvisioner{nextHost: hostGenerator()}
@@ -99,14 +116,15 @@ func TestReconcile_WarmAboveMaximumNoDemand(t *testing.T) {
 		})
 	}
 
+	// No demand → target = MinBuffer(2). 10 warm - 2 target = 8 drained.
 	a.reconcile(context.Background())
 
 	prov.mu.Lock()
 	defer prov.mu.Unlock()
-	assert.Len(t, prov.drained, 5)
+	assert.Len(t, prov.drained, 8)
 }
 
-func TestReconcile_WarmAboveMaximumWithDemand(t *testing.T) {
+func TestReconcile_WarmAboveTargetWithDemand(t *testing.T) {
 	pool := NewPoolManager()
 	demand := NewDemandLedger()
 	demand.AddDemand("assessment-1", 100)
@@ -124,18 +142,21 @@ func TestReconcile_WarmAboveMaximumWithDemand(t *testing.T) {
 		})
 	}
 
+	// demand=100, DefaultCageResources=4vCPU/8192MB, typicalHost=64vCPU →
+	// slotsPerHost=16, hostsNeeded=ceil(100/16)=7. target=max(2,7)=7.
+	// 10 warm - 7 target = 3 drained.
 	a.reconcile(context.Background())
 
 	prov.mu.Lock()
 	defer prov.mu.Unlock()
-	assert.Empty(t, prov.drained)
+	assert.Len(t, prov.drained, 3)
 }
 
-func TestReconcile_WarmWithinRange(t *testing.T) {
+func TestReconcile_WarmAtTarget(t *testing.T) {
 	pool := NewPoolManager()
 	demand := NewDemandLedger()
 	prov := &mockProvisioner{nextHost: hostGenerator()}
-	a := newTestAutoscaler(pool, demand, prov, 2, 5)
+	a := newTestAutoscaler(pool, demand, prov, 3, 5)
 
 	for i := 0; i < 3; i++ {
 		pool.AddHost(Host{
@@ -148,6 +169,7 @@ func TestReconcile_WarmWithinRange(t *testing.T) {
 		})
 	}
 
+	// 3 warm == MinBuffer(3), no demand → target=3. No drain, no provision.
 	a.reconcile(context.Background())
 
 	prov.mu.Lock()
@@ -192,7 +214,7 @@ func TestRun_ContextCancellation(t *testing.T) {
 	pool := NewPoolManager()
 	demand := NewDemandLedger()
 	prov := &mockProvisioner{nextHost: hostGenerator()}
-	a := NewAutoscaler(pool, demand, prov, AutoscalerConfig{
+	a := NewAutoscaler(pool, demand, prov, nil, AutoscalerConfig{
 		PollInterval: 10 * time.Millisecond,
 		MinBuffer:    0,
 		MaxBuffer:    10,

@@ -44,7 +44,7 @@ func newForecastTestAutoscaler(prov HostProvisioner) *Autoscaler {
 		MaxBuffer:            10,
 		DefaultCageResources: CageResources{VCPUs: 4, MemoryMB: 8192},
 	}
-	return NewAutoscaler(pool, demand, prov, cfg, logr.Discard())
+	return NewAutoscaler(pool, demand, prov, nil, cfg, logr.Discard())
 }
 
 func newForecastTestProvisioner() *forecastTestProvisioner {
@@ -68,6 +68,14 @@ func (p *forecastTestProvisioner) Provision(_ context.Context) (*Host, error) {
 
 func (p *forecastTestProvisioner) Drain(_ context.Context, _ string) error {
 	return nil
+}
+
+func (p *forecastTestProvisioner) Terminate(_ context.Context, _ string) error {
+	return nil
+}
+
+func (p *forecastTestProvisioner) CheckReady(_ context.Context, _ string) (bool, error) {
+	return true, nil
 }
 
 func TestForecastIntegration_HighDemand_Provisions(t *testing.T) {
