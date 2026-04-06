@@ -3,7 +3,16 @@ package intervention
 const (
 	SignalIntervention = "intervention"
 	SignalReportReview = "report_review"
+	SignalProofGap     = "proof_gap"
 )
+
+// ProofGapSignal is the Temporal signal payload sent to an assessment
+// workflow when an operator resolves a proof_gap intervention.
+type ProofGapSignal struct {
+	InterventionID string         `json:"intervention_id"`
+	Action         ProofGapAction `json:"action"`
+	Rationale      string         `json:"rationale"`
+}
 
 // InterventionSignal is the Temporal signal payload sent to a cage workflow
 // when an operator resolves a tripwire or payload review intervention.

@@ -8,10 +8,18 @@ import (
 	"github.com/go-logr/logr"
 )
 
+// ProofReloader is implemented by anything that can re-read the on-disk proof
+// library — kept as an interface so the intervention package does not import
+// the assessment package (avoids an import cycle).
+type ProofReloader interface {
+	Reload() error
+}
+
 type Service struct {
-	queue    *Queue
-	signaler WorkflowSignaler
-	logger   logr.Logger
+	queue        *Queue
+	signaler     WorkflowSignaler
+	proofLibrary ProofReloader
+	logger       logr.Logger
 }
 
 func NewService(queue *Queue, signaler WorkflowSignaler, logger logr.Logger) *Service {
@@ -20,6 +28,75 @@ func NewService(queue *Queue, signaler WorkflowSignaler, logger logr.Logger) *Se
 		signaler: signaler,
 		logger:   logger,
 	}
+}
+
+// SetProofReloader installs the proof library so the service can reload it
+// when an operator resolves a proof_gap intervention with action=retry.
+// Optional — if unset, retry simply re-runs lookup against whatever is
+// currently in memory (still useful in tests).
+func (s *Service) SetProofReloader(p ProofReloader) {
+	s.proofLibrary = p
+}
+
+// EnqueueProofGap creates a pending proof_gap intervention scoped to an
+// assessment. Used by the validation phase activity when no proof matches a
+// candidate finding's vulnerability class.
+func (s *Service) EnqueueProofGap(ctx context.Context, assessmentID, description string, contextData []byte, timeout time.Duration) (*Request, error) {
+	return s.queue.Enqueue(ctx, TypeProofGap, PriorityHigh, "", assessmentID, description, contextData, timeout)
+}
+
+// ResolveProofGap resolves a pending proof_gap intervention. On retry, the
+// proof library is reloaded from disk before signaling the workflow so the
+// next lookup pass sees any newly-added proofs.
+func (s *Service) ResolveProofGap(ctx context.Context, interventionID string, action ProofGapAction, rationale, operatorID string) error {
+	req, err := s.queue.store.GetIntervention(ctx, interventionID)
+	if err != nil {
+		return fmt.Errorf("getting intervention %s: %w", interventionID, err)
+	}
+	if req.Type != TypeProofGap {
+		return fmt.Errorf("intervention %s is type %s, not proof_gap", interventionID, req.Type)
+	}
+
+	// Reload proofs BEFORE signaling so the workflow's retry lookup sees any
+	// new YAML files the operator added via `agentcage proof add`.
+	if action == ProofGapActionRetry && s.proofLibrary != nil {
+		if err := s.proofLibrary.Reload(); err != nil {
+			return fmt.Errorf("reloading proof library before retry: %w", err)
+		}
+	}
+
+	decision := Decision{
+		InterventionID: interventionID,
+		Action:         ActionResume, // reused for the queue bookkeeping path
+		Rationale:      rationale,
+		OperatorID:     operatorID,
+		DecidedAt:      time.Now(),
+	}
+	if err := s.queue.Resolve(ctx, interventionID, decision); err != nil {
+		return fmt.Errorf("resolving proof_gap intervention %s: %w", interventionID, err)
+	}
+
+	if err := s.signaler.SignalWorkflow(
+		ctx,
+		"assessment-"+req.AssessmentID,
+		"",
+		SignalProofGap,
+		ProofGapSignal{
+			InterventionID: interventionID,
+			Action:         action,
+			Rationale:      rationale,
+		},
+	); err != nil {
+		return fmt.Errorf("signaling assessment workflow for proof_gap %s: %w", interventionID, err)
+	}
+
+	s.logger.Info("proof_gap intervention resolved",
+		"intervention_id", interventionID,
+		"assessment_id", req.AssessmentID,
+		"action", action.String(),
+		"operator_id", operatorID,
+	)
+	return nil
 }
 
 func (s *Service) ListInterventions(ctx context.Context, filters ListFilters) ([]Request, error) {

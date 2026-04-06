@@ -9,6 +9,7 @@ const (
 	TypePayloadReview
 	TypeReportReview
 	TypePolicyViolation
+	TypeProofGap
 )
 
 func (t Type) String() string {
@@ -21,9 +22,43 @@ func (t Type) String() string {
 		return "report_review"
 	case TypePolicyViolation:
 		return "policy_violation"
+	case TypeProofGap:
+		return "proof_gap"
 	default:
 		return "unknown"
 	}
+}
+
+// ProofGapAction is the operator decision when resolving a proof_gap
+// intervention. Retry re-runs proof lookup (after the operator has added a
+// new proof via `agentcage proof add`); Skip leaves the affected findings as
+// candidates for human review.
+type ProofGapAction int
+
+const (
+	ProofGapActionRetry ProofGapAction = iota + 1
+	ProofGapActionSkip
+)
+
+func (a ProofGapAction) String() string {
+	switch a {
+	case ProofGapActionRetry:
+		return "retry"
+	case ProofGapActionSkip:
+		return "skip"
+	default:
+		return "unknown"
+	}
+}
+
+// ProofGapResult is the resolution payload signaled to the assessment
+// workflow when an operator resolves a proof_gap intervention.
+type ProofGapResult struct {
+	InterventionID string
+	Action         ProofGapAction
+	Rationale      string
+	OperatorID     string
+	DecidedAt      time.Time
 }
 
 type Action int
