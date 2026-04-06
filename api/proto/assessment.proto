@@ -10,7 +10,6 @@ import "api/proto/cage.proto";
 service AssessmentService {
   rpc CreateAssessment(CreateAssessmentRequest) returns (CreateAssessmentResponse);
   rpc GetAssessment(GetAssessmentRequest) returns (GetAssessmentResponse);
-  rpc RevalidateFinding(RevalidateFindingRequest) returns (RevalidateFindingResponse);
 }
 
 enum AssessmentStatus {
@@ -112,12 +111,3 @@ message GetAssessmentResponse {
   AssessmentInfo assessment = 1;
 }
 
-message RevalidateFindingRequest {
-  string finding_id = 1;
-  string vuln_class = 2;  // optional override of finding's vuln class
-  string proof_name = 3;  // optional specific proof name; defaults to first available
-}
-
-message RevalidateFindingResponse {
-  string cage_id = 1;
-}
