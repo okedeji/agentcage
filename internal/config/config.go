@@ -133,20 +133,29 @@ type ModelConfig struct {
 
 // FleetConfig defines bare metal hosts for multi-host mode.
 type FleetConfig struct {
-	Hosts      []HostConfig      `yaml:"hosts"`
-	Autoscaler *AutoscalerConfig `yaml:"autoscaler"`
+	Hosts       []HostConfig       `yaml:"hosts"`
+	Provisioner *ProvisionerConfig `yaml:"provisioner,omitempty"`
+	Autoscaler  *AutoscalerConfig  `yaml:"autoscaler"`
+}
+
+type ProvisionerConfig struct {
+	WebhookURL  string        `yaml:"webhook_url"`
+	APIKeyEnvVar string       `yaml:"api_key_env,omitempty"`
+	Timeout     time.Duration `yaml:"timeout,omitempty"`
 }
 
 type HostConfig struct {
-	Address  string `yaml:"address"`
-	VCPUs    int32  `yaml:"vcpus"`
-	MemoryMB int32  `yaml:"memory_mb"`
-	CageSlots int32 `yaml:"cage_slots"`
+	Address   string `yaml:"address"`
+	VCPUs     int32  `yaml:"vcpus"`
+	MemoryMB  int32  `yaml:"memory_mb"`
+	CageSlots int32  `yaml:"cage_slots"`
 }
 
 type AutoscalerConfig struct {
-	MinWarmHosts int32 `yaml:"min_warm_hosts"`
-	MaxHosts     int32 `yaml:"max_hosts"`
+	MinWarmHosts            int32         `yaml:"min_warm_hosts"`
+	MaxHosts                int32         `yaml:"max_hosts"`
+	ProvisioningTimeout     time.Duration `yaml:"provisioning_timeout,omitempty"`
+	EmergencyProvisionCount int32         `yaml:"emergency_provision_count,omitempty"`
 }
 
 // CageTypeConfig defines resource and behavioral limits for a cage type.
@@ -285,12 +294,35 @@ func Resolve(explicit string) string {
 }
 
 // Parse reads configuration from raw YAML bytes.
+var validCageTypes = map[string]bool{
+	"discovery":  true,
+	"validator":  true,
+	"escalation": true,
+}
+
 func Parse(data []byte) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
+	if err := validateConfigKeys(&cfg); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
+}
+
+func validateConfigKeys(cfg *Config) error {
+	for key := range cfg.Cages {
+		if !validCageTypes[key] {
+			return fmt.Errorf("unknown cage type %q in config (valid: discovery, validator, escalation)", key)
+		}
+	}
+	for key := range cfg.Monitoring {
+		if !validCageTypes[key] {
+			return fmt.Errorf("unknown cage type %q in monitoring config (valid: discovery, validator, escalation)", key)
+		}
+	}
+	return nil
 }
 
 // Load reads configuration from a YAML file on disk.

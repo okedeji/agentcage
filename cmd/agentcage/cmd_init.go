@@ -395,17 +395,79 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 		return nil
 	}
-	// --- Domain servers ---
-
-	cageSvc := cage.NewService(temporalClient, cageValidator, db)
-	assessmentSvc := assessment.NewService(temporalClient, db)
-
-	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
-	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
+	// --- Fleet ---
 
 	poolManager := fleet.NewPoolManager()
 	demandLedger := fleet.NewDemandLedger()
-	fleetSvc := fleet.NewService(poolManager, demandLedger, log.WithValues("component", "fleet"))
+
+	validatorRes := fleet.CageResources{VCPUs: 1, MemoryMB: 1024}
+	if vc, ok := cfg.Cages["validator"]; ok {
+		validatorRes = fleet.CageResources{VCPUs: vc.MaxVCPUs, MemoryMB: vc.MaxMemoryMB}
+	}
+	discoveryRes := fleet.CageResources{VCPUs: 2, MemoryMB: 4096}
+	if dc, ok := cfg.Cages["discovery"]; ok {
+		discoveryRes = fleet.CageResources{VCPUs: dc.MaxVCPUs, MemoryMB: dc.MaxMemoryMB}
+	}
+	escalationRes := fleet.CageResources{VCPUs: 2, MemoryMB: 4096}
+	if ec, ok := cfg.Cages["escalation"]; ok {
+		escalationRes = fleet.CageResources{VCPUs: ec.MaxVCPUs, MemoryMB: ec.MaxMemoryMB}
+	}
+
+	fmt.Println("Initializing fleet pool...")
+	if err := fleet.InitPool(poolManager, cfg.Fleet.Hosts, validatorRes, discoveryRes, escalationRes); err != nil {
+		return fmt.Errorf("initializing fleet pool: %w", err)
+	}
+	fleetStatus := poolManager.GetFleetStatus()
+	log.Info("fleet pool initialized", "hosts", fleetStatus.TotalHosts, "total_slots", func() int32 {
+		var s int32
+		for _, p := range fleetStatus.Pools {
+			s += p.CageSlotsTotal
+		}
+		return s
+	}())
+
+	var hostProvisioner fleet.HostProvisioner
+	if pc := cfg.Fleet.Provisioner; pc != nil && pc.WebhookURL != "" {
+		var apiKey string
+		if pc.APIKeyEnvVar != "" {
+			apiKey = os.Getenv(pc.APIKeyEnvVar)
+		}
+		hostProvisioner = fleet.NewWebhookProvisioner(pc.WebhookURL, apiKey, pc.Timeout, log)
+		log.Info("fleet provisioner: webhook", "url", pc.WebhookURL)
+	} else {
+		hostProvisioner = fleet.NewLocalHostProvisioner(log)
+		log.Info("fleet provisioner: local (single machine, no scaling)")
+	}
+	autoscalerCfg := fleet.AutoscalerConfig{
+		PollInterval:         30 * time.Second,
+		MinBuffer:            0,
+		MaxBuffer:            1,
+		DefaultCageResources: validatorRes,
+	}
+	if cfg.Fleet.Autoscaler != nil {
+		autoscalerCfg.MinBuffer = cfg.Fleet.Autoscaler.MinWarmHosts
+		autoscalerCfg.MaxBuffer = cfg.Fleet.Autoscaler.MaxHosts
+		autoscalerCfg.ProvisioningTimeout = cfg.Fleet.Autoscaler.ProvisioningTimeout
+		autoscalerCfg.EmergencyProvisionCount = cfg.Fleet.Autoscaler.EmergencyProvisionCount
+	}
+	autoscaler := fleet.NewAutoscaler(poolManager, demandLedger, hostProvisioner, alertDispatcher, autoscalerCfg, log.WithValues("component", "autoscaler"))
+
+	fmt.Println("Starting fleet autoscaler...")
+	go func() {
+		if err := autoscaler.Run(ctx); err != nil {
+			log.Error(err, "autoscaler stopped")
+		}
+	}()
+
+	fleetSvc := fleet.NewService(poolManager, demandLedger, hostProvisioner, log.WithValues("component", "fleet"))
+
+	// --- Domain servers ---
+
+	cageSvc := cage.NewService(temporalClient, cageValidator, db)
+	assessmentSvc := assessment.NewService(temporalClient, db, autoscaler)
+
+	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
+	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-server"))
 
 	// --- LLM client (for coordinator) ---
 
@@ -522,6 +584,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		AlertHandler:  alertHandler,
 		AlertNotifier: alertDispatcher,
 		FalcoReader:   falcoReader,
+		FleetPool:     &fleetPoolAdapter{pool: poolManager},
 		AuditStore:    auditStore,
 		Identity:      svidIssuer,
 		Secrets:       secretFetcher,
@@ -535,6 +598,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Findings:    findingStore,
 		Bus:         findingsBus,
 		Coordinator: findingsCoordinator,
+		Fleet:       autoscaler,
 		LLMClient:   llmClient,
 		Playbooks:   proofLib,
 		Log:         log,
@@ -654,6 +718,32 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	_ = os.Remove(pidFile)
 	fmt.Println("agentcage stopped.")
 	return nil
+}
+
+// fleetPoolAdapter bridges fleet.PoolManager to the cage.FleetPool interface,
+// avoiding a direct import from cage → fleet (which would create a cycle).
+type fleetPoolAdapter struct {
+	pool *fleet.PoolManager
+}
+
+func (a *fleetPoolAdapter) GetAvailableHost() (*cage.FleetHost, error) {
+	h, err := a.pool.GetAvailableHost()
+	if err != nil {
+		return nil, err
+	}
+	return &cage.FleetHost{ID: h.ID, Pool: int(h.Pool)}, nil
+}
+
+func (a *fleetPoolAdapter) AllocateCageSlot(hostID string) error {
+	return a.pool.AllocateCageSlot(hostID)
+}
+
+func (a *fleetPoolAdapter) ReleaseCageSlot(hostID string) error {
+	return a.pool.ReleaseCageSlot(hostID)
+}
+
+func (a *fleetPoolAdapter) MoveHost(hostID string, toPool int) error {
+	return a.pool.MoveHost(hostID, fleet.HostPool(toPool))
 }
 
 func redactDBURL(raw string) string {

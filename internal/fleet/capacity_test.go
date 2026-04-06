@@ -63,9 +63,13 @@ func TestCalculateMixedSlots(t *testing.T) {
 	host := Host{VCPUsTotal: 96, MemoryMBTotal: 196608}
 	validatorRes := CageResources{VCPUs: 1, MemoryMB: 1024}
 	discoveryRes := CageResources{VCPUs: 2, MemoryMB: 4096}
+	escalationRes := CageResources{VCPUs: 2, MemoryMB: 4096}
 
-	got := CalculateMixedSlots(host, validatorRes, discoveryRes)
+	got := CalculateMixedSlots(host, validatorRes, discoveryRes, escalationRes)
 
-	// 96 * 0.6 + 48 * 0.4 = 57.6 + 19.2 = 76.8 → 76
+	// validator: 96 slots * 0.60 = 57.6
+	// discovery: 48 slots * 0.25 = 12.0
+	// escalation: 48 slots * 0.15 = 7.2
+	// total = 76.8 → 76
 	assert.Equal(t, int32(76), got)
 }

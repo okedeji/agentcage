@@ -57,6 +57,7 @@ type Host struct {
 	ID             string
 	Pool           HostPool
 	State          HostState
+	Pinned         bool
 	CageSlotsTotal int32
 	CageSlotsUsed  int32
 	VCPUsTotal     int32
