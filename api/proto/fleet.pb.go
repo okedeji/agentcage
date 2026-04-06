@@ -665,10 +665,11 @@ const file_api_proto_fleet_proto_rawDesc = "" +
 	"\x1acapacity_utilization_ratio\x18\x03 \x01(\x02R\x18capacityUtilizationRatio\"\x17\n" +
 	"\x15GetFleetStatusRequest\"Q\n" +
 	"\x16GetFleetStatusResponse\x127\n" +
-	"\x06status\x18\x01 \x01(\v2\x1f.agentcage.fleet.v1.FleetStatusR\x06status\"C\n" +
+	"\x06status\x18\x01 \x01(\v2\x1f.agentcage.fleet.v1.FleetStatusR\x06status\"Y\n" +
 	"\x10DrainHostRequest\x12\x17\n" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x13\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x14\n" +
+	"\x05force\x18\x03 \x01(\bR\x05force\"\x13\n" +
 	"\x11DrainHostResponse\"\x14\n" +
 	"\x12GetCapacityRequest\"}\n" +
 	"\x13GetCapacityResponse\x124\n" +

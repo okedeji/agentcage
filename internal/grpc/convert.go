@@ -110,7 +110,42 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 	if p.GetMaxChainDepth() > 0 {
 		cfg.MaxChainDepth = p.GetMaxChainDepth()
 	}
+	if g := p.GetGuidance(); g != nil {
+		cfg.Guidance = guidanceFromProto(g)
+	}
 	return cfg
+}
+
+func guidanceFromProto(p *pb.Guidance) *assessment.Guidance {
+	g := &assessment.Guidance{}
+	if as := p.GetAttackSurface(); as != nil {
+		g.AttackSurface = &assessment.AttackSurfaceGuidance{
+			Endpoints:     as.GetEndpoints(),
+			APISpecs:      as.GetApiSpecs(),
+			LimitToListed: as.GetLimitToListed(),
+		}
+	}
+	if pr := p.GetPriorities(); pr != nil {
+		g.Priorities = &assessment.PrioritiesGuidance{
+			Focus:        pr.GetFocus(),
+			Deprioritize: pr.GetDeprioritize(),
+			VulnClasses:  pr.GetVulnClasses(),
+		}
+	}
+	if as := p.GetAttackStrategy(); as != nil {
+		g.AttackStrategy = &assessment.AttackStrategyGuidance{
+			VulnClasses:     as.GetVulnClasses(),
+			KnownWeaknesses: as.GetKnownWeaknesses(),
+			Context:         as.GetContext(),
+		}
+	}
+	if v := p.GetValidation(); v != nil {
+		g.Validation = &assessment.ValidationGuidance{
+			RequirePoC:         v.GetRequirePoc(),
+			HeadlessBrowserXSS: v.GetHeadlessBrowserXss(),
+		}
+	}
+	return g
 }
 
 func assessmentStatusToProto(s assessment.Status) pb.AssessmentStatus {

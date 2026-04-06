@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -265,6 +266,13 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 	}
 	if tc, ok := cfg.CageDefaults[cage.TypeDiscovery]; ok {
 		cageCfg.Resources = tc.Resources
+	}
+	if cfg.Guidance != nil {
+		// Guidance is read-only context the agent receives at startup.
+		// JSON encode for now — the agent will deserialize as needed.
+		if data, err := json.Marshal(cfg.Guidance); err == nil {
+			cageCfg.InputContext = data
+		}
 	}
 
 	var cageID string

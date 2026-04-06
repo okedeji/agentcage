@@ -43,6 +43,37 @@ message AssessmentConfig {
   google.protobuf.Duration max_duration = 5;
   int32 max_chain_depth = 6;
   ComplianceFramework compliance = 7;
+  Guidance guidance = 8;
+}
+
+message Guidance {
+  AttackSurfaceGuidance attack_surface = 1;
+  PrioritiesGuidance priorities = 2;
+  AttackStrategyGuidance attack_strategy = 3;
+  ValidationGuidance validation = 4;
+}
+
+message AttackSurfaceGuidance {
+  repeated string endpoints = 1;
+  repeated string api_specs = 2;
+  bool limit_to_listed = 3;
+}
+
+message PrioritiesGuidance {
+  repeated string focus = 1;
+  repeated string deprioritize = 2;
+  repeated string vuln_classes = 3;
+}
+
+message AttackStrategyGuidance {
+  repeated string vuln_classes = 1;
+  repeated string known_weaknesses = 2;
+  string context = 3;
+}
+
+message ValidationGuidance {
+  bool require_poc = 1;
+  bool headless_browser_xss = 2;
 }
 
 message AssessmentStats {
