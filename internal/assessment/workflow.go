@@ -37,9 +37,13 @@ const (
 
 	// MaxFindingsPerValidationPhase caps how many candidate findings the
 	// validation phase will process in a single assessment run. Beyond this,
-	// the workflow truncates and logs a warning — the operator can spawn
-	// follow-up validations manually via `agentcage findings validate`.
+	// the workflow truncates and leaves the rest as candidates for the
+	// human-review gate.
 	MaxFindingsPerValidationPhase = 500
+
+	// ProofGapWaitDeadline is the maximum time the validation phase will
+	// block waiting for an operator to resolve a proof_gap intervention.
+	ProofGapWaitDeadline = 24 * time.Hour
 )
 
 // validatorWaitFor returns the duration the workflow should sleep after
@@ -436,8 +440,8 @@ func validateFindings(
 	var validatedCount int32
 	var cagesSpawned int32
 
-	// Bound the validation phase. Operators can revalidate the rest manually
-	// via `agentcage findings validate` once the report gates open.
+	// Bound the validation phase. Anything beyond the cap falls through to
+	// the human-review gate as candidate findings.
 	if len(candidates) > MaxFindingsPerValidationPhase {
 		workflow.GetLogger(ctx).Info("validation phase truncated",
 			"assessment_id", assessmentID,
@@ -446,50 +450,138 @@ func validateFindings(
 		candidates = candidates[:MaxFindingsPerValidationPhase]
 	}
 
+	// First pass: bucket candidates by vuln_class so we can emit one
+	// proof_gap intervention per class instead of fanning out one per
+	// finding.
+	pending := make(map[string][]findings.Finding)
+	var classOrder []string
 	for _, f := range candidates {
 		if f.Status != findings.StatusCandidate {
 			continue
 		}
+		if _, seen := pending[f.VulnClass]; !seen {
+			classOrder = append(classOrder, f.VulnClass)
+		}
+		pending[f.VulnClass] = append(pending[f.VulnClass], f)
+	}
 
-		// Look up proof for this finding's vulnerability class.
-		// If no proof exists, the candidate is left as-is for human review
-		// at the report gate.
-		var proof *Proof
-		lookupCtx := withActivityTimeout(ctx, TimeoutGetFindings)
-		_ = workflow.ExecuteActivity(lookupCtx, "LookupProof", f.VulnClass).Get(ctx, &proof)
+	for _, vulnClass := range classOrder {
+		group := pending[vulnClass]
+
+		// Look up proof for this vuln class. If missing, emit a proof_gap
+		// intervention and wait for the operator to either add a new proof
+		// (action=retry) or skip the group (action=skip).
+		proof, err := lookupProofWithGate(ctx, assessmentID, vulnClass, group)
+		if err != nil {
+			return validatedCount, cagesSpawned, err
+		}
 		if proof == nil {
-			workflow.GetLogger(ctx).Info("skipping validation: no proof for vuln class",
-				"finding_id", f.ID, "vuln_class", f.VulnClass)
+			// Operator skipped or timed out — leave findings as candidates.
 			continue
 		}
 
-		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
-		var cageID string
-		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof).Get(ctx, &cageID)
-		if err != nil {
-			return validatedCount, cagesSpawned, fmt.Errorf("creating validator cage for finding %s: %w", f.ID, err)
-		}
-		cagesSpawned++
+		for _, f := range group {
+			actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
+			var cageID string
+			if err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof).Get(ctx, &cageID); err != nil {
+				return validatedCount, cagesSpawned, fmt.Errorf("creating validator cage for finding %s: %w", f.ID, err)
+			}
+			cagesSpawned++
 
-		if err := workflow.Sleep(ctx, validatorWaitFor(proof)); err != nil {
-			return validatedCount, cagesSpawned, fmt.Errorf("waiting for validator cage: %w", err)
-		}
+			if err := workflow.Sleep(ctx, validatorWaitFor(proof)); err != nil {
+				return validatedCount, cagesSpawned, fmt.Errorf("waiting for validator cage: %w", err)
+			}
 
-		actCtx = withActivityTimeout(ctx, TimeoutGetFindings)
-		var updated []findings.Finding
-		if err := workflow.ExecuteActivity(actCtx, "GetCandidateFindings", assessmentID).Get(ctx, &updated); err != nil {
-			return validatedCount, cagesSpawned, fmt.Errorf("checking validation result for finding %s: %w", f.ID, err)
-		}
-
-		for _, u := range updated {
-			if u.ID == f.ID && u.Status == findings.StatusValidated {
-				validatedCount++
-				break
+			checkCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+			var updated []findings.Finding
+			if err := workflow.ExecuteActivity(checkCtx, "GetCandidateFindings", assessmentID).Get(ctx, &updated); err != nil {
+				return validatedCount, cagesSpawned, fmt.Errorf("checking validation result for finding %s: %w", f.ID, err)
+			}
+			for _, u := range updated {
+				if u.ID == f.ID && u.Status == findings.StatusValidated {
+					validatedCount++
+					break
+				}
 			}
 		}
 	}
 
 	return validatedCount, cagesSpawned, nil
+}
+
+// lookupProofWithGate runs LookupProof and, if no proof exists, emits a
+// proof_gap intervention scoped to the vuln class and waits for the operator
+// to resolve it. On retry it re-runs LookupProof (the intervention service
+// reloads ProofLibrary from disk before signaling). On skip or timeout it
+// returns nil so the caller leaves the candidates for human review.
+func lookupProofWithGate(
+	ctx workflow.Context,
+	assessmentID, vulnClass string,
+	group []findings.Finding,
+) (*Proof, error) {
+	for {
+		var proof *Proof
+		lookupCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+		if err := workflow.ExecuteActivity(lookupCtx, "LookupProof", vulnClass).Get(ctx, &proof); err != nil {
+			return nil, fmt.Errorf("looking up proof for vuln class %s: %w", vulnClass, err)
+		}
+		if proof != nil {
+			return proof, nil
+		}
+
+		findingIDs := make([]string, len(group))
+		for i, f := range group {
+			findingIDs[i] = f.ID
+		}
+
+		emitCtx := withActivityTimeout(ctx, TimeoutCreateCage)
+		var interventionID string
+		if err := workflow.ExecuteActivity(emitCtx, "EmitProofGapIntervention", assessmentID, vulnClass, findingIDs).Get(ctx, &interventionID); err != nil {
+			workflow.GetLogger(ctx).Info("could not emit proof_gap intervention; skipping",
+				"assessment_id", assessmentID, "vuln_class", vulnClass, "error", err.Error())
+			return nil, nil
+		}
+
+		decision := waitForProofGap(ctx, interventionID)
+		if decision == nil || decision.Action == intervention.ProofGapActionSkip {
+			workflow.GetLogger(ctx).Info("proof_gap skipped",
+				"assessment_id", assessmentID, "vuln_class", vulnClass, "intervention_id", interventionID)
+			return nil, nil
+		}
+		// Retry: loop back and re-run LookupProof against the (now reloaded)
+		// proof library.
+	}
+}
+
+// waitForProofGap blocks until the matching proof_gap signal arrives or the
+// timeout fires. Returns nil on timeout.
+func waitForProofGap(ctx workflow.Context, interventionID string) *intervention.ProofGapSignal {
+	signalCh := workflow.GetSignalChannel(ctx, intervention.SignalProofGap)
+	timer := workflow.NewTimer(ctx, ProofGapWaitDeadline)
+
+	for {
+		var signal intervention.ProofGapSignal
+		var timedOut bool
+
+		sel := workflow.NewSelector(ctx)
+		sel.AddReceive(signalCh, func(ch workflow.ReceiveChannel, more bool) {
+			ch.Receive(ctx, &signal)
+		})
+		sel.AddFuture(timer, func(f workflow.Future) {
+			_ = f.Get(ctx, nil)
+			timedOut = true
+		})
+		sel.Select(ctx)
+
+		if timedOut {
+			return nil
+		}
+		// Multiple proof_gap interventions can be in flight serially within
+		// a single assessment — make sure we drain the right one.
+		if signal.InterventionID == interventionID {
+			return &signal
+		}
+	}
 }
 
 func spawnEscalationCages(

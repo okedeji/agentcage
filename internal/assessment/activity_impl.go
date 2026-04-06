@@ -4,37 +4,51 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/gateway"
+	"github.com/okedeji/agentcage/internal/intervention"
 )
+
+// ProofGapEmitter creates a pending proof_gap intervention. Narrow interface
+// so tests can stub it without spinning up the full intervention service.
+type ProofGapEmitter interface {
+	EnqueueProofGap(ctx context.Context, assessmentID, description string, contextData []byte, timeout time.Duration) (*intervention.Request, error)
+}
+
+// ProofGapTimeout is how long an operator has to add a new proof and resolve
+// the intervention before the workflow auto-skips the affected findings.
+const ProofGapTimeout = 24 * time.Hour
 
 // ActivityImpl provides concrete implementations of all assessment
 // lifecycle activities. It wires the cage server, findings store,
 // planner, and proof library together.
 type ActivityImpl struct {
-	cages       *cage.Service
-	findings    findings.FindingStore
-	bus         findings.Bus
-	coordinator *findings.Coordinator
-	fleet       FleetSignaler
-	planner     *Planner
-	proofs   *ProofLibrary
-	log         logr.Logger
+	cages         *cage.Service
+	findings      findings.FindingStore
+	bus           findings.Bus
+	coordinator   *findings.Coordinator
+	fleet         FleetSignaler
+	planner       *Planner
+	proofs        *ProofLibrary
+	interventions ProofGapEmitter
+	log           logr.Logger
 }
 
 type ActivityImplConfig struct {
-	Cages       *cage.Service
-	Findings    findings.FindingStore
-	Bus         findings.Bus
-	Coordinator *findings.Coordinator
-	Fleet       FleetSignaler
-	LLMClient   *gateway.Client
-	Proofs   *ProofLibrary
-	Log         logr.Logger
+	Cages         *cage.Service
+	Findings      findings.FindingStore
+	Bus           findings.Bus
+	Coordinator   *findings.Coordinator
+	Fleet         FleetSignaler
+	LLMClient     *gateway.Client
+	Proofs        *ProofLibrary
+	Interventions ProofGapEmitter
+	Log           logr.Logger
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
@@ -43,15 +57,44 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		planner = NewPlanner(cfg.LLMClient)
 	}
 	return &ActivityImpl{
-		cages:       cfg.Cages,
-		findings:    cfg.Findings,
-		bus:         cfg.Bus,
-		coordinator: cfg.Coordinator,
-		fleet:       cfg.Fleet,
-		planner:     planner,
-		proofs:   cfg.Proofs,
-		log:         cfg.Log.WithValues("component", "assessment-activities"),
+		cages:         cfg.Cages,
+		findings:      cfg.Findings,
+		bus:           cfg.Bus,
+		coordinator:   cfg.Coordinator,
+		fleet:         cfg.Fleet,
+		planner:       planner,
+		proofs:        cfg.Proofs,
+		interventions: cfg.Interventions,
+		log:           cfg.Log.WithValues("component", "assessment-activities"),
 	}
+}
+
+// EmitProofGapIntervention creates a pending proof_gap intervention for a
+// specific vulnerability class with the list of affected candidate findings
+// in the context payload. Returns the intervention ID for the workflow to
+// signal-wait against.
+func (a *ActivityImpl) EmitProofGapIntervention(ctx context.Context, assessmentID, vulnClass string, findingIDs []string) (string, error) {
+	if a.interventions == nil {
+		return "", fmt.Errorf("proof gap emitter not configured for assessment %s", assessmentID)
+	}
+	payload, err := json.Marshal(struct {
+		VulnClass  string   `json:"vuln_class"`
+		FindingIDs []string `json:"finding_ids"`
+	}{vulnClass, findingIDs})
+	if err != nil {
+		return "", fmt.Errorf("marshaling proof_gap context for %s: %w", assessmentID, err)
+	}
+	desc := fmt.Sprintf("no proof for vuln_class=%s (%d candidate findings)", vulnClass, len(findingIDs))
+	req, err := a.interventions.EnqueueProofGap(ctx, assessmentID, desc, payload, ProofGapTimeout)
+	if err != nil {
+		return "", fmt.Errorf("enqueueing proof_gap intervention for %s: %w", assessmentID, err)
+	}
+	a.log.Info("proof_gap intervention emitted",
+		"assessment_id", assessmentID,
+		"vuln_class", vulnClass,
+		"candidates", len(findingIDs),
+		"intervention_id", req.ID)
+	return req.ID, nil
 }
 
 func (a *ActivityImpl) CreateDiscoveryCage(ctx context.Context, assessmentID string, config cage.Config) (string, error) {

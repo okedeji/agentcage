@@ -47,6 +47,12 @@ func (assessmentActivityStub) PlanNextActions(_ context.Context, _ CoordinatorSt
 func (assessmentActivityStub) LookupProof(_ context.Context, _ string) (*Proof, error) {
 	return nil, nil
 }
+func (assessmentActivityStub) GetFinding(_ context.Context, _ string) (findings.Finding, error) {
+	return findings.Finding{}, nil
+}
+func (assessmentActivityStub) EmitProofGapIntervention(_ context.Context, _, _ string, _ []string) (string, error) {
+	return "", nil
+}
 func (assessmentActivityStub) NotifyFleetAssessmentComplete(_ context.Context, _ string) error {
 	return nil
 }

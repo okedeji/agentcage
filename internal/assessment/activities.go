@@ -26,4 +26,5 @@ type Activities interface {
 	PlanNextActions(ctx context.Context, state CoordinatorState) (CoordinatorDecision, error)
 	LookupProof(ctx context.Context, vulnClass string) (*Proof, error)
 	GetFinding(ctx context.Context, findingID string) (findings.Finding, error)
+	EmitProofGapIntervention(ctx context.Context, assessmentID, vulnClass string, findingIDs []string) (string, error)
 }
