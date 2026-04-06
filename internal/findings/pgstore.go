@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -66,6 +67,43 @@ func (s *PGFindingStore) FindingExists(ctx context.Context, findingID string) (b
 		return false, fmt.Errorf("checking existence of finding %s: %w", findingID, err)
 	}
 	return exists, nil
+}
+
+func (s *PGFindingStore) GetByID(ctx context.Context, findingID string) (Finding, error) {
+	var (
+		f                       Finding
+		statusStr, severityStr  string
+		evidence                []byte
+		parentID                *string
+		validatedAt             *time.Time
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, validated_at, created_at, updated_at
+		 FROM findings WHERE id = $1`,
+		findingID,
+	).Scan(
+		&f.ID, &f.AssessmentID, &f.CageID,
+		&statusStr, &severityStr,
+		&f.Title, &f.Description, &f.VulnClass, &f.Endpoint,
+		&evidence, &parentID, &f.ChainDepth, &validatedAt,
+		&f.CreatedAt, &f.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Finding{}, fmt.Errorf("%w: %s", ErrFindingNotFound, findingID)
+	}
+	if err != nil {
+		return Finding{}, fmt.Errorf("loading finding %s: %w", findingID, err)
+	}
+	f.Status = parseStatus(statusStr)
+	f.Severity = parseSeverity(severityStr)
+	f.ValidatedAt = validatedAt
+	if parentID != nil {
+		f.ParentFindingID = *parentID
+	}
+	if evidence != nil {
+		_ = json.Unmarshal(evidence, &f.Evidence)
+	}
+	return f, nil
 }
 
 func (s *PGFindingStore) GetByAssessment(ctx context.Context, assessmentID string, status Status) ([]Finding, error) {

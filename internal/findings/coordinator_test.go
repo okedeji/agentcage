@@ -39,6 +39,15 @@ func (m *mockStore) FindingExists(_ context.Context, id string) (bool, error) {
 	return ok, nil
 }
 
+func (m *mockStore) GetByID(_ context.Context, id string) (Finding, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if f, ok := m.findings[id]; ok {
+		return f, nil
+	}
+	return Finding{}, ErrFindingNotFound
+}
+
 func (m *mockStore) GetByAssessment(_ context.Context, assessmentID string, status Status) ([]Finding, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

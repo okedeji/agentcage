@@ -10,9 +10,13 @@ import (
 type FindingStore interface {
 	SaveFinding(ctx context.Context, finding Finding) error
 	FindingExists(ctx context.Context, findingID string) (bool, error)
+	GetByID(ctx context.Context, findingID string) (Finding, error)
 	GetByAssessment(ctx context.Context, assessmentID string, status Status) ([]Finding, error)
 	UpdateStatus(ctx context.Context, findingID string, status Status) error
 }
+
+// ErrFindingNotFound is returned by GetByID when no finding matches the ID.
+var ErrFindingNotFound = fmt.Errorf("finding not found")
 
 type Coordinator struct {
 	store  FindingStore
