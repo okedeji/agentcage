@@ -523,25 +523,34 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Cage activity implementation ---
 
 	fmt.Println("Setting up cage provisioner...")
-	firecrackerBin := filepath.Join(embedded.BinDir(), "firecracker")
-	kernelBin := filepath.Join(embedded.BinDir(), "vmlinux")
+	binDir := embedded.BinDir()
+	log.Info("embedded bin dir", "path", binDir)
 
-	var cageProvisioner cage.VMProvisioner
-	if _, kvmErr := os.Stat("/dev/kvm"); kvmErr == nil {
-		if _, fcErr := os.Stat(firecrackerBin); fcErr == nil {
-			cageProvisioner = cage.NewFirecrackerProvisioner(cage.FirecrackerConfig{
-				BinPath:    firecrackerBin,
-				KernelPath: kernelBin,
-			}, log)
-			log.Info("cage provisioner: firecracker", "bin", firecrackerBin, "kernel", kernelBin)
-		}
+	firecrackerBin := cfg.CageRuntime.FirecrackerBin
+	if firecrackerBin == "" {
+		firecrackerBin = filepath.Join(binDir, "firecracker")
 	}
-	if cageProvisioner == nil {
-		cageProvisioner = cage.NewMockProvisioner()
-		log.Info("cage provisioner: Mock/test (no KVM or firecracker binary — cages will not be isolated)")
+	kernelBin := cfg.CageRuntime.KernelPath
+	if kernelBin == "" {
+		kernelBin = filepath.Join(binDir, "vmlinux")
 	}
 
-	networkEnforcer := enforcement.NewNFTablesEnforcer(log)
+	cageProvisioner, isolated, err := cage.BuildProvisioner(ctx, cage.HostRuntimeConfig{
+		FirecrackerBin:  firecrackerBin,
+		KernelPath:      kernelBin,
+		AllowUnisolated: cfg.CageRuntime.AllowUnisolated,
+	}, log)
+	if err != nil {
+		return fmt.Errorf("setting up cage provisioner: %w", err)
+	}
+
+	var networkEnforcer enforcement.NetworkEnforcer
+	if isolated {
+		networkEnforcer = enforcement.NewNFTablesEnforcer(log)
+	} else {
+		networkEnforcer = enforcement.NewNoopEnforcer(log)
+		log.Info("network enforcement disabled (unisolated cage runtime)")
+	}
 	auditStore := audit.NewPGStore(db)
 
 	// --- Identity and secrets ---
