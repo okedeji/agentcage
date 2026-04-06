@@ -227,6 +227,12 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		result.FinalStatus = StatusRejected
 	}
 
+	// Best-effort fleet notification — failure should not fail the assessment
+	_ = workflow.ExecuteActivity(
+		withActivityTimeout(ctx, TimeoutUpdateStatus),
+		"NotifyFleetAssessmentComplete", input.AssessmentID,
+	).Get(ctx, nil)
+
 	return result, nil
 }
 

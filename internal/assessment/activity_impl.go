@@ -20,6 +20,7 @@ type ActivityImpl struct {
 	findings    findings.FindingStore
 	bus         findings.Bus
 	coordinator *findings.Coordinator
+	fleet       FleetSignaler
 	planner     *Planner
 	playbooks   *PlaybookLibrary
 	log         logr.Logger
@@ -30,6 +31,7 @@ type ActivityImplConfig struct {
 	Findings    findings.FindingStore
 	Bus         findings.Bus
 	Coordinator *findings.Coordinator
+	Fleet       FleetSignaler
 	LLMClient   *gateway.Client
 	Playbooks   *PlaybookLibrary
 	Log         logr.Logger
@@ -45,6 +47,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		findings:    cfg.Findings,
 		bus:         cfg.Bus,
 		coordinator: cfg.Coordinator,
+		fleet:       cfg.Fleet,
 		planner:     planner,
 		playbooks:   cfg.Playbooks,
 		log:         cfg.Log.WithValues("component", "assessment-activities"),
@@ -135,4 +138,13 @@ func (a *ActivityImpl) PlanNextActions(ctx context.Context, state CoordinatorSta
 		"actions", len(decision.Actions),
 	)
 	return decision, nil
+}
+
+func (a *ActivityImpl) NotifyFleetAssessmentComplete(_ context.Context, assessmentID string) error {
+	if a.fleet == nil {
+		return nil
+	}
+	a.fleet.OnAssessmentComplete(assessmentID)
+	a.log.V(1).Info("fleet notified of assessment completion", "assessment_id", assessmentID)
+	return nil
 }

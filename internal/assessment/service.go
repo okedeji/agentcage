@@ -17,17 +17,26 @@ const TaskQueue = "assessment-lifecycle"
 
 var ErrAssessmentNotFound = errors.New("assessment not found")
 
+// FleetSignaler notifies the fleet about assessment lifecycle events.
+// Defined as an interface to avoid importing the fleet package directly.
+type FleetSignaler interface {
+	OnNewAssessment(assessmentID string, surfaceSize int)
+	OnAssessmentComplete(assessmentID string)
+}
+
 type Service struct {
 	temporal    client.Client
 	db          *sql.DB
+	fleet       FleetSignaler
 	mu          sync.RWMutex
 	assessments map[string]*Info
 }
 
-func NewService(temporal client.Client, db *sql.DB) *Service {
+func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler) *Service {
 	return &Service{
 		temporal:    temporal,
 		db:          db,
+		fleet:       fleet,
 		assessments: make(map[string]*Info),
 	}
 }
@@ -66,6 +75,10 @@ func (s *Service) CreateAssessment(ctx context.Context, config Config) (*Info, e
 		delete(s.assessments, assessmentID)
 		s.mu.Unlock()
 		return nil, fmt.Errorf("starting assessment workflow for assessment %s: %w", assessmentID, err)
+	}
+
+	if s.fleet != nil {
+		s.fleet.OnNewAssessment(assessmentID, len(config.Target.Hosts))
 	}
 
 	return info, nil
