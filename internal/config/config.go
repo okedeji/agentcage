@@ -17,6 +17,7 @@ type Config struct {
 	GRPC           GRPCConfig                 `yaml:"grpc"`
 	LLM            LLMConfig                  `yaml:"llm"`
 	Fleet          FleetConfig                `yaml:"fleet"`
+	CageRuntime    CageRuntimeConfig          `yaml:"cage_runtime"`
 	Cages          map[string]CageTypeConfig  `yaml:"cages"`
 	Assessment     AssessmentConfig           `yaml:"assessment"`
 	Scope          ScopeConfig                `yaml:"scope"`
@@ -25,6 +26,23 @@ type Config struct {
 	Compliance     *ComplianceConfig          `yaml:"compliance"`
 	Notifications  NotificationsConfig        `yaml:"notifications"`
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
+}
+
+// CageRuntimeConfig controls how the orchestrator provisions and isolates
+// cages on the local host.
+type CageRuntimeConfig struct {
+	// FirecrackerBin overrides the path to the firecracker binary. If empty,
+	// the orchestrator falls back to <embedded.BinDir>/firecracker.
+	FirecrackerBin string `yaml:"firecracker_bin"`
+	// KernelPath overrides the path to the vmlinux kernel. If empty, the
+	// orchestrator falls back to <embedded.BinDir>/vmlinux.
+	KernelPath string `yaml:"kernel_path"`
+	// AllowUnisolated must be set to true to permit the mock provisioner to
+	// run agents directly on the host (no microVM boundary). Intended only
+	// for local development on machines without KVM. Production deployments
+	// must leave this false; missing Firecracker capability is then a fatal
+	// startup error.
+	AllowUnisolated bool `yaml:"allow_unisolated"`
 }
 
 type NotificationsConfig struct {
