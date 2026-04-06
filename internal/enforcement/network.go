@@ -64,6 +64,26 @@ func NewNFTablesEnforcer(log logr.Logger) *NFTablesEnforcer {
 	return &NFTablesEnforcer{log: log.WithValues("component", "nftables")}
 }
 
+// NoopEnforcer is the network enforcer used when cages run unisolated (dev
+// mode without KVM/Firecracker). It logs and does nothing, since there is
+// no TAP device to attach rules to.
+type NoopEnforcer struct {
+	log logr.Logger
+}
+
+func NewNoopEnforcer(log logr.Logger) *NoopEnforcer {
+	return &NoopEnforcer{log: log.WithValues("component", "noop-enforcer")}
+}
+
+func (e *NoopEnforcer) Apply(_ context.Context, cageID string, _ cage.Scope, _ []string) error {
+	e.log.Info("noop network enforcement: cage has no isolation", "cage_id", cageID)
+	return nil
+}
+
+func (e *NoopEnforcer) Remove(_ context.Context, _ string) error {
+	return nil
+}
+
 func (e *NFTablesEnforcer) Apply(ctx context.Context, cageID string, scope cage.Scope, extras []string) error {
 	rules := BuildEgressRules(cageID, scope, extras)
 	nft := GenerateNFTRules(rules)
