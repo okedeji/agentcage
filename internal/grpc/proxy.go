@@ -186,9 +186,42 @@ func proxyStatus(conn *grpc.ClientConn, args []string) {
 	}
 }
 
-func proxyFindings(_ *grpc.ClientConn, _ []string) {
-	fmt.Fprintln(os.Stderr, "findings listing requires FindingsService (not yet wired)")
+func proxyFindings(conn *grpc.ClientConn, args []string) {
+	if len(args) > 0 && args[0] == "validate" {
+		proxyFindingsValidate(conn, args[1:])
+		return
+	}
+	fmt.Fprintln(os.Stderr, "usage: agentcage findings validate <finding-id> [--vuln-class X] [--proof Y]")
+	fmt.Fprintln(os.Stderr, "       agentcage findings list (not yet wired)")
 	os.Exit(1)
+}
+
+func proxyFindingsValidate(conn *grpc.ClientConn, args []string) {
+	fs := flag.NewFlagSet("findings validate", flag.ExitOnError)
+	vulnClass := fs.String("vuln-class", "", "override the finding's vuln class")
+	proofName := fs.String("proof", "", "specific proof name (defaults to first available)")
+	_ = fs.Parse(args)
+
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: agentcage findings validate <finding-id> [--vuln-class X] [--proof Y]")
+		os.Exit(1)
+	}
+	findingID := fs.Arg(0)
+
+	client := pb.NewAssessmentServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := client.RevalidateFinding(ctx, &pb.RevalidateFindingRequest{
+		FindingId: findingID,
+		VulnClass: *vulnClass,
+		ProofName: *proofName,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Validator cage spawned: %s\n", resp.GetCageId())
 }
 
 func proxyReport(_ *grpc.ClientConn, _ []string) {
