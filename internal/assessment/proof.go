@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -75,25 +76,37 @@ var (
 )
 
 type ProofLibrary struct {
+	mu     sync.RWMutex
+	dir    string
 	proofs map[string]map[string]*Proof
 }
 
 func LoadProofs(dir string) (*ProofLibrary, error) {
+	lib := &ProofLibrary{dir: dir}
+	if err := lib.Reload(); err != nil {
+		return nil, err
+	}
+	return lib, nil
+}
+
+// Reload re-reads every proof YAML in the library's directory and atomically
+// swaps the in-memory index. Used after an operator adds new proofs to
+// resolve a proof_gap intervention without restarting the orchestrator.
+func (l *ProofLibrary) Reload() error {
+	dir := l.dir
 	info, err := os.Stat(dir)
 	if err != nil {
-		return nil, fmt.Errorf("reading proof directory %s: %w", dir, ErrProofDirNotFound)
+		return fmt.Errorf("reading proof directory %s: %w", dir, ErrProofDirNotFound)
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("%s is not a directory: %w", dir, ErrProofDirNotFound)
+		return fmt.Errorf("%s is not a directory: %w", dir, ErrProofDirNotFound)
 	}
 
-	lib := &ProofLibrary{
-		proofs: make(map[string]map[string]*Proof),
-	}
+	loaded := make(map[string]map[string]*Proof)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("listing proof directory %s: %w", dir, err)
+		return fmt.Errorf("listing proof directory %s: %w", dir, err)
 	}
 
 	for _, entry := range entries {
@@ -108,27 +121,30 @@ func LoadProofs(dir string) (*ProofLibrary, error) {
 		path := filepath.Join(dir, entry.Name())
 		pb, err := loadProof(path)
 		if err != nil {
-			return nil, fmt.Errorf("loading proof %s: %w", entry.Name(), err)
+			return fmt.Errorf("loading proof %s: %w", entry.Name(), err)
 		}
 
 		if err := validateProof(pb); err != nil {
-			return nil, fmt.Errorf("validating proof %s: %w", entry.Name(), err)
+			return fmt.Errorf("validating proof %s: %w", entry.Name(), err)
 		}
 
 		// Normalize on load so all lookups can rely on canonical keys.
 		pb.VulnClass = normalizeVulnClass(pb.VulnClass)
 		pb.ValidationType = strings.ToLower(strings.TrimSpace(pb.ValidationType))
 
-		if lib.proofs[pb.VulnClass] == nil {
-			lib.proofs[pb.VulnClass] = make(map[string]*Proof)
+		if loaded[pb.VulnClass] == nil {
+			loaded[pb.VulnClass] = make(map[string]*Proof)
 		}
-		if _, dup := lib.proofs[pb.VulnClass][pb.ValidationType]; dup {
-			return nil, fmt.Errorf("duplicate proof for %s/%s in %s: %w", pb.VulnClass, pb.ValidationType, entry.Name(), ErrProofInvalid)
+		if _, dup := loaded[pb.VulnClass][pb.ValidationType]; dup {
+			return fmt.Errorf("duplicate proof for %s/%s in %s: %w", pb.VulnClass, pb.ValidationType, entry.Name(), ErrProofInvalid)
 		}
-		lib.proofs[pb.VulnClass][pb.ValidationType] = pb
+		loaded[pb.VulnClass][pb.ValidationType] = pb
 	}
 
-	return lib, nil
+	l.mu.Lock()
+	l.proofs = loaded
+	l.mu.Unlock()
+	return nil
 }
 
 func loadProof(path string) (*Proof, error) {
@@ -186,6 +202,8 @@ func validateProof(pb *Proof) error {
 }
 
 func (l *ProofLibrary) Get(vulnClass, validationType string) (*Proof, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	vc := normalizeVulnClass(vulnClass)
 	vt := strings.ToLower(strings.TrimSpace(validationType))
 	byType, ok := l.proofs[vc]
@@ -202,6 +220,8 @@ func (l *ProofLibrary) Get(vulnClass, validationType string) (*Proof, error) {
 // GetByVulnClass returns all proofs for the given vuln class, sorted by
 // validation_type for deterministic selection across workflow replays.
 func (l *ProofLibrary) GetByVulnClass(vulnClass string) []*Proof {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	byType, ok := l.proofs[normalizeVulnClass(vulnClass)]
 	if !ok {
 		return nil
@@ -218,6 +238,8 @@ func (l *ProofLibrary) GetByVulnClass(vulnClass string) []*Proof {
 
 // List returns every loaded proof, sorted by (vuln_class, validation_type).
 func (l *ProofLibrary) List() []*Proof {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	var result []*Proof
 	for _, byType := range l.proofs {
 		for _, pb := range byType {
