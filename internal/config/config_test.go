@@ -291,16 +291,12 @@ func TestMerge_LLMOverride(t *testing.T) {
 		LLM: LLMConfig{
 			Endpoint:  "https://api.anthropic.com/v1",
 			APIKeyEnv: "ANTHROPIC_API_KEY",
-			Models: []ModelConfig{
-				{Name: "claude-sonnet-4-20250514", Priority: 1},
-			},
 		},
 	}
 
 	result := Merge(base, override)
 	assert.Equal(t, "https://api.anthropic.com/v1", result.LLM.Endpoint)
 	assert.Equal(t, "ANTHROPIC_API_KEY", result.LLM.APIKeyEnv)
-	assert.Len(t, result.LLM.Models, 1)
 	assert.Equal(t, 30*time.Second, result.LLM.Timeout, "default timeout preserved")
 }
 

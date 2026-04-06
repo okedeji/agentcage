@@ -118,17 +118,13 @@ type OTelConfig struct {
 	Insecure bool   `yaml:"insecure"`
 }
 
-// LLMConfig configures the LLM provider connection.
+// LLMConfig configures the LLM gateway connection.
+// Model selection is handled by the agent and the external gateway —
+// agentcage only enforces the endpoint, token budget, and metering.
 type LLMConfig struct {
 	Endpoint  string        `yaml:"endpoint"`
 	APIKeyEnv string        `yaml:"api_key_env"`
 	Timeout   time.Duration `yaml:"timeout"`
-	Models    []ModelConfig `yaml:"models"`
-}
-
-type ModelConfig struct {
-	Name     string `yaml:"name"`
-	Priority int    `yaml:"priority"`
 }
 
 // FleetConfig defines bare metal hosts for multi-host mode.
@@ -589,11 +585,6 @@ func Merge(base, override *Config) *Config {
 	}
 	if override.LLM.Timeout > 0 {
 		result.LLM.Timeout = override.LLM.Timeout
-	}
-	if len(override.LLM.Models) > 0 {
-		models := make([]ModelConfig, len(override.LLM.Models))
-		copy(models, override.LLM.Models)
-		result.LLM.Models = models
 	}
 
 	// Fleet
