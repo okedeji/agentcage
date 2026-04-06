@@ -410,9 +410,21 @@ func validateFindings(
 			continue
 		}
 
+		// Look up proof for this finding's vulnerability class.
+		// If no proof exists, the candidate is left as-is for human review
+		// at the report gate.
+		var proof *Proof
+		lookupCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+		_ = workflow.ExecuteActivity(lookupCtx, "LookupProof", f.VulnClass).Get(ctx, &proof)
+		if proof == nil {
+			workflow.GetLogger(ctx).Info("skipping validation: no proof for vuln class",
+				"finding_id", f.ID, "vuln_class", f.VulnClass)
+			continue
+		}
+
 		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 		var cageID string
-		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, (*Proof)(nil)).Get(ctx, &cageID)
+		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof).Get(ctx, &cageID)
 		if err != nil {
 			return validatedCount, cagesSpawned, fmt.Errorf("creating validator cage for finding %s: %w", f.ID, err)
 		}

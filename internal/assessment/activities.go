@@ -24,4 +24,5 @@ type Activities interface {
 	UpdateAssessmentStatus(ctx context.Context, assessmentID string, status Status) error
 	GenerateReport(ctx context.Context, assessmentID string, validated []findings.Finding) ([]byte, error)
 	PlanNextActions(ctx context.Context, state CoordinatorState) (CoordinatorDecision, error)
+	LookupProof(ctx context.Context, vulnClass string) (*Proof, error)
 }

@@ -44,6 +44,12 @@ func (assessmentActivityStub) GenerateReport(_ context.Context, _ string, _ []fi
 func (assessmentActivityStub) PlanNextActions(_ context.Context, _ CoordinatorState) (CoordinatorDecision, error) {
 	return CoordinatorDecision{Done: true, Reason: "stub"}, nil
 }
+func (assessmentActivityStub) LookupProof(_ context.Context, _ string) (*Proof, error) {
+	return nil, nil
+}
+func (assessmentActivityStub) NotifyFleetAssessmentComplete(_ context.Context, _ string) error {
+	return nil
+}
 
 func testInput() AssessmentWorkflowInput {
 	return AssessmentWorkflowInput{
