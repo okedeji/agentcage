@@ -3,6 +3,7 @@ package cage
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -56,6 +57,21 @@ type AlertNotifier interface {
 	Notify(ctx context.Context, source, category, description, cageID, assessmentID string, priority int, details map[string]any)
 }
 
+// FleetHost is a minimal view of a host returned by FleetPool.
+type FleetHost struct {
+	ID   string
+	Pool int // matches fleet.HostPool values
+}
+
+// FleetPool abstracts fleet host selection and slot management.
+// Defined here to avoid a circular import with the fleet package.
+type FleetPool interface {
+	GetAvailableHost() (*FleetHost, error)
+	AllocateCageSlot(hostID string) error
+	ReleaseCageSlot(hostID string) error
+	MoveHost(hostID string, toPool int) error
+}
+
 // ActivityImpl provides concrete implementations of all cage lifecycle
 // activities. All dependency fields are optional — nil dependencies are
 // handled gracefully (logged and skipped) to support local mode where
@@ -68,10 +84,13 @@ type ActivityImpl struct {
 	alertHandler  AlertHandler
 	alertNotifier AlertNotifier
 	falcoReader   *FalcoAlertReader
+	fleetPool     FleetPool
 	identity      identity.SVIDIssuer
 	secrets       identity.SecretFetcher
 	auditStore    audit.Store
 	log           logr.Logger
+	allocMu       sync.Mutex
+	allocs        map[string]string // vmID → hostID
 }
 
 type ActivityImplConfig struct {
@@ -82,6 +101,7 @@ type ActivityImplConfig struct {
 	AlertHandler  AlertHandler
 	AlertNotifier AlertNotifier
 	FalcoReader   *FalcoAlertReader
+	FleetPool     FleetPool
 	Identity      identity.SVIDIssuer
 	Secrets       identity.SecretFetcher
 	AuditStore    audit.Store
@@ -97,10 +117,12 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		alertHandler:  cfg.AlertHandler,
 		alertNotifier: cfg.AlertNotifier,
 		falcoReader:   cfg.FalcoReader,
+		fleetPool:     cfg.FleetPool,
 		identity:      cfg.Identity,
 		secrets:       cfg.Secrets,
 		auditStore:    cfg.AuditStore,
 		log:           cfg.Log.WithValues("component", "cage-activities"),
+		allocs:        make(map[string]string),
 	}
 }
 
@@ -146,15 +168,73 @@ func (a *ActivityImpl) FetchSecrets(ctx context.Context, svid *identity.SVID, as
 	return token, nil
 }
 
+const (
+	fleetPoolActive    = 1 // matches fleet.PoolActive
+	fleetPoolWarm      = 2 // matches fleet.PoolWarm
+	maxSlotRetries     = 3
+	maxCapacityRetries = 3
+	capacityRetryDelay = 10 * time.Second
+)
+
 func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error) {
 	if a.provisioner == nil {
 		return nil, fmt.Errorf("cage %s: no VM provisioner configured", vmConfig.CageID)
 	}
+
+	var hostID string
+	if a.fleetPool != nil {
+		var allocated bool
+		for capacityAttempt := 0; capacityAttempt < maxCapacityRetries; capacityAttempt++ {
+			for slotAttempt := 0; slotAttempt < maxSlotRetries; slotAttempt++ {
+				host, err := a.fleetPool.GetAvailableHost()
+				if err != nil {
+					break // no hosts at all, go to capacity retry
+				}
+				if host.Pool == fleetPoolWarm {
+					_ = a.fleetPool.MoveHost(host.ID, fleetPoolActive)
+				}
+				if err := a.fleetPool.AllocateCageSlot(host.ID); err != nil {
+					a.log.V(1).Info("slot allocation race, retrying", "host_id", host.ID, "attempt", slotAttempt+1)
+					continue
+				}
+				hostID = host.ID
+				allocated = true
+				break
+			}
+			if allocated {
+				break
+			}
+			if capacityAttempt < maxCapacityRetries-1 {
+				a.log.Info("no fleet capacity, waiting for autoscaler", "cage_id", vmConfig.CageID, "retry", capacityAttempt+1)
+				select {
+				case <-ctx.Done():
+					return nil, fmt.Errorf("cage %s: context cancelled while waiting for capacity: %w", vmConfig.CageID, ctx.Err())
+				case <-time.After(capacityRetryDelay):
+				}
+			}
+		}
+		if !allocated {
+			return nil, fmt.Errorf("cage %s: no fleet capacity after %d attempts (waited %s)", vmConfig.CageID, maxCapacityRetries, time.Duration(maxCapacityRetries)*capacityRetryDelay)
+		}
+	}
+
 	handle, err := a.provisioner.Provision(ctx, vmConfig)
 	if err != nil {
+		if hostID != "" {
+			if relErr := a.fleetPool.ReleaseCageSlot(hostID); relErr != nil {
+				a.log.Error(relErr, "releasing cage slot after provision failure", "host_id", hostID, "cage_id", vmConfig.CageID)
+			}
+		}
 		return nil, fmt.Errorf("cage %s: provisioning VM: %w", vmConfig.CageID, err)
 	}
-	a.log.Info("VM provisioned", "cage_id", vmConfig.CageID, "vm_id", handle.ID, "ip", handle.IPAddress)
+
+	if hostID != "" {
+		a.allocMu.Lock()
+		a.allocs[handle.ID] = hostID
+		a.allocMu.Unlock()
+	}
+
+	a.log.Info("VM provisioned", "cage_id", vmConfig.CageID, "vm_id", handle.ID, "ip", handle.IPAddress, "host_id", hostID)
 	return handle, nil
 }
 
@@ -297,12 +377,26 @@ func (a *ActivityImpl) ExportAuditLog(_ context.Context, cageID string) error {
 }
 
 func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
-	if a.provisioner == nil {
-		return nil
+	if a.provisioner != nil {
+		if err := a.provisioner.Terminate(ctx, vmID); err != nil {
+			return fmt.Errorf("terminating VM %s: %w", vmID, err)
+		}
 	}
-	if err := a.provisioner.Terminate(ctx, vmID); err != nil {
-		return fmt.Errorf("terminating VM %s: %w", vmID, err)
+
+	if a.fleetPool != nil {
+		a.allocMu.Lock()
+		hostID, ok := a.allocs[vmID]
+		if ok {
+			delete(a.allocs, vmID)
+		}
+		a.allocMu.Unlock()
+		if ok {
+			if err := a.fleetPool.ReleaseCageSlot(hostID); err != nil {
+				a.log.Error(err, "releasing cage slot after teardown", "host_id", hostID, "vm_id", vmID)
+			}
+		}
 	}
+
 	a.log.Info("VM terminated", "vm_id", vmID)
 	return nil
 }
