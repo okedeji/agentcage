@@ -494,22 +494,28 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		proofDir = proofsDir()
 	}
 	fmt.Println("Loading validation rules...")
-	if err := seedDefaultProofs(proofDir); err != nil {
-		// Seeding failure is fatal — without seeds, validator cages have
-		// nothing to drive on and assessments would silently complete with
-		// zero validated findings.
-		fmt.Fprintf(os.Stderr, "seeding default proofs: %v\n", err)
-		os.Exit(1)
+	switch cfg.Assessment.ProofsMode {
+	case config.ProofsModeBYOP:
+		// Bring-your-own-proof: never seed defaults. Unfamiliar vuln classes
+		// will trigger proof_gap interventions until the operator adds
+		// proofs via `agentcage proof add`.
+		log.Info("proofs mode: byop (no defaults seeded)")
+		if err := os.MkdirAll(proofDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "creating proofs directory %s: %v\n", proofDir, err)
+			os.Exit(1)
+		}
+	default:
+		log.Info("proofs mode: bundled (seeding any missing defaults)")
+		if err := seedDefaultProofs(proofDir); err != nil {
+			fmt.Fprintf(os.Stderr, "seeding default proofs: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	proofLib, loadErr := assessment.LoadProofs(proofDir)
 	if loadErr != nil {
 		// Loud failure: a malformed proof YAML must not be silently ignored.
 		fmt.Fprintf(os.Stderr, "loading proofs from %s: %v\n", proofDir, loadErr)
-		os.Exit(1)
-	}
-	if len(proofLib.List()) == 0 {
-		fmt.Fprintf(os.Stderr, "no proofs loaded from %s — validation phase would be a no-op\n", proofDir)
 		os.Exit(1)
 	}
 	log.Info("proofs loaded", "dir", proofDir, "count", len(proofLib.List()))

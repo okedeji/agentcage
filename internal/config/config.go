@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -167,12 +168,57 @@ type CageTypeConfig struct {
 }
 
 // AssessmentConfig defines defaults for assessment execution.
+// ProofsMode controls whether agentcage seeds the proofs directory with its
+// built-in defaults on startup.
+type ProofsMode int
+
+const (
+	// ProofsModeBundled (default) seeds the proofs directory with the
+	// built-in default proofs on first run. Existing files are never
+	// overwritten.
+	ProofsModeBundled ProofsMode = iota
+	// ProofsModeBYOP (bring your own proof) skips seeding entirely. Every
+	// unfamiliar vulnerability class triggers a proof_gap intervention until
+	// the operator authors a proof for it.
+	ProofsModeBYOP
+)
+
+func (m ProofsMode) String() string {
+	switch m {
+	case ProofsModeBYOP:
+		return "byop"
+	default:
+		return "bundled"
+	}
+}
+
+func (m ProofsMode) MarshalYAML() (interface{}, error) {
+	return m.String(), nil
+}
+
+func (m *ProofsMode) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err != nil {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "bundled":
+		*m = ProofsModeBundled
+	case "byop", "bring_your_own", "bring-your-own":
+		*m = ProofsModeBYOP
+	default:
+		return fmt.Errorf("invalid proofs_mode %q (want bundled or byop)", s)
+	}
+	return nil
+}
+
 type AssessmentConfig struct {
 	MaxDuration       time.Duration `yaml:"max_duration"`
 	TokenBudget       int64         `yaml:"token_budget"`
 	MaxIterations     int32         `yaml:"max_iterations"`
 	ReviewTimeout     time.Duration `yaml:"review_timeout"`
 	ProofsDir         string        `yaml:"proofs_dir"`
+	ProofsMode        ProofsMode    `yaml:"proofs_mode"`
 	MaxScreenshotSize int64         `yaml:"max_screenshot_size"`
 }
 
