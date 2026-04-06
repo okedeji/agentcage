@@ -24,6 +24,8 @@ func cmdProof(args []string) {
 		cmdProofAdd(args[1:])
 	case "list":
 		cmdProofList(args[1:])
+	case "rm", "remove":
+		cmdProofRemove(args[1:])
 	case "validate":
 		cmdProofValidate(args[1:])
 	default:
@@ -88,6 +90,57 @@ func cmdProofList(args []string) {
 			safety = "DESTRUCTIVE"
 		}
 		fmt.Printf("  %-30s %-20s %s\n", pb.VulnClass, pb.ValidationType, safety)
+	}
+}
+
+func cmdProofRemove(args []string) {
+	f := flag.NewFlagSet("proof rm", flag.ExitOnError)
+	_ = f.Parse(args)
+
+	if f.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: agentcage proof rm <name> [name2 ...]")
+		fmt.Fprintln(os.Stderr, "  name may be the bare filename, with or without the .yaml extension")
+		os.Exit(1)
+	}
+
+	dir := proofsDir()
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "resolving proofs dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	hasError := false
+	for _, name := range f.Args() {
+		base := filepath.Base(name)
+		if !strings.HasSuffix(base, ".yaml") && !strings.HasSuffix(base, ".yml") {
+			base += ".yaml"
+		}
+
+		path := filepath.Join(absDir, base)
+		// Defense against ../ escape: ensure resolved path is still inside dir.
+		resolved, err := filepath.Abs(path)
+		if err != nil || filepath.Dir(resolved) != absDir {
+			fmt.Fprintf(os.Stderr, "FAIL  %s: invalid proof name\n", name)
+			hasError = true
+			continue
+		}
+
+		if _, err := os.Stat(resolved); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "FAIL  %s: not found in %s\n", name, dir)
+			hasError = true
+			continue
+		}
+		if err := os.Remove(resolved); err != nil {
+			fmt.Fprintf(os.Stderr, "FAIL  %s: %v\n", name, err)
+			hasError = true
+			continue
+		}
+		fmt.Printf("  removed: %s\n", resolved)
+	}
+
+	if hasError {
+		os.Exit(1)
 	}
 }
 
@@ -183,5 +236,6 @@ Manage validation rules that define how validator cages confirm vulnerability fi
 Subcommands:
   add <file.yaml>        Add a validation rule (validates before copying)
   list                   List all validation rules
+  rm <name>              Remove a validation rule by filename
   validate <file.yaml>   Check a validation rule file is valid without adding it`)
 }
