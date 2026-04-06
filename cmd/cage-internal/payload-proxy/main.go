@@ -98,8 +98,28 @@ func main() {
 			}
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
-			var llmResp gateway.LLMResponse
-			if jsonErr := json.Unmarshal(respBody, &llmResp); jsonErr == nil && llmResp.Usage.TotalTokens > 0 {
+			// Successful responses must include usage metadata for metering.
+			// Error responses (4xx/5xx) are passed through unchanged.
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				var llmResp gateway.LLMResponse
+				if jsonErr := json.Unmarshal(respBody, &llmResp); jsonErr != nil {
+					logger.Error(jsonErr, "llm response rejected: invalid JSON")
+					resp.StatusCode = http.StatusBadGateway
+					resp.Status = "502 Bad Gateway"
+					msg := []byte("LLM response is not valid JSON")
+					resp.Body = io.NopCloser(bytes.NewReader(msg))
+					resp.ContentLength = int64(len(msg))
+					return nil
+				}
+				if llmResp.Usage.TotalTokens <= 0 {
+					logger.Error(fmt.Errorf("missing usage"), "llm response rejected: no usage metadata", "model", llmResp.Model)
+					resp.StatusCode = http.StatusBadGateway
+					resp.Status = "502 Bad Gateway"
+					msg := []byte("LLM response missing 'usage' metadata — gateway must return token counts")
+					resp.Body = io.NopCloser(bytes.NewReader(msg))
+					resp.ContentLength = int64(len(msg))
+					return nil
+				}
 				logger.Info("llm_usage",
 					"model", llmResp.Model,
 					"prompt_tokens", llmResp.Usage.PromptTokens,
@@ -129,13 +149,27 @@ func main() {
 			}
 		}
 
-		// LLM requests: forward and meter, skip payload inspection
+		// LLM requests: validate, forward, and meter
 		if llmHost != "" && strings.Contains(r.URL.Host, llmHost) {
-			if len(bodyBytes) > 0 {
-				r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-				r.ContentLength = int64(len(bodyBytes))
+			var llmReq gateway.LLMRequest
+			if err := json.Unmarshal(bodyBytes, &llmReq); err != nil {
+				logger.Info("llm request rejected: invalid JSON", "error", err)
+				http.Error(w, "invalid LLM request: must be JSON", http.StatusBadRequest)
+				return
 			}
-			logger.V(1).Info("llm request forwarded", "method", r.Method, "url", r.URL.String())
+			if llmReq.Model == "" {
+				logger.Info("llm request rejected: missing model")
+				http.Error(w, "invalid LLM request: 'model' field required", http.StatusBadRequest)
+				return
+			}
+			if len(llmReq.Messages) == 0 {
+				logger.Info("llm request rejected: empty messages")
+				http.Error(w, "invalid LLM request: 'messages' field required and non-empty", http.StatusBadRequest)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			r.ContentLength = int64(len(bodyBytes))
+			logger.V(1).Info("llm request forwarded", "method", r.Method, "url", r.URL.String(), "model", llmReq.Model)
 			llmProxy.ServeHTTP(w, r)
 			return
 		}
