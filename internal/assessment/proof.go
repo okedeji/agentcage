@@ -5,9 +5,35 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// allowedConfirmationTypes is the set of confirmation strategies validator
+// cages know how to execute. Adding a new type here requires a corresponding
+// implementation in the validator cage runtime.
+var allowedConfirmationTypes = map[string]struct{}{
+	"response_contains":   {},
+	"response_time_delta": {},
+	"response_status":     {},
+	"oob_callback":        {},
+}
+
+// allowedHTTPMethods is the set of HTTP verbs accepted in proof payloads.
+var allowedHTTPMethods = map[string]struct{}{
+	"GET": {}, "POST": {}, "PUT": {}, "PATCH": {}, "DELETE": {}, "HEAD": {}, "OPTIONS": {},
+}
+
+// MaxProofDurationSeconds caps how long a single validation run may take.
+const MaxProofDurationSeconds = 600
+
+// normalizeVulnClass canonicalizes a vulnerability class string so that
+// "SQLi", "sqli", and "  SQLI  " all match the same proof bucket.
+func normalizeVulnClass(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
 
 type Proof struct {
 	VulnClass      string               `yaml:"vulnerability_class"`
@@ -89,8 +115,15 @@ func LoadProofs(dir string) (*ProofLibrary, error) {
 			return nil, fmt.Errorf("validating proof %s: %w", entry.Name(), err)
 		}
 
+		// Normalize on load so all lookups can rely on canonical keys.
+		pb.VulnClass = normalizeVulnClass(pb.VulnClass)
+		pb.ValidationType = strings.ToLower(strings.TrimSpace(pb.ValidationType))
+
 		if lib.proofs[pb.VulnClass] == nil {
 			lib.proofs[pb.VulnClass] = make(map[string]*Proof)
+		}
+		if _, dup := lib.proofs[pb.VulnClass][pb.ValidationType]; dup {
+			return nil, fmt.Errorf("duplicate proof for %s/%s in %s: %w", pb.VulnClass, pb.ValidationType, entry.Name(), ErrProofInvalid)
 		}
 		lib.proofs[pb.VulnClass][pb.ValidationType] = pb
 	}
@@ -113,32 +146,63 @@ func loadProof(path string) (*Proof, error) {
 }
 
 func validateProof(pb *Proof) error {
-	if pb.VulnClass == "" {
+	if normalizeVulnClass(pb.VulnClass) == "" {
 		return fmt.Errorf("missing vulnerability_class: %w", ErrProofInvalid)
 	}
-	if pb.ValidationType == "" {
+	if strings.TrimSpace(pb.ValidationType) == "" {
 		return fmt.Errorf("missing validation_type: %w", ErrProofInvalid)
 	}
 	if pb.MaxRequests <= 0 {
 		return fmt.Errorf("max_requests must be positive, got %d: %w", pb.MaxRequests, ErrProofInvalid)
 	}
+	if pb.MaxDurationSeconds <= 0 {
+		return fmt.Errorf("max_duration_seconds must be positive, got %d: %w", pb.MaxDurationSeconds, ErrProofInvalid)
+	}
+	if pb.MaxDurationSeconds > MaxProofDurationSeconds {
+		return fmt.Errorf("max_duration_seconds %d exceeds cap %d: %w", pb.MaxDurationSeconds, MaxProofDurationSeconds, ErrProofInvalid)
+	}
+	if strings.TrimSpace(pb.Confirmation.Type) == "" {
+		return fmt.Errorf("missing confirmation.type: %w", ErrProofInvalid)
+	}
+	if _, ok := allowedConfirmationTypes[pb.Confirmation.Type]; !ok {
+		return fmt.Errorf("unknown confirmation.type %q: %w", pb.Confirmation.Type, ErrProofInvalid)
+	}
+	if pb.Payload.Method != "" {
+		if _, ok := allowedHTTPMethods[strings.ToUpper(pb.Payload.Method)]; !ok {
+			// Templated methods (e.g. "{{ candidate.method }}") are allowed —
+			// resolved at validation time. Reject only literal bad verbs.
+			if !strings.Contains(pb.Payload.Method, "{{") {
+				return fmt.Errorf("unknown payload.method %q: %w", pb.Payload.Method, ErrProofInvalid)
+			}
+		}
+	}
+	if pb.Confirmation.Type == "response_time_delta" && pb.Confirmation.ExpectedDeltaMS <= 0 {
+		return fmt.Errorf("response_time_delta requires positive expected_delta_ms: %w", ErrProofInvalid)
+	}
+	if pb.Confirmation.Type == "response_contains" && strings.TrimSpace(pb.Confirmation.ExpectedPattern) == "" {
+		return fmt.Errorf("response_contains requires expected_pattern: %w", ErrProofInvalid)
+	}
 	return nil
 }
 
 func (l *ProofLibrary) Get(vulnClass, validationType string) (*Proof, error) {
-	byType, ok := l.proofs[vulnClass]
+	vc := normalizeVulnClass(vulnClass)
+	vt := strings.ToLower(strings.TrimSpace(validationType))
+	byType, ok := l.proofs[vc]
 	if !ok {
 		return nil, fmt.Errorf("vuln class %q: %w", vulnClass, ErrProofNotFound)
 	}
-	pb, ok := byType[validationType]
+	pb, ok := byType[vt]
 	if !ok {
 		return nil, fmt.Errorf("vuln class %q validation type %q: %w", vulnClass, validationType, ErrProofNotFound)
 	}
 	return pb, nil
 }
 
+// GetByVulnClass returns all proofs for the given vuln class, sorted by
+// validation_type for deterministic selection across workflow replays.
 func (l *ProofLibrary) GetByVulnClass(vulnClass string) []*Proof {
-	byType, ok := l.proofs[vulnClass]
+	byType, ok := l.proofs[normalizeVulnClass(vulnClass)]
 	if !ok {
 		return nil
 	}
@@ -146,9 +210,13 @@ func (l *ProofLibrary) GetByVulnClass(vulnClass string) []*Proof {
 	for _, pb := range byType {
 		result = append(result, pb)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ValidationType < result[j].ValidationType
+	})
 	return result
 }
 
+// List returns every loaded proof, sorted by (vuln_class, validation_type).
 func (l *ProofLibrary) List() []*Proof {
 	var result []*Proof
 	for _, byType := range l.proofs {
@@ -156,5 +224,11 @@ func (l *ProofLibrary) List() []*Proof {
 			result = append(result, pb)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].VulnClass != result[j].VulnClass {
+			return result[i].VulnClass < result[j].VulnClass
+		}
+		return result[i].ValidationType < result[j].ValidationType
+	})
 	return result
 }
