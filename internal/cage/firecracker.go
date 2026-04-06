@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +49,43 @@ func NewFirecrackerProvisioner(cfg FirecrackerConfig, log logr.Logger) *Firecrac
 		kernelPath: cfg.KernelPath,
 		log:        log.WithValues("component", "firecracker-provisioner"),
 	}
+}
+
+// SweepStale removes leftover Firecracker API sockets and TAP devices from a
+// previous orchestrator run that did not shut down cleanly. Safe to call at
+// startup before any cages are provisioned.
+func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
+	socketDir := filepath.Join(os.TempDir(), "firecracker")
+	entries, err := os.ReadDir(socketDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("listing %s: %w", socketDir, err)
+	}
+
+	var swept int
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		// Sockets are named "<vmID>.sock" — derive the matching tap name.
+		if !strings.HasSuffix(name, ".sock") {
+			continue
+		}
+		vmID := strings.TrimSuffix(name, ".sock")
+		if len(vmID) >= 8 {
+			tapName := fmt.Sprintf("tap-%s", vmID[:8])
+			_ = teardownTAP(ctx, tapName)
+		}
+		_ = os.Remove(filepath.Join(socketDir, name))
+		swept++
+	}
+	if swept > 0 {
+		p.log.Info("swept stale firecracker state", "sockets", swept, "dir", socketDir)
+	}
+	return nil
 }
 
 func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig) (*VMHandle, error) {
