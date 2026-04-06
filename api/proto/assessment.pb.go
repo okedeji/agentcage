@@ -948,6 +948,110 @@ func (x *GetAssessmentResponse) GetAssessment() *AssessmentInfo {
 	return nil
 }
 
+type RevalidateFindingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FindingId     string                 `protobuf:"bytes,1,opt,name=finding_id,json=findingId,proto3" json:"finding_id,omitempty"`
+	VulnClass     string                 `protobuf:"bytes,2,opt,name=vuln_class,json=vulnClass,proto3" json:"vuln_class,omitempty"` // optional override of finding's vuln class
+	ProofName     string                 `protobuf:"bytes,3,opt,name=proof_name,json=proofName,proto3" json:"proof_name,omitempty"` // optional specific proof name; defaults to first available
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevalidateFindingRequest) Reset() {
+	*x = RevalidateFindingRequest{}
+	mi := &file_api_proto_assessment_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevalidateFindingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevalidateFindingRequest) ProtoMessage() {}
+
+func (x *RevalidateFindingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_assessment_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevalidateFindingRequest.ProtoReflect.Descriptor instead.
+func (*RevalidateFindingRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *RevalidateFindingRequest) GetFindingId() string {
+	if x != nil {
+		return x.FindingId
+	}
+	return ""
+}
+
+func (x *RevalidateFindingRequest) GetVulnClass() string {
+	if x != nil {
+		return x.VulnClass
+	}
+	return ""
+}
+
+func (x *RevalidateFindingRequest) GetProofName() string {
+	if x != nil {
+		return x.ProofName
+	}
+	return ""
+}
+
+type RevalidateFindingResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CageId        string                 `protobuf:"bytes,1,opt,name=cage_id,json=cageId,proto3" json:"cage_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevalidateFindingResponse) Reset() {
+	*x = RevalidateFindingResponse{}
+	mi := &file_api_proto_assessment_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevalidateFindingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevalidateFindingResponse) ProtoMessage() {}
+
+func (x *RevalidateFindingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_assessment_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevalidateFindingResponse.ProtoReflect.Descriptor instead.
+func (*RevalidateFindingResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *RevalidateFindingResponse) GetCageId() string {
+	if x != nil {
+		return x.CageId
+	}
+	return ""
+}
+
 var File_api_proto_assessment_proto protoreflect.FileDescriptor
 
 const file_api_proto_assessment_proto_rawDesc = "" +
@@ -1024,7 +1128,16 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x15GetAssessmentResponse\x12G\n" +
 	"\n" +
 	"assessment\x18\x01 \x01(\v2'.agentcage.assessment.v1.AssessmentInfoR\n" +
-	"assessment*\x82\x02\n" +
+	"assessment\"w\n" +
+	"\x18RevalidateFindingRequest\x12\x1d\n" +
+	"\n" +
+	"finding_id\x18\x01 \x01(\tR\tfindingId\x12\x1d\n" +
+	"\n" +
+	"vuln_class\x18\x02 \x01(\tR\tvulnClass\x12\x1d\n" +
+	"\n" +
+	"proof_name\x18\x03 \x01(\tR\tproofName\"4\n" +
+	"\x19RevalidateFindingResponse\x12\x17\n" +
+	"\acage_id\x18\x01 \x01(\tR\x06cageId*\x82\x02\n" +
 	"\x10AssessmentStatus\x12!\n" +
 	"\x1dASSESSMENT_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bASSESSMENT_STATUS_DISCOVERY\x10\x01\x12\"\n" +
@@ -1037,10 +1150,11 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	" COMPLIANCE_FRAMEWORK_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19COMPLIANCE_FRAMEWORK_SOC2\x10\x01\x12\x1e\n" +
 	"\x1aCOMPLIANCE_FRAMEWORK_HIPAA\x10\x02\x12 \n" +
-	"\x1cCOMPLIANCE_FRAMEWORK_PCI_DSS\x10\x032\xfc\x01\n" +
+	"\x1cCOMPLIANCE_FRAMEWORK_PCI_DSS\x10\x032\xf8\x02\n" +
 	"\x11AssessmentService\x12w\n" +
 	"\x10CreateAssessment\x120.agentcage.assessment.v1.CreateAssessmentRequest\x1a1.agentcage.assessment.v1.CreateAssessmentResponse\x12n\n" +
-	"\rGetAssessment\x12-.agentcage.assessment.v1.GetAssessmentRequest\x1a..agentcage.assessment.v1.GetAssessmentResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
+	"\rGetAssessment\x12-.agentcage.assessment.v1.GetAssessmentRequest\x1a..agentcage.assessment.v1.GetAssessmentResponse\x12z\n" +
+	"\x11RevalidateFinding\x121.agentcage.assessment.v1.RevalidateFindingRequest\x1a2.agentcage.assessment.v1.RevalidateFindingResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
 
 var (
 	file_api_proto_assessment_proto_rawDescOnce sync.Once
@@ -1055,35 +1169,37 @@ func file_api_proto_assessment_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_assessment_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_api_proto_assessment_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_api_proto_assessment_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_api_proto_assessment_proto_goTypes = []any{
-	(AssessmentStatus)(0),            // 0: agentcage.assessment.v1.AssessmentStatus
-	(ComplianceFramework)(0),         // 1: agentcage.assessment.v1.ComplianceFramework
-	(*CageTypeConfig)(nil),           // 2: agentcage.assessment.v1.CageTypeConfig
-	(*AssessmentConfig)(nil),         // 3: agentcage.assessment.v1.AssessmentConfig
-	(*Guidance)(nil),                 // 4: agentcage.assessment.v1.Guidance
-	(*AttackSurfaceGuidance)(nil),    // 5: agentcage.assessment.v1.AttackSurfaceGuidance
-	(*PrioritiesGuidance)(nil),       // 6: agentcage.assessment.v1.PrioritiesGuidance
-	(*AttackStrategyGuidance)(nil),   // 7: agentcage.assessment.v1.AttackStrategyGuidance
-	(*ValidationGuidance)(nil),       // 8: agentcage.assessment.v1.ValidationGuidance
-	(*AssessmentStats)(nil),          // 9: agentcage.assessment.v1.AssessmentStats
-	(*AssessmentInfo)(nil),           // 10: agentcage.assessment.v1.AssessmentInfo
-	(*CreateAssessmentRequest)(nil),  // 11: agentcage.assessment.v1.CreateAssessmentRequest
-	(*CreateAssessmentResponse)(nil), // 12: agentcage.assessment.v1.CreateAssessmentResponse
-	(*GetAssessmentRequest)(nil),     // 13: agentcage.assessment.v1.GetAssessmentRequest
-	(*GetAssessmentResponse)(nil),    // 14: agentcage.assessment.v1.GetAssessmentResponse
-	(CageType)(0),                    // 15: agentcage.cage.v1.CageType
-	(*ResourceLimits)(nil),           // 16: agentcage.cage.v1.ResourceLimits
-	(*TargetScope)(nil),              // 17: agentcage.cage.v1.TargetScope
-	(*durationpb.Duration)(nil),      // 18: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),    // 19: google.protobuf.Timestamp
+	(AssessmentStatus)(0),             // 0: agentcage.assessment.v1.AssessmentStatus
+	(ComplianceFramework)(0),          // 1: agentcage.assessment.v1.ComplianceFramework
+	(*CageTypeConfig)(nil),            // 2: agentcage.assessment.v1.CageTypeConfig
+	(*AssessmentConfig)(nil),          // 3: agentcage.assessment.v1.AssessmentConfig
+	(*Guidance)(nil),                  // 4: agentcage.assessment.v1.Guidance
+	(*AttackSurfaceGuidance)(nil),     // 5: agentcage.assessment.v1.AttackSurfaceGuidance
+	(*PrioritiesGuidance)(nil),        // 6: agentcage.assessment.v1.PrioritiesGuidance
+	(*AttackStrategyGuidance)(nil),    // 7: agentcage.assessment.v1.AttackStrategyGuidance
+	(*ValidationGuidance)(nil),        // 8: agentcage.assessment.v1.ValidationGuidance
+	(*AssessmentStats)(nil),           // 9: agentcage.assessment.v1.AssessmentStats
+	(*AssessmentInfo)(nil),            // 10: agentcage.assessment.v1.AssessmentInfo
+	(*CreateAssessmentRequest)(nil),   // 11: agentcage.assessment.v1.CreateAssessmentRequest
+	(*CreateAssessmentResponse)(nil),  // 12: agentcage.assessment.v1.CreateAssessmentResponse
+	(*GetAssessmentRequest)(nil),      // 13: agentcage.assessment.v1.GetAssessmentRequest
+	(*GetAssessmentResponse)(nil),     // 14: agentcage.assessment.v1.GetAssessmentResponse
+	(*RevalidateFindingRequest)(nil),  // 15: agentcage.assessment.v1.RevalidateFindingRequest
+	(*RevalidateFindingResponse)(nil), // 16: agentcage.assessment.v1.RevalidateFindingResponse
+	(CageType)(0),                     // 17: agentcage.cage.v1.CageType
+	(*ResourceLimits)(nil),            // 18: agentcage.cage.v1.ResourceLimits
+	(*TargetScope)(nil),               // 19: agentcage.cage.v1.TargetScope
+	(*durationpb.Duration)(nil),       // 20: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),     // 21: google.protobuf.Timestamp
 }
 var file_api_proto_assessment_proto_depIdxs = []int32{
-	15, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
-	16, // 1: agentcage.assessment.v1.CageTypeConfig.defaults:type_name -> agentcage.cage.v1.ResourceLimits
-	17, // 2: agentcage.assessment.v1.AssessmentConfig.scope:type_name -> agentcage.cage.v1.TargetScope
+	17, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
+	18, // 1: agentcage.assessment.v1.CageTypeConfig.defaults:type_name -> agentcage.cage.v1.ResourceLimits
+	19, // 2: agentcage.assessment.v1.AssessmentConfig.scope:type_name -> agentcage.cage.v1.TargetScope
 	2,  // 3: agentcage.assessment.v1.AssessmentConfig.cage_type_configs:type_name -> agentcage.assessment.v1.CageTypeConfig
-	18, // 4: agentcage.assessment.v1.AssessmentConfig.max_duration:type_name -> google.protobuf.Duration
+	20, // 4: agentcage.assessment.v1.AssessmentConfig.max_duration:type_name -> google.protobuf.Duration
 	1,  // 5: agentcage.assessment.v1.AssessmentConfig.compliance:type_name -> agentcage.assessment.v1.ComplianceFramework
 	4,  // 6: agentcage.assessment.v1.AssessmentConfig.guidance:type_name -> agentcage.assessment.v1.Guidance
 	5,  // 7: agentcage.assessment.v1.Guidance.attack_surface:type_name -> agentcage.assessment.v1.AttackSurfaceGuidance
@@ -1093,17 +1209,19 @@ var file_api_proto_assessment_proto_depIdxs = []int32{
 	0,  // 11: agentcage.assessment.v1.AssessmentInfo.status:type_name -> agentcage.assessment.v1.AssessmentStatus
 	3,  // 12: agentcage.assessment.v1.AssessmentInfo.config:type_name -> agentcage.assessment.v1.AssessmentConfig
 	9,  // 13: agentcage.assessment.v1.AssessmentInfo.stats:type_name -> agentcage.assessment.v1.AssessmentStats
-	19, // 14: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
-	19, // 15: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
+	21, // 14: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
+	21, // 15: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
 	3,  // 16: agentcage.assessment.v1.CreateAssessmentRequest.config:type_name -> agentcage.assessment.v1.AssessmentConfig
 	10, // 17: agentcage.assessment.v1.CreateAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
 	10, // 18: agentcage.assessment.v1.GetAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
 	11, // 19: agentcage.assessment.v1.AssessmentService.CreateAssessment:input_type -> agentcage.assessment.v1.CreateAssessmentRequest
 	13, // 20: agentcage.assessment.v1.AssessmentService.GetAssessment:input_type -> agentcage.assessment.v1.GetAssessmentRequest
-	12, // 21: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
-	14, // 22: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
-	21, // [21:23] is the sub-list for method output_type
-	19, // [19:21] is the sub-list for method input_type
+	15, // 21: agentcage.assessment.v1.AssessmentService.RevalidateFinding:input_type -> agentcage.assessment.v1.RevalidateFindingRequest
+	12, // 22: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
+	14, // 23: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
+	16, // 24: agentcage.assessment.v1.AssessmentService.RevalidateFinding:output_type -> agentcage.assessment.v1.RevalidateFindingResponse
+	22, // [22:25] is the sub-list for method output_type
+	19, // [19:22] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
 	19, // [19:19] is the sub-list for extension extendee
 	0,  // [0:19] is the sub-list for field type_name
@@ -1121,7 +1239,7 @@ func file_api_proto_assessment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_assessment_proto_rawDesc), len(file_api_proto_assessment_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

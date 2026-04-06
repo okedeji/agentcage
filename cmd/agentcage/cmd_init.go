@@ -462,11 +462,12 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Domain services ---
 
 	cageSvc := cage.NewService(temporalClient, cageValidator, db)
-	assessmentSvc := assessment.NewService(temporalClient, db, autoscaler)
 	fleetSvc := fleet.NewService(poolManager, demandLedger, hostProvisioner, log.WithValues("component", "fleet"))
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
+
+	// assessmentSvc is constructed below after proofLib is loaded.
 
 	// --- LLM client (for coordinator) ---
 
@@ -508,6 +509,8 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 			log.Info("proofs loaded", "dir", proofDir, "count", len(proofLib.List()))
 		}
 	}
+
+	assessmentSvc := assessment.NewService(temporalClient, db, autoscaler, cageSvc, findingStore, proofLib)
 
 	// --- Cage activity implementation ---
 

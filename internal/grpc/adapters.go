@@ -102,6 +102,14 @@ func (a *assessmentAdapter) GetAssessment(ctx context.Context, req *pb.GetAssess
 	return &pb.GetAssessmentResponse{Assessment: assessmentInfoToProto(info)}, nil
 }
 
+func (a *assessmentAdapter) RevalidateFinding(ctx context.Context, req *pb.RevalidateFindingRequest) (*pb.RevalidateFindingResponse, error) {
+	cageID, err := a.server.RevalidateFinding(ctx, req.GetFindingId(), req.GetVulnClass(), req.GetProofName())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.RevalidateFindingResponse{CageId: cageID}, nil
+}
+
 type interventionAdapter struct {
 	pb.UnimplementedInterventionServiceServer
 	server *intervention.Service

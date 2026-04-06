@@ -11,11 +11,18 @@ import (
 
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
+
+	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/findings"
 )
 
 const TaskQueue = "assessment-lifecycle"
 
-var ErrAssessmentNotFound = errors.New("assessment not found")
+var (
+	ErrAssessmentNotFound = errors.New("assessment not found")
+	ErrFindingNotFound    = errors.New("finding not found")
+	ErrProofUnavailable   = errors.New("no proof available for vuln class")
+)
 
 // FleetSignaler notifies the fleet about assessment lifecycle events.
 // Defined as an interface to avoid importing the fleet package directly.
@@ -28,15 +35,21 @@ type Service struct {
 	temporal    client.Client
 	db          *sql.DB
 	fleet       FleetSignaler
+	cages       *cage.Service
+	findings    findings.FindingStore
+	proofs      *ProofLibrary
 	mu          sync.RWMutex
 	assessments map[string]*Info
 }
 
-func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler) *Service {
+func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, cages *cage.Service, findingStore findings.FindingStore, proofs *ProofLibrary) *Service {
 	return &Service{
 		temporal:    temporal,
 		db:          db,
 		fleet:       fleet,
+		cages:       cages,
+		findings:    findingStore,
+		proofs:      proofs,
 		assessments: make(map[string]*Info),
 	}
 }
@@ -82,6 +95,87 @@ func (s *Service) CreateAssessment(ctx context.Context, config Config) (*Info, e
 	}
 
 	return info, nil
+}
+
+// RevalidateFinding spawns a one-off validator cage for an existing candidate
+// finding, using the named proof or the first available proof for the
+// finding's vuln class. Operator-initiated; used after adding new proofs.
+func (s *Service) RevalidateFinding(ctx context.Context, findingID, vulnClass, proofName string) (string, error) {
+	if s.findings == nil {
+		return "", fmt.Errorf("finding store not configured")
+	}
+	if s.proofs == nil {
+		return "", fmt.Errorf("proof library not configured")
+	}
+	if s.cages == nil {
+		return "", fmt.Errorf("cage service not configured")
+	}
+
+	finding, err := s.loadFinding(ctx, findingID)
+	if err != nil {
+		return "", err
+	}
+
+	// Override vuln class if operator specified one
+	effectiveVulnClass := finding.VulnClass
+	if vulnClass != "" {
+		effectiveVulnClass = vulnClass
+	}
+
+	var proof *Proof
+	if proofName != "" {
+		proof, err = s.proofs.Get(effectiveVulnClass, proofName)
+		if err != nil {
+			return "", fmt.Errorf("loading proof %s for vuln class %s: %w", proofName, effectiveVulnClass, err)
+		}
+	} else {
+		available := s.proofs.GetByVulnClass(effectiveVulnClass)
+		if len(available) == 0 {
+			return "", fmt.Errorf("%w: %s", ErrProofUnavailable, effectiveVulnClass)
+		}
+		proof = available[0]
+	}
+
+	cageCfg := cage.Config{
+		AssessmentID:    finding.AssessmentID,
+		Type:            cage.TypeValidator,
+		Scope:           cage.Scope{Hosts: []string{finding.Endpoint}},
+		ParentFindingID: finding.ID,
+		InputContext:    []byte(proof.Description),
+	}
+
+	info, err := s.cages.CreateCage(ctx, cageCfg)
+	if err != nil {
+		return "", fmt.Errorf("creating revalidation cage for finding %s: %w", findingID, err)
+	}
+
+	return info.ID, nil
+}
+
+func (s *Service) loadFinding(ctx context.Context, findingID string) (*findings.Finding, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	exists, err := s.findings.FindingExists(ctx, findingID)
+	if err != nil {
+		return nil, fmt.Errorf("checking finding %s: %w", findingID, err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("%w: %s", ErrFindingNotFound, findingID)
+	}
+	// Load the full finding from the store. The store doesn't have a
+	// GetByID method yet, so query the assessment-scoped findings and
+	// find by ID.
+	var f findings.Finding
+	err = s.db.QueryRowContext(ctx,
+		`SELECT id, assessment_id, cage_id, status, severity, vuln_class, endpoint
+		 FROM findings WHERE id = $1`,
+		findingID,
+	).Scan(&f.ID, &f.AssessmentID, &f.CageID, new(string), new(string), &f.VulnClass, &f.Endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("loading finding %s: %w", findingID, err)
+	}
+	return &f, nil
 }
 
 func (s *Service) GetAssessment(ctx context.Context, assessmentID string) (*Info, error) {

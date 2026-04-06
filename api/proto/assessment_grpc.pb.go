@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AssessmentService_CreateAssessment_FullMethodName = "/agentcage.assessment.v1.AssessmentService/CreateAssessment"
-	AssessmentService_GetAssessment_FullMethodName    = "/agentcage.assessment.v1.AssessmentService/GetAssessment"
+	AssessmentService_CreateAssessment_FullMethodName  = "/agentcage.assessment.v1.AssessmentService/CreateAssessment"
+	AssessmentService_GetAssessment_FullMethodName     = "/agentcage.assessment.v1.AssessmentService/GetAssessment"
+	AssessmentService_RevalidateFinding_FullMethodName = "/agentcage.assessment.v1.AssessmentService/RevalidateFinding"
 )
 
 // AssessmentServiceClient is the client API for AssessmentService service.
@@ -29,6 +30,7 @@ const (
 type AssessmentServiceClient interface {
 	CreateAssessment(ctx context.Context, in *CreateAssessmentRequest, opts ...grpc.CallOption) (*CreateAssessmentResponse, error)
 	GetAssessment(ctx context.Context, in *GetAssessmentRequest, opts ...grpc.CallOption) (*GetAssessmentResponse, error)
+	RevalidateFinding(ctx context.Context, in *RevalidateFindingRequest, opts ...grpc.CallOption) (*RevalidateFindingResponse, error)
 }
 
 type assessmentServiceClient struct {
@@ -59,12 +61,23 @@ func (c *assessmentServiceClient) GetAssessment(ctx context.Context, in *GetAsse
 	return out, nil
 }
 
+func (c *assessmentServiceClient) RevalidateFinding(ctx context.Context, in *RevalidateFindingRequest, opts ...grpc.CallOption) (*RevalidateFindingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevalidateFindingResponse)
+	err := c.cc.Invoke(ctx, AssessmentService_RevalidateFinding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AssessmentServiceServer is the server API for AssessmentService service.
 // All implementations must embed UnimplementedAssessmentServiceServer
 // for forward compatibility.
 type AssessmentServiceServer interface {
 	CreateAssessment(context.Context, *CreateAssessmentRequest) (*CreateAssessmentResponse, error)
 	GetAssessment(context.Context, *GetAssessmentRequest) (*GetAssessmentResponse, error)
+	RevalidateFinding(context.Context, *RevalidateFindingRequest) (*RevalidateFindingResponse, error)
 	mustEmbedUnimplementedAssessmentServiceServer()
 }
 
@@ -80,6 +93,9 @@ func (UnimplementedAssessmentServiceServer) CreateAssessment(context.Context, *C
 }
 func (UnimplementedAssessmentServiceServer) GetAssessment(context.Context, *GetAssessmentRequest) (*GetAssessmentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAssessment not implemented")
+}
+func (UnimplementedAssessmentServiceServer) RevalidateFinding(context.Context, *RevalidateFindingRequest) (*RevalidateFindingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevalidateFinding not implemented")
 }
 func (UnimplementedAssessmentServiceServer) mustEmbedUnimplementedAssessmentServiceServer() {}
 func (UnimplementedAssessmentServiceServer) testEmbeddedByValue()                           {}
@@ -138,6 +154,24 @@ func _AssessmentService_GetAssessment_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AssessmentService_RevalidateFinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevalidateFindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AssessmentServiceServer).RevalidateFinding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AssessmentService_RevalidateFinding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AssessmentServiceServer).RevalidateFinding(ctx, req.(*RevalidateFindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AssessmentService_ServiceDesc is the grpc.ServiceDesc for AssessmentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +186,10 @@ var AssessmentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetAssessment",
 			Handler:    _AssessmentService_GetAssessment_Handler,
+		},
+		{
+			MethodName: "RevalidateFinding",
+			Handler:    _AssessmentService_RevalidateFinding_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
