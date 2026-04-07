@@ -522,6 +522,11 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 	log.Info("proofs loaded", "dir", proofDir, "count", len(proofLib.List()))
 
+	// Wire the proof library into the intervention service so retry
+	// resolutions of proof_gap interventions reload it from disk before
+	// signaling the workflow.
+	iSvc.SetProofReloader(proofLib)
+
 	// --- Cage activity implementation ---
 
 	fmt.Println("Setting up cage provisioner...")
@@ -730,10 +735,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Interventions: iSvc,
 		Log:           log,
 	})
-
-	// Wire the proof library so retry-resolutions of proof_gap interventions
-	// reload it from disk before signaling the workflow.
-	iSvc.SetProofReloader(proofLib)
 
 	// --- gRPC server ---
 
