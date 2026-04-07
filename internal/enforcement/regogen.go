@@ -15,7 +15,7 @@ import (
 func GenerateRegoModules(cfg *config.Config) map[string]string {
 	modules := make(map[string]string)
 
-	modules["scope.rego"] = generateScopeRego(cfg.Scope)
+	modules["scope.rego"] = generateScopeRego(cfg)
 	modules["cage_types.rego"] = generateCageTypesRego(cfg.Cages)
 
 	for class, pc := range cfg.Payload {
@@ -29,13 +29,14 @@ func GenerateRegoModules(cfg *config.Config) map[string]string {
 	return modules
 }
 
-func generateScopeRego(scope config.ScopeConfig) string {
+func generateScopeRego(cfg *config.Config) string {
+	scope := cfg.Scope
 	var b strings.Builder
 	b.WriteString("package agentcage.scope\n\n")
 
 	b.WriteString("deny contains msg if {\n\tcount(input.hosts) == 0\n\tmsg := \"scope must include at least one host\"\n}\n\n")
 
-	if scope.DenyWildcards {
+	if cfg.ScopeDenyWildcardsDefault() {
 		b.WriteString("deny contains msg if {\n\tsome h\n\tinput.hosts[h] == \"*\"\n\tmsg := \"wildcard hosts are not allowed\"\n}\n\n")
 		b.WriteString("deny contains msg if {\n\tsome h\n\tcontains(input.hosts[h], \"*\")\n\tinput.hosts[h] != \"*\"\n\tmsg := sprintf(\"wildcard in host not allowed: %s\", [input.hosts[h]])\n}\n\n")
 	}
@@ -46,7 +47,7 @@ func generateScopeRego(scope config.ScopeConfig) string {
 		}
 	}
 
-	if scope.DenyLocalhost {
+	if cfg.ScopeDenyLocalhostDefault() {
 		b.WriteString("deny contains msg if {\n\tsome h\n\tinput.hosts[h] == \"localhost\"\n\tmsg := \"localhost not allowed in scope\"\n}\n\n")
 		b.WriteString("deny contains msg if {\n\tsome h\n\tstartswith(input.hosts[h], \"127.\")\n\tmsg := sprintf(\"loopback address not allowed: %s\", [input.hosts[h]])\n}\n\n")
 	}
