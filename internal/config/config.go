@@ -33,6 +33,7 @@ type Config struct {
 	Compliance     *ComplianceConfig          `yaml:"compliance"`
 	Notifications  NotificationsConfig        `yaml:"notifications"`
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
+	Intervention   InterventionConfig         `yaml:"intervention"`
 }
 
 // boolPtr returns a pointer to b. Used by Defaults() and tests to populate
@@ -157,6 +158,15 @@ func (c *Config) GRPCReflectionDefault() bool {
 		return *c.GRPC.Reflection
 	}
 	return c.Posture == PostureDev
+}
+
+// InterventionPollInterval returns the configured poll interval, falling
+// back to 30s when unset.
+func (c *Config) InterventionPollInterval() time.Duration {
+	if c.Intervention.PollInterval > 0 {
+		return c.Intervention.PollInterval
+	}
+	return 30 * time.Second
 }
 
 // LLMRequiredDefault returns whether a working LLM endpoint is required at
@@ -436,6 +446,17 @@ type ComplianceConfig struct {
 	MaxConcurrentCages int32         `yaml:"max_concurrent_cages"`
 	RequireIntervention bool         `yaml:"require_intervention"`
 	InterventionTimeout time.Duration `yaml:"intervention_timeout"`
+}
+
+// InterventionConfig controls the orchestrator-side intervention machinery.
+// Today this is just the timeout-enforcer poll cadence; future fields can
+// land here without polluting other configs.
+type InterventionConfig struct {
+	// PollInterval is how often the timeout enforcer scans the queue for
+	// expired interventions. Defaults to 30 seconds. Lower values reduce
+	// the latency between an intervention's deadline and its TIMED_OUT
+	// state but increase database load. Useful to lower in tests.
+	PollInterval time.Duration `yaml:"poll_interval"`
 }
 
 // ActivityTimeoutsConfig holds Temporal activity timeouts.
