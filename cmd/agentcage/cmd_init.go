@@ -8,11 +8,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -957,28 +960,74 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	if isGlobalBind(grpcAddr) && !cfg.GRPC.TLSEnabled() && !cfg.AllowUnisolatedDefault() {
 		return fmt.Errorf("refusing to bind gRPC on %s without TLS: configure grpc.tls or set cage_runtime.allow_unisolated=true for dev", grpcAddr)
 	}
+	// Future: systemd socket activation. If LISTEN_FDS is set in env,
+	// agentcage could inherit a pre-bound listener via go-systemd's
+	// activation.Listeners() and skip net.Listen entirely. That would
+	// enable zero-downtime restarts where the new orchestrator takes
+	// over the existing socket without dropping in-flight connections.
+	// Out of scope today; agentcage runs as its own subprocess with no
+	// supervisor integration.
 	lis, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
 		if errors.Is(err, syscall.EADDRINUSE) {
-			return fmt.Errorf("listening on %s: address already in use — is another agentcage running? (try `agentcage status` or `lsof -i %s`)", grpcAddr, grpcAddr)
+			port := grpcAddr
+			if _, p, splitErr := net.SplitHostPort(grpcAddr); splitErr == nil {
+				port = p
+			}
+			return fmt.Errorf("listening on %s: address already in use — run `lsof -i :%s` to find the process; if it is another agentcage instance, `agentcage status` will confirm", grpcAddr, port)
 		}
 		return fmt.Errorf("listening on %s: %w", grpcAddr, err)
 	}
 
 	go func() {
-		if srvErr := grpcServer.Serve(lis); srvErr != nil {
+		// Serve returns grpc.ErrServerStopped on a clean GracefulStop —
+		// that is the expected shutdown path, not a failure. Anything
+		// else (port unbound mid-run, fatal handler error) is real and
+		// should tear the orchestrator down.
+		if srvErr := grpcServer.Serve(lis); srvErr != nil && !errors.Is(srvErr, grpc.ErrServerStopped) {
 			log.Error(srvErr, "gRPC server failed")
 			cancel()
 		}
 	}()
 
-	pidFile := filepath.Join(embedded.RunDir(), "agentcage.pid")
-	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
-		log.Error(err, "writing PID file")
+	// Self-Ping until the server is dispatching, so the "ready" banner
+	// only prints when clients can actually call us. Without this, a
+	// client that connects in the gap between Serve() being launched
+	// and the accept loop entering its first iteration would stall on
+	// the first RPC.
+	readyCtx, readyCancel := context.WithTimeout(ctx, 2*time.Second)
+	readyErr := agentgrpc.WaitForReady(readyCtx, grpcAddr)
+	readyCancel()
+	if readyErr != nil {
+		grpcServer.GracefulStop()
+		cageWorker.Stop()
+		assessmentWorker.Stop()
+		return fmt.Errorf("waiting for gRPC server: %w", readyErr)
 	}
 
+	pidFile := filepath.Join(embedded.RunDir(), "agentcage.pid")
+	if err := writePIDFile(pidFile); err != nil {
+		// PID file write is fatal: operators rely on it for `agentcage
+		// stop` and external supervisors. Silent failure here breaks
+		// the operator workflow without warning.
+		grpcServer.GracefulStop()
+		cageWorker.Stop()
+		assessmentWorker.Stop()
+		return fmt.Errorf("pid file: %w", err)
+	}
+	defer func() {
+		if rmErr := os.Remove(pidFile); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+			log.Error(rmErr, "removing pid file on shutdown", "path", pidFile)
+		}
+	}()
+
 	fmt.Printf("\nagentcage ready.\n")
-	fmt.Printf("  gRPC:     %s\n", grpcAddr)
+	// Use the listener's resolved address — covers ephemeral-port binds
+	// (`:0`) where the operator-supplied string doesn't yet have a real
+	// port. For 0.0.0.0 binds, the resolved address still says 0.0.0.0
+	// because the OS doesn't pick "an interface" — operators binding
+	// globally know what they're doing.
+	fmt.Printf("  gRPC:     %s\n", lis.Addr().String())
 	fmt.Printf("  Temporal: %s\n", temporalAddr)
 	fmt.Printf("  Data:     %s\n\n", embedded.DataDir())
 	fmt.Println("Press Ctrl+C to stop.")
@@ -1129,6 +1178,54 @@ func waitForWorkerReady(ctx context.Context, c client.Client, namespace, taskQue
 		}
 	}
 	return fmt.Errorf("no pollers registered on %s within %s", taskQueueName, timeout)
+}
+
+// writePIDFile creates path with O_EXCL so a concurrent agentcage cannot
+// clobber it. If the file already exists, the recorded PID is checked: a
+// live process means another orchestrator is running and we refuse to
+// start; a dead process means the previous run crashed without cleaning up
+// and we reclaim the file.
+func writePIDFile(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating pid dir: %w", err)
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err == nil {
+		defer func() { _ = f.Close() }()
+		if _, werr := fmt.Fprintf(f, "%d", os.Getpid()); werr != nil {
+			_ = os.Remove(path)
+			return fmt.Errorf("writing pid: %w", werr)
+		}
+		return nil
+	}
+	if !errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("creating pid file: %w", err)
+	}
+
+	// File exists. Determine whether it points at a live process.
+	existing, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return fmt.Errorf("reading existing pid file %s: %w", path, readErr)
+	}
+	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(existing)))
+	if parseErr != nil {
+		// Garbage in the file — treat as stale, reclaim.
+		if rmErr := os.Remove(path); rmErr != nil {
+			return fmt.Errorf("removing corrupt pid file: %w", rmErr)
+		}
+		return writePIDFile(path)
+	}
+	proc, _ := os.FindProcess(pid) // never returns error on unix
+	// Signal 0 probes whether the process is alive without affecting it.
+	if err := proc.Signal(syscall.Signal(0)); err == nil {
+		return fmt.Errorf("another agentcage appears to be running (pid %d). If not, remove %s and retry", pid, path)
+	}
+	// Stale: previous run crashed, reclaim.
+	if rmErr := os.Remove(path); rmErr != nil {
+		return fmt.Errorf("removing stale pid file: %w", rmErr)
+	}
+	return writePIDFile(path)
 }
 
 // isGlobalBind reports whether the listen address binds to all interfaces.
