@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
+	"go.temporal.io/sdk/workflow"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -264,6 +265,10 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	fmt.Println("Connecting to Temporal...")
 	temporalOpts := client.Options{
 		HostPort: temporalAddr,
+		// Route SDK metrics through OTel so worker internals (task slot
+		// availability, workflow task failures, poll latency) flow into
+		// the same pipeline as the rest of agentcage.
+		MetricsHandler: metrics.NewTemporalMetricsHandler(),
 	}
 	if tc := cfg.Infrastructure.Temporal; tc != nil {
 		if tc.Namespace != "" {
@@ -819,15 +824,68 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	log.Info("gRPC services registered")
 
 	// --- Temporal workers ---
+	//
+	// Cage worker concurrency is bounded by the fleet's total cage slots
+	// times a small multiplier — Monitor activities run for the cage's
+	// full lifetime, so the per-worker activity slot count must not exceed
+	// what the fleet can host. Default to 32 when no fleet hosts are
+	// registered yet (single-host dev mode); the autoscaler will register
+	// real hosts shortly after.
+	maxCageActivities := int(poolManager.TotalCageSlots()) * 4
+	if maxCageActivities < 32 {
+		maxCageActivities = 32
+	}
+
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "unknown"
+	}
+	cageIdentity := fmt.Sprintf("agentcage-%s-%s-cage", version, hostname)
+	assessmentIdentity := fmt.Sprintf("agentcage-%s-%s-assessment", version, hostname)
 
 	fmt.Println("Registering Temporal workers...")
-	cageWorker := worker.New(temporalClient, cage.TaskQueue, worker.Options{})
-	cageWorker.RegisterWorkflow(cage.CageWorkflow)
-	cageWorker.RegisterActivity(cageActivityImpl)
+	cageWorkerLog := log.WithValues("component", "cage-worker")
+	cageWorker := worker.New(temporalClient, cage.TaskQueue, worker.Options{
+		Identity:                           cageIdentity,
+		MaxConcurrentActivityExecutionSize: maxCageActivities,
+		// Bound shutdown drain time. Long-running MonitorCage activities
+		// can run for hours; without this, Stop() would hang forever
+		// during a graceful shutdown. Activities that don't finish in
+		// 30 seconds are cancelled via context and Temporal reschedules
+		// them on the next worker that comes up.
+		WorkerStopTimeout: 30 * time.Second,
+		// Root activity context = orchestrator ctx, so a global cancel
+		// (shutdown signal, fatal error) propagates into every running
+		// activity alongside the WorkerStopTimeout drain.
+		BackgroundActivityContext: ctx,
+		OnFatalError: func(err error) {
+			cageWorkerLog.Error(err, "cage worker fatal error — shutting down")
+			cancel()
+		},
+	})
+	cageWorker.RegisterWorkflowWithOptions(cage.CageWorkflow, workflow.RegisterOptions{
+		Name: cage.WorkflowName,
+	})
+	cageActivityImpl.RegisterActivities(cageWorker)
 
-	assessmentWorker := worker.New(temporalClient, assessment.TaskQueue, worker.Options{})
-	assessmentWorker.RegisterWorkflow(assessment.AssessmentWorkflow)
-	assessmentWorker.RegisterActivity(assessmentActivityImpl)
+	assessmentWorkerLog := log.WithValues("component", "assessment-worker")
+	assessmentWorker := worker.New(temporalClient, assessment.TaskQueue, worker.Options{
+		Identity: assessmentIdentity,
+		// Assessment activities are mostly orchestration calls (LLM,
+		// findings store, intervention emit) — light and fast, so the
+		// ceiling is "how many assessments do we expect concurrently."
+		MaxConcurrentActivityExecutionSize: 256,
+		WorkerStopTimeout:                  30 * time.Second,
+		BackgroundActivityContext:          ctx,
+		OnFatalError: func(err error) {
+			assessmentWorkerLog.Error(err, "assessment worker fatal error — shutting down")
+			cancel()
+		},
+	})
+	assessmentWorker.RegisterWorkflowWithOptions(assessment.AssessmentWorkflow, workflow.RegisterOptions{
+		Name: assessment.WorkflowName,
+	})
+	assessmentActivityImpl.RegisterActivities(assessmentWorker)
 
 	// --- Timeout enforcer ---
 
