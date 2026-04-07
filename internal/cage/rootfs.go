@@ -7,6 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+
+	"github.com/go-logr/logr"
 
 	"github.com/okedeji/agentcage/internal/cagefile"
 )
@@ -51,12 +54,34 @@ func NewRootfsBuilder(baseRootfsPath, workDir, version string) *RootfsBuilder {
 // 3. Writing cage config as /etc/agentcage/cage.json
 //
 // Returns the path to the assembled rootfs.
-func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cagefile.BundleManifest, bundleFilesDir string, env CageEnv) (string, error) {
+func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cagefile.BundleManifest, bundleFilesDir string, env CageEnv) (rootfsPath string, retErr error) {
 	if err := cagefile.CheckCompatibility(bundle, b.version); err != nil {
 		return "", fmt.Errorf("cage %s: %w", cageID, err)
 	}
 
-	rootfsPath := filepath.Join(b.workDir, cageID+".ext4")
+	// Verify bundle integrity FIRST — before copying the base rootfs,
+	// before mounting, and before running any install commands. A tampered
+	// bundle that gets past this check cannot execute install hooks via
+	// chroot, because we have not yet built anything to chroot into.
+	if bundle.FilesHash != "" {
+		hash, hashErr := cagefile.HashDir(bundleFilesDir)
+		if hashErr != nil {
+			return "", fmt.Errorf("hashing agent files for verification: %w", hashErr)
+		}
+		if "sha256:"+hash != bundle.FilesHash {
+			return "", fmt.Errorf("cage %s: agent files hash mismatch — bundle may be tampered (expected %s, got sha256:%s)", cageID, bundle.FilesHash, hash)
+		}
+	}
+
+	rootfsPath = filepath.Join(b.workDir, cageID+".ext4")
+
+	// Reject concurrent Assemble for the same cage ID. Cage IDs are UUIDs,
+	// so collision means an upstream idempotency bug — clobbering an
+	// in-use rootfs file would corrupt the running cage. SweepStale runs
+	// at startup so legitimate post-crash leftovers don't trip this.
+	if _, err := os.Stat(rootfsPath); err == nil {
+		return "", fmt.Errorf("cage %s: rootfs %s already exists — concurrent Assemble or stale state", cageID, rootfsPath)
+	}
 
 	// Copy base rootfs — use cp --reflink=auto for copy-on-write on
 	// filesystems that support it (btrfs, xfs), falls back to full copy.
@@ -64,17 +89,37 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 		return "", fmt.Errorf("copying base rootfs: %w", err)
 	}
 
-	// Mount the rootfs, inject files, unmount
+	// If anything below this point fails, the partially-built rootfs file
+	// is junk — remove it so the work directory does not accumulate dead
+	// files across failed assemblies.
+	defer func() {
+		if retErr != nil {
+			_ = os.Remove(rootfsPath)
+		}
+	}()
+
+	// Mount the rootfs, inject files, unmount. The deferred cleanup runs
+	// unmount first; only on a clean unmount do we RemoveAll the mount
+	// dir, so a failed unmount leaves the directory in place where the
+	// SweepStale path on next startup will reclaim it. Removing a
+	// still-mounted directory would either silently fail or, worse, leak
+	// an orphan mount only reapable by reboot.
 	mountDir := filepath.Join(b.workDir, "mnt-"+cageID)
 	if err := os.MkdirAll(mountDir, 0755); err != nil {
 		return "", fmt.Errorf("creating mount directory: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(mountDir) }()
 
 	if err := mountExt4(ctx, rootfsPath, mountDir); err != nil {
+		_ = os.RemoveAll(mountDir)
 		return "", fmt.Errorf("mounting rootfs: %w", err)
 	}
-	defer unmountExt4(ctx, mountDir) //nolint:errcheck
+	defer func() {
+		if err := unmountExt4(ctx, mountDir); err != nil {
+			// Leave the mount dir for SweepStale to reclaim later.
+			return
+		}
+		_ = os.RemoveAll(mountDir)
+	}()
 
 	// Install user-requested Alpine packages
 	if len(bundle.Packages) > 0 {
@@ -97,17 +142,6 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	if len(bundle.GoDeps) > 0 {
 		if err := installGoDeps(ctx, mountDir, bundle.GoDeps); err != nil {
 			return "", fmt.Errorf("installing go dependencies: %w", err)
-		}
-	}
-
-	// Verify bundle integrity before injecting into rootfs
-	if bundle.FilesHash != "" {
-		hash, hashErr := cagefile.HashDir(bundleFilesDir)
-		if hashErr != nil {
-			return "", fmt.Errorf("hashing agent files for verification: %w", hashErr)
-		}
-		if "sha256:"+hash != bundle.FilesHash {
-			return "", fmt.Errorf("cage %s: agent files hash mismatch — bundle may be tampered (expected %s, got sha256:%s)", cageID, bundle.FilesHash, hash)
 		}
 	}
 
@@ -135,26 +169,100 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	return rootfsPath, nil
 }
 
-// Cleanup removes the assembled rootfs for a cage.
+// Cleanup removes the assembled rootfs and (defensively) any mount directory
+// left behind for the given cage. The mount dir is normally cleaned up by
+// Assemble's deferred unmount, but a panic or OS-level kill could leave it
+// orphaned — this gives teardown a second chance to reclaim it.
 func (b *RootfsBuilder) Cleanup(cageID string) error {
-	rootfsPath := filepath.Join(b.workDir, cageID+".ext4")
-	return os.Remove(rootfsPath)
-}
+	mountDir := filepath.Join(b.workDir, "mnt-"+cageID)
+	if _, err := os.Stat(mountDir); err == nil {
+		// Try to unmount in case the orphan is still mounted; ignore the
+		// error since the dir may simply be empty.
+		_ = unmountExt4(context.Background(), mountDir)
+		_ = os.RemoveAll(mountDir)
+	}
 
-func copyRootfs(ctx context.Context, src, dst string) error {
-	cmd := exec.CommandContext(ctx, "cp", "--reflink=auto", src, dst)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		// Fall back to regular copy if --reflink is not supported
-		cmd2 := exec.CommandContext(ctx, "cp", src, dst)
-		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-			return fmt.Errorf("cp %s %s: %w\n%s\n%s", src, dst, err2, out, out2)
-		}
+	rootfsPath := filepath.Join(b.workDir, cageID+".ext4")
+	if err := os.Remove(rootfsPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing cage %s rootfs: %w", cageID, err)
 	}
 	return nil
 }
 
+// SweepStale removes leftover .ext4 files and mnt-* directories from a
+// previous orchestrator run that did not shut down cleanly. Safe to call at
+// startup before any cages are assembled. Mount directories are unmounted
+// first if still mounted.
+func (b *RootfsBuilder) SweepStale(ctx context.Context, log logr.Logger) error {
+	entries, err := os.ReadDir(b.workDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("listing rootfs work dir %s: %w", b.workDir, err)
+	}
+
+	var sweptFiles, sweptMounts int
+	for _, e := range entries {
+		name := e.Name()
+		full := filepath.Join(b.workDir, name)
+
+		if e.IsDir() && strings.HasPrefix(name, "mnt-") {
+			// Try to unmount; ignore failure (probably not mounted) and
+			// then remove the directory.
+			_ = unmountExt4(ctx, full)
+			_ = os.RemoveAll(full)
+			sweptMounts++
+			continue
+		}
+
+		if !e.IsDir() && strings.HasSuffix(name, ".ext4") {
+			_ = os.Remove(full)
+			sweptFiles++
+		}
+	}
+
+	if sweptFiles > 0 || sweptMounts > 0 {
+		log.Info("swept stale rootfs state",
+			"dir", b.workDir, "files", sweptFiles, "mount_dirs", sweptMounts)
+	}
+	return nil
+}
+
+// copyRootfs copies the base rootfs image to a per-cage destination, using
+// cp --reflink=auto where supported (btrfs, xfs, modern ext4) so the copy is
+// near-zero-cost. Falls back to a plain cp only on flag-not-supported
+// errors — real failures (ENOSPC, EPERM, missing source) propagate
+// immediately instead of being masked by an identical second attempt.
+func copyRootfs(ctx context.Context, src, dst string) error {
+	cmd := exec.CommandContext(ctx, "cp", "--reflink=auto", src, dst)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+
+	// BSD cp (macOS dev) does not understand --reflink. Recognize the
+	// classic flag-error patterns and fall back. Anything else is a real
+	// failure and is reported as-is.
+	outStr := string(out)
+	if !strings.Contains(outStr, "--reflink") && !strings.Contains(outStr, "illegal option") && !strings.Contains(outStr, "unrecognized option") {
+		return fmt.Errorf("cp %s %s: %w\n%s", src, dst, err, outStr)
+	}
+
+	cmd2 := exec.CommandContext(ctx, "cp", src, dst)
+	if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+		return fmt.Errorf("cp (no-reflink) %s %s: %w\n%s", src, dst, err2, out2)
+	}
+	return nil
+}
+
+// mountExt4 mounts a cage rootfs image at the orchestrator's view with
+// nosuid,nodev. Without these flags, a malicious bundle could ship a setuid
+// binary or a device node and have it honored at host privilege during the
+// assembly chroot. noexec is intentionally NOT set — the install steps
+// (apk, pip, npm) need to exec from inside the chroot.
 func mountExt4(ctx context.Context, imgPath, mountPoint string) error {
-	cmd := exec.CommandContext(ctx, "mount", "-o", "loop", imgPath, mountPoint)
+	cmd := exec.CommandContext(ctx, "mount", "-o", "loop,nosuid,nodev", imgPath, mountPoint)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("mount %s: %w\n%s", imgPath, err, out)
 	}
@@ -173,7 +281,7 @@ func installPackages(ctx context.Context, mountDir string, packages []string) er
 	args := append([]string{mountDir, "apk", "add", "--no-cache"}, packages...)
 	cmd := exec.CommandContext(ctx, "chroot", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("apk add %v: %w\n%s", packages, err, out)
+		return fmt.Errorf("apk add %s: %w\n%s", strings.Join(packages, ","), err, out)
 	}
 	return nil
 }
@@ -182,7 +290,7 @@ func installPipDeps(ctx context.Context, mountDir string, deps []string) error {
 	args := append([]string{mountDir, "pip3", "install", "--no-cache-dir"}, deps...)
 	cmd := exec.CommandContext(ctx, "chroot", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("pip install %v: %w\n%s", deps, err, out)
+		return fmt.Errorf("pip install %s: %w\n%s", strings.Join(deps, ","), err, out)
 	}
 	return nil
 }
@@ -191,7 +299,7 @@ func installNpmDeps(ctx context.Context, mountDir string, deps []string) error {
 	args := append([]string{mountDir, "npm", "install", "-g"}, deps...)
 	cmd := exec.CommandContext(ctx, "chroot", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("npm install %v: %w\n%s", deps, err, out)
+		return fmt.Errorf("npm install %s: %w\n%s", strings.Join(deps, ","), err, out)
 	}
 	return nil
 }

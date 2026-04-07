@@ -12,6 +12,32 @@ import (
 	"github.com/go-logr/logr"
 )
 
+// CheckBaseRootfs verifies that the base ext4 image used to assemble cage
+// rootfs exists, is readable, and is non-empty. Cheap startup check that
+// catches a missing or zero-byte image before the first cage tries to
+// provision and fails with an opaque cp error.
+func CheckBaseRootfs(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "base rootfs not present"
+		}
+		return fmt.Sprintf("base rootfs stat: %v", err)
+	}
+	if info.IsDir() {
+		return fmt.Sprintf("%s is a directory, not a file", path)
+	}
+	if info.Size() == 0 {
+		return fmt.Sprintf("%s is empty (0 bytes)", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Sprintf("base rootfs not readable: %v", err)
+	}
+	_ = f.Close()
+	return ""
+}
+
 // CheckFalcoSocket verifies that the given path is a Unix socket Falco is
 // actively listening on. Returns an empty string on success or a
 // human-readable reason on failure.
