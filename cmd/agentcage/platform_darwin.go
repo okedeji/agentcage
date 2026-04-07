@@ -18,6 +18,7 @@ import (
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/embedded"
+	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/vm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -145,7 +146,7 @@ func platformInit(args []string) {
 	fmt.Println("Waiting for services inside VM to be ready...")
 	readyCtx, readyCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer readyCancel()
-	if err := waitForGRPCReady(readyCtx, machine.GRPCAddr()); err != nil {
+	if err := agentgrpc.WaitForReady(readyCtx, machine.GRPCAddr()); err != nil {
 		if ctx.Err() != nil {
 			fatalf("agentcage init: proxy failed during startup — check port conflicts above\n")
 		}
@@ -346,33 +347,3 @@ func tcpProxyFromListener(ctx context.Context, ln net.Listener, targetAddr strin
 	}
 }
 
-func waitForGRPCReady(ctx context.Context, addr string) error {
-	start := time.Now()
-	lastReport := start
-	for {
-		conn, err := grpc.NewClient(addr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
-		if err == nil {
-			pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
-			client := pb.NewControlServiceClient(conn)
-			_, pingErr := client.Ping(pingCtx, &pb.PingRequest{})
-			pingCancel()
-			_ = conn.Close()
-			if pingErr == nil {
-				return nil
-			}
-		}
-
-		if time.Since(lastReport) >= 10*time.Second {
-			fmt.Printf("  Still waiting for services... (%ds elapsed)\n", int(time.Since(start).Seconds()))
-			lastReport = time.Now()
-		}
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timed out waiting for gRPC readiness at %s", addr)
-		case <-time.After(2 * time.Second):
-		}
-	}
-}
