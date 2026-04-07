@@ -30,6 +30,16 @@ type BundleManifest struct {
 	FilesHash  string   `json:"files_hash"`
 }
 
+// bundleSignature is a small sidecar file written into the .cage tar
+// alongside manifest.json. It contains a SHA256 of the raw manifest.json
+// bytes so a tampered manifest (e.g. injected pip dep) is rejected at
+// unpack time, before any chroot install runs.
+type bundleSignature struct {
+	ManifestHash string `json:"manifest_hash"`
+}
+
+const bundleSignatureFile = "signature.json"
+
 // Pack reads a directory containing a Cagefile and agent source, then writes
 // a .cage bundle (gzipped tar) to the given writer.
 //
@@ -90,12 +100,30 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 		return nil, fmt.Errorf("writing manifest to bundle: %w", err)
 	}
 
+	// Write the integrity sidecar so a tampered manifest is rejected at
+	// unpack time. Hashes the exact bytes we just wrote.
+	sigBytes, err := json.MarshalIndent(bundleSignature{
+		ManifestHash: "sha256:" + sha256Hex(manifestBytes),
+	}, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling bundle signature: %w", err)
+	}
+	if err := writeToTar(tw, bundleSignatureFile, sigBytes); err != nil {
+		return nil, fmt.Errorf("writing signature to bundle: %w", err)
+	}
+
 	// Write agent files under files/
 	if err := addDirToTar(tw, dir, "files"); err != nil {
 		return nil, fmt.Errorf("adding agent files to bundle: %w", err)
 	}
 
 	return bundleManifest, nil
+}
+
+// sha256Hex returns the lowercase hex SHA256 of b.
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 // DefaultMaxBundleSize is the default size limit for agent directories (2GB).
@@ -149,7 +177,11 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 
 	tr := tar.NewReader(gr)
 
-	var manifest *BundleManifest
+	var (
+		manifest          *BundleManifest
+		manifestRawBytes  []byte
+		signature         *bundleSignature
+	)
 
 	for {
 		header, err := tr.Next()
@@ -193,15 +225,27 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 			}
 			_ = out.Close()
 
-			// Parse manifest
+			// Parse manifest and remember the raw bytes for integrity check.
 			if header.Name == "manifest.json" {
 				data, readErr := os.ReadFile(target)
 				if readErr != nil {
 					return nil, fmt.Errorf("reading extracted manifest: %w", readErr)
 				}
+				manifestRawBytes = data
 				manifest = &BundleManifest{}
 				if jsonErr := json.Unmarshal(data, manifest); jsonErr != nil {
 					return nil, fmt.Errorf("parsing manifest: %w", jsonErr)
+				}
+			}
+
+			if header.Name == bundleSignatureFile {
+				data, readErr := os.ReadFile(target)
+				if readErr != nil {
+					return nil, fmt.Errorf("reading bundle signature: %w", readErr)
+				}
+				signature = &bundleSignature{}
+				if jsonErr := json.Unmarshal(data, signature); jsonErr != nil {
+					return nil, fmt.Errorf("parsing bundle signature: %w", jsonErr)
 				}
 			}
 		}
@@ -209,6 +253,17 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 
 	if manifest == nil {
 		return nil, fmt.Errorf("bundle does not contain manifest.json")
+	}
+
+	// Verify the manifest integrity sidecar. Bundles packed by older
+	// versions of agentcage that predate signature.json are still accepted
+	// (signature == nil) so existing bundles do not break — but any new
+	// bundle that ships a signature is held to it.
+	if signature != nil {
+		expected := "sha256:" + sha256Hex(manifestRawBytes)
+		if signature.ManifestHash != expected {
+			return nil, fmt.Errorf("bundle manifest hash mismatch — manifest may be tampered (expected %s, got %s)", signature.ManifestHash, expected)
+		}
 	}
 
 	return manifest, nil
