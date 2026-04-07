@@ -337,8 +337,9 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	notifier := intervention.NewMultiNotifier(log, notifiers...)
 	alertDispatcher := alert.NewDispatcher(notifier, log)
 
+	scopeValidator := enforcement.NewScopeValidator(cfg)
 	cageValidator := func(c cage.Config) error {
-		if validErr := enforcement.ValidateCageConfig(c, cfg); validErr != nil {
+		if validErr := scopeValidator.ValidateCageConfig(context.Background(), c); validErr != nil {
 			alertDispatcher.Dispatch(context.Background(), alert.Event{
 				Source:       alert.SourcePolicy,
 				Category:     alert.CategoryCageConfigViolation,
@@ -712,6 +713,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Provisioner:   cageProvisioner,
 		Rootfs:        rootfsBuilder,
 		Network:       networkEnforcer,
+		Validator:     scopeValidator,
 		AlertHandler:  alertHandler,
 		AlertNotifier: alertDispatcher,
 		FalcoReader:   falcoReader,
