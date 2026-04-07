@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -1034,16 +1035,61 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Wait for shutdown ---
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	// Buffer 2 so a SIGHUP nudge during the wait doesn't drop a follow-up
+	// SIGTERM. SIGHUP is logged and ignored — agentcage does not support
+	// config reload, and the OS default for SIGHUP is process death,
+	// which would catch operators by surprise.
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
-	select {
-	case sig := <-sigCh:
-		log.Info("received signal, shutting down", "signal", sig.String())
-	case <-ctx.Done():
+waitForShutdown:
+	for {
+		select {
+		case sig := <-sigCh:
+			if sig == syscall.SIGHUP {
+				log.Info("SIGHUP received — agentcage does not support config reload; send SIGTERM to stop")
+				continue
+			}
+			log.Info("received signal, shutting down", "signal", sig.String())
+			break waitForShutdown
+		case <-ctx.Done():
+			// ctx was cancelled by something other than the signal
+			// handler — most likely a worker's OnFatalError, the gRPC
+			// Serve goroutine, or the timeout enforcer dying. The
+			// triggering component will have logged its own error;
+			// this line tells operators that *something* internal
+			// initiated shutdown.
+			log.Info("internal cancel, shutting down")
+			break waitForShutdown
+		}
 	}
 
+	// Second SIGINT/SIGTERM during shutdown is the operator's escape
+	// hatch — if the graceful path is wedged, force-exit immediately
+	// so they aren't stuck waiting for the 90s overall deadline.
+	go func() {
+		for sig := range sigCh {
+			if sig == syscall.SIGHUP {
+				continue
+			}
+			fmt.Fprintln(os.Stderr, "second signal received during shutdown — forcing exit")
+			os.Exit(1)
+		}
+	}()
+
 	fmt.Println("\nShutting down...")
+
+	// Hard deadline on the entire shutdown sequence. Each individual
+	// step is bounded (gRPC GracefulStop=15s, workers=30s parallel,
+	// mgr.Stop=30s) but a code path we missed or a future addition
+	// could still hang. If shutdown isn't complete in 90s, force-exit
+	// rather than leaving the operator unable to escape with anything
+	// short of kill -9.
+	shutdownTimer := time.AfterFunc(90*time.Second, func() {
+		fmt.Fprintln(os.Stderr, "shutdown exceeded 90s — forcing exit")
+		os.Exit(2)
+	})
+	defer shutdownTimer.Stop()
 
 	// Shutdown order: stop accepting new gRPC traffic, then stop workers,
 	// then close auxiliary services. Temporal workflows that are mid-flight
@@ -1054,16 +1100,52 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// case is also safe because Temporal will retry the activity once a
 	// worker becomes available again.
 	cancel()
-	grpcServer.GracefulStop()
-	cageWorker.Stop()
-	assessmentWorker.Stop()
-	alertDispatcher.Close()
 
-	if err := mgr.Stop(context.Background()); err != nil {
-		log.Error(err, "error stopping embedded services")
+	// Bound GracefulStop. Without a deadline a wedged handler can hang
+	// shutdown forever; the Stop() fallback forcibly closes connections
+	// after 15s, which is the right tradeoff for a control plane (in-flight
+	// RPCs that haven't completed in 15s are almost certainly stuck).
+	grpcStopped := make(chan struct{})
+	go func() {
+		grpcServer.GracefulStop()
+		close(grpcStopped)
+	}()
+	select {
+	case <-grpcStopped:
+	case <-time.After(15 * time.Second):
+		log.Info("gRPC graceful stop timed out, forcing close")
+		grpcServer.Stop()
 	}
 
-	_ = os.Remove(pidFile)
+	// Stop both workers in parallel. Each Stop() blocks up to
+	// WorkerStopTimeout (30s) draining in-flight activities; running
+	// them sequentially would double the worst-case shutdown time for
+	// no gain since the two workers are independent.
+	var workerWg sync.WaitGroup
+	workerWg.Add(2)
+	go func() {
+		defer workerWg.Done()
+		cageWorker.Stop()
+	}()
+	go func() {
+		defer workerWg.Done()
+		assessmentWorker.Stop()
+	}()
+	workerWg.Wait()
+
+	alertDispatcher.Close()
+
+	// Bound embedded service shutdown. A wedged service (e.g. Vault dev
+	// mode hung on file lock) would otherwise hang the orchestrator
+	// indefinitely.
+	mgrStopCtx, mgrStopCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := mgr.Stop(mgrStopCtx); err != nil {
+		log.Error(err, "error stopping embedded services")
+	}
+	mgrStopCancel()
+
+	// PID file removal happens in the deferred cleanup registered after
+	// writePIDFile.
 	fmt.Println("agentcage stopped.")
 	return nil
 }
