@@ -21,6 +21,9 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	enums "go.temporal.io/api/enums/v1"
+	taskqueue "go.temporal.io/api/taskqueue/v1"
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
@@ -889,7 +892,9 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	// --- Timeout enforcer ---
 
-	timeoutEnforcer := intervention.NewTimeoutEnforcer(iQueue, temporalClient, 30*time.Second, log.WithValues("component", "timeout-enforcer"))
+	enforcerLog := log.WithValues("component", "timeout-enforcer")
+	pollInterval := cfg.InterventionPollInterval()
+	timeoutEnforcer := intervention.NewTimeoutEnforcer(iQueue, temporalClient, pollInterval, enforcerLog)
 
 	// --- Start workers (BEFORE gRPC) ---
 	//
@@ -903,12 +908,46 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return fmt.Errorf("starting cage worker: %w", err)
 	}
 	if err := assessmentWorker.Start(); err != nil {
+		// Roll back the cage worker on failure. Stop() can take up to
+		// WorkerStopTimeout (30s) but typically returns instantly here
+		// since no activities have been dispatched yet.
 		cageWorker.Stop()
+		cageWorkerLog.Info("cage worker stopped (rollback after assessment worker start failed)")
 		return fmt.Errorf("starting assessment worker: %w", err)
 	}
+	// worker.Start() returns when the SDK has spawned its internal
+	// goroutines, NOT when those goroutines have actually registered as
+	// pollers with Temporal. Without this gate, gRPC would start
+	// accepting CreateAssessment calls and the workflow would enqueue
+	// against a task queue with no live pollers — caller hangs until
+	// the worker eventually comes online. Block until Temporal reports
+	// at least one poller on each task queue.
+	temporalNamespace := temporalOpts.Namespace
+	if temporalNamespace == "" {
+		temporalNamespace = "default"
+	}
+	for _, queue := range []string{cage.TaskQueue, assessment.TaskQueue} {
+		if err := waitForWorkerReady(ctx, temporalClient, temporalNamespace, queue, 10*time.Second); err != nil {
+			cageWorker.Stop()
+			assessmentWorker.Stop()
+			log.Info("workers stopped (rollback after readiness probe failed)", "queue", queue)
+			return fmt.Errorf("waiting for worker on task queue %s: %w", queue, err)
+		}
+	}
+	enforcerLog.Info("timeout enforcer started", "interval", pollInterval)
 	go func() {
-		if tErr := timeoutEnforcer.Run(ctx); tErr != nil {
-			log.Error(tErr, "timeout enforcer stopped")
+		tErr := timeoutEnforcer.Run(ctx)
+		if tErr != nil {
+			enforcerLog.Error(tErr, "stopped — triggering orchestrator shutdown")
+		} else {
+			enforcerLog.Info("stopped")
+		}
+		// If the enforcer dies for any reason while ctx is still live,
+		// the rest of the orchestrator can no longer reap timed-out
+		// interventions. Cancel everything so the operator gets a clear
+		// shutdown rather than a half-running degraded state.
+		if ctx.Err() == nil {
+			cancel()
 		}
 	}()
 
@@ -1064,6 +1103,32 @@ func vaultTLSMode(cfg *config.Config) string {
 	default:
 		return "system"
 	}
+}
+
+// waitForWorkerReady polls Temporal until at least one poller is registered
+// on the given task queue, or until the timeout elapses. Closes the
+// "Start() returned but worker isn't actually polling yet" race that would
+// otherwise let early gRPC requests enqueue workflows nobody picks up.
+func waitForWorkerReady(ctx context.Context, c client.Client, namespace, taskQueueName string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		resp, err := c.WorkflowService().DescribeTaskQueue(probeCtx, &workflowservice.DescribeTaskQueueRequest{
+			Namespace:     namespace,
+			TaskQueue:     &taskqueue.TaskQueue{Name: taskQueueName, Kind: enums.TASK_QUEUE_KIND_NORMAL},
+			TaskQueueType: enums.TASK_QUEUE_TYPE_WORKFLOW,
+		})
+		cancel()
+		if err == nil && len(resp.GetPollers()) > 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("no pollers registered on %s within %s", taskQueueName, timeout)
 }
 
 // isGlobalBind reports whether the listen address binds to all interfaces.
