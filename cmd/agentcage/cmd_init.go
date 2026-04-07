@@ -210,7 +210,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		traceOpts := []otlptracegrpc.Option{
 			otlptracegrpc.WithEndpointURL(cfg.Infrastructure.OTel.Endpoint),
 		}
-		if cfg.Infrastructure.OTel.Insecure {
+		if cfg.OTelInsecureDefault() {
 			metricOpts = append(metricOpts, otlpmetricgrpc.WithInsecure())
 			traceOpts = append(traceOpts, otlptracegrpc.WithInsecure())
 		}
@@ -482,6 +482,9 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	budgetEnforcer := gateway.NewBudgetEnforcer(meter)
 	var llmClient *gateway.Client
 	if cfg.LLM.Endpoint == "" {
+		if cfg.LLMRequiredDefault() {
+			return fmt.Errorf("posture=strict: llm.endpoint is required (the assessment coordinator and discovery cages cannot run without an LLM)")
+		}
 		log.Info("WARNING: no LLM endpoint configured — assessment coordinator will not be able to plan cages")
 	} else {
 		var apiKey string
@@ -551,7 +554,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	cageProvisioner, isolated, err := cage.BuildProvisioner(ctx, cage.HostRuntimeConfig{
 		FirecrackerBin:  firecrackerBin,
 		KernelPath:      kernelBin,
-		AllowUnisolated: cfg.CageRuntime.AllowUnisolated,
+		AllowUnisolated: cfg.AllowUnisolatedDefault(),
 	}, log)
 	if err != nil {
 		return fmt.Errorf("setting up cage provisioner: %w", err)
@@ -597,7 +600,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 			role = "cage"
 		}
 
-		tlsCfg, tlsErr := buildVaultTLSConfig(ctx, vaultCfg, spireSocket)
+		tlsCfg, tlsErr := buildVaultTLSConfig(ctx, cfg, spireSocket)
 		if tlsErr != nil {
 			return fmt.Errorf("building Vault TLS config: %w", tlsErr)
 		}
@@ -633,7 +636,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 			"addr", vaultCfg.Address,
 			"auth_path", authPath,
 			"role", role,
-			"tls", vaultTLSMode(vaultCfg))
+			"tls", vaultTLSMode(cfg))
 	} else if embeddedVault := mgr.EmbeddedVault(); embeddedVault != nil {
 		// Embedded dev path: vault is running locally with -dev mode and a
 		// known root token. Every cage shares the same token; there is no
@@ -659,7 +662,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 			"addr", embeddedVault.Address())
 	}
 	if secretFetcher == nil {
-		if !cfg.CageRuntime.AllowUnisolated {
+		if !cfg.AllowUnisolatedDefault() {
 			return fmt.Errorf("no Vault configured: set infrastructure.vault.address, enable embedded Vault, or set cage_runtime.allow_unisolated=true for dev-mode secrets")
 		}
 		log.Info("WARNING: Vault not configured — cages will use dev secrets (allow_unisolated=true)")
@@ -702,7 +705,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 
 	if reason := cage.CheckFalcoSocket(ctx, falcoSocket); reason != "" {
-		if !cfg.CageRuntime.AllowUnisolated {
+		if !cfg.AllowUnisolatedDefault() {
 			return fmt.Errorf("falco not usable (%s); set cage_runtime.allow_unisolated=true to run cages without behavioral tripwires", reason)
 		}
 		log.Info("WARNING: Falco unavailable — cages will run without behavioral tripwires",
@@ -805,13 +808,12 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(grpcServer, healthSrv)
 
-	// gRPC reflection is gated behind the same dev opt-in as the other
-	// security relaxations. It exposes the full service surface to any
-	// client that can hit the server, which is acceptable for local
-	// debugging with grpcurl but not for any networked deployment.
-	if cfg.CageRuntime.AllowUnisolated {
+	// gRPC reflection: posture default (dev=on, strict=off), with explicit
+	// override via grpc.reflection. Reflection exposes the full service
+	// surface to any client that can hit the server.
+	if cfg.GRPCReflectionDefault() {
 		reflection.Register(grpcServer)
-		log.Info("gRPC reflection enabled (dev mode)")
+		log.Info("gRPC reflection enabled")
 	}
 
 	log.Info("gRPC services registered")
@@ -855,7 +857,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- Start gRPC ---
 
 	fmt.Printf("Starting gRPC server on %s...\n", grpcAddr)
-	if isGlobalBind(grpcAddr) && !cfg.GRPC.TLSEnabled() && !cfg.CageRuntime.AllowUnisolated {
+	if isGlobalBind(grpcAddr) && !cfg.GRPC.TLSEnabled() && !cfg.AllowUnisolatedDefault() {
 		return fmt.Errorf("refusing to bind gRPC on %s without TLS: configure grpc.tls or set cage_runtime.allow_unisolated=true for dev", grpcAddr)
 	}
 	lis, err := net.Listen("tcp", grpcAddr)
@@ -950,14 +952,15 @@ func (a *fleetPoolAdapter) MoveHost(hostID string, toPool int) error {
 // server certificate. Mirrors the GRPCConfig.TLS pattern: internal uses the
 // SPIRE trust bundle, ca_cert_file uses an operator-provided CA, otherwise
 // nil (system trust store).
-func buildVaultTLSConfig(ctx context.Context, vaultCfg *config.VaultConfig, spireSocket string) (*tls.Config, error) {
-	if vaultCfg.TLS == nil {
+func buildVaultTLSConfig(ctx context.Context, cfg *config.Config, spireSocket string) (*tls.Config, error) {
+	vaultCfg := cfg.Infrastructure.Vault
+	if vaultCfg == nil || vaultCfg.TLS == nil {
 		return nil, nil
 	}
 	t := vaultCfg.TLS
 
-	if t.SkipVerify {
-		return &tls.Config{InsecureSkipVerify: true}, nil //nolint:gosec // dev-only opt-in
+	if cfg.VaultSkipVerifyDefault() {
+		return &tls.Config{InsecureSkipVerify: true}, nil //nolint:gosec // explicit operator opt-in; rejected by validatePosture in strict mode
 	}
 
 	if t.Internal {
@@ -988,12 +991,13 @@ func buildVaultTLSConfig(ctx context.Context, vaultCfg *config.VaultConfig, spir
 	return nil, nil
 }
 
-func vaultTLSMode(vaultCfg *config.VaultConfig) string {
-	if vaultCfg.TLS == nil {
+func vaultTLSMode(cfg *config.Config) string {
+	vaultCfg := cfg.Infrastructure.Vault
+	if vaultCfg == nil || vaultCfg.TLS == nil {
 		return "system"
 	}
 	switch {
-	case vaultCfg.TLS.SkipVerify:
+	case cfg.VaultSkipVerifyDefault():
 		return "insecure-skip-verify"
 	case vaultCfg.TLS.Internal:
 		return "spire-internal"
