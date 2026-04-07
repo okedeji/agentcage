@@ -162,6 +162,20 @@ func (pm *PoolManager) GetPoolStatus() []PoolStatus {
 	return result
 }
 
+// TotalCageSlots returns the sum of cage slots across every host in the
+// pool. Used by the orchestrator to size the cage worker's activity
+// concurrency cap — there is no point allowing more concurrent activities
+// than the fleet can possibly accept cages for.
+func (pm *PoolManager) TotalCageSlots() int32 {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	var total int32
+	for _, h := range pm.hosts {
+		total += h.CageSlotsTotal
+	}
+	return total
+}
+
 func (pm *PoolManager) GetFleetStatus() FleetStatus {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
