@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.temporal.io/sdk/client"
@@ -573,21 +575,86 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	var secretFetcher identity.SecretFetcher
 	if cfg.Infrastructure.IsExternalVault() {
-		vaultClient, vaultErr := identity.NewVaultClient(
-			cfg.Infrastructure.Vault.Address,
-			"auth/jwt/login",
-			"cage",
-		)
-		if vaultErr != nil {
-			log.Error(vaultErr, "creating Vault client — cages will use dev secrets")
-		} else {
-			secretFetcher = vaultClient
-			log.Info("Vault secret fetcher connected", "addr", cfg.Infrastructure.Vault.Address)
+		// Production path: real JWT-SVID from SPIRE, scoped per cage.
+		vaultCfg := cfg.Infrastructure.Vault
+		authPath := vaultCfg.AuthPath
+		if authPath == "" {
+			authPath = "auth/jwt/login"
 		}
+		role := vaultCfg.Role
+		if role == "" {
+			role = "cage"
+		}
+
+		tlsCfg, tlsErr := buildVaultTLSConfig(ctx, vaultCfg, spireSocket)
+		if tlsErr != nil {
+			return fmt.Errorf("building Vault TLS config: %w", tlsErr)
+		}
+
+		jwtSource, jwtErr := identity.NewSpireJWTSource(ctx, spireSocket)
+		if jwtErr != nil {
+			return fmt.Errorf("opening SPIRE JWT source for Vault auth: %w", jwtErr)
+		}
+
+		vaultClient, vaultErr := identity.NewVaultJWTClient(identity.VaultJWTConfig{
+			Address:   vaultCfg.Address,
+			AuthPath:  authPath,
+			Role:      role,
+			TLS:       tlsCfg,
+			JWTSource: jwtSource,
+			Audience:  "vault",
+		})
+		if vaultErr != nil {
+			_ = jwtSource.Close()
+			return fmt.Errorf("creating Vault client: %w", vaultErr)
+		}
+
+		healthCtx, cancelHealth := context.WithTimeout(ctx, 5*time.Second)
+		if err := vaultClient.Health(healthCtx); err != nil {
+			cancelHealth()
+			_ = jwtSource.Close()
+			return fmt.Errorf("vault unreachable at %s: %w", vaultCfg.Address, err)
+		}
+		cancelHealth()
+
+		secretFetcher = vaultClient
+		log.Info("Vault secret fetcher connected (jwt mode)",
+			"addr", vaultCfg.Address,
+			"auth_path", authPath,
+			"role", role,
+			"tls", vaultTLSMode(vaultCfg))
+	} else if embeddedVault := mgr.EmbeddedVault(); embeddedVault != nil {
+		// Embedded dev path: vault is running locally with -dev mode and a
+		// known root token. Every cage shares the same token; there is no
+		// per-cage scoping. Acceptable because embedded mode is the
+		// developer's laptop, where the host trust boundary already
+		// dominates whatever Vault would enforce.
+		vaultClient, vaultErr := identity.NewVaultTokenClient(identity.VaultTokenConfig{
+			Address: embeddedVault.Address(),
+			Token:   embeddedVault.RootToken(),
+		})
+		if vaultErr != nil {
+			return fmt.Errorf("creating embedded Vault client: %w", vaultErr)
+		}
+		healthCtx, cancelHealth := context.WithTimeout(ctx, 5*time.Second)
+		if err := vaultClient.Health(healthCtx); err != nil {
+			cancelHealth()
+			return fmt.Errorf("embedded vault unreachable at %s: %w", embeddedVault.Address(), err)
+		}
+		cancelHealth()
+
+		secretFetcher = vaultClient
+		log.Info("Vault secret fetcher connected (embedded dev token)",
+			"addr", embeddedVault.Address())
 	}
 	if secretFetcher == nil {
-		log.Info("Vault not configured for production auth — cages will use dev secrets")
+		if !cfg.CageRuntime.AllowUnisolated {
+			return fmt.Errorf("no Vault configured: set infrastructure.vault.address, enable embedded Vault, or set cage_runtime.allow_unisolated=true for dev-mode secrets")
+		}
+		log.Info("WARNING: Vault not configured — cages will use dev secrets (allow_unisolated=true)")
 	}
+
+	// --- Cage rootfs builder ---
 
 	baseRootfs := filepath.Join(embedded.VMDir(), "cage-rootfs.img")
 	rootfsWorkDir := filepath.Join(embedded.DataDir(), "rootfs-work")
@@ -595,6 +662,8 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return fmt.Errorf("creating rootfs work directory: %w", err)
 	}
 	rootfsBuilder := cage.NewRootfsBuilder(baseRootfs, rootfsWorkDir, version)
+
+	// --- Falco alert reader ---
 
 	var falcoReader *cage.FalcoAlertReader
 	falcoSocket := filepath.Join(embedded.RunDir(), "falco", "falco.sock")
@@ -605,6 +674,8 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		falcoReader = cage.NewFalcoAlertReader(falcoSocket, log)
 		log.Info("Falco alert reader configured", "socket", falcoSocket)
 	}
+
+	// --- Cage activity implementation ---
 
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
 		Provisioner:   cageProvisioner,
@@ -778,6 +849,64 @@ func (a *fleetPoolAdapter) ReleaseCageSlot(hostID string) error {
 
 func (a *fleetPoolAdapter) MoveHost(hostID string, toPool int) error {
 	return a.pool.MoveHost(hostID, fleet.HostPool(toPool))
+}
+
+// buildVaultTLSConfig produces the *tls.Config used to verify Vault's
+// server certificate. Mirrors the GRPCConfig.TLS pattern: internal uses the
+// SPIRE trust bundle, ca_cert_file uses an operator-provided CA, otherwise
+// nil (system trust store).
+func buildVaultTLSConfig(ctx context.Context, vaultCfg *config.VaultConfig, spireSocket string) (*tls.Config, error) {
+	if vaultCfg.TLS == nil {
+		return nil, nil
+	}
+	t := vaultCfg.TLS
+
+	if t.SkipVerify {
+		return &tls.Config{InsecureSkipVerify: true}, nil //nolint:gosec // dev-only opt-in
+	}
+
+	if t.Internal {
+		source, err := workloadapi.NewX509Source(ctx, workloadapi.WithClientOptions(
+			workloadapi.WithAddr("unix://"+spireSocket),
+		))
+		if err != nil {
+			return nil, fmt.Errorf("opening SPIRE X.509 source for Vault TLS: %w", err)
+		}
+		// Vault is a server we authenticate; we trust any SVID from our
+		// trust domain. Replace AuthorizeAny with a tighter authorizer if
+		// you want to pin a specific Vault SPIFFE ID.
+		return tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()), nil
+	}
+
+	if t.CACertFile != "" {
+		caBytes, err := os.ReadFile(t.CACertFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading vault ca_cert_file %s: %w", t.CACertFile, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caBytes) {
+			return nil, fmt.Errorf("vault ca_cert_file %s: no PEM certs found", t.CACertFile)
+		}
+		return &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}, nil
+	}
+
+	return nil, nil
+}
+
+func vaultTLSMode(vaultCfg *config.VaultConfig) string {
+	if vaultCfg.TLS == nil {
+		return "system"
+	}
+	switch {
+	case vaultCfg.TLS.SkipVerify:
+		return "insecure-skip-verify"
+	case vaultCfg.TLS.Internal:
+		return "spire-internal"
+	case vaultCfg.TLS.CACertFile != "":
+		return "ca-pinned"
+	default:
+		return "system"
+	}
 }
 
 func redactDBURL(raw string) string {
