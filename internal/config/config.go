@@ -13,6 +13,13 @@ import (
 // Config is the single source of truth for all agentcage platform configuration.
 // One file in, everything else (Rego policies, Falco rules, SPIRE config) generated at startup.
 type Config struct {
+	// Posture is the top-level security stance. "strict" (default) makes
+	// every missing dependency a fatal startup error and refuses dev
+	// affordances like loopback-only TLS bypass and gRPC reflection. "dev"
+	// relaxes the entire stack for laptop development. Subsystem-level
+	// flags (cage_runtime.allow_unisolated, etc.) override the posture
+	// default for the operator who needs a mixed setup.
+	Posture        Posture                    `yaml:"posture"`
 	Infrastructure InfrastructureConfig       `yaml:"infrastructure"`
 	GRPC           GRPCConfig                 `yaml:"grpc"`
 	LLM            LLMConfig                  `yaml:"llm"`
@@ -28,6 +35,53 @@ type Config struct {
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
 }
 
+// boolPtr returns a pointer to b. Used by Defaults() and tests to populate
+// optional bool fields.
+func boolPtr(b bool) *bool { return &b }
+
+// Posture is the top-level security stance.
+type Posture int
+
+const (
+	// PostureStrict is the default. Missing deps are fatal; dev affordances
+	// (gRPC reflection, no-TLS global bind, mock provisioner fallback) are
+	// rejected unless explicitly overridden by a subsystem flag.
+	PostureStrict Posture = iota
+	// PostureDev relaxes the entire stack: missing deps degrade gracefully,
+	// gRPC reflection is enabled, mock provisioner is allowed, and the
+	// no-TLS global bind check is skipped. For laptop development only.
+	PostureDev
+)
+
+func (p Posture) String() string {
+	switch p {
+	case PostureDev:
+		return "dev"
+	default:
+		return "strict"
+	}
+}
+
+func (p Posture) MarshalYAML() (interface{}, error) {
+	return p.String(), nil
+}
+
+func (p *Posture) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err != nil {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "strict":
+		*p = PostureStrict
+	case "dev", "development":
+		*p = PostureDev
+	default:
+		return fmt.Errorf("invalid posture %q (want strict or dev)", s)
+	}
+	return nil
+}
+
 // CageRuntimeConfig controls how the orchestrator provisions and isolates
 // cages on the local host.
 type CageRuntimeConfig struct {
@@ -37,12 +91,80 @@ type CageRuntimeConfig struct {
 	// KernelPath overrides the path to the vmlinux kernel. If empty, the
 	// orchestrator falls back to <embedded.BinDir>/vmlinux.
 	KernelPath string `yaml:"kernel_path"`
-	// AllowUnisolated must be set to true to permit the mock provisioner to
-	// run agents directly on the host (no microVM boundary). Intended only
-	// for local development on machines without KVM. Production deployments
-	// must leave this false; missing Firecracker capability is then a fatal
-	// startup error.
-	AllowUnisolated bool `yaml:"allow_unisolated"`
+	// AllowUnisolated permits the mock provisioner to run agents directly on
+	// the host (no microVM boundary), the no-TLS global gRPC bind, and the
+	// other dev-mode degradations. If unset, it derives from the top-level
+	// posture: dev → true, strict → false. Operators with a mixed setup
+	// (strict posture but one unisolated subsystem) can set this explicitly.
+	AllowUnisolated *bool `yaml:"allow_unisolated,omitempty"`
+}
+
+// AllowUnisolatedDefault returns the effective value of AllowUnisolated
+// after applying the posture default. Use this throughout the codebase
+// instead of reading the field directly.
+func (c *Config) AllowUnisolatedDefault() bool {
+	if c.CageRuntime.AllowUnisolated != nil {
+		return *c.CageRuntime.AllowUnisolated
+	}
+	return c.Posture == PostureDev
+}
+
+// VaultSkipVerifyDefault returns the effective value of vault.tls.skip_verify
+// after applying the posture default. Strict never defaults this on; dev
+// honors operator override but also defaults to off.
+func (c *Config) VaultSkipVerifyDefault() bool {
+	if c.Infrastructure.Vault != nil && c.Infrastructure.Vault.TLS != nil && c.Infrastructure.Vault.TLS.SkipVerify != nil {
+		return *c.Infrastructure.Vault.TLS.SkipVerify
+	}
+	return false
+}
+
+// OTelInsecureDefault returns the effective value of otel.insecure after
+// applying the posture default. Strict never defaults this on; dev honors
+// operator override but also defaults to off.
+func (c *Config) OTelInsecureDefault() bool {
+	if c.Infrastructure.OTel != nil && c.Infrastructure.OTel.Insecure != nil {
+		return *c.Infrastructure.OTel.Insecure
+	}
+	return false
+}
+
+// ScopeDenyLocalhostDefault returns the effective value of scope.deny_localhost
+// after applying the posture default. Strict defaults to true (block
+// localhost targets); dev defaults to false (allow targeting laptop services).
+func (c *Config) ScopeDenyLocalhostDefault() bool {
+	if c.Scope.DenyLocalhost != nil {
+		return *c.Scope.DenyLocalhost
+	}
+	return c.Posture == PostureStrict
+}
+
+// ScopeDenyWildcardsDefault returns the effective value of scope.deny_wildcards
+// after applying the posture default. Strict defaults to true; dev defaults
+// to false.
+func (c *Config) ScopeDenyWildcardsDefault() bool {
+	if c.Scope.DenyWildcards != nil {
+		return *c.Scope.DenyWildcards
+	}
+	return c.Posture == PostureStrict
+}
+
+// GRPCReflectionDefault returns the effective value of grpc.reflection after
+// applying the posture default. Strict defaults to off (reflection exposes
+// the full service surface); dev defaults to on so grpcurl works.
+func (c *Config) GRPCReflectionDefault() bool {
+	if c.GRPC.Reflection != nil {
+		return *c.GRPC.Reflection
+	}
+	return c.Posture == PostureDev
+}
+
+// LLMRequiredDefault returns whether a working LLM endpoint is required at
+// startup. Always true: discovery cages and the assessment coordinator both
+// need an LLM. Posture only controls whether the missing-endpoint check
+// is fatal — strict aborts startup, dev warns and continues.
+func (c *Config) LLMRequiredDefault() bool {
+	return c.Posture == PostureStrict
 }
 
 type NotificationsConfig struct {
@@ -57,6 +179,11 @@ type WebhookConfig struct {
 
 type GRPCConfig struct {
 	TLS *TLSConfig `yaml:"tls"`
+	// Reflection enables the gRPC server reflection service for debugging
+	// with grpcurl. Posture default: dev=true, strict=false. Operators with
+	// strict posture but a need for reflection (e.g. grpcurl from the same
+	// host) can set this to true explicitly.
+	Reflection *bool `yaml:"reflection,omitempty"`
 }
 
 type TLSConfig struct {
@@ -137,9 +264,11 @@ type VaultTLSConfig struct {
 	// CACertFile pins an operator-provided CA bundle. Used when Internal is
 	// false and the operator runs their own PKI for Vault.
 	CACertFile string `yaml:"ca_cert_file,omitempty"`
-	// SkipVerify disables TLS verification entirely. Dev only — never set
-	// in production.
-	SkipVerify bool `yaml:"skip_verify,omitempty"`
+	// SkipVerify disables TLS verification entirely. Posture default: never
+	// (strict refuses to start if explicitly set). Dev mode tolerates it
+	// when set, but never defaults it on. Pointer so unset is distinct
+	// from explicit false.
+	SkipVerify *bool `yaml:"skip_verify,omitempty"`
 }
 
 func (c *VaultConfig) UseInternalTLS() bool {
@@ -160,7 +289,10 @@ type NomadConfig struct {
 
 type OTelConfig struct {
 	Endpoint string `yaml:"endpoint"`
-	Insecure bool   `yaml:"insecure"`
+	// Insecure disables TLS for the OTLP exporters. Posture default: never
+	// (strict refuses to start if explicitly set). Pointer so unset is
+	// distinct from explicit false.
+	Insecure *bool `yaml:"insecure,omitempty"`
 }
 
 // LLMConfig configures the LLM gateway connection.
@@ -266,11 +398,15 @@ type AssessmentConfig struct {
 	MaxScreenshotSize int64         `yaml:"max_screenshot_size"`
 }
 
-// ScopeConfig defines what targets are allowed or denied.
+// ScopeConfig defines what targets are allowed or denied. The two deny
+// flags are pointers so we can distinguish "operator did not set this" from
+// "operator explicitly set false." Posture default: strict=true, dev=false
+// (operator gets the dev affordance of targeting localhost / wildcards
+// without an explicit override).
 type ScopeConfig struct {
 	Deny          []string `yaml:"deny"`
-	DenyWildcards bool     `yaml:"deny_wildcards"`
-	DenyLocalhost bool     `yaml:"deny_localhost"`
+	DenyWildcards *bool    `yaml:"deny_wildcards,omitempty"`
+	DenyLocalhost *bool    `yaml:"deny_localhost,omitempty"`
 }
 
 // PayloadConfig defines blocklist patterns for a vulnerability class.
@@ -394,7 +530,40 @@ func Parse(data []byte) (*Config, error) {
 	if err := validateConfigKeys(&cfg); err != nil {
 		return nil, err
 	}
+	if err := validatePosture(&cfg); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
+}
+
+// validatePosture enforces the strict-posture constraints at config-load
+// time so misconfigurations fail before any subsystem starts. The checks
+// below are deliberately rejecting *explicit* dev affordances under
+// strict — they do not punish operators who simply left a field unset.
+func validatePosture(cfg *Config) error {
+	if cfg.Posture != PostureStrict {
+		return nil
+	}
+
+	if cfg.Infrastructure.Vault != nil {
+		v := cfg.Infrastructure.Vault
+		if v.TLS == nil {
+			return fmt.Errorf("posture=strict: external vault.address %q requires vault.tls (set vault.tls.internal=true or vault.tls.ca_cert_file)", v.Address)
+		}
+		if v.TLS.SkipVerify != nil && *v.TLS.SkipVerify {
+			return fmt.Errorf("posture=strict: vault.tls.skip_verify=true is forbidden")
+		}
+	}
+
+	if cfg.Infrastructure.OTel != nil && cfg.Infrastructure.OTel.Insecure != nil && *cfg.Infrastructure.OTel.Insecure {
+		return fmt.Errorf("posture=strict: otel.insecure=true is forbidden")
+	}
+
+	if cfg.Infrastructure.Temporal != nil && cfg.Infrastructure.Temporal.Address != "" && cfg.Infrastructure.Temporal.TLS == nil {
+		return fmt.Errorf("posture=strict: external temporal.address %q requires temporal.tls", cfg.Infrastructure.Temporal.Address)
+	}
+
+	return nil
 }
 
 func validateConfigKeys(cfg *Config) error {
@@ -489,8 +658,9 @@ func Defaults() *Config {
 				"temporal.agentcage.internal",
 				"postgres.agentcage.internal",
 			},
-			DenyWildcards: true,
-			DenyLocalhost: true,
+			// DenyWildcards/DenyLocalhost are intentionally nil so the
+			// posture default applies (strict=true, dev=false). Operators
+			// can still set them explicitly to override.
 		},
 		Payload: defaultPayload(),
 		Monitoring: map[string]MonitoringConfig{
@@ -739,11 +909,11 @@ func Merge(base, override *Config) *Config {
 	if len(override.Scope.Deny) > 0 {
 		result.Scope.Deny = override.Scope.Deny
 	}
-	if override.Scope.DenyWildcards {
-		result.Scope.DenyWildcards = true
+	if override.Scope.DenyWildcards != nil {
+		result.Scope.DenyWildcards = override.Scope.DenyWildcards
 	}
-	if override.Scope.DenyLocalhost {
-		result.Scope.DenyLocalhost = true
+	if override.Scope.DenyLocalhost != nil {
+		result.Scope.DenyLocalhost = override.Scope.DenyLocalhost
 	}
 
 	// Payload

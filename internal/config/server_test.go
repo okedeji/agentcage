@@ -36,8 +36,8 @@ func testBaseConfig() *Config {
 		},
 		Scope: ScopeConfig{
 			Deny:          []string{"10.0.0.0/8"},
-			DenyWildcards: true,
-			DenyLocalhost: true,
+			DenyWildcards: boolPtr(true),
+			DenyLocalhost: boolPtr(true),
 		},
 		Assessment: AssessmentConfig{
 			MaxDuration:   4 * time.Hour,

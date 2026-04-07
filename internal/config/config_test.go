@@ -90,8 +90,10 @@ func TestDefaults_ScopeDenyIncludesPrivateRanges(t *testing.T) {
 	assert.Contains(t, cfg.Scope.Deny, "169.254.0.0/16")
 	assert.Contains(t, cfg.Scope.Deny, "fc00::/7")
 	assert.Contains(t, cfg.Scope.Deny, "fe80::/10")
-	assert.True(t, cfg.Scope.DenyWildcards)
-	assert.True(t, cfg.Scope.DenyLocalhost)
+	// Defaults() leaves the deny pointers nil; the posture default supplies
+	// the value. PostureStrict (the zero value) → deny by default.
+	assert.True(t, cfg.ScopeDenyWildcardsDefault())
+	assert.True(t, cfg.ScopeDenyLocalhostDefault())
 }
 
 func TestDefaults_AssessmentDefaults(t *testing.T) {
@@ -170,6 +172,9 @@ infrastructure:
     url: "nats://prod-nats:4222"
   temporal:
     address: "temporal.prod:7233"
+    tls:
+      cert_file: /etc/agentcage/temporal.crt
+      key_file: /etc/agentcage/temporal.key
   spire:
     server_address: "spire.prod:8081"
     trust_domain: "company.internal"
@@ -177,6 +182,8 @@ infrastructure:
     address: "https://vault.prod:8200"
     auth_path: "auth/jwt"
     role: "agentcage"
+    tls:
+      ca_cert_file: /etc/agentcage/vault-ca.pem
 `
 	path := writeTempFile(t, content)
 	cfg, err := Load(path)
