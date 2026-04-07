@@ -12,7 +12,7 @@ func TestParse_FullCagefile(t *testing.T) {
 # XBOW solver agent
 runtime python3
 deps chromium nmap sqlmap interactsh
-pip requests playwright httpx beautifulsoup4
+pip requests==2.31.0 playwright==1.40.0 httpx==0.27.0 beautifulsoup4==4.12.2
 entrypoint python3 solver.py
 `
 	m, err := ParseString(input)
@@ -21,7 +21,7 @@ entrypoint python3 solver.py
 	assert.Equal(t, "python3", m.Runtime)
 	assert.Equal(t, "python3 solver.py", m.Entrypoint)
 	assert.Equal(t, []string{"chromium", "nmap", "sqlmap", "interactsh"}, m.SystemDeps)
-	assert.Equal(t, []string{"requests", "playwright", "httpx", "beautifulsoup4"}, m.PipDeps)
+	assert.Equal(t, []string{"requests==2.31.0", "playwright==1.40.0", "httpx==0.27.0", "beautifulsoup4==4.12.2"}, m.PipDeps)
 }
 
 func TestParse_MinimalCagefile(t *testing.T) {
@@ -41,7 +41,7 @@ entrypoint ./my-scanner
 func TestParse_NodeRuntime(t *testing.T) {
 	input := `
 runtime node
-npm puppeteer axios
+npm puppeteer@21.0.0 axios@1.6.0
 deps chromium
 entrypoint node index.js
 `
@@ -49,14 +49,14 @@ entrypoint node index.js
 	require.NoError(t, err)
 
 	assert.Equal(t, "node", m.Runtime)
-	assert.Equal(t, []string{"puppeteer", "axios"}, m.NpmDeps)
+	assert.Equal(t, []string{"puppeteer@21.0.0", "axios@1.6.0"}, m.NpmDeps)
 	assert.Equal(t, []string{"chromium"}, m.SystemDeps)
 }
 
 func TestParse_GoRuntime(t *testing.T) {
 	input := `
 runtime go
-go-deps github.com/projectdiscovery/nuclei/v3
+go-deps github.com/projectdiscovery/nuclei/v3@v3.1.0
 deps nmap
 entrypoint ./scanner
 `
@@ -64,7 +64,7 @@ entrypoint ./scanner
 	require.NoError(t, err)
 
 	assert.Equal(t, "go", m.Runtime)
-	assert.Equal(t, []string{"github.com/projectdiscovery/nuclei/v3"}, m.GoDeps)
+	assert.Equal(t, []string{"github.com/projectdiscovery/nuclei/v3@v3.1.0"}, m.GoDeps)
 }
 
 func TestParse_CommentsAndBlankLines(t *testing.T) {
@@ -160,7 +160,7 @@ func TestParse_DirectiveWithoutValue(t *testing.T) {
 func TestParse_PipWithNodeRuntime(t *testing.T) {
 	input := `
 runtime node
-pip requests
+pip requests==2.31.0
 entrypoint node index.js
 `
 	_, err := ParseString(input)
@@ -171,7 +171,7 @@ entrypoint node index.js
 func TestParse_NpmWithPythonRuntime(t *testing.T) {
 	input := `
 runtime python3
-npm puppeteer
+npm puppeteer@21.0.0
 entrypoint python3 solver.py
 `
 	_, err := ParseString(input)
@@ -182,7 +182,7 @@ entrypoint python3 solver.py
 func TestParse_LanguageDepsWithStaticRuntime(t *testing.T) {
 	input := `
 runtime static
-pip requests
+pip requests==2.31.0
 entrypoint ./scanner
 `
 	_, err := ParseString(input)
@@ -195,12 +195,12 @@ func TestParse_MultipleDepsLines(t *testing.T) {
 runtime python3
 deps chromium nmap
 deps sqlmap curl
-pip requests
-pip httpx playwright
+pip requests==2.31.0
+pip httpx==0.27.0 playwright==1.40.0
 entrypoint python3 solver.py
 `
 	m, err := ParseString(input)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"chromium", "nmap", "sqlmap", "curl"}, m.SystemDeps)
-	assert.Equal(t, []string{"requests", "httpx", "playwright"}, m.PipDeps)
+	assert.Equal(t, []string{"requests==2.31.0", "httpx==0.27.0", "playwright==1.40.0"}, m.PipDeps)
 }

@@ -162,5 +162,86 @@ func (m *Manifest) validate() error {
 		}
 	}
 
+	// Reject unpinned dependency specs at parse time. The cage rootfs
+	// builder runs `apk add` / `pip install` / `npm install` / `go install`
+	// in a chroot with the orchestrator's network access; an unpinned spec
+	// would let the resolved artifact change between runs and is the entry
+	// point for typosquat / dependency-confusion attacks.
+	//
+	// NOTE: pinning closes the "wrong artifact" class but does not isolate
+	// the install network namespace. Egress isolation for installs is a
+	// separate hardening pass — when added, it should rely on a local
+	// package mirror so the chroot can run with --net=lo.
+	for _, p := range m.Packages {
+		if err := validateApkSpec(p); err != nil {
+			return fmt.Errorf("cagefile: %w", err)
+		}
+	}
+	for _, p := range m.PipDeps {
+		if err := validatePipSpec(p); err != nil {
+			return fmt.Errorf("cagefile: %w", err)
+		}
+	}
+	for _, p := range m.NpmDeps {
+		if err := validateNpmSpec(p); err != nil {
+			return fmt.Errorf("cagefile: %w", err)
+		}
+	}
+	for _, p := range m.GoDeps {
+		if err := validateGoSpec(p); err != nil {
+			return fmt.Errorf("cagefile: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// validateApkSpec accepts apk specs of the form name=version-rN. Bare names
+// are rejected so the resolved version cannot drift between cage runs.
+func validateApkSpec(spec string) error {
+	if !strings.Contains(spec, "=") {
+		return fmt.Errorf("apk package %q is not pinned (use name=version-rN)", spec)
+	}
+	return nil
+}
+
+// validatePipSpec accepts PEP 440 exact-version pins (name==version) and the
+// direct-reference form with a SHA hash (name @ url#sha256=...).
+func validatePipSpec(spec string) error {
+	if strings.Contains(spec, "==") {
+		return nil
+	}
+	if strings.Contains(spec, "@") && strings.Contains(spec, "sha256=") {
+		return nil
+	}
+	return fmt.Errorf("pip dep %q is not pinned (use name==version or name @ url#sha256=...)", spec)
+}
+
+// validateNpmSpec accepts npm specs of the form name@version (semver exact).
+// Bare names and ranges (^, ~, >=) are rejected.
+func validateNpmSpec(spec string) error {
+	at := strings.LastIndex(spec, "@")
+	if at <= 0 {
+		return fmt.Errorf("npm dep %q is not pinned (use name@version)", spec)
+	}
+	version := spec[at+1:]
+	if version == "" || strings.ContainsAny(version, "^~><*") {
+		return fmt.Errorf("npm dep %q is not pinned (semver ranges are not allowed, use exact name@version)", spec)
+	}
+	return nil
+}
+
+// validateGoSpec accepts module paths of the form module@v1.2.3 — go install
+// rejects bare modules anyway, but we check here so the bundle author gets a
+// clear error at pack time instead of a chroot install failure.
+func validateGoSpec(spec string) error {
+	at := strings.LastIndex(spec, "@")
+	if at <= 0 {
+		return fmt.Errorf("go dep %q is not pinned (use module@v1.2.3)", spec)
+	}
+	version := spec[at+1:]
+	if !strings.HasPrefix(version, "v") {
+		return fmt.Errorf("go dep %q version must start with 'v' (got %q)", spec, version)
+	}
 	return nil
 }
