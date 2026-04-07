@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -24,6 +25,10 @@ import (
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/reflection"
 
 	_ "github.com/lib/pq"
 
@@ -51,7 +56,7 @@ var _ = cmdInit
 func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
-	grpcAddr := fs.String("grpc-addr", ":9090", "gRPC server listen address")
+	grpcAddr := fs.String("grpc-addr", "127.0.0.1:9090", "gRPC server listen address (default loopback only; pass 0.0.0.0:9090 to expose on all interfaces — only with auth/TLS configured)")
 	logFormat := fs.String("log-format", "json", "log output format (json or text)")
 	_ = fs.Parse(args)
 
@@ -741,6 +746,25 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	// --- gRPC server ---
 
 	var grpcOpts []grpc.ServerOption
+	grpcOpts = append(grpcOpts,
+		grpc.ChainUnaryInterceptor(
+			agentgrpc.RecoveryUnaryInterceptor(log.WithValues("component", "grpc")),
+			agentgrpc.LoggingUnaryInterceptor(log.WithValues("component", "grpc")),
+		),
+		// Caps so a buggy or hostile client cannot exhaust orchestrator
+		// resources. 32 MB matches NATS' findings cap; 256 streams covers
+		// fleet operators with several concurrent CLIs.
+		grpc.MaxRecvMsgSize(32*1024*1024),
+		grpc.MaxConcurrentStreams(256),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    60 * time.Second,
+			Timeout: 20 * time.Second,
+		}),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             30 * time.Second,
+			PermitWithoutStream: false,
+		}),
+	)
 	switch {
 	case cfg.GRPC.UseInternalTLS():
 		tlsCfg, tlsErr := agentgrpc.SPIREServerTLS(ctx, "unix://"+spireSocket)
@@ -750,6 +774,11 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
 		log.Info("gRPC mTLS enabled via internal identity provider")
 	case cfg.GRPC.UseFileTLS():
+		// File TLS loads cert+key once at startup. Cert rotation requires
+		// an orchestrator restart — there is no reload-on-disk-change. The
+		// SPIRE-internal branch above handles rotation automatically via
+		// the workload API. If you need on-the-fly rotation with operator
+		// PKI, switch to internal mode and configure SPIRE upstream.
 		creds, tlsErr := credentials.NewServerTLSFromFile(cfg.GRPC.TLS.CertFile, cfg.GRPC.TLS.KeyFile)
 		if tlsErr != nil {
 			return fmt.Errorf("loading TLS credentials: %w", tlsErr)
@@ -767,6 +796,24 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Cancel:        cancel,
 		Version:       version,
 	})
+
+	// Standard gRPC health service so load balancers and grpc_health_probe
+	// work without a custom probe path. Mark every registered service as
+	// SERVING; future readiness checks (e.g. database reachable) can flip
+	// individual entries.
+	healthSrv := health.NewServer()
+	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(grpcServer, healthSrv)
+
+	// gRPC reflection is gated behind the same dev opt-in as the other
+	// security relaxations. It exposes the full service surface to any
+	// client that can hit the server, which is acceptable for local
+	// debugging with grpcurl but not for any networked deployment.
+	if cfg.CageRuntime.AllowUnisolated {
+		reflection.Register(grpcServer)
+		log.Info("gRPC reflection enabled (dev mode)")
+	}
+
 	log.Info("gRPC services registered")
 
 	// --- Temporal workers ---
@@ -784,22 +831,12 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	timeoutEnforcer := intervention.NewTimeoutEnforcer(iQueue, temporalClient, 30*time.Second, log.WithValues("component", "timeout-enforcer"))
 
-	// --- Start gRPC ---
-
-	fmt.Printf("Starting gRPC server on %s...\n", grpcAddr)
-	lis, err := net.Listen("tcp", grpcAddr)
-	if err != nil {
-		return fmt.Errorf("listening on %s: %w", grpcAddr, err)
-	}
-
-	go func() {
-		if srvErr := grpcServer.Serve(lis); srvErr != nil {
-			log.Error(srvErr, "gRPC server failed")
-			cancel()
-		}
-	}()
-
-	// --- Start workers ---
+	// --- Start workers (BEFORE gRPC) ---
+	//
+	// Workers must be running before gRPC accepts traffic, otherwise an
+	// early CreateAssessment call enqueues a workflow that has no worker
+	// to pick it up — caller sees an apparent hang until the workers
+	// finish coming online.
 
 	fmt.Println("Starting Temporal workers...")
 	if err := cageWorker.Start(); err != nil {
@@ -812,6 +849,27 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	go func() {
 		if tErr := timeoutEnforcer.Run(ctx); tErr != nil {
 			log.Error(tErr, "timeout enforcer stopped")
+		}
+	}()
+
+	// --- Start gRPC ---
+
+	fmt.Printf("Starting gRPC server on %s...\n", grpcAddr)
+	if isGlobalBind(grpcAddr) && !cfg.GRPC.TLSEnabled() && !cfg.CageRuntime.AllowUnisolated {
+		return fmt.Errorf("refusing to bind gRPC on %s without TLS: configure grpc.tls or set cage_runtime.allow_unisolated=true for dev", grpcAddr)
+	}
+	lis, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		if errors.Is(err, syscall.EADDRINUSE) {
+			return fmt.Errorf("listening on %s: address already in use — is another agentcage running? (try `agentcage status` or `lsof -i %s`)", grpcAddr, grpcAddr)
+		}
+		return fmt.Errorf("listening on %s: %w", grpcAddr, err)
+	}
+
+	go func() {
+		if srvErr := grpcServer.Serve(lis); srvErr != nil {
+			log.Error(srvErr, "gRPC server failed")
+			cancel()
 		}
 	}()
 
@@ -839,6 +897,14 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	fmt.Println("\nShutting down...")
 
+	// Shutdown order: stop accepting new gRPC traffic, then stop workers,
+	// then close auxiliary services. Temporal workflows that are mid-flight
+	// when workers stop are durable — they will resume on the next start.
+	// gRPC requests that started before GracefulStop returns are allowed
+	// to complete, so the only window of "incomplete" work is a workflow
+	// whose first activity has not yet been picked up by a worker; that
+	// case is also safe because Temporal will retry the activity once a
+	// worker becomes available again.
 	cancel()
 	grpcServer.GracefulStop()
 	cageWorker.Stop()
@@ -936,6 +1002,25 @@ func vaultTLSMode(vaultCfg *config.VaultConfig) string {
 	default:
 		return "system"
 	}
+}
+
+// isGlobalBind reports whether the listen address binds to all interfaces.
+// Used to gate the no-TLS startup safety check — loopback-only binds are
+// fine without TLS, anything else is not.
+func isGlobalBind(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// Couldn't parse — assume the worst.
+		return true
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsUnspecified() {
+		return true
+	}
+	return false
 }
 
 func redactDBURL(raw string) string {
