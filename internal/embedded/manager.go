@@ -54,6 +54,18 @@ func NewManager(cfg *config.Config, log logr.Logger) *Manager {
 	return m
 }
 
+// EmbeddedVault returns the embedded VaultService if Vault is running in
+// embedded mode, or nil if the operator configured an external Vault.
+// Used by cmd_init to wire the orchestrator to the dev token.
+func (m *Manager) EmbeddedVault() *VaultService {
+	for _, svc := range m.services {
+		if v, ok := svc.(*VaultService); ok {
+			return v
+		}
+	}
+	return nil
+}
+
 // Download fetches all required binaries for embedded services.
 func (m *Manager) Download(ctx context.Context) error {
 	if err := EnsureDirs(); err != nil {

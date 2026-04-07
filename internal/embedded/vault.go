@@ -37,6 +37,12 @@ func (v *VaultService) Address() string {
 	return "http://localhost:" + vaultPort
 }
 
+// RootToken returns the dev-mode root token baked into `vault server -dev`.
+// Embedded mode only — never exposed to external Vault clients.
+func (v *VaultService) RootToken() string {
+	return "agentcage-dev-token"
+}
+
 func (v *VaultService) Download(ctx context.Context) error {
 	dest := filepath.Join(BinDir(), "vault")
 	if _, err := os.Stat(dest); err == nil {
