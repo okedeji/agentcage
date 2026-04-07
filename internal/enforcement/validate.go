@@ -1,6 +1,7 @@
 package enforcement
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -11,6 +12,31 @@ import (
 )
 
 var ErrInvalidConfig = errors.New("invalid cage config")
+
+// ScopeValidator is the in-workflow defense-in-depth validator. It satisfies
+// cage.ScopeValidator and is called by the cage workflow's ValidateScope and
+// ValidateCageType activities. Catches any cage that bypassed the gRPC
+// ingress check (which uses the same underlying functions via the cage
+// service constructor).
+type ScopeValidator struct {
+	limits *config.Config
+}
+
+func NewScopeValidator(limits *config.Config) *ScopeValidator {
+	return &ScopeValidator{limits: limits}
+}
+
+func (v *ScopeValidator) ValidateScope(_ context.Context, scope cage.Scope) error {
+	errs := validateScope(scope)
+	if len(errs) > 0 {
+		return fmt.Errorf("%w: %w", ErrInvalidConfig, errors.Join(errs...))
+	}
+	return nil
+}
+
+func (v *ScopeValidator) ValidateCageConfig(_ context.Context, cageConfig cage.Config) error {
+	return ValidateCageConfig(cageConfig, v.limits)
+}
 
 func ValidateCageConfig(cageConfig cage.Config, limits *config.Config) error {
 	var errs []error
