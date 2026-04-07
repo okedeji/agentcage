@@ -655,13 +655,26 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 
 	// --- Cage rootfs builder ---
+	//
+	// Only required when the Firecracker provisioner is in use. The mock
+	// provisioner never touches the rootfs file, so unisolated mode runs
+	// happily without one.
 
 	baseRootfs := filepath.Join(embedded.VMDir(), "cage-rootfs.img")
 	rootfsWorkDir := filepath.Join(embedded.DataDir(), "rootfs-work")
 	if err := os.MkdirAll(rootfsWorkDir, 0755); err != nil {
 		return fmt.Errorf("creating rootfs work directory: %w", err)
 	}
+	if isolated {
+		if reason := cage.CheckBaseRootfs(baseRootfs); reason != "" {
+			return fmt.Errorf("base rootfs not usable (%s): cages cannot be assembled without it", reason)
+		}
+		log.Info("base rootfs OK", "path", baseRootfs)
+	}
 	rootfsBuilder := cage.NewRootfsBuilder(baseRootfs, rootfsWorkDir, version)
+	if err := rootfsBuilder.SweepStale(ctx, log); err != nil {
+		log.Error(err, "sweeping stale rootfs state — continuing")
+	}
 
 	// --- Falco alert reader ---
 	//
