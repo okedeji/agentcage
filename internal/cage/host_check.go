@@ -3,12 +3,38 @@ package cage
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 )
+
+// CheckFalcoSocket verifies that the given path is a Unix socket Falco is
+// actively listening on. Returns an empty string on success or a
+// human-readable reason on failure.
+func CheckFalcoSocket(ctx context.Context, socketPath string) string {
+	info, err := os.Stat(socketPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "socket not present"
+		}
+		return fmt.Sprintf("socket stat: %v", err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Sprintf("%s is not a unix socket", socketPath)
+	}
+
+	dialer := net.Dialer{Timeout: 2 * time.Second}
+	conn, err := dialer.DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return fmt.Sprintf("socket not accepting connections: %v", err)
+	}
+	_ = conn.Close()
+	return ""
+}
 
 // HostRuntimeConfig is the orchestrator-side input to BuildProvisioner —
 // the resolved binary paths and the operator's opt-in for unisolated mode.
