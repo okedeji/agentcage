@@ -81,6 +81,22 @@ func (e *TimeoutEnforcer) signalTimeout(ctx context.Context, req *Request) error
 			SignalReportReview,
 			ReportReviewSignal{Decision: ReviewReject, Rationale: "intervention timeout"},
 		)
+	case TypeProofGap:
+		// Mirror the workflow's own internal timeout: skip the affected
+		// findings so they fall through to the report review gate as
+		// candidates. The workflow's waitForProofGap loop matches signals
+		// by InterventionID, so the ID must be set.
+		return e.signaler.SignalWorkflow(
+			ctx,
+			"assessment-"+req.AssessmentID,
+			"",
+			SignalProofGap,
+			ProofGapSignal{
+				InterventionID: req.ID,
+				Action:         ProofGapActionSkip,
+				Rationale:      "intervention timeout",
+			},
+		)
 	default:
 		return fmt.Errorf("unknown intervention type %d for timeout signaling", req.Type)
 	}
