@@ -119,9 +119,35 @@ type SPIREConfig struct {
 }
 
 type VaultConfig struct {
-	Address  string `yaml:"address"`
-	AuthPath string `yaml:"auth_path"`
-	Role     string `yaml:"role"`
+	Address  string          `yaml:"address"`
+	AuthPath string          `yaml:"auth_path"`
+	Role     string          `yaml:"role"`
+	TLS      *VaultTLSConfig `yaml:"tls,omitempty"`
+}
+
+// VaultTLSConfig controls how the orchestrator verifies Vault's server
+// certificate. Asymmetric vs GRPCConfig.TLS because here the orchestrator is
+// a client, not a server — and agentcage authenticates to Vault via JWT-SVID
+// (auth/jwt/login), not Vault's cert auth method, so no client cert/key.
+type VaultTLSConfig struct {
+	// Internal=true uses the SPIRE trust bundle to verify Vault's
+	// certificate. Vault must present a server cert from the same SPIFFE
+	// trust domain agentcage is bound to.
+	Internal bool `yaml:"internal,omitempty"`
+	// CACertFile pins an operator-provided CA bundle. Used when Internal is
+	// false and the operator runs their own PKI for Vault.
+	CACertFile string `yaml:"ca_cert_file,omitempty"`
+	// SkipVerify disables TLS verification entirely. Dev only — never set
+	// in production.
+	SkipVerify bool `yaml:"skip_verify,omitempty"`
+}
+
+func (c *VaultConfig) UseInternalTLS() bool {
+	return c.TLS != nil && c.TLS.Internal
+}
+
+func (c *VaultConfig) UseExternalTLS() bool {
+	return c.TLS != nil && c.TLS.CACertFile != "" && !c.TLS.Internal
 }
 
 type FalcoConfig struct {
