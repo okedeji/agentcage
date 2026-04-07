@@ -664,13 +664,26 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	rootfsBuilder := cage.NewRootfsBuilder(baseRootfs, rootfsWorkDir, version)
 
 	// --- Falco alert reader ---
+	//
+	// Falco is the runtime behavioral tripwire — it watches syscalls inside
+	// each cage and emits JSON alerts on matched rules. The reader connects
+	// to its Unix socket. If Falco is missing in production, cages would
+	// run without behavioral monitoring, so absence is fatal unless the
+	// operator opts into the unisolated runtime.
 
 	var falcoReader *cage.FalcoAlertReader
 	falcoSocket := filepath.Join(embedded.RunDir(), "falco", "falco.sock")
 	if cfg.Infrastructure.Falco != nil && cfg.Infrastructure.Falco.Socket != "" {
 		falcoSocket = cfg.Infrastructure.Falco.Socket
 	}
-	if _, socketErr := os.Stat(falcoSocket); socketErr == nil {
+
+	if reason := cage.CheckFalcoSocket(ctx, falcoSocket); reason != "" {
+		if !cfg.CageRuntime.AllowUnisolated {
+			return fmt.Errorf("falco not usable (%s); set cage_runtime.allow_unisolated=true to run cages without behavioral tripwires", reason)
+		}
+		log.Info("WARNING: Falco unavailable — cages will run without behavioral tripwires",
+			"socket", falcoSocket, "reason", reason)
+	} else {
 		falcoReader = cage.NewFalcoAlertReader(falcoSocket, log)
 		log.Info("Falco alert reader configured", "socket", falcoSocket)
 	}
