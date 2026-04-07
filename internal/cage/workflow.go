@@ -12,7 +12,10 @@ import (
 	"github.com/okedeji/agentcage/internal/intervention"
 )
 
-const WorkflowName = "CageLifecycle"
+// WorkflowName is the registered name of CageWorkflow in the Temporal
+// worker. Pinned explicitly so a Go-side rename of the function does not
+// silently break in-flight workflows on the next history replay.
+const WorkflowName = "CageWorkflow"
 
 type CageWorkflowInput struct {
 	Config      Config

@@ -14,7 +14,10 @@ import (
 )
 
 const (
-	WorkflowName = "AssessmentLifecycle"
+	// WorkflowName is the registered name of AssessmentWorkflow in the
+	// Temporal worker. Pinned explicitly so a Go-side rename does not
+	// silently break in-flight workflows on the next history replay.
+	WorkflowName = "AssessmentWorkflow"
 
 	TimeoutCreateCage      = 30 * time.Second
 	TimeoutGetFindings     = 15 * time.Second

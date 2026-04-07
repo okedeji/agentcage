@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/worker"
 
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/findings"
@@ -67,6 +69,29 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		interventions: cfg.Interventions,
 		log:           cfg.Log.WithValues("component", "assessment-activities"),
 	}
+}
+
+// RegisterActivities pins the assessment activity surface to an explicit
+// list of names on a Temporal worker. Renaming a method without updating
+// this list is a startup-time failure rather than a silent break of
+// in-flight workflows.
+func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
+	pin := func(name string, fn interface{}) {
+		w.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
+	}
+	pin("CreateDiscoveryCage", a.CreateDiscoveryCage)
+	pin("CreateValidatorCage", a.CreateValidatorCage)
+	pin("CreateEscalationCage", a.CreateEscalationCage)
+	pin("GetCandidateFindings", a.GetCandidateFindings)
+	pin("GetValidatedFindings", a.GetValidatedFindings)
+	pin("GetFinding", a.GetFinding)
+	pin("UpdateFindingStatus", a.UpdateFindingStatus)
+	pin("UpdateAssessmentStatus", a.UpdateAssessmentStatus)
+	pin("GenerateReport", a.GenerateReport)
+	pin("PlanNextActions", a.PlanNextActions)
+	pin("LookupProof", a.LookupProof)
+	pin("EmitProofGapIntervention", a.EmitProofGapIntervention)
+	pin("NotifyFleetAssessmentComplete", a.NotifyFleetAssessmentComplete)
 }
 
 // EmitProofGapIntervention creates a pending proof_gap intervention for a

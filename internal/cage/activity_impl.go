@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/worker"
 
 	"github.com/okedeji/agentcage/internal/audit"
 	"github.com/okedeji/agentcage/internal/identity"
@@ -106,6 +108,35 @@ type ActivityImplConfig struct {
 	Secrets       identity.SecretFetcher
 	AuditStore    audit.Store
 	Log           logr.Logger
+}
+
+// RegisterActivities pins the cage activity surface to an explicit list of
+// names on a Temporal worker. Internal helper methods (e.g. EvaluateAlert)
+// are intentionally excluded so they cannot be invoked as top-level
+// activities. Renaming a method without updating this list is now a
+// startup-time failure rather than a silent break of in-flight workflows.
+func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
+	pin := func(name string, fn interface{}) {
+		w.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
+	}
+	pin("ValidateScope", a.ValidateScope)
+	pin("ValidateCageType", a.ValidateCageType)
+	pin("IssueIdentity", a.IssueIdentity)
+	pin("FetchSecrets", a.FetchSecrets)
+	pin("ProvisionVM", a.ProvisionVM)
+	pin("ApplyNetworkPolicy", a.ApplyNetworkPolicy)
+	pin("StartPayloadProxy", a.StartPayloadProxy)
+	pin("StartAgent", a.StartAgent)
+	pin("MonitorCage", a.MonitorCage)
+	pin("ExportAuditLog", a.ExportAuditLog)
+	pin("TeardownVM", a.TeardownVM)
+	pin("RevokeSVID", a.RevokeSVID)
+	pin("RevokeVaultToken", a.RevokeVaultToken)
+	pin("RemoveNetworkPolicy", a.RemoveNetworkPolicy)
+	pin("VerifyCleanup", a.VerifyCleanup)
+	pin("EmitRCA", a.EmitRCA)
+	pin("RecordRunMetrics", a.RecordRunMetrics)
+	pin("RecordCostMetrics", a.RecordCostMetrics)
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
