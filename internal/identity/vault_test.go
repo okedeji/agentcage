@@ -8,9 +8,41 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/svid/jwtsvid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// stubJWTSource returns a fixed token string. Tests don't need a real signed
+// JWT-SVID because the mock Vault server doesn't verify it.
+type stubJWTSource struct{}
+
+func (stubJWTSource) FetchJWTSVID(_ context.Context, _ string) (*jwtsvid.SVID, error) {
+	// jwtsvid.ParseInsecure on a minimal-but-syntactically-valid token —
+	// header.payload.sig with empty payload — gives us a *jwtsvid.SVID
+	// whose Marshal() returns the same string we pass to Vault.
+	tok := "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJzcGlmZmU6Ly9leGFtcGxlLm9yZy9jYWdlL3Rlc3QiLCJhdWQiOlsidmF1bHQiXSwiZXhwIjo5OTk5OTk5OTk5fQ.sig"
+	svid, err := jwtsvid.ParseInsecure(tok, []string{"vault"})
+	if err != nil {
+		return nil, err
+	}
+	return svid, nil
+}
+
+func (stubJWTSource) Close() error { return nil }
+
+func newTestVaultClient(t *testing.T, addr string) *VaultClient {
+	t.Helper()
+	vc, err := NewVaultJWTClient(VaultJWTConfig{
+		Address:   addr,
+		AuthPath:  "auth/jwt/login",
+		Role:      "cage-role",
+		JWTSource: stubJWTSource{},
+		Audience:  "vault",
+	})
+	require.NoError(t, err)
+	return vc
+}
 
 func newMockVaultServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
@@ -36,9 +68,7 @@ func TestVaultClient_Authenticate_Success(t *testing.T) {
 	})
 	defer server.Close()
 
-	vc, err := NewVaultClient(server.URL, "auth/jwt/login", "cage-role")
-	require.NoError(t, err)
-
+	vc := newTestVaultClient(t, server.URL)
 	svid := &SVID{
 		ID:        "test-serial",
 		SpiffeID:  "spiffe://example.org/cage/test-cage-1",
@@ -66,16 +96,14 @@ func TestVaultClient_Authenticate_Rejected(t *testing.T) {
 	})
 	defer server.Close()
 
-	vc, err := NewVaultClient(server.URL, "auth/jwt/login", "cage-role")
-	require.NoError(t, err)
-
+	vc := newTestVaultClient(t, server.URL)
 	svid := &SVID{
 		ID:       "test-serial",
 		Raw:      []byte("bad-cert"),
 		CageID:   "test-cage-1",
 	}
 
-	_, err = vc.Authenticate(context.Background(), svid)
+	_, err := vc.Authenticate(context.Background(), svid)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "authenticating cage test-cage-1")
 }
@@ -97,9 +125,7 @@ func TestVaultClient_Fetch_Success(t *testing.T) {
 	})
 	defer server.Close()
 
-	vc, err := NewVaultClient(server.URL, "auth/jwt/login", "cage-role")
-	require.NoError(t, err)
-
+	vc := newTestVaultClient(t, server.URL)
 	token := &VaultToken{
 		Token:    "s.valid-token",
 		CageID:   "test-cage-1",
@@ -125,15 +151,13 @@ func TestVaultClient_Fetch_Forbidden(t *testing.T) {
 	})
 	defer server.Close()
 
-	vc, err := NewVaultClient(server.URL, "auth/jwt/login", "cage-role")
-	require.NoError(t, err)
-
+	vc := newTestVaultClient(t, server.URL)
 	token := &VaultToken{
 		Token:  "s.revoked-token",
 		CageID: "test-cage-1",
 	}
 
-	_, err = vc.Fetch(context.Background(), token, "secret/data/cage/test-cage-1/api-key")
+	_, err := vc.Fetch(context.Background(), token, "secret/data/cage/test-cage-1/api-key")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reading Vault secret")
 }
@@ -148,15 +172,13 @@ func TestVaultClient_Revoke_Success(t *testing.T) {
 	})
 	defer server.Close()
 
-	vc, err := NewVaultClient(server.URL, "auth/jwt/login", "cage-role")
-	require.NoError(t, err)
-
+	vc := newTestVaultClient(t, server.URL)
 	token := &VaultToken{
 		Token:  "s.valid-token",
 		CageID: "test-cage-1",
 	}
 
-	err = vc.Revoke(context.Background(), token)
+	err := vc.Revoke(context.Background(), token)
 	assert.NoError(t, err)
 }
 
@@ -173,14 +195,12 @@ func TestVaultClient_Revoke_AlreadyRevoked(t *testing.T) {
 	})
 	defer server.Close()
 
-	vc, err := NewVaultClient(server.URL, "auth/jwt/login", "cage-role")
-	require.NoError(t, err)
-
+	vc := newTestVaultClient(t, server.URL)
 	token := &VaultToken{
 		Token:  "s.already-revoked",
 		CageID: "test-cage-1",
 	}
 
-	err = vc.Revoke(context.Background(), token)
+	err := vc.Revoke(context.Background(), token)
 	assert.NoError(t, err)
 }
