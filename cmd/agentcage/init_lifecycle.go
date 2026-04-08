@@ -105,7 +105,9 @@ func shutdownSequence(
 	sigCh chan os.Signal,
 	log logr.Logger,
 ) {
-	go forceExitOnSecondSignal(sigCh)
+	if sigCh != nil {
+		go forceExitOnSecondSignal(sigCh)
+	}
 
 	fmt.Println("\nShutting down...")
 

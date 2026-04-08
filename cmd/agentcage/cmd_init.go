@@ -243,6 +243,15 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 	}()
 
+	deps := shutdownDeps{
+		grpcServer:       grpcServer,
+		cageWorker:       cageWorker,
+		assessmentWorker: assessmentWorker,
+		identityCleanup:  identityCleanup,
+		alertDispatcher:  alertDispatcher,
+		embeddedMgr:      embeddedMgr,
+	}
+
 	lis, _, err := startGRPCListener(grpcAddr, cfg, log)
 	if err != nil {
 		return err
@@ -250,9 +259,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	serveGRPC(grpcServer, lis, cancel, log)
 
 	if err := waitForGRPCReady(ctx, cfg, grpcAddr); err != nil {
-		grpcServer.GracefulStop()
-		cageWorker.Stop()
-		assessmentWorker.Stop()
+		shutdownSequence(cancel, deps, nil, log)
 		return fmt.Errorf("waiting for gRPC server: %w", err)
 	}
 
@@ -260,9 +267,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	if err := writePIDFile(pidFile); err != nil {
 		// `agentcage stop` and systemd both read this file. If we can't
 		// write it, we'd rather refuse to start than start unstoppable.
-		grpcServer.GracefulStop()
-		cageWorker.Stop()
-		assessmentWorker.Stop()
+		shutdownSequence(cancel, deps, nil, log)
 		return fmt.Errorf("pid file: %w", err)
 	}
 	defer func() {
@@ -280,14 +285,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	sigCh := waitForShutdown(ctx, cfg, reloadableCert, log)
 
-	shutdownSequence(cancel, shutdownDeps{
-		grpcServer:       grpcServer,
-		cageWorker:       cageWorker,
-		assessmentWorker: assessmentWorker,
-		identityCleanup:  identityCleanup,
-		alertDispatcher:  alertDispatcher,
-		embeddedMgr:      embeddedMgr,
-	}, sigCh, log)
+	shutdownSequence(cancel, deps, sigCh, log)
 
 	return nil
 }
