@@ -8,9 +8,9 @@ import (
 	"github.com/go-logr/logr"
 )
 
-// ProofReloader is implemented by anything that can re-read the on-disk proof
-// library — kept as an interface so the intervention package does not import
-// the assessment package (avoids an import cycle).
+// ProofReloader is implemented by anything that can re-read the
+// on-disk proof library. Kept as an interface so this package doesn't
+// import assessment and create a cycle.
 type ProofReloader interface {
 	Reload() error
 }
@@ -30,10 +30,10 @@ func NewService(queue *Queue, signaler WorkflowSignaler, logger logr.Logger) *Se
 	}
 }
 
-// SetProofReloader installs the proof library so the service can reload it
-// when an operator resolves a proof_gap intervention with action=retry.
-// Optional — if unset, retry simply re-runs lookup against whatever is
-// currently in memory (still useful in tests).
+// SetProofReloader installs the proof library so retry resolutions of
+// proof_gap interventions reload it from disk before signaling the
+// workflow. Optional. If unset, retry re-runs lookup against whatever
+// is currently in memory.
 func (s *Service) SetProofReloader(p ProofReloader) {
 	s.proofLibrary = p
 }

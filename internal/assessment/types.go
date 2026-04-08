@@ -91,9 +91,9 @@ type Config struct {
 	Guidance      *Guidance
 }
 
-// Guidance provides optional practitioner context that shapes how agentcage
-// discovers, prioritizes, attacks, and validates — matching the four dimensions
-// of a penetration test methodology.
+// Guidance is optional practitioner context that shapes how agentcage
+// discovers, prioritizes, attacks, and validates. Matches the four
+// dimensions of a pentest methodology.
 type Guidance struct {
 	AttackSurface  *AttackSurfaceGuidance  `json:"attack_surface,omitempty"`
 	Priorities     *PrioritiesGuidance     `json:"priorities,omitempty"`

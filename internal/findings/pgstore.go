@@ -11,16 +11,16 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// PGFindingStore implements FindingStore backed by Postgres.
-type PGFindingStore struct {
+// PGStore is the Postgres-backed FindingStore.
+type PGStore struct {
 	db *sql.DB
 }
 
-func NewPGFindingStore(db *sql.DB) *PGFindingStore {
-	return &PGFindingStore{db: db}
+func NewPGStore(db *sql.DB) *PGStore {
+	return &PGStore{db: db}
 }
 
-func (s *PGFindingStore) SaveFinding(ctx context.Context, finding Finding) error {
+func (s *PGStore) SaveFinding(ctx context.Context, finding Finding) error {
 	evidence, err := json.Marshal(finding.Evidence)
 	if err != nil {
 		return fmt.Errorf("marshaling evidence for finding %s: %w", finding.ID, err)
@@ -57,7 +57,7 @@ func (s *PGFindingStore) SaveFinding(ctx context.Context, finding Finding) error
 	return nil
 }
 
-func (s *PGFindingStore) FindingExists(ctx context.Context, findingID string) (bool, error) {
+func (s *PGStore) FindingExists(ctx context.Context, findingID string) (bool, error) {
 	var exists bool
 	err := s.db.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM findings WHERE id = $1)`,
@@ -69,7 +69,7 @@ func (s *PGFindingStore) FindingExists(ctx context.Context, findingID string) (b
 	return exists, nil
 }
 
-func (s *PGFindingStore) GetByID(ctx context.Context, findingID string) (Finding, error) {
+func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error) {
 	var (
 		f                       Finding
 		statusStr, severityStr  string
@@ -106,7 +106,7 @@ func (s *PGFindingStore) GetByID(ctx context.Context, findingID string) (Finding
 	return f, nil
 }
 
-func (s *PGFindingStore) GetByAssessment(ctx context.Context, assessmentID string, status Status) ([]Finding, error) {
+func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, status Status) ([]Finding, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, validated_at, created_at, updated_at
 		 FROM findings
@@ -154,7 +154,7 @@ func (s *PGFindingStore) GetByAssessment(ctx context.Context, assessmentID strin
 	return results, nil
 }
 
-func (s *PGFindingStore) UpdateStatus(ctx context.Context, findingID string, status Status) error {
+func (s *PGStore) UpdateStatus(ctx context.Context, findingID string, status Status) error {
 	var validatedAt interface{}
 	if status == StatusValidated {
 		now := time.Now()

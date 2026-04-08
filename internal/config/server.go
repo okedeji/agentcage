@@ -9,27 +9,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type ConfigServer struct {
+type Server struct {
 	mu       sync.RWMutex
 	base     *Config
 	override *Config
 	current  *Config
 }
 
-func NewConfigServer(base *Config) *ConfigServer {
-	return &ConfigServer{
+func NewServer(base *Config) *Server {
+	return &Server{
 		base:    base,
 		current: base,
 	}
 }
 
-func (s *ConfigServer) GetConfig(_ context.Context) *Config {
+func (s *Server) GetConfig(_ context.Context) *Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.current
 }
 
-func (s *ConfigServer) GetValue(_ context.Context, path string) (string, error) {
+func (s *Server) GetValue(_ context.Context, path string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -46,7 +46,7 @@ func (s *ConfigServer) GetValue(_ context.Context, path string) (string, error) 
 	return fmt.Sprintf("%v", val), nil
 }
 
-func (s *ConfigServer) UpdateValue(_ context.Context, path, value string) error {
+func (s *Server) UpdateValue(_ context.Context, path, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -74,7 +74,7 @@ func (s *ConfigServer) UpdateValue(_ context.Context, path, value string) error 
 	return nil
 }
 
-func (s *ConfigServer) ResetConfig(_ context.Context) error {
+func (s *Server) ResetConfig(_ context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

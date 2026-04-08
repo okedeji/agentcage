@@ -141,7 +141,7 @@ func PackToFile(dir, version, outPath string, maxSize int64) (*BundleManifest, e
 		return nil, fmt.Errorf("calculating directory size: %w", err)
 	}
 	if size > maxSize {
-		return nil, fmt.Errorf("directory is %.1f MB, exceeds max bundle size %.1f MB — use --max-size to increase the limit",
+		return nil, fmt.Errorf("directory is %.1f MB, exceeds max bundle size %.1f MB. Use --max-size to raise the limit",
 			float64(size)/(1024*1024), float64(maxSize)/(1024*1024))
 	}
 
@@ -255,14 +255,14 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 		return nil, fmt.Errorf("bundle does not contain manifest.json")
 	}
 
-	// Verify the manifest integrity sidecar. Bundles packed by older
-	// versions of agentcage that predate signature.json are still accepted
-	// (signature == nil) so existing bundles do not break — but any new
-	// bundle that ships a signature is held to it.
+	// Verify the manifest integrity sidecar. Bundles packed before
+	// signature.json existed are still accepted (signature == nil) so
+	// old bundles don't break, but new bundles that ship a signature
+	// are held to it.
 	if signature != nil {
 		expected := "sha256:" + sha256Hex(manifestRawBytes)
 		if signature.ManifestHash != expected {
-			return nil, fmt.Errorf("bundle manifest hash mismatch — manifest may be tampered (expected %s, got %s)", signature.ManifestHash, expected)
+			return nil, fmt.Errorf("bundle manifest hash mismatch, manifest may be tampered (expected %s, got %s)", signature.ManifestHash, expected)
 		}
 	}
 
@@ -280,7 +280,7 @@ func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
 		return fmt.Errorf("invalid current version %q: %w", currentVersion, err)
 	}
 	if bundleMajor != currentMajor {
-		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d) — major version mismatch",
+		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d): major version mismatch",
 			bundle.Version, bundleMajor, currentVersion, currentMajor)
 	}
 	return nil
@@ -322,12 +322,12 @@ func addDirToTar(tw *tar.Writer, srcDir, prefix string) error {
 			return err
 		}
 
-		// Skip the Cagefile itself — it's represented by manifest.json
+		// Skip the Cagefile itself; it's represented by manifest.json.
 		if info.Name() == "Cagefile" && filepath.Dir(path) == srcDir {
 			return nil
 		}
 
-		// Reject symlinks — they could reference files outside the agent directory
+		// Reject symlinks; they could reference files outside the agent directory.
 		linfo, lstatErr := os.Lstat(path)
 		if lstatErr != nil {
 			return fmt.Errorf("stat %s: %w", path, lstatErr)

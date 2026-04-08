@@ -70,7 +70,7 @@ func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
 			continue
 		}
 		name := e.Name()
-		// Sockets are named "<vmID>.sock" — derive the matching tap name.
+		// Sockets are named "<vmID>.sock". Derive the matching tap name.
 		if !strings.HasSuffix(name, ".sock") {
 			continue
 		}
@@ -113,7 +113,7 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		return nil, fmt.Errorf("setting up TAP device %s: %w", tapName, err)
 	}
 
-	// Resolve rootfs — use config path or fall back to assembled rootfs
+	// Use the config rootfs path; assembled rootfs is the fallback.
 	rootfsPath := config.RootfsPath
 	kernelPath := config.KernelPath
 	if kernelPath == "" {
@@ -375,8 +375,8 @@ func (p *FirecrackerProvisioner) allocateIP() string {
 	ipMu.Lock()
 	defer ipMu.Unlock()
 	ipCounter++
-	// Use 172.20.0.0/16 range for cage VMs — avoids conflict with
-	// private ranges denied in scope config.
+	// 172.20.0.0/16 for cage VMs. Avoids conflict with private ranges
+	// denied in scope config.
 	third := ipCounter / 252
 	fourth := (ipCounter % 252) + 2
 	return fmt.Sprintf("172.20.%d.%d", third, fourth)

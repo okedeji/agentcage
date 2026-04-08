@@ -24,9 +24,9 @@ type CoordinatorState struct {
 	TimeLimit      time.Duration                `json:"time_limit"`
 }
 
-// FindingSummary is a compact representation of a finding for the coordinator.
-// The full finding has large evidence payloads — the coordinator only needs
-// metadata to reason about coverage and next steps.
+// FindingSummary is a compact representation of a finding for the
+// coordinator. The full finding has large evidence payloads; the
+// coordinator only needs metadata to reason about coverage.
 type FindingSummary struct {
 	ID         string `json:"id"`
 	Title      string `json:"title"`

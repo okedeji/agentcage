@@ -15,8 +15,8 @@ var SupportedRuntimes = map[string]bool{
 	"static":  true,
 }
 
-// SupportedTools is derived from ToolPackages — the single source of truth
-// for what the base cage rootfs ships.
+// SupportedTools is derived from ToolPackages, the single source of
+// truth for what the base cage rootfs ships.
 var SupportedTools = func() map[string]bool {
 	m := make(map[string]bool, len(ToolPackages))
 	for tool := range ToolPackages {
@@ -95,7 +95,7 @@ func Parse(r io.Reader) (*Manifest, error) {
 		case "packages":
 			for _, pkg := range strings.Fields(value) {
 				if SupportedTools[pkg] {
-					return nil, fmt.Errorf("line %d: %q is already a pre-installed tool — use 'deps %s' instead", lineNum, pkg, pkg)
+					return nil, fmt.Errorf("line %d: %q is already a pre-installed tool, use 'deps %s' instead", lineNum, pkg, pkg)
 				}
 				m.Packages = append(m.Packages, pkg)
 			}
@@ -168,10 +168,10 @@ func (m *Manifest) validate() error {
 	// would let the resolved artifact change between runs and is the entry
 	// point for typosquat / dependency-confusion attacks.
 	//
-	// NOTE: pinning closes the "wrong artifact" class but does not isolate
-	// the install network namespace. Egress isolation for installs is a
-	// separate hardening pass — when added, it should rely on a local
-	// package mirror so the chroot can run with --net=lo.
+	// NOTE: pinning closes the "wrong artifact" class but doesn't
+	// isolate the install network namespace. Egress isolation for
+	// installs is a separate hardening pass; when added, it should
+	// rely on a local package mirror so the chroot can run with --net=lo.
 	for _, p := range m.Packages {
 		if err := validateApkSpec(p); err != nil {
 			return fmt.Errorf("cagefile: %w", err)
@@ -231,9 +231,10 @@ func validateNpmSpec(spec string) error {
 	return nil
 }
 
-// validateGoSpec accepts module paths of the form module@v1.2.3 — go install
-// rejects bare modules anyway, but we check here so the bundle author gets a
-// clear error at pack time instead of a chroot install failure.
+// validateGoSpec accepts module paths of the form module@v1.2.3. go
+// install rejects bare modules anyway; the check here gives the
+// bundle author a clear error at pack time instead of a chroot
+// install failure.
 func validateGoSpec(spec string) error {
 	at := strings.LastIndex(spec, "@")
 	if at <= 0 {

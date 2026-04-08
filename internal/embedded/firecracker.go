@@ -14,9 +14,10 @@ const (
 	kernelVersion      = "6.1"
 )
 
-// FirecrackerDownloader downloads the Firecracker VMM binary and a Linux
-// kernel. Unlike other embedded services, Firecracker is not a long-running
-// subprocess — it's started per-cage by the VM provisioner.
+// FirecrackerDownloader downloads the Firecracker VMM binary and a
+// Linux kernel. Unlike other embedded services, Firecracker is not a
+// long-running subprocess; it's started per-cage by the VM
+// provisioner.
 type FirecrackerDownloader struct {
 	log logr.Logger
 }
@@ -97,7 +98,7 @@ func (f *FirecrackerDownloader) downloadKernel(ctx context.Context) error {
 	return downloadBinary(ctx, url, dest)
 }
 
-// Start is a no-op — Firecracker is started per-cage, not as a daemon.
+// Start is a no-op. Firecracker is started per-cage, not as a daemon.
 func (f *FirecrackerDownloader) Start(_ context.Context) error {
 	return nil
 }

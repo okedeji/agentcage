@@ -22,7 +22,7 @@ func main() {
 	listenAddr := flag.String("listen", ":8080", "proxy listen address")
 	targetAddr := flag.String("target", "", "upstream target address")
 	vulnClass := flag.String("vuln-class", "", "vulnerability class for blocklist selection")
-	llmEndpoint := flag.String("llm-endpoint", "", "external LLM endpoint URL — requests to this host are metered, not inspected")
+	llmEndpoint := flag.String("llm-endpoint", "", "external LLM endpoint URL. Requests to this host are metered, not inspected.")
 	flag.Parse()
 
 	if *targetAddr == "" {
@@ -115,7 +115,7 @@ func main() {
 					logger.Error(fmt.Errorf("missing usage"), "llm response rejected: no usage metadata", "model", llmResp.Model)
 					resp.StatusCode = http.StatusBadGateway
 					resp.Status = "502 Bad Gateway"
-					msg := []byte("LLM response missing 'usage' metadata — gateway must return token counts")
+					msg := []byte("LLM response missing 'usage' metadata. Gateway must return token counts.")
 					resp.Body = io.NopCloser(bytes.NewReader(msg))
 					resp.ContentLength = int64(len(msg))
 					return nil

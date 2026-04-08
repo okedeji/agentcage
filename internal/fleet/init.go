@@ -14,9 +14,9 @@ import (
 func InitPool(pool *PoolManager, hosts []config.HostConfig, validatorRes, discoveryRes, escalationRes CageResources) error {
 	if len(hosts) > 0 {
 		for _, hc := range hosts {
-			// Config hosts are always pinned — they're static infrastructure
-			// managed outside agentcage. Only webhook-provisioned hosts
-			// can be auto-drained and terminated.
+			// Config hosts are always pinned. Static infrastructure
+			// managed outside agentcage; only webhook-provisioned
+			// hosts can be auto-drained and terminated.
 			h := Host{
 				ID:            hostIDFromAddress(hc.Address),
 				Pool:          PoolActive,
@@ -38,9 +38,9 @@ func InitPool(pool *PoolManager, hosts []config.HostConfig, validatorRes, discov
 		return nil
 	}
 
-	// Local mode: single host with system resources.
-	// Reserve 2 vCPUs and 2GB for the control plane (orchestrator,
-	// Temporal, Postgres, NATS, etc.) — the rest is available for cages.
+	// Local mode: single host with system resources. Reserve 2 vCPUs
+	// and 2GB for the control plane (orchestrator, Temporal, Postgres,
+	// NATS); the rest is available for cages.
 	cpus := int32(runtime.NumCPU())
 	memMB := int32(16384) // 16GB default for local dev
 

@@ -37,8 +37,8 @@ func (v *VaultService) Address() string {
 	return "http://localhost:" + vaultPort
 }
 
-// RootToken returns the dev-mode root token baked into `vault server -dev`.
-// Embedded mode only — never exposed to external Vault clients.
+// RootToken returns the dev-mode root token baked into `vault server
+// -dev`. Embedded mode only; never exposed to external Vault clients.
 func (v *VaultService) RootToken() string {
 	return "agentcage-dev-token"
 }
@@ -105,7 +105,7 @@ func (v *VaultService) Start(ctx context.Context) error {
 	bin := filepath.Join(BinDir(), "vault")
 
 	// Dev mode: in-memory storage, auto-unsealed, root token preset.
-	// Data does not persist across restarts — acceptable for local mode.
+	// Data does not persist across restarts; acceptable for local mode.
 	v.proc = newSubprocess("vault", v.log, bin,
 		"server",
 		"-dev",

@@ -166,7 +166,7 @@ func (c *Client) recordAuthFailure(ctx context.Context, status int) {
 
 	if shouldAlert && c.alerter != nil {
 		c.alerter.Notify(ctx, "behavioral", "gateway_auth_failed",
-			fmt.Sprintf("LLM gateway returned HTTP %d for %d consecutive requests — check API key", status, count),
+			fmt.Sprintf("LLM gateway returned HTTP %d for %d consecutive requests, check API key", status, count),
 			"", "", 4, map[string]any{"status": status, "consecutive_failures": count})
 	}
 }

@@ -62,29 +62,30 @@ func CheckFalcoSocket(ctx context.Context, socketPath string) string {
 	return ""
 }
 
-// HostRuntimeConfig is the orchestrator-side input to BuildProvisioner —
-// the resolved binary paths and the operator's opt-in for unisolated mode.
+// HostRuntimeConfig is the orchestrator-side input to BuildProvisioner:
+// resolved binary paths and the operator's opt-in for unisolated mode.
 type HostRuntimeConfig struct {
 	FirecrackerBin  string
 	KernelPath      string
 	AllowUnisolated bool
 }
 
-// BuildProvisioner constructs the VM provisioner used by the cage activity
-// layer. It runs a series of pre-flight checks against the host so that
-// misconfigurations are caught at startup rather than at the first cage
-// provision. Returns the provisioner and whether cages will be kernel-isolated.
+// BuildProvisioner constructs the VM provisioner used by the cage
+// activity layer. It runs pre-flight checks against the host so
+// misconfigurations are caught at startup rather than the first cage
+// provision. Returns the provisioner and whether cages will be
+// kernel-isolated.
 //
-// If Firecracker prerequisites are not met:
-//   - AllowUnisolated=true → fall back to MockProvisioner with a loud warning
-//   - AllowUnisolated=false → return an error so the orchestrator refuses to
-//     start, preventing exploit code from running directly on the host.
+// If Firecracker prerequisites are not met, AllowUnisolated=true
+// falls back to MockProvisioner with a loud warning.
+// AllowUnisolated=false returns an error so the orchestrator refuses
+// to start, preventing exploit code from running directly on the host.
 func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logger) (VMProvisioner, bool, error) {
 	if reason := checkFirecrackerHost(cfg.FirecrackerBin, cfg.KernelPath); reason != "" {
 		if !cfg.AllowUnisolated {
 			return nil, false, fmt.Errorf("firecracker not usable (%s); set cage_runtime.allow_unisolated=true to run without microVM isolation", reason)
 		}
-		log.Info("WARNING: cage isolation disabled — running agents directly on the host",
+		log.Info("WARNING: cage isolation disabled, running agents directly on the host",
 			"reason", reason)
 		return NewMockProvisioner(), false, nil
 	}
@@ -101,7 +102,7 @@ func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logge
 	}, log)
 
 	if err := provisioner.SweepStale(ctx); err != nil {
-		log.Error(err, "sweeping stale firecracker state — continuing")
+		log.Error(err, "sweeping stale firecracker state, continuing")
 	}
 
 	return provisioner, true, nil
@@ -110,9 +111,9 @@ func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logge
 // checkFirecrackerHost verifies that this host can run Firecracker microVMs.
 // Returns an empty string on success or a human-readable reason on failure.
 func checkFirecrackerHost(firecrackerBin, kernelBin string) string {
-	// 1. KVM device must exist AND be openable by this process. Existence
-	//    alone is insufficient — the orchestrator user must be in the kvm
-	//    group (or running as root) for ioctls to succeed.
+	// 1. KVM device must exist AND be openable by this process.
+	//    Existence alone isn't enough; the orchestrator user has to
+	//    be in the kvm group (or root) for ioctls to succeed.
 	f, err := os.OpenFile("/dev/kvm", os.O_RDWR, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -139,9 +140,8 @@ func checkFirecrackerHost(firecrackerBin, kernelBin string) string {
 	return ""
 }
 
-// firecrackerVersion runs `firecracker --version` and returns the trimmed
-// first line of output. Used purely for logging — a probe failure is not
-// fatal.
+// firecrackerVersion runs `firecracker --version` and returns the
+// trimmed first line. Logging only; a probe failure is not fatal.
 func firecrackerVersion(ctx context.Context, bin string) (string, error) {
 	out, err := exec.CommandContext(ctx, bin, "--version").Output()
 	if err != nil {

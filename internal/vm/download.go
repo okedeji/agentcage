@@ -13,9 +13,9 @@ import (
 	"runtime"
 )
 
-// knownChecksums maps asset filenames to their expected SHA-256 hex digests.
-// Populate these when cutting a release. When empty, verification is skipped
-// with a warning — this is acceptable only during development.
+// knownChecksums maps asset filenames to expected SHA-256 hex
+// digests. Populate at release time. When empty, verification is
+// skipped with a warning; only acceptable during development.
 var knownChecksums = map[string]string{
 	// "vmlinux-6.1-arm64":          "sha256-hex-here",
 	// "vmlinux-6.1-amd64":          "sha256-hex-here",
@@ -104,7 +104,7 @@ func verifyChecksum(path string) error {
 	name := filepath.Base(path)
 	expected, ok := knownChecksums[name]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "warning: no checksum for %s — skipping verification (pre-release)\n", name)
+		fmt.Fprintf(os.Stderr, "warning: no checksum for %s, skipping verification (pre-release)\n", name)
 		return nil
 	}
 

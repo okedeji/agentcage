@@ -118,8 +118,8 @@ func (t *otelTimer) Record(d time.Duration) {
 	t.t.Record(context.Background(), d.Seconds(), metric.WithAttributes(t.attrs...))
 }
 
-// noop fallbacks used when instrument creation fails (extremely rare —
-// only happens on duplicate registration with conflicting types).
+// noop fallbacks used when instrument creation fails. Extremely
+// rare; only happens on duplicate registration with conflicting types.
 
 type noopCounter struct{}
 

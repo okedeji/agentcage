@@ -18,9 +18,14 @@ func main() {
 	cmd := os.Args[1]
 	args := os.Args[2:]
 
-	// On macOS, init/stop are handled by the platform layer (VM lifecycle).
-	// Commands that talk to gRPC are proxied to the VM.
-	// pack, version, help always run locally.
+	// On darwin the orchestrator runs inside a VM, so commands that
+	// need the gRPC server get proxied through. On linux this is a
+	// no-op and we fall through to the local handler.
+	if isProxyCommand(cmd) {
+		agentgrpc.Proxy(cmd, args)
+		return
+	}
+
 	switch cmd {
 	case "init":
 		platformInit(args)
@@ -28,48 +33,40 @@ func main() {
 		platformStop(args)
 	case "pack":
 		cmdPack(args)
+	case "run":
+		cmdRun(args)
+	case "test":
+		cmdTest(args)
+	case "status":
+		cmdStatus(args)
+	case "findings":
+		cmdFindings(args)
+	case "report":
+		cmdReport(args)
+	case "interventions":
+		cmdInterventions(args)
+	case "resolve":
+		cmdResolve(args)
+	case "fleet":
+		cmdFleet(args)
+	case "db":
+		cmdDB(args)
+	case "logs":
+		cmdLogs(args)
+	case "proof":
+		cmdProof(args)
+	case "audit":
+		cmdAudit(args)
+	case "falco":
+		cmdFalco(args)
 	case "version":
 		fmt.Printf("agentcage %s\n", version)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
-		if isProxyCommand(cmd) {
-			agentgrpc.Proxy(cmd, args)
-			return
-		}
-
-		switch cmd {
-		case "run":
-			cmdRun(args)
-		case "test":
-			cmdTest(args)
-		case "status":
-			cmdStatus(args)
-		case "findings":
-			cmdFindings(args)
-		case "report":
-			cmdReport(args)
-		case "interventions":
-			cmdInterventions(args)
-		case "resolve":
-			cmdResolve(args)
-		case "fleet":
-			cmdFleet(args)
-		case "db":
-			cmdDB(args)
-		case "logs":
-			cmdLogs(args)
-		case "proof":
-			cmdProof(args)
-		case "audit":
-			cmdAudit(args)
-		case "falco":
-			cmdFalco(args)
-		default:
-			fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", cmd)
-			printUsage()
-			os.Exit(1)
-		}
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", cmd)
+		printUsage()
+		os.Exit(1)
 	}
 }
 
@@ -96,10 +93,10 @@ Observe:
 Operate:
   interventions     List pending interventions
   resolve           Resolve an intervention (resume/kill/allow/block)
-  proof             Manage validation rules for confirming findings (add, list, validate)
+  proof             Manage validation rules (add, list, validate)
   fleet             Show fleet status (hosts, pools, capacity)
   db                Open psql shell or show connection string
-  audit verify      Verify audit chain integrity for a cage
+  audit             Manage audit chain (verify)
   falco             Manage Falco rules (export-rules)
 
 Info:

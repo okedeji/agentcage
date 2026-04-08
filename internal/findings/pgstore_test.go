@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewPGFindingStore(t *testing.T) {
-	store := NewPGFindingStore(nil)
+func TestNewPGStore(t *testing.T) {
+	store := NewPGStore(nil)
 	require.NotNil(t, store)
 	assert.Nil(t, store.db)
 }

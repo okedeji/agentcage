@@ -12,11 +12,11 @@ import (
 )
 
 // WebhookProvisioner implements HostProvisioner by calling an external
-// webhook service. This keeps agentcage free of cloud provider SDKs —
-// the operator deploys a small webhook server (Lambda, Cloud Function,
-// or custom service) that translates provision/drain requests into
-// their cloud API calls. Reference implementations for AWS ASG, Azure
-// VMSS, and GCP MIG are provided in deploy/extensions/.
+// webhook service. Keeps agentcage free of cloud provider SDKs: the
+// operator deploys a small webhook server (Lambda, Cloud Function, or
+// custom service) that translates provision/drain requests into cloud
+// API calls. Reference implementations for AWS ASG, Azure VMSS, and
+// GCP MIG live in deploy/extensions/.
 type WebhookProvisioner struct {
 	endpoint   string
 	apiKey     string

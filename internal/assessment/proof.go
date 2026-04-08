@@ -185,7 +185,7 @@ func validateProof(pb *Proof) error {
 	}
 	if pb.Payload.Method != "" {
 		if _, ok := allowedHTTPMethods[strings.ToUpper(pb.Payload.Method)]; !ok {
-			// Templated methods (e.g. "{{ candidate.method }}") are allowed —
+			// Templated methods like "{{ candidate.method }}" are
 			// resolved at validation time. Reject only literal bad verbs.
 			if !strings.Contains(pb.Payload.Method, "{{") {
 				return fmt.Errorf("unknown payload.method %q: %w", pb.Payload.Method, ErrProofInvalid)

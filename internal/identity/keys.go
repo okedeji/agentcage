@@ -18,10 +18,10 @@ func NewVaultKeyResolver(fetcher SecretFetcher, token *VaultToken, basePath stri
 
 		path := basePath + "/" + keyVersion
 
-		// KeyResolver's function signature doesn't accept a context.
-		// Vault calls here are infrequent (once per key version, then cached)
-		// and non-cancellable by design — chain verification must complete
-		// regardless of the caller's context state.
+		// KeyResolver's signature doesn't accept a context. Vault
+		// calls here are infrequent (once per key version, then
+		// cached) and non-cancellable by design: chain verification
+		// must complete regardless of the caller's context state.
 		key, err := fetcher.Fetch(context.Background(), token, path)
 		if err != nil {
 			return nil, fmt.Errorf("fetching signing key version %s from Vault: %w", keyVersion, err)

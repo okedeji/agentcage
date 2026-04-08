@@ -76,7 +76,7 @@ func SanitizeFinding(f *Finding, limits *SanitizeLimits) {
 	}
 	if int64(len(f.Evidence.Screenshot)) > maxScreenshot {
 		f.Description += fmt.Sprintf(
-			"\n\n[warning: screenshot dropped — %d bytes exceeds %d byte limit]",
+			"\n\n[warning: screenshot dropped, %d bytes exceeds %d byte limit]",
 			len(f.Evidence.Screenshot), maxScreenshot,
 		)
 		f.Evidence.Screenshot = nil

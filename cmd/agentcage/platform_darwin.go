@@ -38,7 +38,8 @@ func platformInit(args []string) {
 		fmt.Fprintln(os.Stderr, "warning: --log-format is ignored on macOS (VM uses its own log config)")
 	}
 
-	// Resolve agentcage home for VirtioFS share
+	// VM reads from this directory via VirtioFS, so it has to exist
+	// before we boot.
 	home := os.Getenv("AGENTCAGE_HOME")
 	if home == "" {
 		userHome, err := os.UserHomeDir()
@@ -53,7 +54,6 @@ func platformInit(args []string) {
 		os.Exit(1)
 	}
 
-	// Bail out if another instance is already running
 	pidFile := filepath.Join(home, "run", "agentcage.pid")
 	if isProcessRunning(pidFile) {
 		fmt.Fprintln(os.Stderr, "agentcage is already running. Run 'agentcage stop' first.")
@@ -63,16 +63,16 @@ func platformInit(args []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Printf("Initializing agentcage v%s (macOS — booting Linux VM)...\n\n", version)
+	fmt.Printf("Initializing agentcage v%s (macOS, booting Linux VM)...\n\n", version)
 
-	// Download VM assets
 	fmt.Println("Downloading VM assets...")
 	if err := vm.EnsureAssets(ctx, version); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Copy config override into shared directory so the VM can read it
+	// VM can't read host paths, so the config has to land in the
+	// shared directory before boot.
 	if *configFile != "" {
 		data, err := os.ReadFile(*configFile)
 		if err != nil {
@@ -87,7 +87,6 @@ func platformInit(args []string) {
 		fmt.Printf("Config copied to %s (shared with VM)\n", dest)
 	}
 
-	// Boot VM
 	fmt.Println("Booting Linux VM...")
 	cfg := vm.DefaultConfig(home)
 	machine, err := vm.Boot(ctx, cfg)
@@ -96,8 +95,8 @@ func platformInit(args []string) {
 		os.Exit(1)
 	}
 
-	// fatalf shuts down the VM and cleans up the PID file before exiting.
-	// os.Exit skips defers, so early-exit paths must call this directly.
+	// os.Exit skips defers, so any error path that needs to tear the
+	// VM down and remove the PID file has to do it explicitly here.
 	fatalf := func(format string, args ...any) {
 		fmt.Fprintf(os.Stderr, format, args...)
 		_ = os.Remove(pidFile)
@@ -105,23 +104,23 @@ func platformInit(args []string) {
 		os.Exit(1)
 	}
 
-	// Write PID file so `agentcage stop` can find the host process
+	// `agentcage stop` reads this to find the host process.
 	_ = os.MkdirAll(filepath.Dir(pidFile), 0755)
 	_ = os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
 	defer func() { _ = os.Remove(pidFile) }()
 
-	// Forward localhost ports to the VM so CLI commands and users
-	// connect to localhost without knowing the VM's DHCP-assigned IP.
+	// VM gets a DHCP IP that changes between boots, so we present a
+	// stable localhost interface for the CLI and operators.
 	vmIP := machine.IP()
 	if vmIP == "" {
 		fatalf("agentcage init: VM booted but reported no IP address\n")
 	}
 
-	// Bind proxy listeners eagerly so we fail fast on port conflicts
-	// instead of timing out in waitForGRPCReady with a misleading error.
+	// Bind eagerly so a port conflict fails fast with a clear error
+	// instead of timing out in waitForGRPCReady with a misleading one.
 	grpcLn, err := net.Listen("tcp", "127.0.0.1:9090")
 	if err != nil {
-		fatalf("agentcage init: port 9090 already in use — is another agentcage running?\n  Check: lsof -i :9090\n")
+		fatalf("agentcage init: port 9090 already in use. Is another agentcage running?\n  Check: lsof -i :9090\n")
 	}
 	pgLn, err := net.Listen("tcp", "127.0.0.1:15432")
 	if err != nil {
@@ -142,13 +141,14 @@ func platformInit(args []string) {
 		}
 	}()
 
-	// Wait for gRPC server inside VM to be fully ready (not just TCP-open)
+	// Real RPC, not a TCP connect check. The TCP socket opens long
+	// before the gRPC server starts dispatching.
 	fmt.Println("Waiting for services inside VM to be ready...")
 	readyCtx, readyCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer readyCancel()
 	if err := agentgrpc.WaitForReady(readyCtx, machine.GRPCAddr()); err != nil {
 		if ctx.Err() != nil {
-			fatalf("agentcage init: proxy failed during startup — check port conflicts above\n")
+			fatalf("agentcage init: proxy failed during startup, check port conflicts above\n")
 		}
 		fatalf("agentcage init: VM services did not become ready: %v\n", err)
 	}
@@ -160,7 +160,6 @@ func platformInit(args []string) {
 	fmt.Printf("  Data:     %s\n\n", home)
 	fmt.Println("Press Ctrl+C to stop.")
 
-	// Wait for shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -197,19 +196,17 @@ func platformInit(args []string) {
 func platformStop(_ []string) {
 	pidFile := filepath.Join(embedded.RunDir(), "agentcage.pid")
 
-	// Try graceful shutdown via gRPC first
-	if stopped := stopViaGRPC(); stopped {
+	if stopViaGRPC() {
 		_ = os.Remove(pidFile)
 		return
 	}
 
-	// gRPC unreachable — fall back to PID file signal
 	fmt.Println("gRPC unreachable, falling back to process signal...")
 	stopViaPID(pidFile)
 }
 
-// stopViaGRPC sends a Stop RPC and waits for the server to become
-// unreachable. Returns true if shutdown was confirmed.
+// stopViaGRPC sends Stop and waits for the server to become
+// unreachable. Returns true only if shutdown is confirmed.
 func stopViaGRPC() bool {
 	conn, err := grpc.NewClient("localhost:9090",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -255,8 +252,8 @@ func stopViaGRPC() bool {
 	return false
 }
 
-// stopViaPID reads the PID file, sends SIGTERM, waits, then escalates
-// to SIGKILL if the process does not exit in time.
+// stopViaPID reads the PID file, sends SIGTERM, waits 10s, then
+// escalates to SIGKILL.
 func stopViaPID(pidFile string) {
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
@@ -314,8 +311,8 @@ func isProxyCommand(cmd string) bool {
 	return false
 }
 
-// tcpProxyFromListener proxies connections from an already-bound listener
-// to targetAddr. It closes the listener when ctx is cancelled.
+// tcpProxyFromListener forwards connections from an already-bound
+// listener to targetAddr. Closes the listener when ctx is cancelled.
 func tcpProxyFromListener(ctx context.Context, ln net.Listener, targetAddr string) error {
 	go func() {
 		<-ctx.Done()

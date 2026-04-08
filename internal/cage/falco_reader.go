@@ -33,24 +33,24 @@ type falcoJSONAlert struct {
 	Fields   map[string]string `json:"output_fields"`
 }
 
-// reconnectMaxBackoff caps the per-cage Falco reconnect backoff. Falco rarely
-// restarts mid-cage in practice — most failures are short blips — so the cap
-// is small enough to recover quickly without hot-spinning when Falco is down
-// for an extended period.
+// reconnectMaxBackoff caps the per-cage Falco reconnect backoff.
+// Falco rarely restarts mid-cage in practice; most failures are short
+// blips. The cap is small enough to recover quickly without
+// hot-spinning when Falco is down for an extended period.
 const (
 	reconnectInitialBackoff = 500 * time.Millisecond
 	reconnectMaxBackoff     = 30 * time.Second
 )
 
-// Stream connects to the Falco socket and sends parsed alerts to the channel.
-// On disconnect it reconnects with exponential backoff until the cage's
-// context is cancelled — losing alerts mid-cage would be a silent
-// degradation of the behavioral tripwire layer.
+// Stream connects to the Falco socket and sends parsed alerts to the
+// returned channel. On disconnect it reconnects with exponential
+// backoff until the cage's context is cancelled. Losing alerts
+// mid-cage would silently degrade the behavioral tripwire layer.
 //
-// Returns the channel immediately. The first connect happens inside the
-// goroutine; an early connection failure is logged and retried, never
-// surfaced to the caller, since the cage workflow has no useful action to
-// take other than retry anyway.
+// Returns the channel immediately. The first connect happens inside
+// the goroutine; an early connection failure is logged and retried,
+// never surfaced to the caller, since the cage workflow has no
+// useful action to take other than retry.
 func (r *FalcoAlertReader) Stream(ctx context.Context, cageID string) (<-chan AlertEvent, error) {
 	ch := make(chan AlertEvent, 16)
 

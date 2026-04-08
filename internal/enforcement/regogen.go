@@ -8,10 +8,9 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 )
 
-// GenerateRegoModules produces Rego policy source files from the unified config.
-// The returned map is keyed by virtual filename (e.g. "scope.rego") with Rego
-// source as the value. These are loaded directly into the OPA engine — no files
-// on disk.
+// GenerateRegoModules produces Rego policy source from the unified
+// config, keyed by virtual filename. Loaded directly into the OPA
+// engine; no files on disk.
 func GenerateRegoModules(cfg *config.Config) map[string]string {
 	modules := make(map[string]string)
 

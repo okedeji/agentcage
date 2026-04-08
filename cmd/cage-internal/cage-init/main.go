@@ -9,7 +9,8 @@ import (
 	"syscall"
 )
 
-// CageEnv mirrors cage.CageEnv — the config injected by the rootfs assembler.
+// CageEnv mirrors cage.Env. The config injected by the rootfs
+// assembler at /etc/agentcage/cage.json.
 type CageEnv struct {
 	CageID       string   `json:"cage_id"`
 	AssessmentID string   `json:"assessment_id"`
@@ -87,9 +88,9 @@ func main() {
 		setEnv("AGENTCAGE_OBJECTIVE", env.Objective)
 	}
 
-	// 6. Exec the agent entrypoint
-	// This replaces PID 1 with the agent process. When the agent exits,
-	// the VM has no init and shuts down — which is exactly what we want.
+	// 6. Exec the agent entrypoint.
+	// This replaces PID 1 with the agent process. When the agent
+	// exits, the VM has no init and shuts down, which is what we want.
 	fmt.Printf("cage-init: exec agent: %s\n", env.Entrypoint)
 
 	parts := strings.Fields(env.Entrypoint)
@@ -105,7 +106,7 @@ func main() {
 	agentArgs := parts
 	agentArgs[0] = agentBin
 
-	// Don't exec — keep cage-init as PID 1 so we can reap zombies
+	// Don't exec; keep cage-init as PID 1 so we can reap zombies
 	// and wait for the agent to exit.
 	agentCmd := exec.Command(agentBin, parts[1:]...)
 	agentCmd.Stdout = os.Stdout

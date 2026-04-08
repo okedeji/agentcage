@@ -74,10 +74,10 @@ type FleetPool interface {
 	MoveHost(hostID string, toPool int) error
 }
 
-// ActivityImpl provides concrete implementations of all cage lifecycle
-// activities. All dependency fields are optional — nil dependencies are
-// handled gracefully (logged and skipped) to support local mode where
-// SPIRE, Vault, or Falco may not be available.
+// ActivityImpl provides concrete implementations of all cage
+// lifecycle activities. Every dependency field is optional; a nil
+// dependency is logged and skipped so local mode works without SPIRE,
+// Vault, or Falco.
 type ActivityImpl struct {
 	provisioner   VMProvisioner
 	rootfs        *RootfsBuilder
@@ -159,7 +159,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 
 func (a *ActivityImpl) ValidateScope(ctx context.Context, config Config) error {
 	if a.validator == nil {
-		a.log.V(1).Info("scope validation skipped — no validator configured")
+		a.log.V(1).Info("scope validation skipped, no validator configured")
 		return nil
 	}
 	return a.validator.ValidateScope(ctx, config.Scope)
@@ -167,7 +167,7 @@ func (a *ActivityImpl) ValidateScope(ctx context.Context, config Config) error {
 
 func (a *ActivityImpl) ValidateCageType(ctx context.Context, config Config) error {
 	if a.validator == nil {
-		a.log.V(1).Info("cage type validation skipped — no validator configured")
+		a.log.V(1).Info("cage type validation skipped, no validator configured")
 		return nil
 	}
 	return a.validator.ValidateCageConfig(ctx, config)
@@ -175,7 +175,7 @@ func (a *ActivityImpl) ValidateCageType(ctx context.Context, config Config) erro
 
 func (a *ActivityImpl) IssueIdentity(ctx context.Context, cageID string, ttl time.Duration) (*identity.SVID, error) {
 	if a.identity == nil {
-		a.log.V(1).Info("identity issuance skipped — no SPIRE configured", "cage_id", cageID)
+		a.log.V(1).Info("identity issuance skipped, no SPIRE configured", "cage_id", cageID)
 		return &identity.SVID{ID: "dev-" + cageID, SpiffeID: "spiffe://agentcage.local/cage/" + cageID, CageID: cageID}, nil
 	}
 	svid, err := a.identity.Issue(ctx, cageID, ttl)
@@ -188,7 +188,7 @@ func (a *ActivityImpl) IssueIdentity(ctx context.Context, cageID string, ttl tim
 
 func (a *ActivityImpl) FetchSecrets(ctx context.Context, svid *identity.SVID, assessmentID string) (*identity.VaultToken, error) {
 	if a.secrets == nil {
-		a.log.V(1).Info("secret fetch skipped — no Vault configured", "cage_id", svid.CageID)
+		a.log.V(1).Info("secret fetch skipped, no Vault configured", "cage_id", svid.CageID)
 		return &identity.VaultToken{CageID: svid.CageID}, nil
 	}
 	token, err := a.secrets.Authenticate(ctx, svid)
@@ -271,7 +271,7 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 
 func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, scope Scope, extras []string) error {
 	if a.network == nil {
-		a.log.V(1).Info("network policy skipped — no enforcer configured", "cage_id", cageID)
+		a.log.V(1).Info("network policy skipped, no enforcer configured", "cage_id", cageID)
 		return nil
 	}
 	if err := a.network.Apply(ctx, cageID, scope, extras); err != nil {
@@ -305,11 +305,11 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Co
 		var err error
 		alertCh, err = a.falcoReader.Stream(ctx, cageID)
 		if err != nil {
-			a.log.Error(err, "Falco alert stream unavailable — monitoring without behavioral alerts", "cage_id", cageID)
+			a.log.Error(err, "Falco alert stream unavailable, monitoring without behavioral alerts", "cage_id", cageID)
 		}
 	}
 	if alertCh == nil {
-		// No Falco — use a nil channel (never receives, doesn't block select)
+		// No Falco. Empty channel never receives, doesn't block select.
 		alertCh = make(chan AlertEvent)
 	}
 
@@ -359,7 +359,7 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Co
 // Returns the tripwire policy that the workflow should act on.
 func (a *ActivityImpl) EvaluateAlert(ctx context.Context, cageType Type, assessmentID string, alert AlertEvent) (TripwirePolicy, error) {
 	if a.alertHandler == nil {
-		a.log.V(1).Info("alert handling skipped — no handler configured", "cage_id", alert.CageID, "rule", alert.RuleName)
+		a.log.V(1).Info("alert handling skipped, no handler configured", "cage_id", alert.CageID, "rule", alert.RuleName)
 		return TripwireLogAndContinue, nil
 	}
 	policy, err := a.alertHandler.HandleAlert(ctx, cageType, alert)

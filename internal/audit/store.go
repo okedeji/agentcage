@@ -2,10 +2,9 @@ package audit
 
 import "context"
 
-// Store persists audit entries and digests. Implementations must ensure
-// that AppendEntry is idempotent on the entry ID — duplicate appends
-// (from Temporal activity retries) must succeed without creating
-// duplicate entries.
+// Store persists audit entries and digests. AppendEntry must be
+// idempotent on the entry ID. Temporal activity retries will call it
+// with the same entry, and a duplicate insert would break the chain.
 type Store interface {
 	AppendEntry(ctx context.Context, entry Entry) error
 	GetEntries(ctx context.Context, cageID string) ([]Entry, error)

@@ -82,7 +82,7 @@ func (f *FalcoService) Start(ctx context.Context) error {
 	)
 
 	if err := f.proc.start(ctx); err != nil {
-		f.log.Info("falco failed to start — syscall monitoring unavailable (may require root)", "error", err)
+		f.log.Info("falco failed to start, syscall monitoring unavailable (may require root)", "error", err)
 		// Non-fatal: agentcage can run without Falco in local mode
 		return nil
 	}

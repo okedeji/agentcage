@@ -27,7 +27,7 @@ func (s *Service) GetFleetStatus(_ context.Context) (FleetStatus, error) {
 	return s.pool.GetFleetStatus(), nil
 }
 
-var ErrHostPinned = fmt.Errorf("host is pinned (likely control plane) — use force to drain")
+var ErrHostPinned = fmt.Errorf("host is pinned (likely control plane); use force to drain")
 
 func (s *Service) DrainHost(ctx context.Context, hostID string, reason string, force bool) error {
 	host, err := s.pool.GetHost(hostID)

@@ -11,8 +11,8 @@ import (
 
 const natsPort = 14222
 
-// NATSService runs NATS with JetStream in-process — no subprocess, no binary
-// download. This is the lightest embedded service.
+// NATSService runs NATS with JetStream in-process: no subprocess, no
+// binary download. The lightest embedded service.
 type NATSService struct {
 	srv *server.Server
 	log logr.Logger
@@ -30,7 +30,7 @@ func (n *NATSService) URL() string {
 }
 
 func (n *NATSService) Download(_ context.Context) error {
-	// NATS runs in-process as a Go library — nothing to download.
+	// NATS runs in-process as a Go library. Nothing to download.
 	return nil
 }
 

@@ -98,7 +98,7 @@ func (p *PostgresService) Download(ctx context.Context) error {
 
 	archivePath := filepath.Join(BinDir(), "postgres-"+postgresVersion+".jar")
 	if err := downloadBinary(ctx, url, archivePath); err != nil {
-		return fmt.Errorf("downloading postgres: %w — install PostgreSQL %s or provide infrastructure.postgres.url in config", err, postgresMajorVersion)
+		return fmt.Errorf("downloading postgres: %w. Install PostgreSQL %s or set infrastructure.postgres.url in config", err, postgresMajorVersion)
 	}
 
 	if err := extractPostgresBinaries(archivePath, pgDir); err != nil {
@@ -151,7 +151,7 @@ func (p *PostgresService) Start(ctx context.Context) error {
 			return fmt.Errorf("initdb: %w\n%s", err, out)
 		}
 
-		// Configure authentication — scram-sha-256 for all connections
+		// scram-sha-256 for all connections.
 		hbaPath := filepath.Join(pgData, "pg_hba.conf")
 		hba := "local all all scram-sha-256\nhost all all 127.0.0.1/32 scram-sha-256\nhost all all ::1/128 scram-sha-256\n"
 		if err := os.WriteFile(hbaPath, []byte(hba), 0600); err != nil {

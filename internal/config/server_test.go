@@ -52,14 +52,14 @@ func testBaseConfig() *Config {
 
 func TestGetConfig(t *testing.T) {
 	base := testBaseConfig()
-	srv := NewConfigServer(base)
+	srv := NewServer(base)
 
 	got := srv.GetConfig(context.Background())
 	assert.Equal(t, base, got)
 }
 
 func TestGetValue_KnownPath(t *testing.T) {
-	srv := NewConfigServer(testBaseConfig())
+	srv := NewServer(testBaseConfig())
 
 	val, err := srv.GetValue(context.Background(), "cages.validator.max_vcpus")
 	require.NoError(t, err)
@@ -67,7 +67,7 @@ func TestGetValue_KnownPath(t *testing.T) {
 }
 
 func TestGetValue_TopLevel(t *testing.T) {
-	srv := NewConfigServer(testBaseConfig())
+	srv := NewServer(testBaseConfig())
 
 	val, err := srv.GetValue(context.Background(), "llm.endpoint")
 	require.NoError(t, err)
@@ -75,7 +75,7 @@ func TestGetValue_TopLevel(t *testing.T) {
 }
 
 func TestGetValue_UnknownPath(t *testing.T) {
-	srv := NewConfigServer(testBaseConfig())
+	srv := NewServer(testBaseConfig())
 
 	_, err := srv.GetValue(context.Background(), "cages.nonexistent.max_vcpus")
 	require.Error(t, err)
@@ -83,7 +83,7 @@ func TestGetValue_UnknownPath(t *testing.T) {
 }
 
 func TestUpdateValue(t *testing.T) {
-	srv := NewConfigServer(testBaseConfig())
+	srv := NewServer(testBaseConfig())
 	ctx := context.Background()
 
 	err := srv.UpdateValue(ctx, "llm.endpoint", "https://api.prod.com/v1")
@@ -95,7 +95,7 @@ func TestUpdateValue(t *testing.T) {
 }
 
 func TestUpdateValue_PreservesOtherFields(t *testing.T) {
-	srv := NewConfigServer(testBaseConfig())
+	srv := NewServer(testBaseConfig())
 	ctx := context.Background()
 
 	err := srv.UpdateValue(ctx, "llm.endpoint", "https://api.prod.com/v1")
@@ -106,7 +106,7 @@ func TestUpdateValue_PreservesOtherFields(t *testing.T) {
 }
 
 func TestResetConfig(t *testing.T) {
-	srv := NewConfigServer(testBaseConfig())
+	srv := NewServer(testBaseConfig())
 	ctx := context.Background()
 
 	err := srv.UpdateValue(ctx, "llm.endpoint", "https://api.prod.com/v1")
@@ -121,7 +121,7 @@ func TestResetConfig(t *testing.T) {
 }
 
 func TestConcurrentAccess(t *testing.T) {
-	srv := NewConfigServer(testBaseConfig())
+	srv := NewServer(testBaseConfig())
 	ctx := context.Background()
 
 	var wg sync.WaitGroup

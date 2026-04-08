@@ -28,8 +28,8 @@ type OPAEngine struct {
 }
 
 // NewOPAEngine loads Rego policy files from a directory on disk.
-// Kept for backward compatibility — prefer NewOPAEngineFromModules with
-// generated policies.
+// Kept for backward compatibility. Prefer NewOPAEngineFromModules
+// with policies generated from config.
 func NewOPAEngine(policyDir string) (*OPAEngine, error) {
 	modules, err := loadRegoFiles(policyDir)
 	if err != nil {

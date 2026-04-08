@@ -223,10 +223,9 @@ func (a *ActivityImpl) PlanNextActions(ctx context.Context, state CoordinatorSta
 	return decision, nil
 }
 
-// LookupProof returns the first available proof for a vulnerability class.
-// Returns nil (without error) if no proof exists — the workflow handles
-// the missing-proof case by leaving the finding as a candidate for human
-// review.
+// LookupProof returns the first available proof for a vuln class.
+// Returns nil, nil if no proof exists; the workflow handles the
+// missing case by leaving the finding as a candidate for review.
 func (a *ActivityImpl) LookupProof(_ context.Context, vulnClass string) (*Proof, error) {
 	if a.proofs == nil {
 		return nil, nil
@@ -236,7 +235,7 @@ func (a *ActivityImpl) LookupProof(_ context.Context, vulnClass string) (*Proof,
 		a.log.V(1).Info("no proof found for vuln class", "vuln_class", vulnClass)
 		return nil, nil
 	}
-	// Pick the first proof — future improvement: select by validation_type
+	// First proof for now. Could later select by validation_type
 	// based on candidate evidence.
 	a.log.V(1).Info("proof selected", "vuln_class", vulnClass, "validation_type", available[0].ValidationType)
 	return available[0], nil

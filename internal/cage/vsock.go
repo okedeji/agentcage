@@ -36,9 +36,9 @@ func NewVsockCollector(logger logr.Logger, sink LogSink) *VsockCollector {
 func (c *VsockCollector) CollectFromCage(ctx context.Context, cageID string, reader io.Reader) error {
 	scanner := bufio.NewScanner(reader)
 
-	// 64KB max line size — structured JSON logs from cage processes
-	// can include request/response evidence that exceeds the default 64KB
-	// bufio limit, but anything beyond 64KB is likely malformed.
+	// 64KB max line size. Structured JSON logs from cage processes
+	// can include request/response evidence; anything beyond 64KB is
+	// almost certainly malformed.
 	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024)
 
 	for scanner.Scan() {

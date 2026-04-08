@@ -31,8 +31,8 @@ const (
 	DefaultMaxChainDepth   = int32(3)
 	DefaultMaxIterations   = int32(20)
 
-	// MinValidatorWait is the floor for per-finding validator wait time —
-	// even a 5-second proof needs cage boot + teardown overhead.
+	// MinValidatorWait is the floor for per-finding validator wait time.
+	// Even a 5-second proof needs cage boot + teardown overhead.
 	MinValidatorWait = 60 * time.Second
 	// ValidatorWaitBuffer is added to the proof's MaxDurationSeconds to
 	// cover cage boot, payload proxy startup, and result reporting.
@@ -266,7 +266,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		result.FinalStatus = StatusRejected
 	}
 
-	// Best-effort fleet notification — failure should not fail the assessment
+	// Best-effort fleet notification. Failure should not fail the assessment.
 	_ = workflow.ExecuteActivity(
 		withActivityTimeout(ctx, TimeoutUpdateStatus),
 		"NotifyFleetAssessmentComplete", input.AssessmentID,
@@ -306,8 +306,8 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 		cageCfg.Resources = tc.Resources
 	}
 	if cfg.Guidance != nil {
-		// Guidance is read-only context the agent receives at startup.
-		// JSON encode for now — the agent will deserialize as needed.
+		// Guidance is read-only context the agent gets at startup.
+		// JSON for now; the agent deserializes as needed.
 		if data, err := json.Marshal(cfg.Guidance); err == nil {
 			cageCfg.InputContext = data
 		}
@@ -479,7 +479,7 @@ func validateFindings(
 			return validatedCount, cagesSpawned, err
 		}
 		if proof == nil {
-			// Operator skipped or timed out — leave findings as candidates.
+			// Operator skipped or timed out. Leave findings as candidates.
 			continue
 		}
 
@@ -579,8 +579,8 @@ func waitForProofGap(ctx workflow.Context, interventionID string) *intervention.
 		if timedOut {
 			return nil
 		}
-		// Multiple proof_gap interventions can be in flight serially within
-		// a single assessment — make sure we drain the right one.
+		// Multiple proof_gap interventions can be in flight serially.
+		// Drain the matching one.
 		if signal.InterventionID == interventionID {
 			return &signal
 		}
@@ -667,9 +667,9 @@ func retestFindings(
 	maxWait := MinValidatorWait
 
 	for _, adj := range adjustments {
-		// Load the real finding so the validator cage receives the correct
-		// endpoint, vuln class, and parent linkage — never spawn a retest
-		// against an empty Finding shell.
+		// Load the real finding so the validator cage gets the right
+		// endpoint, vuln class, and parent linkage. Never spawn a
+		// retest against an empty Finding shell.
 		loadCtx := withActivityTimeout(ctx, TimeoutGetFindings)
 		var f findings.Finding
 		if err := workflow.ExecuteActivity(loadCtx, "GetFinding", adj.FindingID).Get(ctx, &f); err != nil {

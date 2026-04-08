@@ -27,10 +27,10 @@ type JWTSource interface {
 	Close() error
 }
 
-// VaultClient implements SecretFetcher using HashiCorp Vault's HTTP API.
-// The embedded *vaultapi.Client is the template — every per-cage call clones
-// it so SetToken does not race across goroutines. Exactly one of jwtSource
-// (production JWT-SVID auth) or staticToken (embedded dev mode) is set.
+// VaultClient implements SecretFetcher using HashiCorp Vault's HTTP
+// API. The embedded *vaultapi.Client is a template; every per-cage
+// call clones it so SetToken doesn't race across goroutines. Exactly
+// one of jwtSource (production) or staticToken (dev) is set.
 type VaultClient struct {
 	template    *vaultapi.Client
 	authPath    string
@@ -51,13 +51,13 @@ type VaultJWTConfig struct {
 	Audience  string      // SPIFFE audience claim; defaults to "vault"
 }
 
-// VaultTokenConfig configures a Vault client that uses a fixed root or
-// service token. This is the embedded dev-mode path: `vault server -dev`
-// emits a known token, the orchestrator passes it through to every cage,
-// and Authenticate becomes a no-op.
+// VaultTokenConfig configures a Vault client that uses a fixed root
+// or service token. The embedded dev-mode path: `vault server -dev`
+// emits a known token, the orchestrator hands it to every cage, and
+// Authenticate becomes a no-op.
 //
-// Never use this against production Vault. There is no per-cage scoping —
-// every cage gets the same token with the same policies.
+// Never use this against production Vault. Every cage gets the same
+// token with the same policies.
 type VaultTokenConfig struct {
 	Address string
 	TLS     *tls.Config
@@ -151,16 +151,16 @@ func (v *VaultClient) Health(ctx context.Context) error {
 	return nil
 }
 
-// cloneClient returns a per-call copy of the underlying Vault client. The
-// upstream Clone() method shares Address, TLS, and HTTP transport, but each
-// clone has its own token slot — so SetToken on one goroutine does not leak
-// into another.
+// cloneClient returns a per-call copy of the underlying Vault client.
+// Clone() shares Address, TLS, and HTTP transport, but each clone has
+// its own token slot, so SetToken on one goroutine doesn't leak into
+// another.
 func (v *VaultClient) cloneClient() *vaultapi.Client {
 	c, err := v.template.Clone()
 	if err != nil {
-		// Clone() only fails on programmer error (nil client). Panic in
-		// tests, but in production return the template — the worst case is
-		// the original SetToken race we are trying to fix, not a crash.
+		// Clone() only fails on programmer error (nil client). Return
+		// the template instead of crashing; worst case is the
+		// SetToken race we're trying to fix.
 		return v.template
 	}
 	return c

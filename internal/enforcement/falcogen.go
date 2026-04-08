@@ -26,12 +26,10 @@ type GeneratedTripwire struct {
 	DefaultAction TripwirePolicy
 }
 
-// detectConditions maps human-readable detect strings from the config to
-// Falco condition syntax. agentcage owns this mapping — the user writes
-// "root shell spawn", agentcage translates to Falco syntax.
-// detectConditions maps rule names (matching config keys) to Falco detection
-// conditions. Users reference these by name in the monitoring config and set
-// the action — the detection logic is locked.
+// detectConditions maps rule names (the keys users write in the
+// monitoring config) to Falco detection conditions. The user picks
+// the rule and the action; the detection logic is locked here so a
+// misconfigured user can't relax what counts as suspicious.
 var detectConditions = map[string]struct {
 	condition string
 	output    string

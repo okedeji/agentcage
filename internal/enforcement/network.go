@@ -162,8 +162,8 @@ func GenerateNFTRules(rule EgressRule) string {
 		ports := strings.Join(rule.AllowPorts, ", ")
 		fmt.Fprintf(&b, "\n    tcp dport { %s } accept\n", ports)
 	} else if len(rule.AllowIPs) > 0 || len(rule.AllowFQDNs) > 0 {
-		// No port restriction — allow all ports to allowed destinations
-		b.WriteString("\n    # No port restriction — all ports allowed to permitted destinations\n")
+		// No port restriction. All ports allowed to permitted destinations.
+		b.WriteString("\n    # No port restriction. All ports allowed to permitted destinations.\n")
 	}
 
 	b.WriteString("  }\n")

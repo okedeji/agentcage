@@ -103,10 +103,10 @@ func (s *SpireClient) Verify(ctx context.Context, raw []byte) (*SVID, error) {
 	}, nil
 }
 
-// Revocation requires the SPIRE Server registration API, not the Workload API.
-// The registration client is wired in the orchestrator binary (cmd/orchestrator).
-// For now, SVID expiry is the primary revocation mechanism — TTLs are set to
-// match the cage time limit, so SVIDs expire naturally at teardown.
+// Revocation needs the SPIRE Server registration API, not the
+// Workload API. For now, SVID expiry is the revocation mechanism:
+// TTLs match the cage time limit so SVIDs expire naturally at
+// teardown.
 func (s *SpireClient) Revoke(_ context.Context, _ string) error {
 	return nil
 }

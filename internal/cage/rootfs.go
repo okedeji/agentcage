@@ -14,9 +14,9 @@ import (
 	"github.com/okedeji/agentcage/internal/cagefile"
 )
 
-// CageEnv holds the environment variables injected into a cage VM at boot.
-// cage-init reads these from /etc/agentcage/cage.json.
-type CageEnv struct {
+// Env holds the environment variables injected into a cage VM at
+// boot. cage-init reads these from /etc/agentcage/cage.json.
+type Env struct {
 	CageID       string   `json:"cage_id"`
 	AssessmentID string   `json:"assessment_id"`
 	CageType     string   `json:"cage_type"`
@@ -54,43 +54,44 @@ func NewRootfsBuilder(baseRootfsPath, workDir, version string) *RootfsBuilder {
 // 3. Writing cage config as /etc/agentcage/cage.json
 //
 // Returns the path to the assembled rootfs.
-func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cagefile.BundleManifest, bundleFilesDir string, env CageEnv) (rootfsPath string, retErr error) {
+func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cagefile.BundleManifest, bundleFilesDir string, env Env) (rootfsPath string, retErr error) {
 	if err := cagefile.CheckCompatibility(bundle, b.version); err != nil {
 		return "", fmt.Errorf("cage %s: %w", cageID, err)
 	}
 
-	// Verify bundle integrity FIRST — before copying the base rootfs,
-	// before mounting, and before running any install commands. A tampered
-	// bundle that gets past this check cannot execute install hooks via
-	// chroot, because we have not yet built anything to chroot into.
+	// Verify bundle integrity FIRST. Before copying the base rootfs,
+	// before mounting, before any install commands. A tampered bundle
+	// that gets past this check can't execute install hooks via
+	// chroot, because there's nothing to chroot into yet.
 	if bundle.FilesHash != "" {
 		hash, hashErr := cagefile.HashDir(bundleFilesDir)
 		if hashErr != nil {
 			return "", fmt.Errorf("hashing agent files for verification: %w", hashErr)
 		}
 		if "sha256:"+hash != bundle.FilesHash {
-			return "", fmt.Errorf("cage %s: agent files hash mismatch — bundle may be tampered (expected %s, got sha256:%s)", cageID, bundle.FilesHash, hash)
+			return "", fmt.Errorf("cage %s: agent files hash mismatch, bundle may be tampered (expected %s, got sha256:%s)", cageID, bundle.FilesHash, hash)
 		}
 	}
 
 	rootfsPath = filepath.Join(b.workDir, cageID+".ext4")
 
-	// Reject concurrent Assemble for the same cage ID. Cage IDs are UUIDs,
-	// so collision means an upstream idempotency bug — clobbering an
-	// in-use rootfs file would corrupt the running cage. SweepStale runs
-	// at startup so legitimate post-crash leftovers don't trip this.
+	// Reject concurrent Assemble for the same cage ID. Cage IDs are
+	// UUIDs, so collision means an upstream idempotency bug;
+	// clobbering an in-use rootfs file would corrupt the running cage.
+	// SweepStale runs at startup so legitimate post-crash leftovers
+	// don't trip this.
 	if _, err := os.Stat(rootfsPath); err == nil {
-		return "", fmt.Errorf("cage %s: rootfs %s already exists — concurrent Assemble or stale state", cageID, rootfsPath)
+		return "", fmt.Errorf("cage %s: rootfs %s already exists, concurrent Assemble or stale state", cageID, rootfsPath)
 	}
 
-	// Copy base rootfs — use cp --reflink=auto for copy-on-write on
-	// filesystems that support it (btrfs, xfs), falls back to full copy.
+	// Copy base rootfs. cp --reflink=auto gives copy-on-write on
+	// filesystems that support it (btrfs, xfs); plain cp otherwise.
 	if err := copyRootfs(ctx, b.baseRootfsPath, rootfsPath); err != nil {
 		return "", fmt.Errorf("copying base rootfs: %w", err)
 	}
 
-	// If anything below this point fails, the partially-built rootfs file
-	// is junk — remove it so the work directory does not accumulate dead
+	// If anything below fails, the partially-built rootfs file is
+	// junk. Remove it so the work directory doesn't accumulate dead
 	// files across failed assemblies.
 	defer func() {
 		if retErr != nil {
@@ -169,10 +170,10 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	return rootfsPath, nil
 }
 
-// Cleanup removes the assembled rootfs and (defensively) any mount directory
-// left behind for the given cage. The mount dir is normally cleaned up by
-// Assemble's deferred unmount, but a panic or OS-level kill could leave it
-// orphaned — this gives teardown a second chance to reclaim it.
+// Cleanup removes the assembled rootfs and any mount directory left
+// behind for the cage. Assemble's deferred unmount normally handles
+// the mount dir, but a panic or OS-level kill can leave one orphaned;
+// this gives teardown a second chance to reclaim it.
 func (b *RootfsBuilder) Cleanup(cageID string) error {
 	mountDir := filepath.Join(b.workDir, "mnt-"+cageID)
 	if _, err := os.Stat(mountDir); err == nil {
@@ -229,10 +230,10 @@ func (b *RootfsBuilder) SweepStale(ctx context.Context, log logr.Logger) error {
 	return nil
 }
 
-// copyRootfs copies the base rootfs image to a per-cage destination, using
-// cp --reflink=auto where supported (btrfs, xfs, modern ext4) so the copy is
-// near-zero-cost. Falls back to a plain cp only on flag-not-supported
-// errors — real failures (ENOSPC, EPERM, missing source) propagate
+// copyRootfs copies the base rootfs image to a per-cage destination,
+// using cp --reflink=auto where supported so the copy is
+// near-zero-cost. Falls back to plain cp only on flag-not-supported
+// errors. Real failures (ENOSPC, EPERM, missing source) propagate
 // immediately instead of being masked by an identical second attempt.
 func copyRootfs(ctx context.Context, src, dst string) error {
 	cmd := exec.CommandContext(ctx, "cp", "--reflink=auto", src, dst)
@@ -256,11 +257,11 @@ func copyRootfs(ctx context.Context, src, dst string) error {
 	return nil
 }
 
-// mountExt4 mounts a cage rootfs image at the orchestrator's view with
-// nosuid,nodev. Without these flags, a malicious bundle could ship a setuid
-// binary or a device node and have it honored at host privilege during the
-// assembly chroot. noexec is intentionally NOT set — the install steps
-// (apk, pip, npm) need to exec from inside the chroot.
+// mountExt4 mounts a cage rootfs image with nosuid,nodev. Without
+// those flags, a malicious bundle could ship a setuid binary or
+// device node and have it honored at host privilege during the
+// assembly chroot. noexec is intentionally not set; the install
+// steps (apk, pip, npm) need to exec from inside the chroot.
 func mountExt4(ctx context.Context, imgPath, mountPoint string) error {
 	cmd := exec.CommandContext(ctx, "mount", "-o", "loop,nosuid,nodev", imgPath, mountPoint)
 	if out, err := cmd.CombinedOutput(); err != nil {

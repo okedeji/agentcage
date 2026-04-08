@@ -169,10 +169,11 @@ func (c *Config) InterventionPollInterval() time.Duration {
 	return 30 * time.Second
 }
 
-// LLMRequiredDefault returns whether a working LLM endpoint is required at
-// startup. Always true: discovery cages and the assessment coordinator both
-// need an LLM. Posture only controls whether the missing-endpoint check
-// is fatal — strict aborts startup, dev warns and continues.
+// LLMRequiredDefault returns whether a working LLM endpoint is
+// required at startup. Always true: discovery cages and the
+// assessment coordinator both need an LLM. Posture only controls
+// whether the missing-endpoint check is fatal: strict aborts
+// startup, dev warns and continues.
 func (c *Config) LLMRequiredDefault() bool {
 	return c.Posture == PostureStrict
 }
@@ -194,6 +195,20 @@ type GRPCConfig struct {
 	// strict posture but a need for reflection (e.g. grpcurl from the same
 	// host) can set this to true explicitly.
 	Reflection *bool `yaml:"reflection,omitempty"`
+	// ReadyProbeTimeout bounds the post-Serve self-ping that gates the
+	// "agentcage ready" banner. The 5s default has headroom for cold
+	// starts where the embedded stack is still warming up. Tune up if
+	// you see startup flakes on slow hosts.
+	ReadyProbeTimeout time.Duration `yaml:"ready_probe_timeout,omitempty"`
+}
+
+// ReadyProbeTimeoutOrDefault returns the configured ready-probe timeout
+// or 5s when unset.
+func (c *GRPCConfig) ReadyProbeTimeoutOrDefault() time.Duration {
+	if c.ReadyProbeTimeout > 0 {
+		return c.ReadyProbeTimeout
+	}
+	return 5 * time.Second
 }
 
 type TLSConfig struct {
@@ -214,8 +229,8 @@ func (c *GRPCConfig) UseFileTLS() bool {
 	return c.TLS != nil && c.TLS.CertFile != "" && c.TLS.KeyFile != "" && !c.TLS.Internal
 }
 
-// InfrastructureConfig holds connection overrides for external services.
-// All fields are optional — if omitted, agentcage runs embedded instances.
+// InfrastructureConfig holds connection overrides for external
+// services. All fields are optional; omitted services run embedded.
 type InfrastructureConfig struct {
 	Postgres *PostgresConfig  `yaml:"postgres"`
 	NATS     *NATSConfig      `yaml:"nats"`
@@ -262,10 +277,11 @@ type VaultConfig struct {
 	TLS      *VaultTLSConfig `yaml:"tls,omitempty"`
 }
 
-// VaultTLSConfig controls how the orchestrator verifies Vault's server
-// certificate. Asymmetric vs GRPCConfig.TLS because here the orchestrator is
-// a client, not a server — and agentcage authenticates to Vault via JWT-SVID
-// (auth/jwt/login), not Vault's cert auth method, so no client cert/key.
+// VaultTLSConfig controls how the orchestrator verifies Vault's
+// server certificate. Asymmetric to GRPCConfig.TLS because the
+// orchestrator is a client here, not a server. agentcage
+// authenticates to Vault via JWT-SVID (auth/jwt/login), not Vault's
+// cert auth method, so no client cert or key.
 type VaultTLSConfig struct {
 	// Internal=true uses the SPIRE trust bundle to verify Vault's
 	// certificate. Vault must present a server cert from the same SPIFFE
@@ -305,9 +321,9 @@ type OTelConfig struct {
 	Insecure *bool `yaml:"insecure,omitempty"`
 }
 
-// LLMConfig configures the LLM gateway connection.
-// Model selection is handled by the agent and the external gateway —
-// agentcage only enforces the endpoint, token budget, and metering.
+// LLMConfig configures the LLM gateway connection. Model selection
+// is handled by the agent and the external gateway. agentcage only
+// enforces the endpoint, token budget, and metering.
 type LLMConfig struct {
 	Endpoint  string        `yaml:"endpoint"`
 	APIKeyEnv string        `yaml:"api_key_env"`
@@ -459,8 +475,8 @@ type InterventionConfig struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 }
 
-// ActivityTimeoutsConfig holds Temporal activity timeouts.
-// Rarely needs changing — sensible defaults are applied.
+// ActivityTimeoutsConfig holds Temporal activity timeouts. Rarely
+// needs changing; sensible defaults are applied.
 type ActivityTimeoutsConfig struct {
 	ValidateScope        time.Duration `yaml:"validate_scope"`
 	IssueIdentity        time.Duration `yaml:"issue_identity"`
@@ -557,10 +573,10 @@ func Parse(data []byte) (*Config, error) {
 	return &cfg, nil
 }
 
-// validatePosture enforces the strict-posture constraints at config-load
-// time so misconfigurations fail before any subsystem starts. The checks
-// below are deliberately rejecting *explicit* dev affordances under
-// strict — they do not punish operators who simply left a field unset.
+// validatePosture enforces the strict-posture constraints at
+// config-load time so misconfigurations fail before any subsystem
+// starts. The checks below reject *explicit* dev affordances under
+// strict; they don't punish operators who simply left a field unset.
 func validatePosture(cfg *Config) error {
 	if cfg.Posture != PostureStrict {
 		return nil
@@ -614,8 +630,9 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// Defaults returns configuration with secure defaults for all values.
-// Used when no config file is provided — everything runs embedded.
+// Defaults returns configuration with secure defaults for every
+// value. Used when no config file is provided; everything runs
+// embedded.
 func Defaults() *Config {
 	return &Config{
 		Notifications: NotificationsConfig{},

@@ -114,7 +114,7 @@ func NewLogNotifier(log logr.Logger) *LogNotifier {
 }
 
 func (n *LogNotifier) NotifyCreated(_ context.Context, req Request) error {
-	n.log.Info("INTERVENTION CREATED — action required",
+	n.log.Info("INTERVENTION CREATED, action required",
 		"intervention_id", req.ID,
 		"type", req.Type,
 		"priority", req.Priority,
@@ -124,7 +124,7 @@ func (n *LogNotifier) NotifyCreated(_ context.Context, req Request) error {
 		"timeout", req.Timeout,
 	)
 	fmt.Fprintf(os.Stderr,
-		"\n  *** INTERVENTION [%s] %s — %s (cage=%s, timeout=%s)\n      Resolve: agentcage resolve --id %s --action <resume|kill|allow|block>\n\n",
+		"\n  *** INTERVENTION [%s] %s: %s (cage=%s, timeout=%s)\n      Resolve: agentcage resolve --id %s --action <resume|kill|allow|block>\n\n",
 		req.Priority, req.Type, req.Description, req.CageID, req.Timeout, req.ID,
 	)
 	return nil
@@ -139,13 +139,13 @@ func (n *LogNotifier) NotifyResolved(_ context.Context, req Request) error {
 }
 
 func (n *LogNotifier) NotifyTimedOut(_ context.Context, req Request) error {
-	n.log.Info("INTERVENTION TIMED OUT — cage will be killed",
+	n.log.Info("INTERVENTION TIMED OUT, cage will be killed",
 		"intervention_id", req.ID,
 		"cage_id", req.CageID,
 		"assessment_id", req.AssessmentID,
 	)
 	fmt.Fprintf(os.Stderr,
-		"\n  *** INTERVENTION TIMED OUT [%s] cage=%s — cage will be killed\n\n",
+		"\n  *** INTERVENTION TIMED OUT [%s] cage=%s, cage will be killed\n\n",
 		req.ID, req.CageID,
 	)
 	return nil
