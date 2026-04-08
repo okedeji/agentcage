@@ -174,7 +174,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	if err != nil {
 		return err
 	}
-	defer identityCleanup()
 
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
 		Provisioner:   cageRuntime.provisioner,
@@ -285,6 +284,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		grpcServer:       grpcServer,
 		cageWorker:       cageWorker,
 		assessmentWorker: assessmentWorker,
+		identityCleanup:  identityCleanup,
 		alertDispatcher:  alertDispatcher,
 		embeddedMgr:      embeddedMgr,
 	}, sigCh, log)

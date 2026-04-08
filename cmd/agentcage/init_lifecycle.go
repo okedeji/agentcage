@@ -29,6 +29,7 @@ import (
 const (
 	gracefulShutdownDeadline = 15 * time.Second
 	embeddedStopDeadline     = 30 * time.Second
+	identityStopDeadline     = 10 * time.Second
 	overallShutdownDeadline  = 90 * time.Second
 )
 
@@ -86,6 +87,7 @@ type shutdownDeps struct {
 	grpcServer       *grpc.Server
 	cageWorker       worker.Worker
 	assessmentWorker worker.Worker
+	identityCleanup  func()
 	alertDispatcher  *alert.Dispatcher
 	embeddedMgr      *embedded.Manager
 }
@@ -120,6 +122,10 @@ func shutdownSequence(
 
 	stopGRPCBounded(deps.grpcServer, log)
 	stopWorkersParallel(deps.cageWorker, deps.assessmentWorker)
+
+	// Revokes have to run before embedded Vault stops, otherwise the
+	// calls fail and cage credentials outlive the orchestrator.
+	stopIdentityBounded(deps.identityCleanup, log)
 
 	deps.alertDispatcher.Close()
 
@@ -173,6 +179,24 @@ func stopWorkersParallel(cageWorker, assessmentWorker worker.Worker) {
 		assessmentWorker.Stop()
 	}()
 	wg.Wait()
+}
+
+// stopIdentityBounded runs the identity cleanup with a deadline. A
+// wedged Vault would otherwise block the revoke path forever.
+func stopIdentityBounded(cleanup func(), log logr.Logger) {
+	if cleanup == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		cleanup()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(identityStopDeadline):
+		log.Info("identity cleanup timed out, abandoning revoke calls")
+	}
 }
 
 // stopEmbeddedBounded shuts down the embedded service manager with a
