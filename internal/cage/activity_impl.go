@@ -3,6 +3,8 @@ package cage
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"go.temporal.io/sdk/worker"
 
 	"github.com/okedeji/agentcage/internal/audit"
+	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/internal/rca"
 )
@@ -79,20 +82,21 @@ type FleetPool interface {
 // dependency is logged and skipped so local mode works without SPIRE,
 // Vault, or Falco.
 type ActivityImpl struct {
-	provisioner   VMProvisioner
-	rootfs        *RootfsBuilder
-	network       NetworkPolicy
-	validator     ScopeValidator
-	alertHandler  AlertHandler
-	alertNotifier AlertNotifier
-	falcoReader   *FalcoAlertReader
-	fleetPool     FleetPool
-	identity      identity.SVIDIssuer
-	secrets       identity.SecretFetcher
-	auditStore    audit.Store
-	log           logr.Logger
-	allocMu       sync.Mutex
-	allocs        map[string]string // vmID → hostID
+	provisioner    VMProvisioner
+	rootfs         *RootfsBuilder
+	bundleStoreDir string
+	network        NetworkPolicy
+	validator      ScopeValidator
+	alertHandler   AlertHandler
+	alertNotifier  AlertNotifier
+	falcoReader    *FalcoAlertReader
+	fleetPool      FleetPool
+	identity       identity.SVIDIssuer
+	secrets        identity.SecretFetcher
+	auditStore     audit.Store
+	log            logr.Logger
+	allocMu        sync.Mutex
+	allocs         map[string]string // vmID -> hostID
 }
 
 type ActivityImplConfig struct {
@@ -106,8 +110,9 @@ type ActivityImplConfig struct {
 	FleetPool     FleetPool
 	Identity      identity.SVIDIssuer
 	Secrets       identity.SecretFetcher
-	AuditStore    audit.Store
-	Log           logr.Logger
+	AuditStore     audit.Store
+	BundleStoreDir string
+	Log            logr.Logger
 }
 
 // RegisterActivities pins the cage activity surface to an explicit list of
@@ -123,6 +128,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("ValidateCageType", a.ValidateCageType)
 	pin("IssueIdentity", a.IssueIdentity)
 	pin("FetchSecrets", a.FetchSecrets)
+	pin("AssembleRootfs", a.AssembleRootfs)
 	pin("ProvisionVM", a.ProvisionVM)
 	pin("ApplyNetworkPolicy", a.ApplyNetworkPolicy)
 	pin("StartPayloadProxy", a.StartPayloadProxy)
@@ -141,19 +147,20 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 	return &ActivityImpl{
-		provisioner:   cfg.Provisioner,
-		rootfs:        cfg.Rootfs,
-		network:       cfg.Network,
-		validator:     cfg.Validator,
-		alertHandler:  cfg.AlertHandler,
-		alertNotifier: cfg.AlertNotifier,
-		falcoReader:   cfg.FalcoReader,
-		fleetPool:     cfg.FleetPool,
-		identity:      cfg.Identity,
-		secrets:       cfg.Secrets,
-		auditStore:    cfg.AuditStore,
-		log:           cfg.Log.WithValues("component", "cage-activities"),
-		allocs:        make(map[string]string),
+		provisioner:    cfg.Provisioner,
+		rootfs:         cfg.Rootfs,
+		bundleStoreDir: cfg.BundleStoreDir,
+		network:        cfg.Network,
+		validator:      cfg.Validator,
+		alertHandler:   cfg.AlertHandler,
+		alertNotifier:  cfg.AlertNotifier,
+		falcoReader:    cfg.FalcoReader,
+		fleetPool:      cfg.FleetPool,
+		identity:       cfg.Identity,
+		secrets:        cfg.Secrets,
+		auditStore:     cfg.AuditStore,
+		log:            cfg.Log.WithValues("component", "cage-activities"),
+		allocs:         make(map[string]string),
 	}
 }
 
@@ -197,6 +204,41 @@ func (a *ActivityImpl) FetchSecrets(ctx context.Context, svid *identity.SVID, as
 	}
 	a.log.V(1).Info("secrets fetched", "assessment_id", assessmentID, "cage_id", svid.CageID)
 	return token, nil
+}
+
+func (a *ActivityImpl) AssembleRootfs(ctx context.Context, cageID string, bundleRef string, env Env) (string, error) {
+	if a.rootfs == nil {
+		a.log.V(1).Info("rootfs assembly skipped, no rootfs builder configured", "cage_id", cageID)
+		return "", nil
+	}
+	if bundleRef == "" {
+		return "", fmt.Errorf("cage %s: no bundle ref provided", cageID)
+	}
+
+	bundlePath := filepath.Join(a.bundleStoreDir, bundleRef+".cage")
+	if _, err := os.Stat(bundlePath); err != nil {
+		return "", fmt.Errorf("cage %s: bundle %s not found in store: %w", cageID, bundleRef, err)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "agentcage-unpack-"+cageID+"-*")
+	if err != nil {
+		return "", fmt.Errorf("cage %s: creating unpack dir: %w", cageID, err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	manifest, err := cagefile.UnpackFile(bundlePath, tmpDir)
+	if err != nil {
+		return "", fmt.Errorf("cage %s: unpacking bundle: %w", cageID, err)
+	}
+
+	filesDir := filepath.Join(tmpDir, "files")
+	rootfsPath, err := a.rootfs.Assemble(ctx, cageID, manifest, filesDir, env)
+	if err != nil {
+		return "", fmt.Errorf("cage %s: assembling rootfs: %w", cageID, err)
+	}
+
+	a.log.Info("rootfs assembled", "cage_id", cageID, "bundle_ref", bundleRef[:12], "rootfs", rootfsPath)
+	return rootfsPath, nil
 }
 
 const (

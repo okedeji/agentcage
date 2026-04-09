@@ -20,7 +20,7 @@ type assessmentActivityStub struct{}
 func (assessmentActivityStub) CreateDiscoveryCage(_ context.Context, _ string, _ cage.Config) (string, error) {
 	return "", nil
 }
-func (assessmentActivityStub) CreateValidatorCage(_ context.Context, _ string, _ findings.Finding, _ *Proof) (string, error) {
+func (assessmentActivityStub) CreateValidatorCage(_ context.Context, _ string, _ findings.Finding, _ *Proof, _ string) (string, error) {
 	return "", nil
 }
 func (assessmentActivityStub) CreateEscalationCage(_ context.Context, _ string, _ findings.Finding, _ cage.Config) (string, error) {
@@ -54,6 +54,9 @@ func (assessmentActivityStub) EmitProofGapIntervention(_ context.Context, _, _ s
 	return "", nil
 }
 func (assessmentActivityStub) NotifyFleetAssessmentComplete(_ context.Context, _ string) error {
+	return nil
+}
+func (assessmentActivityStub) NotifyAssessmentComplete(_ context.Context, _ string, _ NotificationConfig, _ Status, _ int32) error {
 	return nil
 }
 

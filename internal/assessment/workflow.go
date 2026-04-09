@@ -135,7 +135,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 		state := CoordinatorState{
 			AssessmentID:   input.AssessmentID,
-			Target:         cfg.Target,
+			Target:         cfg.FilteredScope(),
 			Iteration:      int(iteration),
 			MaxIterations:  int(maxIterations),
 			Findings:       SummarizeFindings(allFindings),
@@ -183,7 +183,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		return failResult(result, "fetching candidate findings for validation: %v", err), nil
 	}
 
-	_, validatorCages, err := validateFindings(ctx, input.AssessmentID, candidates)
+	_, validatorCages, err := validateFindings(ctx, input.AssessmentID, cfg, candidates)
 	if err != nil {
 		return failResult(result, "validating findings: %v", err), nil
 	}
@@ -266,10 +266,15 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		result.FinalStatus = StatusRejected
 	}
 
-	// Best-effort fleet notification. Failure should not fail the assessment.
+	// Best-effort notifications. Failure should not fail the assessment.
 	_ = workflow.ExecuteActivity(
 		withActivityTimeout(ctx, TimeoutUpdateStatus),
 		"NotifyFleetAssessmentComplete", input.AssessmentID,
+	).Get(ctx, nil)
+
+	_ = workflow.ExecuteActivity(
+		withActivityTimeout(ctx, TimeoutUpdateStatus),
+		"NotifyAssessmentComplete", input.AssessmentID, cfg.Notifications, result.FinalStatus, result.Findings,
 	).Get(ctx, nil)
 
 	return result, nil
@@ -300,7 +305,8 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 	cageCfg := cage.Config{
 		AssessmentID: assessmentID,
 		Type:         cage.TypeDiscovery,
-		Scope:        cfg.Target,
+		BundleRef:    cfg.BundleRef,
+		Scope:        cfg.FilteredScope(),
 	}
 	if tc, ok := cfg.CageDefaults[cage.TypeDiscovery]; ok {
 		cageCfg.Resources = tc.Resources
@@ -393,6 +399,7 @@ func spawnCoordinatorActions(
 			cageCfg := cage.Config{
 				AssessmentID:    assessmentID,
 				Type:            cageType,
+				BundleRef:       cfg.BundleRef,
 				Scope:           action.Scope,
 				ParentFindingID: action.FindingID,
 				InputContext:     []byte(action.Objective),
@@ -438,6 +445,7 @@ func spawnCoordinatorActions(
 func validateFindings(
 	ctx workflow.Context,
 	assessmentID string,
+	cfg Config,
 	candidates []findings.Finding,
 ) (int32, int32, error) {
 	var validatedCount int32
@@ -486,7 +494,7 @@ func validateFindings(
 		for _, f := range group {
 			actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 			var cageID string
-			if err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof).Get(ctx, &cageID); err != nil {
+			if err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof, cfg.BundleRef).Get(ctx, &cageID); err != nil {
 				return validatedCount, cagesSpawned, fmt.Errorf("creating validator cage for finding %s: %w", f.ID, err)
 			}
 			cagesSpawned++
@@ -611,7 +619,8 @@ func spawnEscalationCages(
 		escalationCfg := cage.Config{
 			AssessmentID:    assessmentID,
 			Type:            cage.TypeEscalation,
-			Scope:           cfg.Target,
+			BundleRef:       cfg.BundleRef,
+			Scope:           cfg.FilteredScope(),
 			ParentFindingID: f.ID,
 		}
 		if tc, ok := cfg.CageDefaults[cage.TypeEscalation]; ok {
@@ -689,7 +698,7 @@ func retestFindings(
 
 		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 		var cageID string
-		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof).Get(ctx, &cageID)
+		err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof, cfg.BundleRef).Get(ctx, &cageID)
 		if err != nil {
 			return cages, fmt.Errorf("creating retest cage for finding %s: %w", adj.FindingID, err)
 		}

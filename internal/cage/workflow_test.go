@@ -28,6 +28,9 @@ func (activityStub) IssueIdentity(context.Context, string, time.Duration) (*iden
 func (activityStub) FetchSecrets(context.Context, *identity.SVID, string) (*identity.VaultToken, error) {
 	return nil, nil
 }
+func (activityStub) AssembleRootfs(context.Context, string, string, Env) (string, error) {
+	return "/tmp/test.ext4", nil
+}
 func (activityStub) ProvisionVM(context.Context, VMConfig) (*VMHandle, error) { return nil, nil }
 func (activityStub) ApplyNetworkPolicy(context.Context, string, Scope, []string) error {
 	return nil

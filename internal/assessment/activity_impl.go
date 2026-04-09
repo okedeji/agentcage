@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -92,6 +94,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("LookupProof", a.LookupProof)
 	pin("EmitProofGapIntervention", a.EmitProofGapIntervention)
 	pin("NotifyFleetAssessmentComplete", a.NotifyFleetAssessmentComplete)
+	pin("NotifyAssessmentComplete", a.NotifyAssessmentComplete)
 }
 
 // EmitProofGapIntervention creates a pending proof_gap intervention for a
@@ -131,10 +134,11 @@ func (a *ActivityImpl) CreateDiscoveryCage(ctx context.Context, assessmentID str
 	return info.ID, nil
 }
 
-func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, proof *Proof) (string, error) {
+func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, proof *Proof, bundleRef string) (string, error) {
 	config := cage.Config{
 		AssessmentID:    assessmentID,
 		Type:            cage.TypeValidator,
+		BundleRef:       bundleRef,
 		Scope:           cage.Scope{Hosts: []string{finding.Endpoint}},
 		ParentFindingID: finding.ID,
 	}
@@ -247,5 +251,25 @@ func (a *ActivityImpl) NotifyFleetAssessmentComplete(_ context.Context, assessme
 	}
 	a.fleet.OnAssessmentComplete(assessmentID)
 	a.log.V(1).Info("fleet notified of assessment completion", "assessment_id", assessmentID)
+	return nil
+}
+
+func (a *ActivityImpl) NotifyAssessmentComplete(ctx context.Context, assessmentID string, config NotificationConfig, status Status, findingsValidated int32) error {
+	if config.Webhook == "" || !config.OnComplete {
+		return nil
+	}
+	payload := fmt.Sprintf(`{"assessment_id":%q,"status":%q,"findings_validated":%d}`, assessmentID, status.String(), findingsValidated)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, config.Webhook, strings.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("building notification request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		a.log.Error(err, "assessment completion webhook failed", "assessment_id", assessmentID, "webhook", config.Webhook)
+		return nil
+	}
+	_ = resp.Body.Close()
+	a.log.Info("assessment completion webhook sent", "assessment_id", assessmentID, "status_code", resp.StatusCode)
 	return nil
 }

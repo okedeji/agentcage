@@ -48,6 +48,7 @@ type Activities interface {
 	ValidateCageType(ctx context.Context, config Config) error
 	IssueIdentity(ctx context.Context, cageID string, ttl time.Duration) (*identity.SVID, error)
 	FetchSecrets(ctx context.Context, svid *identity.SVID, assessmentID string) (*identity.VaultToken, error)
+	AssembleRootfs(ctx context.Context, cageID string, bundleRef string, env Env) (string, error)
 	ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error)
 	ApplyNetworkPolicy(ctx context.Context, cageID string, scope Scope, extras []string) error
 	StartPayloadProxy(ctx context.Context, vmHandle *VMHandle, vulnClass string) error

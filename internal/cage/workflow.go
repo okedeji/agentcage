@@ -68,12 +68,39 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		return failResult(result, "fetching secrets: %v", err), nil
 	}
 
+	var rootfsPath string
+	if cfg.BundleRef != "" {
+		env := Env{
+			CageID:       input.CageID,
+			AssessmentID: cfg.AssessmentID,
+			CageType:     cfg.Type.String(),
+			Entrypoint:   "", // set by cage-init from manifest
+			LLMEndpoint:  input.LLMEndpoint,
+			NATSAddr:     input.NATSAddr,
+			ScopeHosts:   cfg.Scope.Hosts,
+			ScopePorts:   cfg.Scope.Ports,
+			ScopePaths:   cfg.Scope.Paths,
+			ProxyMode:    cfg.ProxyConfig.Mode.String(),
+		}
+		if cfg.LLM != nil {
+			env.TokenBudget = cfg.LLM.TokenBudget
+		}
+		if err := workflow.ExecuteActivity(
+			withHeartbeat(ctx, t.ProvisionVM, t.HeartbeatProvisionVM),
+			"AssembleRootfs", input.CageID, cfg.BundleRef, env,
+		).Get(ctx, &rootfsPath); err != nil {
+			cleanupIdentity(ctx, t, svid.ID, &token)
+			return failResult(result, "assembling rootfs: %v", err), nil
+		}
+	}
+
 	if err := workflow.ExecuteActivity(
 		withHeartbeat(ctx, t.ProvisionVM, t.HeartbeatProvisionVM),
 		"ProvisionVM", VMConfig{
-			CageID:   input.CageID,
-			VCPUs:    cfg.Resources.VCPUs,
-			MemoryMB: cfg.Resources.MemoryMB,
+			CageID:     input.CageID,
+			VCPUs:      cfg.Resources.VCPUs,
+			MemoryMB:   cfg.Resources.MemoryMB,
+			RootfsPath: rootfsPath,
 		},
 	).Get(ctx, &vmHandle); err != nil {
 		cleanupIdentity(ctx, t, svid.ID, &token)

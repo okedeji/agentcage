@@ -176,18 +176,19 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	}
 
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
-		Provisioner:   cageRuntime.provisioner,
-		Rootfs:        cageRuntime.rootfs,
-		Network:       cageRuntime.network,
-		Validator:     scopeValidator,
-		AlertHandler:  alertHandler,
-		AlertNotifier: alertDispatcher,
-		FalcoReader:   cageRuntime.falcoReader,
-		FleetPool:     fleet.NewCagePoolAdapter(fleetSetup.pool),
-		AuditStore:    cageRuntime.auditStore,
-		Identity:      svidIssuer,
-		Secrets:       secretFetcher,
-		Log:           log,
+		Provisioner:    cageRuntime.provisioner,
+		Rootfs:         cageRuntime.rootfs,
+		BundleStoreDir: filepath.Join(embedded.DataDir(), "bundles"),
+		Network:        cageRuntime.network,
+		Validator:      scopeValidator,
+		AlertHandler:   alertHandler,
+		AlertNotifier:  alertDispatcher,
+		FalcoReader:    cageRuntime.falcoReader,
+		FleetPool:      fleet.NewCagePoolAdapter(fleetSetup.pool),
+		AuditStore:     cageRuntime.auditStore,
+		Identity:       svidIssuer,
+		Secrets:        secretFetcher,
+		Log:            log,
 	})
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
