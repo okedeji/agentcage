@@ -13,13 +13,11 @@ import (
 	"github.com/okedeji/agentcage/internal/metrics"
 )
 
-// otelFlushDeadline caps the shutdown flush so a wedged exporter
-// can't block exit.
+// A wedged exporter can't block exit.
 const otelFlushDeadline = 5 * time.Second
 
-// setupTelemetry wires OTel exporters if external OTel is configured,
-// then always runs metrics.Init so the in-process registry is live
-// even in dev mode without an exporter. Caller defers shutdown.
+// metrics.Init always runs so the in-process registry is live even
+// in dev mode without an exporter.
 func setupTelemetry(ctx context.Context, cfg *config.Config, log logr.Logger) (func(), error) {
 	fmt.Println("Initializing telemetry...")
 

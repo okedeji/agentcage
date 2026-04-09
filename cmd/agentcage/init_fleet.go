@@ -12,7 +12,6 @@ import (
 	"github.com/okedeji/agentcage/internal/fleet"
 )
 
-// fleetSetup is what setupFleet returns.
 type fleetSetup struct {
 	pool         *fleet.PoolManager
 	demand       *fleet.DemandLedger
@@ -21,9 +20,8 @@ type fleetSetup struct {
 	validatorRes fleet.CageResources
 }
 
-// setupFleet builds the pool, picks the provisioner, and constructs
-// the autoscaler. runInit starts the autoscaler so its cancel-on-death
-// hookup shares context with the rest of shutdown.
+// Autoscaler is constructed here but started in runInit so its
+// cancel-on-death hookup shares context with the rest of shutdown.
 func setupFleet(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.Logger) (*fleetSetup, error) {
 	pool := fleet.NewPoolManager()
 	demand := fleet.NewDemandLedger()
@@ -73,7 +71,6 @@ func setupFleet(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.
 	}, nil
 }
 
-// buildHostProvisioner picks webhook for prod, local for dev.
 func buildHostProvisioner(cfg *config.Config, log logr.Logger) fleet.HostProvisioner {
 	pc := cfg.Fleet.Provisioner
 	if pc != nil && pc.WebhookURL != "" {

@@ -10,10 +10,8 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 )
 
-// loadProofLibrary loads validation proofs from disk. Bundled mode
-// seeds defaults if missing; BYOP leaves it to the operator and
-// unfamiliar vuln classes trigger proof_gap interventions until proofs
-// are added. A malformed YAML is fatal so a broken rule can't ship.
+// A malformed proof YAML is fatal so a broken validation rule
+// can't reach a running assessment.
 func loadProofLibrary(cfg *config.Config, log logr.Logger) (*assessment.ProofLibrary, error) {
 	dir := cfg.Assessment.ProofsDir
 	if dir == "" {

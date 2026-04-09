@@ -16,7 +16,6 @@ import (
 	"github.com/okedeji/agentcage/internal/enforcement"
 )
 
-// cageRuntimeSetup is what setupCageRuntime returns.
 type cageRuntimeSetup struct {
 	provisioner cage.VMProvisioner
 	isolated    bool
@@ -26,12 +25,8 @@ type cageRuntimeSetup struct {
 	falcoReader *cage.FalcoAlertReader
 }
 
-// setupCageRuntime wires the host machinery a cage needs to boot.
-// Strict posture aborts on missing rootfs or unreachable Falco.
-// allow_unisolated=true relaxes both for dev.
-//
-// Provisioner first: its isolated flag decides whether we want
-// NFTables and a real rootfs (Firecracker) or neither (mock).
+// Provisioner runs first because its isolated flag decides whether
+// we need NFTables and a real rootfs or neither.
 func setupCageRuntime(ctx context.Context, cfg *config.Config, db *sql.DB, log logr.Logger) (*cageRuntimeSetup, error) {
 	fmt.Println("Setting up cage provisioner...")
 	binDir := embedded.BinDir()
@@ -85,9 +80,7 @@ func setupCageRuntime(ctx context.Context, cfg *config.Config, db *sql.DB, log l
 	}, nil
 }
 
-// buildRootfs prepares the rootfs builder. The base image is only
-// required for real Firecracker. A stale-state sweep runs on startup;
-// failures log and continue.
+// Base image is only required when running real Firecracker.
 func buildRootfs(ctx context.Context, isolated bool, log logr.Logger) (*cage.RootfsBuilder, error) {
 	baseRootfs := filepath.Join(embedded.VMDir(), "cage-rootfs.img")
 	rootfsWorkDir := filepath.Join(embedded.DataDir(), "rootfs-work")
@@ -107,8 +100,7 @@ func buildRootfs(ctx context.Context, isolated bool, log logr.Logger) (*cage.Roo
 	return builder, nil
 }
 
-// writeFalcoRules writes the generated ruleset to disk. Must run
-// before the Falco daemon starts.
+// Must run before the Falco daemon starts.
 func writeFalcoRules(cfg *config.Config, log logr.Logger) (cage.AlertHandler, error) {
 	fmt.Println("Generating Falco rules...")
 	rules, tripwires := enforcement.GenerateFalcoRules(cfg.Monitoring)
@@ -123,9 +115,8 @@ func writeFalcoRules(cfg *config.Config, log logr.Logger) (cage.AlertHandler, er
 	return alertHandler, nil
 }
 
-// openFalcoReader connects to the Falco unix socket. Falco is the
-// only behavioral tripwire we have, so a missing Falco is fatal in
-// strict posture.
+// Falco is the only behavioral tripwire, so missing Falco is
+// fatal in strict posture.
 func openFalcoReader(ctx context.Context, cfg *config.Config, log logr.Logger) (*cage.FalcoAlertReader, error) {
 	socket := filepath.Join(embedded.RunDir(), "falco", "falco.sock")
 	if cfg.Infrastructure.Falco != nil && cfg.Infrastructure.Falco.Socket != "" {

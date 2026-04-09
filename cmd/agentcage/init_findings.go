@@ -11,11 +11,7 @@ import (
 	"github.com/okedeji/agentcage/internal/findings"
 )
 
-// connectFindingsBus connects to NATS and builds the store and
-// coordinator on top. Caller closes the bus.
-//
-// Bloom filter sized for 100k findings, 7 hash functions. The bloom
-// catches dupes before we hit Postgres on the hot path.
+// Bloom filter catches dupes before we hit Postgres on the hot path.
 func connectFindingsBus(cfg *config.Config, db *sql.DB, log logr.Logger) (findings.Bus, *findings.PGStore, *findings.Coordinator, error) {
 	natsURL := embedded.NATSURL()
 	if cfg.Infrastructure.IsExternalNATS() {

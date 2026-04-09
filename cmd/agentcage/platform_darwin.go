@@ -205,8 +205,7 @@ func platformStop(_ []string) {
 	stopViaPID(pidFile)
 }
 
-// stopViaGRPC sends Stop and waits for the server to become
-// unreachable. Returns true only if shutdown is confirmed.
+// Returns true only once the gRPC server is confirmed unreachable.
 func stopViaGRPC() bool {
 	conn, err := grpc.NewClient("localhost:9090",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -252,8 +251,6 @@ func stopViaGRPC() bool {
 	return false
 }
 
-// stopViaPID reads the PID file, sends SIGTERM, waits 10s, then
-// escalates to SIGKILL.
 func stopViaPID(pidFile string) {
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
@@ -311,8 +308,6 @@ func isProxyCommand(cmd string) bool {
 	return false
 }
 
-// tcpProxyFromListener forwards connections from an already-bound
-// listener to targetAddr. Closes the listener when ctx is cancelled.
 func tcpProxyFromListener(ctx context.Context, ln net.Listener, targetAddr string) error {
 	go func() {
 		<-ctx.Done()

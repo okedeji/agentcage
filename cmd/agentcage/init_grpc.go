@@ -20,9 +20,8 @@ import (
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 )
 
-// buildGRPCServer wires TLS, interceptors, health, and reflection.
-// reloadableCert is non-nil only on the file-TLS branch; SIGHUP uses
-// it to rotate the cert without a restart.
+// reloadableCert is non-nil only on the file-TLS branch; the
+// SPIRE-internal branch rotates via the workload API automatically.
 func buildGRPCServer(
 	ctx context.Context,
 	cfg *config.Config,
@@ -75,9 +74,6 @@ func buildGRPCServer(
 	server := grpc.NewServer(opts...)
 	agentgrpc.Register(server, services)
 
-	// Standard health service so load balancers and grpc_health_probe
-	// work without a custom path. Everything starts SERVING; future
-	// readiness checks can flip individual entries.
 	healthSrv := health.NewServer()
 	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(server, healthSrv)
@@ -93,9 +89,6 @@ func buildGRPCServer(
 	return server, reloadableCert, nil
 }
 
-// startGRPCListener returns a listener for grpcAddr, preferring an
-// inherited systemd socket. Refuses to bind globally without TLS. The
-// activated bool says whether systemd handed us the fd.
 func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (net.Listener, bool, error) {
 	fmt.Printf("Starting gRPC server on %s...\n", grpcAddr)
 	if isGlobalBind(grpcAddr) && !cfg.GRPC.TLSEnabled() && !cfg.AllowUnisolatedDefault() {
@@ -121,8 +114,8 @@ func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (ne
 	return lis, activated, nil
 }
 
-// serveGRPC runs the accept loop in a goroutine. ErrServerStopped is
-// the clean shutdown path. Anything else cancels the orchestrator.
+// ErrServerStopped is the clean shutdown path. Anything else
+// cancels the orchestrator.
 func serveGRPC(server *grpc.Server, lis net.Listener, cancel context.CancelFunc, log logr.Logger) {
 	go func() {
 		if srvErr := server.Serve(lis); srvErr != nil && !errors.Is(srvErr, grpc.ErrServerStopped) {
@@ -132,17 +125,14 @@ func serveGRPC(server *grpc.Server, lis net.Listener, cancel context.CancelFunc,
 	}()
 }
 
-// waitForGRPCReady self-pings until Serve is dispatching. Without it,
-// a client connecting before the first accept stalls on its first
-// RPC. Deadline is grpc.ready_probe_timeout.
+// Without this probe a client connecting before the first accept
+// stalls on its first RPC.
 func waitForGRPCReady(ctx context.Context, cfg *config.Config, grpcAddr string) error {
 	readyCtx, readyCancel := context.WithTimeout(ctx, cfg.GRPC.ReadyProbeTimeoutOrDefault())
 	defer readyCancel()
 	return agentgrpc.WaitForReady(readyCtx, grpcAddr)
 }
 
-// isGlobalBind reports whether addr binds to all interfaces. Loopback
-// without TLS is fine; anything else needs TLS.
 func isGlobalBind(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {

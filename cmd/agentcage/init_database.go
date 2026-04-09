@@ -14,8 +14,6 @@ import (
 	"github.com/okedeji/agentcage/migrations"
 )
 
-// connectDatabase opens the embedded or external Postgres, pings, and
-// runs migrations. Caller closes the db.
 func connectDatabase(ctx context.Context, cfg *config.Config, log logr.Logger) (*sql.DB, error) {
 	var dbURL string
 	if cfg.Infrastructure.IsExternalPostgres() {
@@ -55,8 +53,7 @@ func connectDatabase(ctx context.Context, cfg *config.Config, log logr.Logger) (
 	return db, nil
 }
 
-// redactDBURL replaces the password in a Postgres URL. Returns "***"
-// on parse failure so we never log raw credentials.
+// Returns "***" on parse failure so we never log raw credentials.
 func redactDBURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {

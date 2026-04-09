@@ -18,8 +18,6 @@ import (
 	"github.com/okedeji/agentcage/internal/identity"
 )
 
-// resolveSpireSocket returns the configured workload API socket, or
-// the embedded default.
 func resolveSpireSocket(cfg *config.Config) string {
 	socket := filepath.Join(embedded.RunDir(), "spire", "agent.sock")
 	if cfg.Infrastructure.IsExternalSPIRE() && cfg.Infrastructure.SPIRE.AgentSocket != "" {
@@ -28,15 +26,12 @@ func resolveSpireSocket(cfg *config.Config) string {
 	return socket
 }
 
-// vaultHealthTimeout caps the startup health check. A healthy Vault
-// answers in well under a second; a wedged one would hang boot.
+// A healthy Vault answers in well under a second; a wedged one hangs boot.
 const vaultHealthTimeout = 5 * time.Second
 
-// connectIdentityAndSecrets brings up the SPIRE SVID issuer and the
-// Vault secret fetcher. Either can be nil in dev; strict posture
-// rejects nil at the call site. Caller defers the cleanup func.
-//
 // SPIRE first because Vault JWT auth needs a JWT-SVID from SPIRE.
+// Either return can be nil in dev; strict posture rejects nil at
+// the call site.
 func connectIdentityAndSecrets(
 	ctx context.Context,
 	cfg *config.Config,
@@ -86,8 +81,6 @@ func connectIdentityAndSecrets(
 	return svidIssuer, secretFetcher, cleanup, nil
 }
 
-// buildSecretFetcher picks the Vault auth path for the posture.
-// nil, nil means no Vault configured.
 func buildSecretFetcher(
 	ctx context.Context,
 	cfg *config.Config,
@@ -105,8 +98,8 @@ func buildSecretFetcher(
 	return nil, nil
 }
 
-// buildVaultJWTClient is the production path. Real JWT-SVID from
-// SPIRE, scoped per cage by the Vault JWT auth role.
+// Production path. Vault JWT auth role scopes each cage's token
+// to its SPIFFE identity.
 func buildVaultJWTClient(
 	ctx context.Context,
 	cfg *config.Config,
@@ -161,9 +154,8 @@ func buildVaultJWTClient(
 	return vaultClient, nil
 }
 
-// buildEmbeddedVaultClient is the dev path. Vault in -dev mode with a
-// shared root token. Fine on a laptop where the host trust boundary
-// already dominates anything Vault would enforce.
+// Dev path. Shared root token is fine on a laptop where the host
+// trust boundary already dominates anything Vault would enforce.
 func buildEmbeddedVaultClient(
 	ctx context.Context,
 	embeddedVault *embedded.VaultService,
@@ -187,8 +179,6 @@ func buildEmbeddedVaultClient(
 	return vaultClient, nil
 }
 
-// buildVaultTLSConfig returns the TLS config for verifying Vault.
-// Modes: SPIRE bundle, operator CA, system trust store.
 func buildVaultTLSConfig(ctx context.Context, cfg *config.Config, spireSocket string) (*tls.Config, error) {
 	vaultCfg := cfg.Infrastructure.Vault
 	if vaultCfg == nil || vaultCfg.TLS == nil {

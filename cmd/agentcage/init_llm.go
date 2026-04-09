@@ -11,10 +11,8 @@ import (
 	"github.com/okedeji/agentcage/internal/gateway"
 )
 
-// buildLLMClient builds the gateway client. Strict posture requires
-// an endpoint; dev posture warns and returns nil. Without it the
-// assessment coordinator can't plan cages, but discovery and
-// validator workflows still run.
+// Without an LLM endpoint the assessment coordinator can't plan
+// cages, but discovery and validator workflows still run.
 func buildLLMClient(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.Logger) (*gateway.Client, error) {
 	meter := gateway.NewTokenMeter()
 	budgetEnforcer := gateway.NewBudgetEnforcer(meter)

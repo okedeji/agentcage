@@ -23,8 +23,6 @@ import (
 	"github.com/okedeji/agentcage/internal/metrics"
 )
 
-// resolveTemporalAddr returns the configured Temporal address, or the
-// embedded default.
 func resolveTemporalAddr(cfg *config.Config) string {
 	if cfg.Infrastructure.IsExternalTemporal() {
 		return cfg.Infrastructure.Temporal.Address
@@ -32,9 +30,8 @@ func resolveTemporalAddr(cfg *config.Config) string {
 	return "localhost:17233"
 }
 
-// connectTemporal dials Temporal with config-driven mTLS and API key
-// auth. Returns the resolved namespace so the readiness probe doesn't
-// recompute the "default" fallback. Caller closes the client.
+// Returns the resolved namespace so the readiness probe doesn't
+// recompute the "default" fallback.
 func connectTemporal(ctx context.Context, cfg *config.Config, spireSocket string, log logr.Logger) (client.Client, string, error) {
 	temporalAddr := resolveTemporalAddr(cfg)
 
@@ -100,10 +97,8 @@ func connectTemporal(ctx context.Context, cfg *config.Config, spireSocket string
 	return c, namespace, nil
 }
 
-// buildTemporalWorkers constructs both workers without starting them.
 // Cage slots are sized off fleet capacity so a worker can't accept
-// more cages than the host can run. cancel feeds OnFatalError so a
-// dead worker tears the orchestrator down.
+// more cages than the host can run.
 func buildTemporalWorkers(
 	ctx context.Context,
 	cancel context.CancelFunc,
@@ -172,10 +167,9 @@ func buildTemporalWorkers(
 	return cageWorker, assessmentWorker
 }
 
-// startTemporalWorkers starts both workers and blocks until Temporal
-// reports a live poller on each task queue. Without that probe gRPC
-// would accept CreateAssessment, enqueue against a queue with no
-// poller, and hang the caller until a worker happened to wake up.
+// Without the poller readiness probe, gRPC would accept
+// CreateAssessment before any worker is polling, and the caller
+// hangs until one wakes up.
 func startTemporalWorkers(
 	ctx context.Context,
 	temporal client.Client,
@@ -195,9 +189,8 @@ func startTemporalWorkers(
 		return fmt.Errorf("starting assessment worker: %w", err)
 	}
 
-	// worker.Start() returns when the SDK has spawned its goroutines,
-	// not when they've actually registered as pollers. Block until at
-	// least one poller appears on each queue.
+	// worker.Start() returns when goroutines are spawned, not when
+	// they've registered as pollers.
 	for _, queue := range []string{cage.TaskQueue, assessment.TaskQueue} {
 		if err := waitForWorkerReady(ctx, temporal, namespace, queue, 10*time.Second); err != nil {
 			cageWorker.Stop()
@@ -209,9 +202,6 @@ func startTemporalWorkers(
 	return nil
 }
 
-// waitForWorkerReady polls Temporal until at least one poller is
-// registered on the task queue. Closes the "Start() returned but the
-// worker isn't polling yet" race.
 func waitForWorkerReady(ctx context.Context, c client.Client, namespace, taskQueueName string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

@@ -11,8 +11,7 @@ import (
 	"github.com/okedeji/agentcage/internal/intervention"
 )
 
-// buildPolicyEngine compiles the OPA modules from config. Once at
-// startup so per-request eval stays fast.
+// Compiled once at startup so per-request eval stays fast.
 func buildPolicyEngine(cfg *config.Config) (*enforcement.OPAEngine, error) {
 	fmt.Println("Configuring policy engine...")
 	modules := enforcement.GenerateRegoModules(cfg)
@@ -23,14 +22,10 @@ func buildPolicyEngine(cfg *config.Config) (*enforcement.OPAEngine, error) {
 	return engine, nil
 }
 
-// buildCageValidator returns the closure cage.Service runs on every
-// CageConfig. Three layers: Go-side scope bounds, the OPA scope policy
-// against cfg.Scope.Deny, and the OPA cage-config policy for per-type
-// resource and lifetime caps.
-//
-// Every rejection fires a critical alert so operators see violations
-// in real time. "OPA broke" and "OPA said no" go to different alert
-// categories because they're different operational signals.
+// Three validation layers: Go-side scope bounds, OPA scope policy,
+// OPA cage-config policy. Every rejection fires a critical alert.
+// OPA errors and OPA denials use different alert categories because
+// they're different operational signals.
 func buildCageValidator(
 	cfg *config.Config,
 	opaEngine *enforcement.OPAEngine,

@@ -82,7 +82,6 @@ func handleSIGHUP(reloadableCert *agentgrpc.ReloadableCert, cfg *config.Config, 
 	log.Info("SIGHUP TLS reload succeeded", "cert", cfg.GRPC.TLS.CertFile)
 }
 
-// shutdownDeps is what shutdownSequence has to stop.
 type shutdownDeps struct {
 	grpcServer       *grpc.Server
 	cageWorker       worker.Worker
@@ -92,13 +91,9 @@ type shutdownDeps struct {
 	embeddedMgr      *embedded.Manager
 }
 
-// shutdownSequence runs the bounded teardown ladder: stop accepting
-// gRPC, drain workers in parallel, close auxiliary services. Workflows
-// mid-flight when workers stop are durable and resume on next start.
-// In-flight gRPC requests finish.
-//
-// A second SIGINT/SIGTERM is the operator's escape hatch: if the
-// graceful path wedges, force-exit instead of waiting out the deadline.
+// Workflows mid-flight when workers stop are durable and resume
+// on next start. A second signal force-exits if the graceful path
+// wedges.
 func shutdownSequence(
 	cancel context.CancelFunc,
 	deps shutdownDeps,
@@ -136,9 +131,8 @@ func shutdownSequence(
 	fmt.Println("agentcage stopped.")
 }
 
-// forceExitOnSecondSignal exits on the next SIGINT/SIGTERM after
-// shutdown starts. SIGHUP is ignored; operators occasionally send it
-// by accident and we don't want that to force-exit.
+// SIGHUP is ignored here because operators occasionally send it by
+// accident during shutdown.
 func forceExitOnSecondSignal(sigCh chan os.Signal) {
 	for sig := range sigCh {
 		if sig == syscall.SIGHUP {
@@ -149,9 +143,7 @@ func forceExitOnSecondSignal(sigCh chan os.Signal) {
 	}
 }
 
-// stopGRPCBounded calls GracefulStop with a deadline. Without one a
-// wedged handler hangs forever. After 15s Stop() forcibly closes
-// connections; an RPC that hasn't finished in 15s is stuck anyway.
+// 15s. An RPC that hasn't finished by then is stuck.
 func stopGRPCBounded(server *grpc.Server, log logr.Logger) {
 	stopped := make(chan struct{})
 	go func() {
@@ -166,9 +158,8 @@ func stopGRPCBounded(server *grpc.Server, log logr.Logger) {
 	}
 }
 
-// stopWorkersParallel stops both workers concurrently. Each Stop()
-// blocks up to 30s draining activities, and the two are independent,
-// so sequential would double worst-case shutdown for nothing.
+// Each Stop() blocks up to 30s draining activities. The two are
+// independent, so sequential would double worst-case shutdown.
 func stopWorkersParallel(cageWorker, assessmentWorker worker.Worker) {
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -183,8 +174,7 @@ func stopWorkersParallel(cageWorker, assessmentWorker worker.Worker) {
 	wg.Wait()
 }
 
-// stopIdentityBounded runs the identity cleanup with a deadline. A
-// wedged Vault would otherwise block the revoke path forever.
+// A wedged Vault would otherwise block the revoke path forever.
 func stopIdentityBounded(cleanup func(), log logr.Logger) {
 	if cleanup == nil {
 		return
@@ -201,9 +191,6 @@ func stopIdentityBounded(cleanup func(), log logr.Logger) {
 	}
 }
 
-// stopEmbeddedBounded shuts down the embedded service manager with a
-// deadline. A wedged service (Vault hung on a file lock, say) would
-// hang the orchestrator forever otherwise.
 func stopEmbeddedBounded(mgr *embedded.Manager, log logr.Logger) {
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), embeddedStopDeadline)
 	defer stopCancel()

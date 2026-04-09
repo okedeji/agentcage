@@ -12,14 +12,10 @@ import (
 	"github.com/okedeji/agentcage/internal/intervention"
 )
 
-// webhookDefaultTimeout caps each webhook request when the operator
-// hasn't set one. Short enough that an unreachable webhook can't back
-// up the notifier queue.
+// Short enough that an unreachable webhook can't back up the
+// notifier queue.
 const webhookDefaultTimeout = 5 * time.Second
 
-// setupNotifications builds the intervention store, the composite
-// notifier (log plus webhooks), and the alert dispatcher. Constructed
-// together because they share lifetime.
 func setupNotifications(db *sql.DB, cfg *config.Config, log logr.Logger) (*intervention.PGStore, intervention.Notifier, *alert.Dispatcher) {
 	fmt.Println("Setting up notifications...")
 	store := intervention.NewPGStore(db)
