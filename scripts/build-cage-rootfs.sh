@@ -79,14 +79,45 @@ sudo chroot "$MOUNTPOINT" apk add --no-cache \
     iproute2 \
     bash
 
-# Install security tools from the Go-defined tool list
+# Install security tools from the Go-defined tool list.
+# Most are Alpine packages. Tools not in the repos get a dedicated
+# install block below; the loop skips them.
+MANUAL_INSTALL="nuclei interactsh subfinder httpx katana"
+
 echo "Installing security tools..."
 for pkg in $TOOL_PACKAGES; do
+    case " $MANUAL_INSTALL " in
+        *" $pkg "*) continue ;;
+    esac
     echo "  installing $pkg..."
-    sudo chroot "$MOUNTPOINT" apk add --no-cache "$pkg" 2>/dev/null || \
-        sudo chroot "$MOUNTPOINT" pip3 install --no-cache-dir --break-system-packages "$pkg" 2>/dev/null || \
-        echo "  WARNING: $pkg not found in Alpine repos or pip — skipping"
+    sudo chroot "$MOUNTPOINT" apk add --no-cache "$pkg" || {
+        echo "  ERROR: $pkg not found in Alpine repos"; exit 1
+    }
 done
+
+# nuclei and interactsh are Go binaries distributed via GitHub.
+# All projectdiscovery tools follow the same release pattern:
+#   {tool}_{version}_linux_{arch}.zip containing a single binary.
+# interactsh is the exception: asset and binary are named interactsh-client.
+case "$ALPINE_ARCH" in
+    aarch64) PD_ARCH="arm64" ;;
+    x86_64)  PD_ARCH="amd64" ;;
+esac
+
+install_pd_tool() {
+    local tool="$1" version="$2" binary="${3:-$1}"
+    echo "  installing ${binary} v${version}..."
+    curl -fsSL "https://github.com/projectdiscovery/${tool}/releases/download/v${version}/${binary}_${version}_linux_${PD_ARCH}.zip" -o "${WORKDIR}/${binary}.zip"
+    unzip -q "${WORKDIR}/${binary}.zip" -d "${WORKDIR}/${binary}-bin"
+    sudo cp "${WORKDIR}/${binary}-bin/${binary}" "$MOUNTPOINT/usr/local/bin/${binary}"
+    sudo chmod 755 "$MOUNTPOINT/usr/local/bin/${binary}"
+}
+
+install_pd_tool nuclei     3.7.1
+install_pd_tool interactsh 1.3.1  interactsh-client
+install_pd_tool subfinder  2.13.0
+install_pd_tool httpx      1.9.0
+install_pd_tool katana     1.5.0
 
 # Create standard directories
 sudo mkdir -p "$MOUNTPOINT/usr/local/bin"

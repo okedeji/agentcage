@@ -9,7 +9,13 @@ var ToolPackages = map[string]string{
 	"sqlmap":     "sqlmap",
 	"nikto":      "nikto",
 	"ffuf":       "ffuf",
-	"interactsh": "interactsh",
 	"curl":       "curl",
 	"wget":       "wget",
+	"jq":         "jq",
+	"bind-tools": "bind-tools",
+	"interactsh": "interactsh",  // GitHub release binary, not Alpine
+	"nuclei":     "nuclei",      // GitHub release binary, not Alpine
+	"subfinder":  "subfinder",   // GitHub release binary, not Alpine
+	"httpx":      "httpx",       // GitHub release binary, not Alpine
+	"katana":     "katana",      // GitHub release binary, not Alpine
 }
