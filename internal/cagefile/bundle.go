@@ -16,7 +16,6 @@ import (
 	"time"
 )
 
-// BundleManifest is the JSON metadata stored inside a .cage bundle.
 type BundleManifest struct {
 	Name       string   `json:"name"`
 	Version    string   `json:"version"`
@@ -30,23 +29,15 @@ type BundleManifest struct {
 	FilesHash  string   `json:"files_hash"`
 }
 
-// bundleSignature is a small sidecar file written into the .cage tar
-// alongside manifest.json. It contains a SHA256 of the raw manifest.json
-// bytes so a tampered manifest (e.g. injected pip dep) is rejected at
-// unpack time, before any chroot install runs.
+// SHA256 of the raw manifest.json bytes so a tampered manifest
+// (e.g. injected pip dep) is rejected at unpack before any chroot
+// install runs.
 type bundleSignature struct {
 	ManifestHash string `json:"manifest_hash"`
 }
 
 const bundleSignatureFile = "signature.json"
 
-// Pack reads a directory containing a Cagefile and agent source, then writes
-// a .cage bundle (gzipped tar) to the given writer.
-//
-// Bundle layout:
-//
-//	manifest.json
-//	files/          (agent source code)
 func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 	cagefilePath := filepath.Join(dir, "Cagefile")
 	f, err := os.Open(cagefilePath)
@@ -60,12 +51,10 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 		return nil, fmt.Errorf("parsing Cagefile: %w", err)
 	}
 
-	// Validate entrypoint script exists in the agent directory
 	if err := validateEntrypointExists(dir, manifest.Entrypoint); err != nil {
 		return nil, err
 	}
 
-	// Compute hash of all agent files
 	hash, err := hashDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("hashing agent files: %w", err)
@@ -90,7 +79,6 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 	tw := tar.NewWriter(gw)
 	defer func() { _ = tw.Close() }()
 
-	// Write manifest.json
 	manifestBytes, err := json.MarshalIndent(bundleManifest, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshaling manifest: %w", err)
@@ -100,8 +88,6 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 		return nil, fmt.Errorf("writing manifest to bundle: %w", err)
 	}
 
-	// Write the integrity sidecar so a tampered manifest is rejected at
-	// unpack time. Hashes the exact bytes we just wrote.
 	sigBytes, err := json.MarshalIndent(bundleSignature{
 		ManifestHash: "sha256:" + sha256Hex(manifestBytes),
 	}, "", "  ")
@@ -112,7 +98,6 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 		return nil, fmt.Errorf("writing signature to bundle: %w", err)
 	}
 
-	// Write agent files under files/
 	if err := addDirToTar(tw, dir, "files"); err != nil {
 		return nil, fmt.Errorf("adding agent files to bundle: %w", err)
 	}
@@ -120,17 +105,13 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 	return bundleManifest, nil
 }
 
-// sha256Hex returns the lowercase hex SHA256 of b.
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
 
-// DefaultMaxBundleSize is the default size limit for agent directories (2GB).
 const DefaultMaxBundleSize int64 = 2 * 1024 * 1024 * 1024
 
-// PackToFile packs a directory into a .cage file on disk.
-// maxSize limits the total size of files in the directory. Pass 0 to use DefaultMaxBundleSize.
 func PackToFile(dir, version, outPath string, maxSize int64) (*BundleManifest, error) {
 	if maxSize <= 0 {
 		maxSize = DefaultMaxBundleSize
@@ -154,7 +135,6 @@ func PackToFile(dir, version, outPath string, maxSize int64) (*BundleManifest, e
 	return Pack(dir, version, f)
 }
 
-// DirSize returns the total size of all files in a directory tree.
 func DirSize(dir string) (int64, error) {
 	var total int64
 	err := filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
@@ -167,7 +147,6 @@ func DirSize(dir string) (int64, error) {
 	return total, err
 }
 
-// Unpack extracts a .cage bundle to a destination directory.
 func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 	gr, err := gzip.NewReader(r)
 	if err != nil {
@@ -194,7 +173,6 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 
 		target := filepath.Join(destDir, header.Name)
 
-		// Prevent path traversal
 		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)+string(os.PathSeparator)) &&
 			filepath.Clean(target) != filepath.Clean(destDir) {
 			return nil, fmt.Errorf("invalid path in bundle: %s", header.Name)
@@ -225,7 +203,7 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 			}
 			_ = out.Close()
 
-			// Parse manifest and remember the raw bytes for integrity check.
+			// Raw bytes kept for signature verification below.
 			if header.Name == "manifest.json" {
 				data, readErr := os.ReadFile(target)
 				if readErr != nil {
@@ -255,10 +233,8 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 		return nil, fmt.Errorf("bundle does not contain manifest.json")
 	}
 
-	// Verify the manifest integrity sidecar. Bundles packed before
-	// signature.json existed are still accepted (signature == nil) so
-	// old bundles don't break, but new bundles that ship a signature
-	// are held to it.
+	// Bundles packed before signature.json existed are still accepted
+	// so old bundles don't break.
 	if signature != nil {
 		expected := "sha256:" + sha256Hex(manifestRawBytes)
 		if signature.ManifestHash != expected {
@@ -269,7 +245,6 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 	return manifest, nil
 }
 
-// CheckCompatibility verifies the bundle was packed with a compatible agentcage version.
 func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
 	bundleMajor, err := majorVersion(bundle.Version)
 	if err != nil {
@@ -292,7 +267,6 @@ func majorVersion(v string) (int, error) {
 	return strconv.Atoi(parts[0])
 }
 
-// UnpackFile extracts a .cage file to a destination directory.
 func UnpackFile(bundlePath, destDir string) (*BundleManifest, error) {
 	f, err := os.Open(bundlePath)
 	if err != nil {
@@ -322,12 +296,12 @@ func addDirToTar(tw *tar.Writer, srcDir, prefix string) error {
 			return err
 		}
 
-		// Skip the Cagefile itself; it's represented by manifest.json.
+		// Represented by manifest.json in the bundle.
 		if info.Name() == "Cagefile" && filepath.Dir(path) == srcDir {
 			return nil
 		}
 
-		// Reject symlinks; they could reference files outside the agent directory.
+		// Could reference files outside the agent directory.
 		linfo, lstatErr := os.Lstat(path)
 		if lstatErr != nil {
 			return fmt.Errorf("stat %s: %w", path, lstatErr)
@@ -376,7 +350,6 @@ func addDirToTar(tw *tar.Writer, srcDir, prefix string) error {
 	})
 }
 
-// HashDir computes a SHA256 hash of all files in a directory.
 func HashDir(dir string) (string, error) {
 	return hashDir(dir)
 }
@@ -424,15 +397,78 @@ func hashDir(dir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// Interpreters resolved via PATH inside the cage, not from the
+// agent directory.
+var knownInterpreters = map[string]bool{
+	"python3": true,
+	"python":  true,
+	"node":    true,
+	"bash":    true,
+	"sh":      true,
+	"go":      true,
+}
+
 func validateEntrypointExists(dir, entrypoint string) error {
 	parts := strings.Fields(entrypoint)
-	if len(parts) < 2 {
+	if len(parts) == 0 {
+		return fmt.Errorf("entrypoint is empty")
+	}
+
+	// Direct executable: ./run.sh, mybinary
+	if len(parts) == 1 {
+		return checkAgentFile(dir, parts[0])
+	}
+
+	first := parts[0]
+	args := parts[1:]
+
+	// Not a known interpreter; first token is the executable itself.
+	if !knownInterpreters[filepath.Base(first)] {
+		return checkAgentFile(dir, first)
+	}
+
+	// python3 -m module — module lives in the agent dir as module.py
+	// or module/ (package with __init__.py).
+	for i, arg := range args {
+		if arg == "-m" && i+1 < len(args) {
+			mod := args[i+1]
+			if fileExists(filepath.Join(dir, mod+".py")) || fileExists(filepath.Join(dir, mod)) {
+				return nil
+			}
+			return fmt.Errorf("entrypoint module %q not found in %s (checked %s.py and %s/)", mod, dir, mod, mod)
+		}
+	}
+
+	// Skip interpreter flags to find the script/file argument.
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		// Absolute paths resolve inside the cage, not the agent dir.
+		if filepath.IsAbs(arg) {
+			return nil
+		}
+		return checkAgentFile(dir, arg)
+	}
+
+	// All args are flags (e.g. "python3 --version"). Nothing to check.
+	return nil
+}
+
+func checkAgentFile(dir, name string) error {
+	clean := filepath.Clean(name)
+	// Absolute paths resolve inside the cage at runtime.
+	if filepath.IsAbs(clean) {
 		return nil
 	}
-	script := parts[1]
-	path := filepath.Join(dir, script)
+	path := filepath.Join(dir, clean)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("entrypoint script %q not found in %s", script, dir)
+		return fmt.Errorf("entrypoint %q not found in %s", clean, dir)
 	}
 	return nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

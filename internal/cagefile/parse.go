@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// Supported runtimes for cage agents.
 var SupportedRuntimes = map[string]bool{
 	"python3": true,
 	"node":    true,
@@ -25,7 +24,6 @@ var SupportedTools = func() map[string]bool {
 	return m
 }()
 
-// Manifest is the parsed representation of a Cagefile.
 type Manifest struct {
 	Runtime    string   `json:"runtime"`
 	Entrypoint string   `json:"entrypoint"`
@@ -36,16 +34,6 @@ type Manifest struct {
 	GoDeps     []string `json:"go_deps,omitempty"`
 }
 
-// Parse reads a Cagefile from the given reader and returns a Manifest.
-//
-// Cagefile format:
-//
-//	runtime python3
-//	deps chromium nmap
-//	packages masscan nuclei
-//	pip requests playwright httpx
-//	npm puppeteer
-//	entrypoint python3 solver.py
 func Parse(r io.Reader) (*Manifest, error) {
 	m := &Manifest{}
 	scanner := bufio.NewScanner(r)
@@ -121,7 +109,6 @@ func Parse(r io.Reader) (*Manifest, error) {
 	return m, m.validate()
 }
 
-// ParseString is a convenience wrapper for parsing a Cagefile from a string.
 func ParseString(s string) (*Manifest, error) {
 	return Parse(strings.NewReader(s))
 }
@@ -196,8 +183,6 @@ func (m *Manifest) validate() error {
 	return nil
 }
 
-// validateApkSpec accepts apk specs of the form name=version-rN. Bare names
-// are rejected so the resolved version cannot drift between cage runs.
 func validateApkSpec(spec string) error {
 	if !strings.Contains(spec, "=") {
 		return fmt.Errorf("apk package %q is not pinned (use name=version-rN)", spec)
@@ -205,8 +190,6 @@ func validateApkSpec(spec string) error {
 	return nil
 }
 
-// validatePipSpec accepts PEP 440 exact-version pins (name==version) and the
-// direct-reference form with a SHA hash (name @ url#sha256=...).
 func validatePipSpec(spec string) error {
 	if strings.Contains(spec, "==") {
 		return nil
@@ -217,8 +200,6 @@ func validatePipSpec(spec string) error {
 	return fmt.Errorf("pip dep %q is not pinned (use name==version or name @ url#sha256=...)", spec)
 }
 
-// validateNpmSpec accepts npm specs of the form name@version (semver exact).
-// Bare names and ranges (^, ~, >=) are rejected.
 func validateNpmSpec(spec string) error {
 	at := strings.LastIndex(spec, "@")
 	if at <= 0 {
@@ -231,10 +212,8 @@ func validateNpmSpec(spec string) error {
 	return nil
 }
 
-// validateGoSpec accepts module paths of the form module@v1.2.3. go
-// install rejects bare modules anyway; the check here gives the
-// bundle author a clear error at pack time instead of a chroot
-// install failure.
+// Gives the bundle author a clear error at pack time instead of a
+// chroot install failure.
 func validateGoSpec(spec string) error {
 	at := strings.LastIndex(spec, "@")
 	if at <= 0 {
