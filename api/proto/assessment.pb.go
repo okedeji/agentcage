@@ -141,6 +141,7 @@ type CageTypeConfig struct {
 	Type          CageType               `protobuf:"varint,1,opt,name=type,proto3,enum=agentcage.cage.v1.CageType" json:"type,omitempty"`
 	Defaults      *ResourceLimits        `protobuf:"bytes,2,opt,name=defaults,proto3" json:"defaults,omitempty"`
 	MaxConcurrent int32                  `protobuf:"varint,3,opt,name=max_concurrent,json=maxConcurrent,proto3" json:"max_concurrent,omitempty"`
+	MaxDuration   *durationpb.Duration   `protobuf:"bytes,4,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -196,18 +197,31 @@ func (x *CageTypeConfig) GetMaxConcurrent() int32 {
 	return 0
 }
 
+func (x *CageTypeConfig) GetMaxDuration() *durationpb.Duration {
+	if x != nil {
+		return x.MaxDuration
+	}
+	return nil
+}
+
 type AssessmentConfig struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	CustomerId       string                 `protobuf:"bytes,1,opt,name=customer_id,json=customerId,proto3" json:"customer_id,omitempty"`
-	Scope            *TargetScope           `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
-	CageTypeConfigs  []*CageTypeConfig      `protobuf:"bytes,3,rep,name=cage_type_configs,json=cageTypeConfigs,proto3" json:"cage_type_configs,omitempty"`
-	TotalTokenBudget int64                  `protobuf:"varint,4,opt,name=total_token_budget,json=totalTokenBudget,proto3" json:"total_token_budget,omitempty"`
-	MaxDuration      *durationpb.Duration   `protobuf:"bytes,5,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
-	MaxChainDepth    int32                  `protobuf:"varint,6,opt,name=max_chain_depth,json=maxChainDepth,proto3" json:"max_chain_depth,omitempty"`
-	Compliance       ComplianceFramework    `protobuf:"varint,7,opt,name=compliance,proto3,enum=agentcage.assessment.v1.ComplianceFramework" json:"compliance,omitempty"`
-	Guidance         *Guidance              `protobuf:"bytes,8,opt,name=guidance,proto3" json:"guidance,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	CustomerId         string                 `protobuf:"bytes,1,opt,name=customer_id,json=customerId,proto3" json:"customer_id,omitempty"`
+	Scope              *TargetScope           `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	CageTypeConfigs    []*CageTypeConfig      `protobuf:"bytes,3,rep,name=cage_type_configs,json=cageTypeConfigs,proto3" json:"cage_type_configs,omitempty"`
+	TotalTokenBudget   int64                  `protobuf:"varint,4,opt,name=total_token_budget,json=totalTokenBudget,proto3" json:"total_token_budget,omitempty"`
+	MaxDuration        *durationpb.Duration   `protobuf:"bytes,5,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
+	MaxChainDepth      int32                  `protobuf:"varint,6,opt,name=max_chain_depth,json=maxChainDepth,proto3" json:"max_chain_depth,omitempty"`
+	Compliance         []ComplianceFramework  `protobuf:"varint,7,rep,packed,name=compliance,proto3,enum=agentcage.assessment.v1.ComplianceFramework" json:"compliance,omitempty"`
+	Guidance           *Guidance              `protobuf:"bytes,8,opt,name=guidance,proto3" json:"guidance,omitempty"`
+	ExcludeHosts       []string               `protobuf:"bytes,9,rep,name=exclude_hosts,json=excludeHosts,proto3" json:"exclude_hosts,omitempty"`
+	ExcludePaths       []string               `protobuf:"bytes,10,rep,name=exclude_paths,json=excludePaths,proto3" json:"exclude_paths,omitempty"`
+	Tags               map[string]string      `protobuf:"bytes,11,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Notifications      *NotificationConfig    `protobuf:"bytes,12,opt,name=notifications,proto3" json:"notifications,omitempty"`
+	Name               string                 `protobuf:"bytes,13,opt,name=name,proto3" json:"name,omitempty"`
+	MaxConcurrentCages int32                  `protobuf:"varint,14,opt,name=max_concurrent_cages,json=maxConcurrentCages,proto3" json:"max_concurrent_cages,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *AssessmentConfig) Reset() {
@@ -282,11 +296,11 @@ func (x *AssessmentConfig) GetMaxChainDepth() int32 {
 	return 0
 }
 
-func (x *AssessmentConfig) GetCompliance() ComplianceFramework {
+func (x *AssessmentConfig) GetCompliance() []ComplianceFramework {
 	if x != nil {
 		return x.Compliance
 	}
-	return ComplianceFramework_COMPLIANCE_FRAMEWORK_UNSPECIFIED
+	return nil
 }
 
 func (x *AssessmentConfig) GetGuidance() *Guidance {
@@ -294,6 +308,108 @@ func (x *AssessmentConfig) GetGuidance() *Guidance {
 		return x.Guidance
 	}
 	return nil
+}
+
+func (x *AssessmentConfig) GetExcludeHosts() []string {
+	if x != nil {
+		return x.ExcludeHosts
+	}
+	return nil
+}
+
+func (x *AssessmentConfig) GetExcludePaths() []string {
+	if x != nil {
+		return x.ExcludePaths
+	}
+	return nil
+}
+
+func (x *AssessmentConfig) GetTags() map[string]string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *AssessmentConfig) GetNotifications() *NotificationConfig {
+	if x != nil {
+		return x.Notifications
+	}
+	return nil
+}
+
+func (x *AssessmentConfig) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AssessmentConfig) GetMaxConcurrentCages() int32 {
+	if x != nil {
+		return x.MaxConcurrentCages
+	}
+	return 0
+}
+
+type NotificationConfig struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Webhook       string                 `protobuf:"bytes,1,opt,name=webhook,proto3" json:"webhook,omitempty"`
+	OnFinding     bool                   `protobuf:"varint,2,opt,name=on_finding,json=onFinding,proto3" json:"on_finding,omitempty"`
+	OnComplete    bool                   `protobuf:"varint,3,opt,name=on_complete,json=onComplete,proto3" json:"on_complete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationConfig) Reset() {
+	*x = NotificationConfig{}
+	mi := &file_api_proto_assessment_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationConfig) ProtoMessage() {}
+
+func (x *NotificationConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_assessment_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationConfig.ProtoReflect.Descriptor instead.
+func (*NotificationConfig) Descriptor() ([]byte, []int) {
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *NotificationConfig) GetWebhook() string {
+	if x != nil {
+		return x.Webhook
+	}
+	return ""
+}
+
+func (x *NotificationConfig) GetOnFinding() bool {
+	if x != nil {
+		return x.OnFinding
+	}
+	return false
+}
+
+func (x *NotificationConfig) GetOnComplete() bool {
+	if x != nil {
+		return x.OnComplete
+	}
+	return false
 }
 
 type Guidance struct {
@@ -308,7 +424,7 @@ type Guidance struct {
 
 func (x *Guidance) Reset() {
 	*x = Guidance{}
-	mi := &file_api_proto_assessment_proto_msgTypes[2]
+	mi := &file_api_proto_assessment_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -320,7 +436,7 @@ func (x *Guidance) String() string {
 func (*Guidance) ProtoMessage() {}
 
 func (x *Guidance) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[2]
+	mi := &file_api_proto_assessment_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -333,7 +449,7 @@ func (x *Guidance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Guidance.ProtoReflect.Descriptor instead.
 func (*Guidance) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{2}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Guidance) GetAttackSurface() *AttackSurfaceGuidance {
@@ -375,7 +491,7 @@ type AttackSurfaceGuidance struct {
 
 func (x *AttackSurfaceGuidance) Reset() {
 	*x = AttackSurfaceGuidance{}
-	mi := &file_api_proto_assessment_proto_msgTypes[3]
+	mi := &file_api_proto_assessment_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -387,7 +503,7 @@ func (x *AttackSurfaceGuidance) String() string {
 func (*AttackSurfaceGuidance) ProtoMessage() {}
 
 func (x *AttackSurfaceGuidance) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[3]
+	mi := &file_api_proto_assessment_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -400,7 +516,7 @@ func (x *AttackSurfaceGuidance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttackSurfaceGuidance.ProtoReflect.Descriptor instead.
 func (*AttackSurfaceGuidance) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{3}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *AttackSurfaceGuidance) GetEndpoints() []string {
@@ -426,16 +542,15 @@ func (x *AttackSurfaceGuidance) GetLimitToListed() bool {
 
 type PrioritiesGuidance struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Focus         []string               `protobuf:"bytes,1,rep,name=focus,proto3" json:"focus,omitempty"`
-	Deprioritize  []string               `protobuf:"bytes,2,rep,name=deprioritize,proto3" json:"deprioritize,omitempty"`
-	VulnClasses   []string               `protobuf:"bytes,3,rep,name=vuln_classes,json=vulnClasses,proto3" json:"vuln_classes,omitempty"`
+	VulnClasses   []string               `protobuf:"bytes,1,rep,name=vuln_classes,json=vulnClasses,proto3" json:"vuln_classes,omitempty"`
+	SkipPaths     []string               `protobuf:"bytes,2,rep,name=skip_paths,json=skipPaths,proto3" json:"skip_paths,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PrioritiesGuidance) Reset() {
 	*x = PrioritiesGuidance{}
-	mi := &file_api_proto_assessment_proto_msgTypes[4]
+	mi := &file_api_proto_assessment_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -447,7 +562,7 @@ func (x *PrioritiesGuidance) String() string {
 func (*PrioritiesGuidance) ProtoMessage() {}
 
 func (x *PrioritiesGuidance) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[4]
+	mi := &file_api_proto_assessment_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -460,21 +575,7 @@ func (x *PrioritiesGuidance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrioritiesGuidance.ProtoReflect.Descriptor instead.
 func (*PrioritiesGuidance) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *PrioritiesGuidance) GetFocus() []string {
-	if x != nil {
-		return x.Focus
-	}
-	return nil
-}
-
-func (x *PrioritiesGuidance) GetDeprioritize() []string {
-	if x != nil {
-		return x.Deprioritize
-	}
-	return nil
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PrioritiesGuidance) GetVulnClasses() []string {
@@ -484,18 +585,24 @@ func (x *PrioritiesGuidance) GetVulnClasses() []string {
 	return nil
 }
 
+func (x *PrioritiesGuidance) GetSkipPaths() []string {
+	if x != nil {
+		return x.SkipPaths
+	}
+	return nil
+}
+
 type AttackStrategyGuidance struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	VulnClasses     []string               `protobuf:"bytes,1,rep,name=vuln_classes,json=vulnClasses,proto3" json:"vuln_classes,omitempty"`
-	KnownWeaknesses []string               `protobuf:"bytes,2,rep,name=known_weaknesses,json=knownWeaknesses,proto3" json:"known_weaknesses,omitempty"`
-	Context         string                 `protobuf:"bytes,3,opt,name=context,proto3" json:"context,omitempty"`
+	KnownWeaknesses []string               `protobuf:"bytes,1,rep,name=known_weaknesses,json=knownWeaknesses,proto3" json:"known_weaknesses,omitempty"`
+	Context         string                 `protobuf:"bytes,2,opt,name=context,proto3" json:"context,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *AttackStrategyGuidance) Reset() {
 	*x = AttackStrategyGuidance{}
-	mi := &file_api_proto_assessment_proto_msgTypes[5]
+	mi := &file_api_proto_assessment_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -507,7 +614,7 @@ func (x *AttackStrategyGuidance) String() string {
 func (*AttackStrategyGuidance) ProtoMessage() {}
 
 func (x *AttackStrategyGuidance) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[5]
+	mi := &file_api_proto_assessment_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -520,14 +627,7 @@ func (x *AttackStrategyGuidance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttackStrategyGuidance.ProtoReflect.Descriptor instead.
 func (*AttackStrategyGuidance) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *AttackStrategyGuidance) GetVulnClasses() []string {
-	if x != nil {
-		return x.VulnClasses
-	}
-	return nil
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *AttackStrategyGuidance) GetKnownWeaknesses() []string {
@@ -554,7 +654,7 @@ type ValidationGuidance struct {
 
 func (x *ValidationGuidance) Reset() {
 	*x = ValidationGuidance{}
-	mi := &file_api_proto_assessment_proto_msgTypes[6]
+	mi := &file_api_proto_assessment_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -566,7 +666,7 @@ func (x *ValidationGuidance) String() string {
 func (*ValidationGuidance) ProtoMessage() {}
 
 func (x *ValidationGuidance) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[6]
+	mi := &file_api_proto_assessment_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -579,7 +679,7 @@ func (x *ValidationGuidance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidationGuidance.ProtoReflect.Descriptor instead.
 func (*ValidationGuidance) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{6}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ValidationGuidance) GetRequirePoc() bool {
@@ -610,7 +710,7 @@ type AssessmentStats struct {
 
 func (x *AssessmentStats) Reset() {
 	*x = AssessmentStats{}
-	mi := &file_api_proto_assessment_proto_msgTypes[7]
+	mi := &file_api_proto_assessment_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -622,7 +722,7 @@ func (x *AssessmentStats) String() string {
 func (*AssessmentStats) ProtoMessage() {}
 
 func (x *AssessmentStats) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[7]
+	mi := &file_api_proto_assessment_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -635,7 +735,7 @@ func (x *AssessmentStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssessmentStats.ProtoReflect.Descriptor instead.
 func (*AssessmentStats) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{7}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AssessmentStats) GetTotalCages() int32 {
@@ -695,7 +795,7 @@ type AssessmentInfo struct {
 
 func (x *AssessmentInfo) Reset() {
 	*x = AssessmentInfo{}
-	mi := &file_api_proto_assessment_proto_msgTypes[8]
+	mi := &file_api_proto_assessment_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -707,7 +807,7 @@ func (x *AssessmentInfo) String() string {
 func (*AssessmentInfo) ProtoMessage() {}
 
 func (x *AssessmentInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[8]
+	mi := &file_api_proto_assessment_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -720,7 +820,7 @@ func (x *AssessmentInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssessmentInfo.ProtoReflect.Descriptor instead.
 func (*AssessmentInfo) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{8}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *AssessmentInfo) GetAssessmentId() string {
@@ -775,13 +875,14 @@ func (x *AssessmentInfo) GetUpdatedAt() *timestamppb.Timestamp {
 type CreateAssessmentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Config        *AssessmentConfig      `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	BundleRef     string                 `protobuf:"bytes,2,opt,name=bundle_ref,json=bundleRef,proto3" json:"bundle_ref,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateAssessmentRequest) Reset() {
 	*x = CreateAssessmentRequest{}
-	mi := &file_api_proto_assessment_proto_msgTypes[9]
+	mi := &file_api_proto_assessment_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -793,7 +894,7 @@ func (x *CreateAssessmentRequest) String() string {
 func (*CreateAssessmentRequest) ProtoMessage() {}
 
 func (x *CreateAssessmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[9]
+	mi := &file_api_proto_assessment_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -806,7 +907,7 @@ func (x *CreateAssessmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAssessmentRequest.ProtoReflect.Descriptor instead.
 func (*CreateAssessmentRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{9}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateAssessmentRequest) GetConfig() *AssessmentConfig {
@@ -814,6 +915,13 @@ func (x *CreateAssessmentRequest) GetConfig() *AssessmentConfig {
 		return x.Config
 	}
 	return nil
+}
+
+func (x *CreateAssessmentRequest) GetBundleRef() string {
+	if x != nil {
+		return x.BundleRef
+	}
+	return ""
 }
 
 type CreateAssessmentResponse struct {
@@ -825,7 +933,7 @@ type CreateAssessmentResponse struct {
 
 func (x *CreateAssessmentResponse) Reset() {
 	*x = CreateAssessmentResponse{}
-	mi := &file_api_proto_assessment_proto_msgTypes[10]
+	mi := &file_api_proto_assessment_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -837,7 +945,7 @@ func (x *CreateAssessmentResponse) String() string {
 func (*CreateAssessmentResponse) ProtoMessage() {}
 
 func (x *CreateAssessmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[10]
+	mi := &file_api_proto_assessment_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -850,7 +958,7 @@ func (x *CreateAssessmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAssessmentResponse.ProtoReflect.Descriptor instead.
 func (*CreateAssessmentResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{10}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CreateAssessmentResponse) GetAssessment() *AssessmentInfo {
@@ -869,7 +977,7 @@ type GetAssessmentRequest struct {
 
 func (x *GetAssessmentRequest) Reset() {
 	*x = GetAssessmentRequest{}
-	mi := &file_api_proto_assessment_proto_msgTypes[11]
+	mi := &file_api_proto_assessment_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -881,7 +989,7 @@ func (x *GetAssessmentRequest) String() string {
 func (*GetAssessmentRequest) ProtoMessage() {}
 
 func (x *GetAssessmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[11]
+	mi := &file_api_proto_assessment_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -894,7 +1002,7 @@ func (x *GetAssessmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAssessmentRequest.ProtoReflect.Descriptor instead.
 func (*GetAssessmentRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{11}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetAssessmentRequest) GetAssessmentId() string {
@@ -913,7 +1021,7 @@ type GetAssessmentResponse struct {
 
 func (x *GetAssessmentResponse) Reset() {
 	*x = GetAssessmentResponse{}
-	mi := &file_api_proto_assessment_proto_msgTypes[12]
+	mi := &file_api_proto_assessment_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -925,7 +1033,7 @@ func (x *GetAssessmentResponse) String() string {
 func (*GetAssessmentResponse) ProtoMessage() {}
 
 func (x *GetAssessmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_assessment_proto_msgTypes[12]
+	mi := &file_api_proto_assessment_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -938,7 +1046,7 @@ func (x *GetAssessmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAssessmentResponse.ProtoReflect.Descriptor instead.
 func (*GetAssessmentResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{12}
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetAssessmentResponse) GetAssessment() *AssessmentInfo {
@@ -952,11 +1060,12 @@ var File_api_proto_assessment_proto protoreflect.FileDescriptor
 
 const file_api_proto_assessment_proto_rawDesc = "" +
 	"\n" +
-	"\x1aapi/proto/assessment.proto\x12\x17agentcage.assessment.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14api/proto/cage.proto\"\xa7\x01\n" +
+	"\x1aapi/proto/assessment.proto\x12\x17agentcage.assessment.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14api/proto/cage.proto\"\xe5\x01\n" +
 	"\x0eCageTypeConfig\x12/\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1b.agentcage.cage.v1.CageTypeR\x04type\x12=\n" +
 	"\bdefaults\x18\x02 \x01(\v2!.agentcage.cage.v1.ResourceLimitsR\bdefaults\x12%\n" +
-	"\x0emax_concurrent\x18\x03 \x01(\x05R\rmaxConcurrent\"\xdf\x03\n" +
+	"\x0emax_concurrent\x18\x03 \x01(\x05R\rmaxConcurrent\x12<\n" +
+	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xc4\x06\n" +
 	"\x10AssessmentConfig\x12\x1f\n" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\x124\n" +
@@ -966,9 +1075,25 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\fmax_duration\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\x12&\n" +
 	"\x0fmax_chain_depth\x18\x06 \x01(\x05R\rmaxChainDepth\x12L\n" +
 	"\n" +
-	"compliance\x18\a \x01(\x0e2,.agentcage.assessment.v1.ComplianceFrameworkR\n" +
+	"compliance\x18\a \x03(\x0e2,.agentcage.assessment.v1.ComplianceFrameworkR\n" +
 	"compliance\x12=\n" +
-	"\bguidance\x18\b \x01(\v2!.agentcage.assessment.v1.GuidanceR\bguidance\"\xd5\x02\n" +
+	"\bguidance\x18\b \x01(\v2!.agentcage.assessment.v1.GuidanceR\bguidance\x12#\n" +
+	"\rexclude_hosts\x18\t \x03(\tR\fexcludeHosts\x12#\n" +
+	"\rexclude_paths\x18\n" +
+	" \x03(\tR\fexcludePaths\x12G\n" +
+	"\x04tags\x18\v \x03(\v23.agentcage.assessment.v1.AssessmentConfig.TagsEntryR\x04tags\x12Q\n" +
+	"\rnotifications\x18\f \x01(\v2+.agentcage.assessment.v1.NotificationConfigR\rnotifications\x12\x12\n" +
+	"\x04name\x18\r \x01(\tR\x04name\x120\n" +
+	"\x14max_concurrent_cages\x18\x0e \x01(\x05R\x12maxConcurrentCages\x1a7\n" +
+	"\tTagsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"n\n" +
+	"\x12NotificationConfig\x12\x18\n" +
+	"\awebhook\x18\x01 \x01(\tR\awebhook\x12\x1d\n" +
+	"\n" +
+	"on_finding\x18\x02 \x01(\bR\tonFinding\x12\x1f\n" +
+	"\von_complete\x18\x03 \x01(\bR\n" +
+	"onComplete\"\xd5\x02\n" +
 	"\bGuidance\x12U\n" +
 	"\x0eattack_surface\x18\x01 \x01(\v2..agentcage.assessment.v1.AttackSurfaceGuidanceR\rattackSurface\x12K\n" +
 	"\n" +
@@ -981,15 +1106,14 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x15AttackSurfaceGuidance\x12\x1c\n" +
 	"\tendpoints\x18\x01 \x03(\tR\tendpoints\x12\x1b\n" +
 	"\tapi_specs\x18\x02 \x03(\tR\bapiSpecs\x12&\n" +
-	"\x0flimit_to_listed\x18\x03 \x01(\bR\rlimitToListed\"q\n" +
-	"\x12PrioritiesGuidance\x12\x14\n" +
-	"\x05focus\x18\x01 \x03(\tR\x05focus\x12\"\n" +
-	"\fdeprioritize\x18\x02 \x03(\tR\fdeprioritize\x12!\n" +
-	"\fvuln_classes\x18\x03 \x03(\tR\vvulnClasses\"\x80\x01\n" +
-	"\x16AttackStrategyGuidance\x12!\n" +
-	"\fvuln_classes\x18\x01 \x03(\tR\vvulnClasses\x12)\n" +
-	"\x10known_weaknesses\x18\x02 \x03(\tR\x0fknownWeaknesses\x12\x18\n" +
-	"\acontext\x18\x03 \x01(\tR\acontext\"g\n" +
+	"\x0flimit_to_listed\x18\x03 \x01(\bR\rlimitToListed\"V\n" +
+	"\x12PrioritiesGuidance\x12!\n" +
+	"\fvuln_classes\x18\x01 \x03(\tR\vvulnClasses\x12\x1d\n" +
+	"\n" +
+	"skip_paths\x18\x02 \x03(\tR\tskipPaths\"]\n" +
+	"\x16AttackStrategyGuidance\x12)\n" +
+	"\x10known_weaknesses\x18\x01 \x03(\tR\x0fknownWeaknesses\x12\x18\n" +
+	"\acontext\x18\x02 \x01(\tR\acontext\"g\n" +
 	"\x12ValidationGuidance\x12\x1f\n" +
 	"\vrequire_poc\x18\x01 \x01(\bR\n" +
 	"requirePoc\x120\n" +
@@ -1012,9 +1136,11 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\\\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"{\n" +
 	"\x17CreateAssessmentRequest\x12A\n" +
-	"\x06config\x18\x01 \x01(\v2).agentcage.assessment.v1.AssessmentConfigR\x06config\"c\n" +
+	"\x06config\x18\x01 \x01(\v2).agentcage.assessment.v1.AssessmentConfigR\x06config\x12\x1d\n" +
+	"\n" +
+	"bundle_ref\x18\x02 \x01(\tR\tbundleRef\"c\n" +
 	"\x18CreateAssessmentResponse\x12G\n" +
 	"\n" +
 	"assessment\x18\x01 \x01(\v2'.agentcage.assessment.v1.AssessmentInfoR\n" +
@@ -1055,58 +1181,63 @@ func file_api_proto_assessment_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_assessment_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_api_proto_assessment_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_api_proto_assessment_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_api_proto_assessment_proto_goTypes = []any{
 	(AssessmentStatus)(0),            // 0: agentcage.assessment.v1.AssessmentStatus
 	(ComplianceFramework)(0),         // 1: agentcage.assessment.v1.ComplianceFramework
 	(*CageTypeConfig)(nil),           // 2: agentcage.assessment.v1.CageTypeConfig
 	(*AssessmentConfig)(nil),         // 3: agentcage.assessment.v1.AssessmentConfig
-	(*Guidance)(nil),                 // 4: agentcage.assessment.v1.Guidance
-	(*AttackSurfaceGuidance)(nil),    // 5: agentcage.assessment.v1.AttackSurfaceGuidance
-	(*PrioritiesGuidance)(nil),       // 6: agentcage.assessment.v1.PrioritiesGuidance
-	(*AttackStrategyGuidance)(nil),   // 7: agentcage.assessment.v1.AttackStrategyGuidance
-	(*ValidationGuidance)(nil),       // 8: agentcage.assessment.v1.ValidationGuidance
-	(*AssessmentStats)(nil),          // 9: agentcage.assessment.v1.AssessmentStats
-	(*AssessmentInfo)(nil),           // 10: agentcage.assessment.v1.AssessmentInfo
-	(*CreateAssessmentRequest)(nil),  // 11: agentcage.assessment.v1.CreateAssessmentRequest
-	(*CreateAssessmentResponse)(nil), // 12: agentcage.assessment.v1.CreateAssessmentResponse
-	(*GetAssessmentRequest)(nil),     // 13: agentcage.assessment.v1.GetAssessmentRequest
-	(*GetAssessmentResponse)(nil),    // 14: agentcage.assessment.v1.GetAssessmentResponse
-	(CageType)(0),                    // 15: agentcage.cage.v1.CageType
-	(*ResourceLimits)(nil),           // 16: agentcage.cage.v1.ResourceLimits
-	(*TargetScope)(nil),              // 17: agentcage.cage.v1.TargetScope
-	(*durationpb.Duration)(nil),      // 18: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),    // 19: google.protobuf.Timestamp
+	(*NotificationConfig)(nil),       // 4: agentcage.assessment.v1.NotificationConfig
+	(*Guidance)(nil),                 // 5: agentcage.assessment.v1.Guidance
+	(*AttackSurfaceGuidance)(nil),    // 6: agentcage.assessment.v1.AttackSurfaceGuidance
+	(*PrioritiesGuidance)(nil),       // 7: agentcage.assessment.v1.PrioritiesGuidance
+	(*AttackStrategyGuidance)(nil),   // 8: agentcage.assessment.v1.AttackStrategyGuidance
+	(*ValidationGuidance)(nil),       // 9: agentcage.assessment.v1.ValidationGuidance
+	(*AssessmentStats)(nil),          // 10: agentcage.assessment.v1.AssessmentStats
+	(*AssessmentInfo)(nil),           // 11: agentcage.assessment.v1.AssessmentInfo
+	(*CreateAssessmentRequest)(nil),  // 12: agentcage.assessment.v1.CreateAssessmentRequest
+	(*CreateAssessmentResponse)(nil), // 13: agentcage.assessment.v1.CreateAssessmentResponse
+	(*GetAssessmentRequest)(nil),     // 14: agentcage.assessment.v1.GetAssessmentRequest
+	(*GetAssessmentResponse)(nil),    // 15: agentcage.assessment.v1.GetAssessmentResponse
+	nil,                              // 16: agentcage.assessment.v1.AssessmentConfig.TagsEntry
+	(CageType)(0),                    // 17: agentcage.cage.v1.CageType
+	(*ResourceLimits)(nil),           // 18: agentcage.cage.v1.ResourceLimits
+	(*durationpb.Duration)(nil),      // 19: google.protobuf.Duration
+	(*TargetScope)(nil),              // 20: agentcage.cage.v1.TargetScope
+	(*timestamppb.Timestamp)(nil),    // 21: google.protobuf.Timestamp
 }
 var file_api_proto_assessment_proto_depIdxs = []int32{
-	15, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
-	16, // 1: agentcage.assessment.v1.CageTypeConfig.defaults:type_name -> agentcage.cage.v1.ResourceLimits
-	17, // 2: agentcage.assessment.v1.AssessmentConfig.scope:type_name -> agentcage.cage.v1.TargetScope
-	2,  // 3: agentcage.assessment.v1.AssessmentConfig.cage_type_configs:type_name -> agentcage.assessment.v1.CageTypeConfig
-	18, // 4: agentcage.assessment.v1.AssessmentConfig.max_duration:type_name -> google.protobuf.Duration
-	1,  // 5: agentcage.assessment.v1.AssessmentConfig.compliance:type_name -> agentcage.assessment.v1.ComplianceFramework
-	4,  // 6: agentcage.assessment.v1.AssessmentConfig.guidance:type_name -> agentcage.assessment.v1.Guidance
-	5,  // 7: agentcage.assessment.v1.Guidance.attack_surface:type_name -> agentcage.assessment.v1.AttackSurfaceGuidance
-	6,  // 8: agentcage.assessment.v1.Guidance.priorities:type_name -> agentcage.assessment.v1.PrioritiesGuidance
-	7,  // 9: agentcage.assessment.v1.Guidance.attack_strategy:type_name -> agentcage.assessment.v1.AttackStrategyGuidance
-	8,  // 10: agentcage.assessment.v1.Guidance.validation:type_name -> agentcage.assessment.v1.ValidationGuidance
-	0,  // 11: agentcage.assessment.v1.AssessmentInfo.status:type_name -> agentcage.assessment.v1.AssessmentStatus
-	3,  // 12: agentcage.assessment.v1.AssessmentInfo.config:type_name -> agentcage.assessment.v1.AssessmentConfig
-	9,  // 13: agentcage.assessment.v1.AssessmentInfo.stats:type_name -> agentcage.assessment.v1.AssessmentStats
-	19, // 14: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
-	19, // 15: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
-	3,  // 16: agentcage.assessment.v1.CreateAssessmentRequest.config:type_name -> agentcage.assessment.v1.AssessmentConfig
-	10, // 17: agentcage.assessment.v1.CreateAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
-	10, // 18: agentcage.assessment.v1.GetAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
-	11, // 19: agentcage.assessment.v1.AssessmentService.CreateAssessment:input_type -> agentcage.assessment.v1.CreateAssessmentRequest
-	13, // 20: agentcage.assessment.v1.AssessmentService.GetAssessment:input_type -> agentcage.assessment.v1.GetAssessmentRequest
-	12, // 21: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
-	14, // 22: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
-	21, // [21:23] is the sub-list for method output_type
-	19, // [19:21] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	17, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
+	18, // 1: agentcage.assessment.v1.CageTypeConfig.defaults:type_name -> agentcage.cage.v1.ResourceLimits
+	19, // 2: agentcage.assessment.v1.CageTypeConfig.max_duration:type_name -> google.protobuf.Duration
+	20, // 3: agentcage.assessment.v1.AssessmentConfig.scope:type_name -> agentcage.cage.v1.TargetScope
+	2,  // 4: agentcage.assessment.v1.AssessmentConfig.cage_type_configs:type_name -> agentcage.assessment.v1.CageTypeConfig
+	19, // 5: agentcage.assessment.v1.AssessmentConfig.max_duration:type_name -> google.protobuf.Duration
+	1,  // 6: agentcage.assessment.v1.AssessmentConfig.compliance:type_name -> agentcage.assessment.v1.ComplianceFramework
+	5,  // 7: agentcage.assessment.v1.AssessmentConfig.guidance:type_name -> agentcage.assessment.v1.Guidance
+	16, // 8: agentcage.assessment.v1.AssessmentConfig.tags:type_name -> agentcage.assessment.v1.AssessmentConfig.TagsEntry
+	4,  // 9: agentcage.assessment.v1.AssessmentConfig.notifications:type_name -> agentcage.assessment.v1.NotificationConfig
+	6,  // 10: agentcage.assessment.v1.Guidance.attack_surface:type_name -> agentcage.assessment.v1.AttackSurfaceGuidance
+	7,  // 11: agentcage.assessment.v1.Guidance.priorities:type_name -> agentcage.assessment.v1.PrioritiesGuidance
+	8,  // 12: agentcage.assessment.v1.Guidance.attack_strategy:type_name -> agentcage.assessment.v1.AttackStrategyGuidance
+	9,  // 13: agentcage.assessment.v1.Guidance.validation:type_name -> agentcage.assessment.v1.ValidationGuidance
+	0,  // 14: agentcage.assessment.v1.AssessmentInfo.status:type_name -> agentcage.assessment.v1.AssessmentStatus
+	3,  // 15: agentcage.assessment.v1.AssessmentInfo.config:type_name -> agentcage.assessment.v1.AssessmentConfig
+	10, // 16: agentcage.assessment.v1.AssessmentInfo.stats:type_name -> agentcage.assessment.v1.AssessmentStats
+	21, // 17: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
+	21, // 18: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
+	3,  // 19: agentcage.assessment.v1.CreateAssessmentRequest.config:type_name -> agentcage.assessment.v1.AssessmentConfig
+	11, // 20: agentcage.assessment.v1.CreateAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
+	11, // 21: agentcage.assessment.v1.GetAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
+	12, // 22: agentcage.assessment.v1.AssessmentService.CreateAssessment:input_type -> agentcage.assessment.v1.CreateAssessmentRequest
+	14, // 23: agentcage.assessment.v1.AssessmentService.GetAssessment:input_type -> agentcage.assessment.v1.GetAssessmentRequest
+	13, // 24: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
+	15, // 25: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
+	24, // [24:26] is the sub-list for method output_type
+	22, // [22:24] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_assessment_proto_init() }
@@ -1121,7 +1252,7 @@ func file_api_proto_assessment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_assessment_proto_rawDesc), len(file_api_proto_assessment_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -33,6 +33,7 @@ message CageTypeConfig {
   agentcage.cage.v1.CageType type = 1;
   agentcage.cage.v1.ResourceLimits defaults = 2;
   int32 max_concurrent = 3;
+  google.protobuf.Duration max_duration = 4;
 }
 
 message AssessmentConfig {
@@ -42,8 +43,20 @@ message AssessmentConfig {
   int64 total_token_budget = 4;
   google.protobuf.Duration max_duration = 5;
   int32 max_chain_depth = 6;
-  ComplianceFramework compliance = 7;
+  repeated ComplianceFramework compliance = 7;
   Guidance guidance = 8;
+  repeated string exclude_hosts = 9;
+  repeated string exclude_paths = 10;
+  map<string, string> tags = 11;
+  NotificationConfig notifications = 12;
+  string name = 13;
+  int32 max_concurrent_cages = 14;
+}
+
+message NotificationConfig {
+  string webhook = 1;
+  bool on_finding = 2;
+  bool on_complete = 3;
 }
 
 message Guidance {
@@ -60,15 +73,13 @@ message AttackSurfaceGuidance {
 }
 
 message PrioritiesGuidance {
-  repeated string focus = 1;
-  repeated string deprioritize = 2;
-  repeated string vuln_classes = 3;
+  repeated string vuln_classes = 1;
+  repeated string skip_paths = 2;
 }
 
 message AttackStrategyGuidance {
-  repeated string vuln_classes = 1;
-  repeated string known_weaknesses = 2;
-  string context = 3;
+  repeated string known_weaknesses = 1;
+  string context = 2;
 }
 
 message ValidationGuidance {
@@ -97,6 +108,7 @@ message AssessmentInfo {
 
 message CreateAssessmentRequest {
   AssessmentConfig config = 1;
+  string bundle_ref = 2;
 }
 
 message CreateAssessmentResponse {
@@ -110,4 +122,3 @@ message GetAssessmentRequest {
 message GetAssessmentResponse {
   AssessmentInfo assessment = 1;
 }
-

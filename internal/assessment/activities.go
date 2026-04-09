@@ -16,7 +16,7 @@ type TaskMatrixEntry struct {
 
 type Activities interface {
 	CreateDiscoveryCage(ctx context.Context, assessmentID string, config cage.Config) (string, error)
-	CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, proof *Proof) (string, error)
+	CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, proof *Proof, bundleRef string) (string, error)
 	CreateEscalationCage(ctx context.Context, assessmentID string, finding findings.Finding, config cage.Config) (string, error)
 	GetCandidateFindings(ctx context.Context, assessmentID string) ([]findings.Finding, error)
 	GetValidatedFindings(ctx context.Context, assessmentID string) ([]findings.Finding, error)
@@ -27,4 +27,5 @@ type Activities interface {
 	LookupProof(ctx context.Context, vulnClass string) (*Proof, error)
 	GetFinding(ctx context.Context, findingID string) (findings.Finding, error)
 	EmitProofGapIntervention(ctx context.Context, assessmentID, vulnClass string, findingIDs []string) (string, error)
+	NotifyAssessmentComplete(ctx context.Context, assessmentID string, config NotificationConfig, status Status, findingsValidated int32) error
 }

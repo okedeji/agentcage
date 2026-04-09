@@ -81,19 +81,62 @@ func (f ComplianceFramework) String() string {
 }
 
 type Config struct {
-	CustomerID    string
-	Target        cage.Scope
-	CageDefaults  map[cage.Type]CageTypeConfig
-	TokenBudget   int64
-	MaxDuration   time.Duration
-	MaxChainDepth int32
-	Compliance    ComplianceFramework
-	Guidance      *Guidance
+	CustomerID       string
+	Name             string
+	BundleRef        string
+	Target           cage.Scope
+	Exclude          ExcludeConfig
+	CageDefaults     map[cage.Type]CageTypeConfig
+	TokenBudget      int64
+	MaxDuration      time.Duration
+	MaxChainDepth    int32
+	MaxConcurrent    int32
+	Compliance       []ComplianceFramework
+	Guidance         *Guidance
+	Tags             map[string]string
+	Notifications    NotificationConfig
 }
 
-// Guidance is optional practitioner context that shapes how agentcage
-// discovers, prioritizes, attacks, and validates. Matches the four
-// dimensions of a pentest methodology.
+type ExcludeConfig struct {
+	Hosts []string
+	Paths []string
+}
+
+// Cage creation uses this instead of Config.Target so excluded
+// hosts and paths never reach a cage.
+func (c Config) FilteredScope() cage.Scope {
+	if len(c.Exclude.Hosts) == 0 && len(c.Exclude.Paths) == 0 {
+		return c.Target
+	}
+	excludeHost := make(map[string]bool, len(c.Exclude.Hosts))
+	for _, h := range c.Exclude.Hosts {
+		excludeHost[h] = true
+	}
+	excludePath := make(map[string]bool, len(c.Exclude.Paths))
+	for _, p := range c.Exclude.Paths {
+		excludePath[p] = true
+	}
+	out := cage.Scope{Extras: c.Target.Extras}
+	for _, h := range c.Target.Hosts {
+		if !excludeHost[h] {
+			out.Hosts = append(out.Hosts, h)
+		}
+	}
+	for _, p := range c.Target.Paths {
+		if !excludePath[p] {
+			out.Paths = append(out.Paths, p)
+		}
+	}
+	out.Ports = c.Target.Ports
+	return out
+}
+
+type NotificationConfig struct {
+	Webhook    string
+	OnFinding  bool
+	OnComplete bool
+}
+
 type Guidance struct {
 	AttackSurface  *AttackSurfaceGuidance  `json:"attack_surface,omitempty"`
 	Priorities     *PrioritiesGuidance     `json:"priorities,omitempty"`
@@ -101,28 +144,22 @@ type Guidance struct {
 	Validation     *ValidationGuidance     `json:"validation,omitempty"`
 }
 
-// AttackSurfaceGuidance narrows or expands what the coordinator discovers.
 type AttackSurfaceGuidance struct {
 	Endpoints     []string `json:"endpoints,omitempty"`
 	APISpecs      []string `json:"api_specs,omitempty"`
 	LimitToListed bool     `json:"limit_to_listed,omitempty"`
 }
 
-// PrioritiesGuidance focuses testing on high-value areas.
 type PrioritiesGuidance struct {
-	Focus        []string `json:"focus,omitempty"`
-	Deprioritize []string `json:"deprioritize,omitempty"`
-	VulnClasses  []string `json:"vuln_classes,omitempty"`
+	VulnClasses []string `json:"vuln_classes,omitempty"`
+	SkipPaths   []string `json:"skip_paths,omitempty"`
 }
 
-// AttackStrategyGuidance provides exploit knowledge and payload hints.
 type AttackStrategyGuidance struct {
-	VulnClasses    []string `json:"vuln_classes,omitempty"`
 	KnownWeaknesses []string `json:"known_weaknesses,omitempty"`
-	Context        string   `json:"context,omitempty"`
+	Context         string   `json:"context,omitempty"`
 }
 
-// ValidationGuidance controls how findings are confirmed.
 type ValidationGuidance struct {
 	RequirePoC         bool `json:"require_poc,omitempty"`
 	HeadlessBrowserXSS bool `json:"headless_browser_xss,omitempty"`
@@ -132,6 +169,7 @@ type CageTypeConfig struct {
 	Type          cage.Type
 	Resources     cage.ResourceLimits
 	MaxConcurrent int32
+	MaxDuration   time.Duration
 }
 
 type Info struct {

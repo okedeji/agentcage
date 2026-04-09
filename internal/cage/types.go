@@ -94,6 +94,7 @@ func StateFromString(s string) State {
 type Config struct {
 	AssessmentID    string
 	Type            Type
+	BundleRef       string
 	Scope           Scope
 	Resources       ResourceLimits
 	TimeLimits      TimeLimits

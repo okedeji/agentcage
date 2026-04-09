@@ -87,7 +87,9 @@ type assessmentAdapter struct {
 }
 
 func (a *assessmentAdapter) CreateAssessment(ctx context.Context, req *pb.CreateAssessmentRequest) (*pb.CreateAssessmentResponse, error) {
-	info, err := a.server.CreateAssessment(ctx, assessmentConfigFromProto(req.GetConfig()))
+	cfg := assessmentConfigFromProto(req.GetConfig())
+	cfg.BundleRef = req.GetBundleRef()
+	info, err := a.server.CreateAssessment(ctx, cfg)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}

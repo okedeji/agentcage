@@ -96,24 +96,69 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 		return assessment.Config{}
 	}
 	cfg := assessment.Config{
-		CustomerID: p.GetCustomerId(),
+		CustomerID:    p.GetCustomerId(),
+		Name:          p.GetName(),
+		TokenBudget:   p.GetTotalTokenBudget(),
+		MaxChainDepth: p.GetMaxChainDepth(),
+		MaxConcurrent: p.GetMaxConcurrentCages(),
+		Tags:          p.GetTags(),
 	}
 	if s := p.GetScope(); s != nil {
 		cfg.Target = cage.Scope{Hosts: s.GetHosts(), Ports: s.GetPorts(), Paths: s.GetPaths(), Extras: s.GetExtras()}
 	}
-	if p.GetTotalTokenBudget() > 0 {
-		cfg.TokenBudget = p.GetTotalTokenBudget()
-	}
 	if p.GetMaxDuration() != nil {
 		cfg.MaxDuration = p.GetMaxDuration().AsDuration()
 	}
-	if p.GetMaxChainDepth() > 0 {
-		cfg.MaxChainDepth = p.GetMaxChainDepth()
+	if len(p.GetExcludeHosts()) > 0 || len(p.GetExcludePaths()) > 0 {
+		cfg.Exclude = assessment.ExcludeConfig{
+			Hosts: p.GetExcludeHosts(),
+			Paths: p.GetExcludePaths(),
+		}
+	}
+	for _, c := range p.GetCompliance() {
+		cfg.Compliance = append(cfg.Compliance, complianceFromProto(c))
+	}
+	if n := p.GetNotifications(); n != nil {
+		cfg.Notifications = assessment.NotificationConfig{
+			Webhook:    n.GetWebhook(),
+			OnFinding:  n.GetOnFinding(),
+			OnComplete: n.GetOnComplete(),
+		}
 	}
 	if g := p.GetGuidance(); g != nil {
 		cfg.Guidance = guidanceFromProto(g)
 	}
+	for _, ct := range p.GetCageTypeConfigs() {
+		if cfg.CageDefaults == nil {
+			cfg.CageDefaults = make(map[cage.Type]assessment.CageTypeConfig)
+		}
+		t := cageTypeFromProto(ct.GetType())
+		ctc := assessment.CageTypeConfig{
+			Type:          t,
+			MaxConcurrent: ct.GetMaxConcurrent(),
+		}
+		if d := ct.GetDefaults(); d != nil {
+			ctc.Resources = cage.ResourceLimits{VCPUs: d.GetVcpus(), MemoryMB: d.GetMemoryMb()}
+		}
+		if ct.GetMaxDuration() != nil {
+			ctc.MaxDuration = ct.GetMaxDuration().AsDuration()
+		}
+		cfg.CageDefaults[t] = ctc
+	}
 	return cfg
+}
+
+func complianceFromProto(c pb.ComplianceFramework) assessment.ComplianceFramework {
+	switch c {
+	case pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_SOC2:
+		return assessment.ComplianceSOC2
+	case pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_HIPAA:
+		return assessment.ComplianceHIPAA
+	case pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_PCI_DSS:
+		return assessment.CompliancePCIDSS
+	default:
+		return assessment.ComplianceUnspecified
+	}
 }
 
 func guidanceFromProto(p *pb.Guidance) *assessment.Guidance {
@@ -127,14 +172,12 @@ func guidanceFromProto(p *pb.Guidance) *assessment.Guidance {
 	}
 	if pr := p.GetPriorities(); pr != nil {
 		g.Priorities = &assessment.PrioritiesGuidance{
-			Focus:        pr.GetFocus(),
-			Deprioritize: pr.GetDeprioritize(),
-			VulnClasses:  pr.GetVulnClasses(),
+			VulnClasses: pr.GetVulnClasses(),
+			SkipPaths:   pr.GetSkipPaths(),
 		}
 	}
 	if as := p.GetAttackStrategy(); as != nil {
 		g.AttackStrategy = &assessment.AttackStrategyGuidance{
-			VulnClasses:     as.GetVulnClasses(),
 			KnownWeaknesses: as.GetKnownWeaknesses(),
 			Context:         as.GetContext(),
 		}
@@ -172,6 +215,7 @@ func assessmentInfoToProto(info *assessment.Info) *pb.AssessmentInfo {
 		AssessmentId: info.ID,
 		CustomerId:   info.CustomerID,
 		Status:       assessmentStatusToProto(info.Status),
+		Config:       assessmentConfigToProto(info.Config),
 		Stats: &pb.AssessmentStats{
 			TotalCages:        info.Stats.TotalCages,
 			ActiveCages:       info.Stats.ActiveCages,
@@ -183,6 +227,95 @@ func assessmentInfoToProto(info *assessment.Info) *pb.AssessmentInfo {
 		CreatedAt: timestamppb.New(info.CreatedAt),
 		UpdatedAt: timestamppb.New(info.UpdatedAt),
 	}
+}
+
+func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
+	out := &pb.AssessmentConfig{
+		Name:               cfg.Name,
+		CustomerId:         cfg.CustomerID,
+		TotalTokenBudget:   cfg.TokenBudget,
+		MaxChainDepth:      cfg.MaxChainDepth,
+		MaxConcurrentCages: cfg.MaxConcurrent,
+		ExcludeHosts:       cfg.Exclude.Hosts,
+		ExcludePaths:       cfg.Exclude.Paths,
+		Tags:               cfg.Tags,
+		Scope: &pb.TargetScope{
+			Hosts: cfg.Target.Hosts,
+			Ports: cfg.Target.Ports,
+			Paths: cfg.Target.Paths,
+		},
+	}
+	if cfg.MaxDuration > 0 {
+		out.MaxDuration = durationpb.New(cfg.MaxDuration)
+	}
+	for _, c := range cfg.Compliance {
+		out.Compliance = append(out.Compliance, complianceToProto(c))
+	}
+	if cfg.Notifications.Webhook != "" || cfg.Notifications.OnFinding || cfg.Notifications.OnComplete {
+		out.Notifications = &pb.NotificationConfig{
+			Webhook:    cfg.Notifications.Webhook,
+			OnFinding:  cfg.Notifications.OnFinding,
+			OnComplete: cfg.Notifications.OnComplete,
+		}
+	}
+	if cfg.Guidance != nil {
+		out.Guidance = guidanceToProto(cfg.Guidance)
+	}
+	for t, ct := range cfg.CageDefaults {
+		ctPb := &pb.CageTypeConfig{
+			Type:          cageTypeToProto(t),
+			MaxConcurrent: ct.MaxConcurrent,
+			Defaults:      &pb.ResourceLimits{Vcpus: ct.Resources.VCPUs, MemoryMb: ct.Resources.MemoryMB},
+		}
+		if ct.MaxDuration > 0 {
+			ctPb.MaxDuration = durationpb.New(ct.MaxDuration)
+		}
+		out.CageTypeConfigs = append(out.CageTypeConfigs, ctPb)
+	}
+	return out
+}
+
+func complianceToProto(c assessment.ComplianceFramework) pb.ComplianceFramework {
+	switch c {
+	case assessment.ComplianceSOC2:
+		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_SOC2
+	case assessment.ComplianceHIPAA:
+		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_HIPAA
+	case assessment.CompliancePCIDSS:
+		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_PCI_DSS
+	default:
+		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_UNSPECIFIED
+	}
+}
+
+func guidanceToProto(g *assessment.Guidance) *pb.Guidance {
+	out := &pb.Guidance{}
+	if g.AttackSurface != nil {
+		out.AttackSurface = &pb.AttackSurfaceGuidance{
+			Endpoints:     g.AttackSurface.Endpoints,
+			ApiSpecs:      g.AttackSurface.APISpecs,
+			LimitToListed: g.AttackSurface.LimitToListed,
+		}
+	}
+	if g.Priorities != nil {
+		out.Priorities = &pb.PrioritiesGuidance{
+			VulnClasses: g.Priorities.VulnClasses,
+			SkipPaths:   g.Priorities.SkipPaths,
+		}
+	}
+	if g.AttackStrategy != nil {
+		out.AttackStrategy = &pb.AttackStrategyGuidance{
+			KnownWeaknesses: g.AttackStrategy.KnownWeaknesses,
+			Context:         g.AttackStrategy.Context,
+		}
+	}
+	if g.Validation != nil {
+		out.Validation = &pb.ValidationGuidance{
+			RequirePoc:         g.Validation.RequirePoC,
+			HeadlessBrowserXss: g.Validation.HeadlessBrowserXSS,
+		}
+	}
+	return out
 }
 
 func interventionStatusFromProto(s pb.InterventionStatus) intervention.Status {
