@@ -5,13 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 const ProxyTarget = "localhost:9090"
@@ -36,8 +34,6 @@ func Proxy(cmd string, args []string) {
 	}
 
 	switch cmd {
-	case "run":
-		proxyRun(conn, args)
 	case "test":
 		proxyTest(conn, args)
 	case "status":
@@ -54,59 +50,6 @@ func Proxy(cmd string, args []string) {
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		os.Exit(1)
 	}
-}
-
-func proxyRun(conn *grpc.ClientConn, args []string) {
-	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	agent := fs.String("agent", "", "path to .cage bundle or agent directory")
-	target := fs.String("target", "", "target host(s), comma-separated")
-	tokenBudget := fs.Int64("token-budget", 0, "LLM token budget")
-	maxDuration := fs.String("max-duration", "", "assessment time limit (e.g. 30m, 4h)")
-	_ = fs.Parse(args)
-
-	if *agent == "" || *target == "" {
-		fmt.Fprintln(os.Stderr, "usage: agentcage run --agent <path.cage> --target <host>")
-		os.Exit(1)
-	}
-
-	targets := strings.Split(*target, ",")
-	for i := range targets {
-		targets[i] = strings.TrimSpace(targets[i])
-	}
-
-	req := &pb.CreateAssessmentRequest{
-		Config: &pb.AssessmentConfig{
-			Scope: &pb.TargetScope{Hosts: targets},
-		},
-	}
-	if *tokenBudget > 0 {
-		req.Config.TotalTokenBudget = *tokenBudget
-	}
-	if *maxDuration != "" {
-		d, err := time.ParseDuration(*maxDuration)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "invalid duration: %s\n", *maxDuration)
-			os.Exit(1)
-		}
-		req.Config.MaxDuration = durationpb.New(d)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client := pb.NewAssessmentServiceClient(conn)
-	resp, err := client.CreateAssessment(ctx, req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error creating assessment: %v\n", err)
-		os.Exit(1)
-	}
-
-	info := resp.GetAssessment()
-	fmt.Printf("Assessment started.\n")
-	fmt.Printf("  ID:     %s\n", info.GetAssessmentId())
-	fmt.Printf("  Target: %s\n", strings.Join(targets, ", "))
-	fmt.Printf("  Agent:  %s\n", *agent)
-	fmt.Println("\nUse 'agentcage status' to monitor progress.")
 }
 
 func proxyTest(conn *grpc.ClientConn, args []string) {
