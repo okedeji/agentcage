@@ -17,19 +17,20 @@ import (
 // Env holds the environment variables injected into a cage VM at
 // boot. cage-init reads these from /etc/agentcage/cage.json.
 type Env struct {
-	CageID       string   `json:"cage_id"`
-	AssessmentID string   `json:"assessment_id"`
-	CageType     string   `json:"cage_type"`
-	Entrypoint   string   `json:"entrypoint"`
-	Objective    string   `json:"objective,omitempty"`
-	LLMEndpoint  string   `json:"llm_endpoint,omitempty"`
-	NATSAddr     string   `json:"nats_addr,omitempty"`
-	ScopeHosts   []string `json:"scope_hosts"`
-	ScopePorts   []string `json:"scope_ports,omitempty"`
-	ScopePaths   []string `json:"scope_paths,omitempty"`
-	TokenBudget  int64    `json:"token_budget,omitempty"`
-	ProxyMode    string   `json:"proxy_mode"`
-	VulnClass    string   `json:"vuln_class,omitempty"`
+	CageID       string          `json:"cage_id"`
+	AssessmentID string          `json:"assessment_id"`
+	CageType     string          `json:"cage_type"`
+	Entrypoint   string          `json:"entrypoint"`
+	Objective    string          `json:"objective,omitempty"`
+	LLMEndpoint  string          `json:"llm_endpoint,omitempty"`
+	NATSAddr     string          `json:"nats_addr,omitempty"`
+	ScopeHosts   []string        `json:"scope_hosts"`
+	ScopePorts   []string        `json:"scope_ports,omitempty"`
+	ScopePaths   []string        `json:"scope_paths,omitempty"`
+	TokenBudget  int64           `json:"token_budget,omitempty"`
+	ProxyMode    string          `json:"proxy_mode"`
+	VulnClass    string          `json:"vuln_class,omitempty"`
+	Guidance json.RawMessage `json:"guidance,omitempty"`
 }
 
 // RootfsBuilder assembles a Firecracker-bootable ext4 rootfs from a base

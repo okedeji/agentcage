@@ -56,7 +56,7 @@ func (assessmentActivityStub) EmitProofGapIntervention(_ context.Context, _, _ s
 func (assessmentActivityStub) NotifyFleetAssessmentComplete(_ context.Context, _ string) error {
 	return nil
 }
-func (assessmentActivityStub) NotifyAssessmentComplete(_ context.Context, _ string, _ NotificationConfig, _ Status, _ int32) error {
+func (assessmentActivityStub) NotifyAssessmentComplete(_ context.Context, _ string, _ NotificationConfig, _ Status, _ int32, _ string, _ map[string]string) error {
 	return nil
 }
 
@@ -67,7 +67,6 @@ func testInput() AssessmentWorkflowInput {
 			CustomerID:    "customer-1",
 			Target:        cage.Scope{Hosts: []string{"target.example.com"}},
 			TokenBudget:   1000000,
-			MaxDuration:   2 * time.Hour,
 			MaxChainDepth: 3,
 			MaxIterations: 5,
 		},

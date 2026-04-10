@@ -223,10 +223,27 @@ func Validate(p *Plan) error {
 			return fmt.Errorf("target host cannot be empty")
 		}
 	}
+	if p.Budget.Tokens < 0 {
+		return fmt.Errorf("budget.tokens must not be negative")
+	}
 	if p.Budget.MaxDuration != "" {
 		if _, err := time.ParseDuration(p.Budget.MaxDuration); err != nil {
 			return fmt.Errorf("invalid max_duration %q: %w", p.Budget.MaxDuration, err)
 		}
+	}
+	for _, port := range p.Target.Ports {
+		if port == "" {
+			return fmt.Errorf("target port cannot be empty")
+		}
+	}
+	if p.Limits.MaxChainDepth < 0 {
+		return fmt.Errorf("max_chain_depth must not be negative")
+	}
+	if p.Limits.MaxConcurrentCages < 0 {
+		return fmt.Errorf("max_concurrent_cages must not be negative")
+	}
+	if p.Notifications.Webhook != "" && !strings.HasPrefix(p.Notifications.Webhook, "http") {
+		return fmt.Errorf("notifications.webhook must be an HTTP(S) URL")
 	}
 	for _, c := range p.Limits.Compliance {
 		switch strings.ToLower(c) {

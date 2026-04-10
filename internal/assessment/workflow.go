@@ -72,6 +72,11 @@ type AssessmentWorkflowResult struct {
 func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (AssessmentWorkflowResult, error) {
 	result := AssessmentWorkflowResult{AssessmentID: input.AssessmentID}
 	cfg := input.Config
+	logger := workflow.GetLogger(ctx)
+
+	if cfg.Name != "" {
+		logger.Info("assessment started", "name", cfg.Name, "assessment_id", input.AssessmentID)
+	}
 
 	maxIterations := cfg.MaxIterations
 	if maxIterations <= 0 {
@@ -81,6 +86,17 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	maxChainDepth := cfg.MaxChainDepth
 	if maxChainDepth <= 0 {
 		maxChainDepth = DefaultMaxChainDepth
+	}
+
+	// Hard deadline on the entire assessment. When the timer fires
+	// the child context cancels, failing any in-flight activity.
+	if cfg.MaxDuration > 0 {
+		childCtx, cancel := workflow.WithCancel(ctx)
+		workflow.Go(ctx, func(gCtx workflow.Context) {
+			_ = workflow.NewTimer(gCtx, cfg.MaxDuration).Get(gCtx, nil)
+			cancel()
+		})
+		ctx = childCtx
 	}
 
 	coverage := make(map[string][]string)
@@ -139,6 +155,12 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 
 		if decision.Done {
+			break
+		}
+
+		if cfg.MaxConcurrent > 0 && result.TotalCages >= cfg.MaxConcurrent {
+			workflow.GetLogger(ctx).Info("global cage cap reached, ending exploitation",
+				"assessment_id", input.AssessmentID, "total_cages", result.TotalCages, "cap", cfg.MaxConcurrent)
 			break
 		}
 
@@ -252,7 +274,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 	_ = workflow.ExecuteActivity(
 		withActivityTimeout(ctx, TimeoutUpdateStatus),
-		"NotifyAssessmentComplete", input.AssessmentID, cfg.Notifications, result.FinalStatus, result.Findings,
+		"NotifyAssessmentComplete", input.AssessmentID, cfg.Notifications, result.FinalStatus, result.Findings, cfg.Name, cfg.Tags,
 	).Get(ctx, nil)
 
 	return result, nil
@@ -287,16 +309,20 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 	if tc, ok := cfg.CageDefaults[cage.TypeDiscovery]; ok {
 		cageCfg.Resources = tc.Resources
 	}
-	if cfg.Guidance != nil {
-		// JSON for now; the agent deserializes as needed.
-		if data, err := json.Marshal(cfg.Guidance); err == nil {
-			cageCfg.InputContext = data
-		}
-	}
+	applyGuidance(&cageCfg, cfg.Guidance)
 
 	var cageID string
 	err := workflow.ExecuteActivity(actCtx, "CreateDiscoveryCage", assessmentID, cageCfg).Get(ctx, &cageID)
 	return cageID, err
+}
+
+func applyGuidance(cageCfg *cage.Config, guidance *Guidance) {
+	if guidance == nil {
+		return
+	}
+	if data, err := json.Marshal(guidance); err == nil {
+		cageCfg.Guidance = data
+	}
 }
 
 func planNextActions(ctx workflow.Context, state CoordinatorState) (CoordinatorDecision, error) {
@@ -382,6 +408,7 @@ func spawnCoordinatorActions(
 			if tc, ok := cfg.CageDefaults[cageType]; ok {
 				cageCfg.Resources = tc.Resources
 			}
+			applyGuidance(&cageCfg, cfg.Guidance)
 
 			var activityName string
 			switch action.Type {
@@ -589,6 +616,7 @@ func spawnEscalationCages(
 		if tc, ok := cfg.CageDefaults[cage.TypeEscalation]; ok {
 			escalationCfg.Resources = tc.Resources
 		}
+		applyGuidance(&escalationCfg, cfg.Guidance)
 
 		var cageID string
 		err := workflow.ExecuteActivity(actCtx, "CreateEscalationCage", assessmentID, f, escalationCfg).Get(ctx, &cageID)

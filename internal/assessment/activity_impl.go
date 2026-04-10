@@ -263,11 +263,23 @@ func (a *ActivityImpl) NotifyFleetAssessmentComplete(_ context.Context, assessme
 	return nil
 }
 
-func (a *ActivityImpl) NotifyAssessmentComplete(ctx context.Context, assessmentID string, config NotificationConfig, status Status, findingsValidated int32) error {
+func (a *ActivityImpl) NotifyAssessmentComplete(ctx context.Context, assessmentID string, config NotificationConfig, status Status, findingsValidated int32, name string, tags map[string]string) error {
 	if config.Webhook == "" || !config.OnComplete {
 		return nil
 	}
-	payload := fmt.Sprintf(`{"assessment_id":%q,"status":%q,"findings_validated":%d}`, assessmentID, status.String(), findingsValidated)
+	body := map[string]any{
+		"assessment_id":      assessmentID,
+		"status":             status.String(),
+		"findings_validated": findingsValidated,
+	}
+	if name != "" {
+		body["name"] = name
+	}
+	if len(tags) > 0 {
+		body["tags"] = tags
+	}
+	payloadBytes, _ := json.Marshal(body)
+	payload := string(payloadBytes)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, config.Webhook, strings.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("building notification request: %w", err)

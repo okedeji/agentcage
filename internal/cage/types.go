@@ -103,6 +103,7 @@ type Config struct {
 	ProxyConfig     ProxyConfig
 	ParentFindingID string
 	VulnClass       string
+	Guidance        []byte
 	InputContext    []byte
 }
 
