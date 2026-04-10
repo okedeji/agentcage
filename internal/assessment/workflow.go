@@ -310,6 +310,23 @@ func updateStatus(ctx workflow.Context, assessmentID string, status Status) erro
 	return workflow.ExecuteActivity(actCtx, "UpdateAssessmentStatus", assessmentID, status).Get(ctx, nil)
 }
 
+// Applies cage type defaults (resources, time limits, rate limits),
+// assessment-level fields (bundle, skip_paths, guidance, LLM config),
+// and proxy config. Every cage creation site should call this.
+func applyCageDefaults(cageCfg *cage.Config, cfg Config) {
+	if tc, ok := cfg.CageDefaults[cageCfg.Type]; ok {
+		cageCfg.Resources = tc.Resources
+		if tc.MaxDuration > 0 {
+			cageCfg.TimeLimits = cage.TimeLimits{MaxDuration: tc.MaxDuration}
+		}
+	}
+	if cfg.TokenBudget > 0 {
+		cageCfg.LLM = &cage.LLMGatewayConfig{TokenBudget: cfg.TokenBudget}
+	}
+	cageCfg.ProxyConfig = cage.ProxyConfig{Mode: cage.ProxyModeBlocklist}
+	applyGuidance(cageCfg, cfg.Guidance)
+}
+
 func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) (string, error) {
 	actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 	cageCfg := cage.Config{
@@ -319,10 +336,7 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 		Scope:        cfg.Target,
 		SkipPaths:    cfg.SkipPaths,
 	}
-	if tc, ok := cfg.CageDefaults[cage.TypeDiscovery]; ok {
-		cageCfg.Resources = tc.Resources
-	}
-	applyGuidance(&cageCfg, cfg.Guidance)
+	applyCageDefaults(&cageCfg, cfg)
 
 	var cageID string
 	err := workflow.ExecuteActivity(actCtx, "CreateDiscoveryCage", assessmentID, cageCfg).Get(ctx, &cageID)
@@ -419,10 +433,7 @@ func spawnCoordinatorActions(
 				VulnClass:       action.VulnClass,
 				InputContext:    []byte(action.Objective),
 			}
-			if tc, ok := cfg.CageDefaults[cageType]; ok {
-				cageCfg.Resources = tc.Resources
-			}
-			applyGuidance(&cageCfg, cfg.Guidance)
+			applyCageDefaults(&cageCfg, cfg)
 
 			var activityName string
 			switch action.Type {
@@ -628,10 +639,7 @@ func spawnEscalationCages(
 			SkipPaths:       cfg.SkipPaths,
 			ParentFindingID: f.ID,
 		}
-		if tc, ok := cfg.CageDefaults[cage.TypeEscalation]; ok {
-			escalationCfg.Resources = tc.Resources
-		}
-		applyGuidance(&escalationCfg, cfg.Guidance)
+		applyCageDefaults(&escalationCfg, cfg)
 
 		var cageID string
 		err := workflow.ExecuteActivity(actCtx, "CreateEscalationCage", assessmentID, f, escalationCfg).Get(ctx, &cageID)
