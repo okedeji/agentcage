@@ -59,6 +59,8 @@ func main() {
 		cmdAudit(args)
 	case "falco":
 		cmdFalco(args)
+	case "config":
+		cmdConfig(args)
 	case "version":
 		fmt.Printf("agentcage %s\n", version)
 	case "help", "--help", "-h":
@@ -98,6 +100,7 @@ Operate:
   db                Open psql shell or show connection string
   audit             Manage audit chain (verify)
   falco             Manage Falco rules (export-rules)
+  config            Manage operator config (show, export, import, get)
 
 Info:
   version           Show version info
