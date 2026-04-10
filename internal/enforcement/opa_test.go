@@ -24,7 +24,7 @@ func newEngine(t *testing.T) *OPAEngine {
 func newEngineWithCompliance(t *testing.T, framework string) *OPAEngine {
 	t.Helper()
 	cfg := config.Defaults()
-	cfg.Compliance = &config.ComplianceConfig{Framework: framework}
+	cfg.Compliance = &config.ComplianceConfig{Frameworks: []string{framework}}
 	switch framework {
 	case "soc2":
 		cfg.Compliance.MaxConcurrentCages = 500

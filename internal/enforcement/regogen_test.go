@@ -36,7 +36,7 @@ func TestGenerateRegoModules_NoComplianceWithoutConfig(t *testing.T) {
 func TestGenerateRegoModules_WithCompliance(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Compliance = &config.ComplianceConfig{
-		Framework:           "soc2",
+		Frameworks:          []string{"soc2"},
 		MaxConcurrentCages:  500,
 		RequireIntervention: true,
 		InterventionTimeout: 30 * time.Minute,

@@ -22,7 +22,9 @@ func GenerateRegoModules(cfg *config.Config) map[string]string {
 	}
 
 	if cfg.Compliance != nil {
-		modules[fmt.Sprintf("compliance/%s.rego", cfg.Compliance.Framework)] = generateComplianceRego(cfg.Compliance)
+		for _, fw := range cfg.Compliance.Frameworks {
+			modules[fmt.Sprintf("compliance/%s.rego", fw)] = generateComplianceRego(fw, cfg.Compliance)
+		}
 	}
 
 	return modules
@@ -127,9 +129,8 @@ func generatePayloadRego(class string, pc config.PayloadConfig) string {
 	return b.String()
 }
 
-func generateComplianceRego(comp *config.ComplianceConfig) string {
+func generateComplianceRego(framework string, comp *config.ComplianceConfig) string {
 	var b strings.Builder
-	framework := comp.Framework
 	upper := strings.ToUpper(framework)
 
 	fmt.Fprintf(&b, "package agentcage.compliance.%s\n\n", framework)
