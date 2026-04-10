@@ -34,8 +34,6 @@ func (activityStub) ProvisionVM(context.Context, VMConfig) (*VMHandle, error) { 
 func (activityStub) ApplyNetworkPolicy(context.Context, string, Scope, []string) error {
 	return nil
 }
-func (activityStub) StartPayloadProxy(context.Context, *VMHandle, string) error { return nil }
-func (activityStub) StartAgent(context.Context, *VMHandle, Config) error       { return nil }
 func (activityStub) MonitorCage(context.Context, string, Config) (StopReason, error) {
 	return StopReasonCompleted, nil
 }
@@ -71,7 +69,6 @@ func testWorkflowInput() CageWorkflowInput {
 			FetchSecrets:         5 * time.Second,
 			ProvisionVM:          30 * time.Second,
 			ApplyPolicy:          10 * time.Second,
-			StartAgent:           5 * time.Second,
 			ExportAuditLog:       15 * time.Second,
 			TeardownVM:           15 * time.Second,
 			RevokeSVID:           5 * time.Second,
@@ -126,8 +123,6 @@ func registerHappyPathMocks(env *testsuite.TestWorkflowEnvironment) {
 	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("StartAgent", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything).Return(StopReasonCompleted, nil)
 	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("TeardownVM", mock.Anything, mock.Anything).Return(nil)
@@ -212,8 +207,6 @@ func TestCageWorkflow_TeardownMultiError(t *testing.T) {
 	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("StartAgent", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything).Return(StopReasonCompleted, nil)
 	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("TeardownVM", mock.Anything, mock.Anything).Return(errors.New("VM stuck"))
@@ -247,8 +240,6 @@ func TestCageWorkflow_SignalKill(t *testing.T) {
 	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("StartAgent", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything).
 		Return(StopReasonCompleted, nil).
 		After(10 * time.Minute)
@@ -290,8 +281,6 @@ func TestCageWorkflow_MonitorTimeout(t *testing.T) {
 	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("StartAgent", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything).Return(StopReasonTimeout, nil)
 	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("TeardownVM", mock.Anything, mock.Anything).Return(nil)
@@ -335,20 +324,3 @@ func TestCageWorkflow_FetchSecretsFailure_CleansUpSVID(t *testing.T) {
 	env.AssertNotCalled(t, "ProvisionVM", mock.Anything, mock.Anything)
 }
 
-func TestCageWorkflow_ProxyDisabled(t *testing.T) {
-	env := newTestEnv(t)
-	registerHappyPathMocks(env)
-
-	input := testWorkflowInput()
-	input.Config.ProxyConfig.Mode = ProxyModeDisabled
-
-	env.ExecuteWorkflow(CageWorkflow, input)
-	require.True(t, env.IsWorkflowCompleted())
-	require.NoError(t, env.GetWorkflowError())
-
-	var result CageWorkflowResult
-	require.NoError(t, env.GetWorkflowResult(&result))
-	assert.Equal(t, StateCompleted, result.FinalState)
-
-	env.AssertNotCalled(t, "StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything)
-}

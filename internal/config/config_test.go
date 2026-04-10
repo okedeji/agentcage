@@ -51,7 +51,6 @@ func TestDefaults_HasAllActivityTimeouts(t *testing.T) {
 	assert.Equal(t, 5*time.Second, at.FetchSecrets)
 	assert.Equal(t, 30*time.Second, at.ProvisionVM)
 	assert.Equal(t, 10*time.Second, at.ApplyPolicy)
-	assert.Equal(t, 5*time.Second, at.StartAgent)
 	assert.Equal(t, 15*time.Second, at.ExportAuditLog)
 	assert.Equal(t, 15*time.Second, at.TeardownVM)
 	assert.Equal(t, 5*time.Second, at.RevokeSVID)

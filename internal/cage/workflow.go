@@ -113,24 +113,6 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	}
 	setupReachedPolicy = true
 
-	if cfg.ProxyConfig.Mode != ProxyModeDisabled {
-		if err := execActivity(
-			withTimeout(ctx, t.StartAgent),
-			"StartPayloadProxy", &vmHandle, "",
-		); err != nil {
-			cleanupPartial(ctx, t, svid.ID, &token, vmHandle.ID)
-			return failResult(result, "starting payload proxy: %v", err), nil
-		}
-	}
-
-	if err := execActivity(
-		withTimeout(ctx, t.StartAgent),
-		"StartAgent", &vmHandle, cfg,
-	); err != nil {
-		cleanupPartial(ctx, t, svid.ID, &token, vmHandle.ID)
-		return failResult(result, "starting agent: %v", err), nil
-	}
-
 	// --- Monitor phase ---
 
 	stopReason := runMonitorWithSignals(ctx, cfg, input.CageID, t)

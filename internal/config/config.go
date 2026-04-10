@@ -472,7 +472,6 @@ type ActivityTimeoutsConfig struct {
 	FetchSecrets         time.Duration `yaml:"fetch_secrets"`
 	ProvisionVM          time.Duration `yaml:"provision_vm"`
 	ApplyPolicy          time.Duration `yaml:"apply_policy"`
-	StartAgent           time.Duration `yaml:"start_agent"`
 	ExportAuditLog       time.Duration `yaml:"export_audit_log"`
 	TeardownVM           time.Duration `yaml:"teardown_vm"`
 	RevokeSVID           time.Duration `yaml:"revoke_svid"`
@@ -760,7 +759,6 @@ func defaultTimeouts() ActivityTimeoutsConfig {
 		FetchSecrets:         5 * time.Second,
 		ProvisionVM:          30 * time.Second,
 		ApplyPolicy:          10 * time.Second,
-		StartAgent:           5 * time.Second,
 		ExportAuditLog:       15 * time.Second,
 		TeardownVM:           15 * time.Second,
 		RevokeSVID:           5 * time.Second,
@@ -983,7 +981,6 @@ func mergeTimeouts(base, override ActivityTimeoutsConfig) ActivityTimeoutsConfig
 		FetchSecrets:         mt(base.FetchSecrets, override.FetchSecrets),
 		ProvisionVM:          mt(base.ProvisionVM, override.ProvisionVM),
 		ApplyPolicy:          mt(base.ApplyPolicy, override.ApplyPolicy),
-		StartAgent:           mt(base.StartAgent, override.StartAgent),
 		ExportAuditLog:       mt(base.ExportAuditLog, override.ExportAuditLog),
 		TeardownVM:           mt(base.TeardownVM, override.TeardownVM),
 		RevokeSVID:           mt(base.RevokeSVID, override.RevokeSVID),

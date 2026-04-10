@@ -50,8 +50,6 @@ type Activities interface {
 	AssembleRootfs(ctx context.Context, cageID string, bundleRef string, env Env) (string, error)
 	ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error)
 	ApplyNetworkPolicy(ctx context.Context, cageID string, scope Scope, extras []string) error
-	StartPayloadProxy(ctx context.Context, vmHandle *VMHandle, vulnClass string) error
-	StartAgent(ctx context.Context, vmHandle *VMHandle, config Config) error
 	MonitorCage(ctx context.Context, cageID string, config Config) (StopReason, error)
 	ExportAuditLog(ctx context.Context, cageID string) error
 	TeardownVM(ctx context.Context, vmID string) error

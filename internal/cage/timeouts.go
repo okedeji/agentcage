@@ -13,7 +13,6 @@ type Timeouts struct {
 	FetchSecrets     time.Duration
 	ProvisionVM      time.Duration
 	ApplyPolicy      time.Duration
-	StartAgent       time.Duration
 	ExportAuditLog   time.Duration
 	TeardownVM       time.Duration
 	RevokeSVID       time.Duration
@@ -32,7 +31,6 @@ func TimeoutsFromConfig(at config.ActivityTimeoutsConfig) Timeouts {
 		FetchSecrets:         at.FetchSecrets,
 		ProvisionVM:          at.ProvisionVM,
 		ApplyPolicy:          at.ApplyPolicy,
-		StartAgent:           at.StartAgent,
 		ExportAuditLog:       at.ExportAuditLog,
 		TeardownVM:           at.TeardownVM,
 		RevokeSVID:           at.RevokeSVID,

@@ -128,8 +128,6 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("AssembleRootfs", a.AssembleRootfs)
 	pin("ProvisionVM", a.ProvisionVM)
 	pin("ApplyNetworkPolicy", a.ApplyNetworkPolicy)
-	pin("StartPayloadProxy", a.StartPayloadProxy)
-	pin("StartAgent", a.StartAgent)
 	pin("MonitorCage", a.MonitorCage)
 	pin("ExportAuditLog", a.ExportAuditLog)
 	pin("TeardownVM", a.TeardownVM)
@@ -314,15 +312,6 @@ func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, sc
 	return nil
 }
 
-func (a *ActivityImpl) StartPayloadProxy(_ context.Context, vmHandle *VMHandle, vulnClass string) error {
-	a.log.Info("payload proxy started by cage-init", "cage_id", vmHandle.CageID, "vuln_class", vulnClass)
-	return nil
-}
-
-func (a *ActivityImpl) StartAgent(_ context.Context, vmHandle *VMHandle, config Config) error {
-	a.log.Info("agent started by cage-init", "cage_id", vmHandle.CageID, "type", config.Type)
-	return nil
-}
 
 func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Config) (StopReason, error) {
 	a.log.Info("monitoring cage", "cage_id", cageID, "max_duration", config.TimeLimits.MaxDuration)
