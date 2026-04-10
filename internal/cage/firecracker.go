@@ -247,7 +247,7 @@ func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernel
 	// Set boot source
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
-		"boot_args":         "console=ttyS0 reboot=k panic=1 pci=off init=/usr/local/bin/cage-init",
+		"boot_args":         "console=ttyS0 reboot=k panic=1 pci=off",
 	}
 	if err := firecrackerAPI(ctx, socket, "PUT", "/boot-source", bootSource); err != nil {
 		return fmt.Errorf("setting boot source: %w", err)
