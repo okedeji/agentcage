@@ -63,7 +63,7 @@ func cmdRun(args []string) {
 		Target:           rf.target,
 		Ports:            []string(rf.ports),
 		Paths:            []string(rf.paths),
-		Exclude:          []string(rf.exclude),
+		SkipPaths:        []string(rf.skipPaths),
 		TokenBudget:      rf.tokenBudget,
 		MaxDuration:      rf.maxDuration,
 		MaxChainDepth:    rf.maxChainDepth,
@@ -237,8 +237,7 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) *pb.CreateAsse
 		TotalTokenBudget:   p.Budget.Tokens,
 		MaxChainDepth:      p.Limits.MaxChainDepth,
 		MaxConcurrentCages: p.Limits.MaxConcurrentCages,
-		ExcludeHosts:       excludeHosts(p.Target.Exclude),
-		ExcludePaths:       excludePaths(p.Target.Exclude),
+		SkipPaths:          p.Target.SkipPaths,
 		Tags:               p.Tags,
 	}
 
@@ -442,26 +441,6 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 	}
 }
 
-func excludeHosts(exclude []string) []string {
-	var out []string
-	for _, e := range exclude {
-		if !strings.HasPrefix(e, "/") {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
-func excludePaths(exclude []string) []string {
-	var out []string
-	for _, e := range exclude {
-		if strings.HasPrefix(e, "/") {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
 func cageTypeNameToProto(name string) pb.CageType {
 	switch name {
 	case "discovery":
@@ -485,7 +464,7 @@ func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	fs.StringVar(&rf.target, "target", "", "target host(s), comma-separated")
 	fs.Var(&rf.ports, "port", "port to include (repeatable)")
 	fs.Var(&rf.paths, "path", "URL path to scope (repeatable)")
-	fs.Var(&rf.exclude, "exclude", "host or path to exclude (repeatable)")
+	fs.Var(&rf.skipPaths, "skip-path", "URL path to skip (repeatable)")
 	fs.Int64Var(&rf.tokenBudget, "token-budget", 0, "LLM token cap")
 	fs.StringVar(&rf.maxDuration, "max-duration", "", "assessment wall clock (e.g. 30m, 4h)")
 	fs.IntVar(&rf.maxChainDepth, "max-chain-depth", 0, "escalation chain depth limit")
@@ -517,7 +496,7 @@ type runFlags struct {
 	target           string
 	ports            stringSliceFlag
 	paths            stringSliceFlag
-	exclude          stringSliceFlag
+	skipPaths        stringSliceFlag
 	tokenBudget      int64
 	maxDuration      string
 	maxChainDepth    int
@@ -567,7 +546,7 @@ Plan file:
 Target scoping:
   --port               port to include (repeatable)
   --path               URL path to scope (repeatable)
-  --exclude            host or path to exclude (repeatable)
+  --skip-path          URL path to skip (repeatable)
 
 Budget & limits:
   --token-budget       LLM token cap

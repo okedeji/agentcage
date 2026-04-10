@@ -21,7 +21,7 @@ target:
     - api.example.com
   ports:
     - "443"
-  exclude:
+  skip_paths:
     - /health
 budget:
   tokens: 500000
@@ -48,7 +48,7 @@ customer_id: acme
 	assert.Equal(t, "./my-agent.cage", p.Agent)
 	assert.Equal(t, []string{"example.com", "api.example.com"}, p.Target.Hosts)
 	assert.Equal(t, []string{"443"}, p.Target.Ports)
-	assert.Equal(t, []string{"/health"}, p.Target.Exclude)
+	assert.Equal(t, []string{"/health"}, p.Target.SkipPaths)
 	assert.Equal(t, int64(500000), p.Budget.Tokens)
 	assert.Equal(t, "4h", p.Budget.MaxDuration)
 	assert.Equal(t, int32(3), p.Limits.MaxChainDepth)

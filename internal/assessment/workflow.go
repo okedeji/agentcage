@@ -149,7 +149,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 		state := CoordinatorState{
 			AssessmentID:   input.AssessmentID,
-			Target:         cfg.FilteredScope(),
+			Target:         cfg.Target,
 			Iteration:      int(iteration),
 			MaxIterations:  int(maxIterations),
 			Findings:       SummarizeFindings(allFindings),
@@ -316,7 +316,8 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 		AssessmentID: assessmentID,
 		Type:         cage.TypeDiscovery,
 		BundleRef:    cfg.BundleRef,
-		Scope:        cfg.FilteredScope(),
+		Scope:        cfg.Target,
+		SkipPaths:    cfg.SkipPaths,
 	}
 	if tc, ok := cfg.CageDefaults[cage.TypeDiscovery]; ok {
 		cageCfg.Resources = tc.Resources
@@ -413,6 +414,7 @@ func spawnCoordinatorActions(
 				Type:            cageType,
 				BundleRef:       cfg.BundleRef,
 				Scope:           action.Scope,
+				SkipPaths:       cfg.SkipPaths,
 				ParentFindingID: action.FindingID,
 				VulnClass:       action.VulnClass,
 				InputContext:    []byte(action.Objective),
@@ -622,7 +624,8 @@ func spawnEscalationCages(
 			AssessmentID:    assessmentID,
 			Type:            cage.TypeEscalation,
 			BundleRef:       cfg.BundleRef,
-			Scope:           cfg.FilteredScope(),
+			Scope:           cfg.Target,
+			SkipPaths:       cfg.SkipPaths,
 			ParentFindingID: f.ID,
 		}
 		if tc, ok := cfg.CageDefaults[cage.TypeEscalation]; ok {

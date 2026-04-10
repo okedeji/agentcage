@@ -63,7 +63,7 @@ type Config struct {
 	Name             string
 	BundleRef        string
 	Target           cage.Scope
-	Exclude          ExcludeConfig
+	SkipPaths        []string
 	CageDefaults     map[cage.Type]CageTypeConfig
 	TokenBudget      int64
 	MaxDuration      time.Duration
@@ -75,39 +75,6 @@ type Config struct {
 	Notifications    NotificationConfig
 }
 
-type ExcludeConfig struct {
-	Hosts []string
-	Paths []string
-}
-
-// Cage creation uses this instead of Config.Target so excluded
-// hosts and paths never reach a cage.
-func (c Config) FilteredScope() cage.Scope {
-	if len(c.Exclude.Hosts) == 0 && len(c.Exclude.Paths) == 0 {
-		return c.Target
-	}
-	excludeHost := make(map[string]bool, len(c.Exclude.Hosts))
-	for _, h := range c.Exclude.Hosts {
-		excludeHost[h] = true
-	}
-	excludePath := make(map[string]bool, len(c.Exclude.Paths))
-	for _, p := range c.Exclude.Paths {
-		excludePath[p] = true
-	}
-	out := cage.Scope{Extras: c.Target.Extras}
-	for _, h := range c.Target.Hosts {
-		if !excludeHost[h] {
-			out.Hosts = append(out.Hosts, h)
-		}
-	}
-	for _, p := range c.Target.Paths {
-		if !excludePath[p] {
-			out.Paths = append(out.Paths, p)
-		}
-	}
-	out.Ports = c.Target.Ports
-	return out
-}
 
 type NotificationConfig struct {
 	Webhook    string

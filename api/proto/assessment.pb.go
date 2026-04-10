@@ -161,8 +161,7 @@ type AssessmentConfig struct {
 	MaxDuration        *durationpb.Duration   `protobuf:"bytes,5,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
 	MaxChainDepth      int32                  `protobuf:"varint,6,opt,name=max_chain_depth,json=maxChainDepth,proto3" json:"max_chain_depth,omitempty"`
 	Guidance           *Guidance              `protobuf:"bytes,8,opt,name=guidance,proto3" json:"guidance,omitempty"`
-	ExcludeHosts       []string               `protobuf:"bytes,9,rep,name=exclude_hosts,json=excludeHosts,proto3" json:"exclude_hosts,omitempty"`
-	ExcludePaths       []string               `protobuf:"bytes,10,rep,name=exclude_paths,json=excludePaths,proto3" json:"exclude_paths,omitempty"`
+	SkipPaths          []string               `protobuf:"bytes,9,rep,name=skip_paths,json=skipPaths,proto3" json:"skip_paths,omitempty"`
 	Tags               map[string]string      `protobuf:"bytes,11,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Notifications      *NotificationConfig    `protobuf:"bytes,12,opt,name=notifications,proto3" json:"notifications,omitempty"`
 	Name               string                 `protobuf:"bytes,13,opt,name=name,proto3" json:"name,omitempty"`
@@ -250,16 +249,9 @@ func (x *AssessmentConfig) GetGuidance() *Guidance {
 	return nil
 }
 
-func (x *AssessmentConfig) GetExcludeHosts() []string {
+func (x *AssessmentConfig) GetSkipPaths() []string {
 	if x != nil {
-		return x.ExcludeHosts
-	}
-	return nil
-}
-
-func (x *AssessmentConfig) GetExcludePaths() []string {
-	if x != nil {
-		return x.ExcludePaths
+		return x.SkipPaths
 	}
 	return nil
 }
@@ -1005,7 +997,7 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2\x1b.agentcage.cage.v1.CageTypeR\x04type\x12=\n" +
 	"\bdefaults\x18\x02 \x01(\v2!.agentcage.cage.v1.ResourceLimitsR\bdefaults\x12%\n" +
 	"\x0emax_concurrent\x18\x03 \x01(\x05R\rmaxConcurrent\x12<\n" +
-	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xf6\x05\n" +
+	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xcb\x05\n" +
 	"\x10AssessmentConfig\x12\x1f\n" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\x124\n" +
@@ -1014,10 +1006,9 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x12total_token_budget\x18\x04 \x01(\x03R\x10totalTokenBudget\x12<\n" +
 	"\fmax_duration\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\x12&\n" +
 	"\x0fmax_chain_depth\x18\x06 \x01(\x05R\rmaxChainDepth\x12=\n" +
-	"\bguidance\x18\b \x01(\v2!.agentcage.assessment.v1.GuidanceR\bguidance\x12#\n" +
-	"\rexclude_hosts\x18\t \x03(\tR\fexcludeHosts\x12#\n" +
-	"\rexclude_paths\x18\n" +
-	" \x03(\tR\fexcludePaths\x12G\n" +
+	"\bguidance\x18\b \x01(\v2!.agentcage.assessment.v1.GuidanceR\bguidance\x12\x1d\n" +
+	"\n" +
+	"skip_paths\x18\t \x03(\tR\tskipPaths\x12G\n" +
 	"\x04tags\x18\v \x03(\v23.agentcage.assessment.v1.AssessmentConfig.TagsEntryR\x04tags\x12Q\n" +
 	"\rnotifications\x18\f \x01(\v2+.agentcage.assessment.v1.NotificationConfigR\rnotifications\x12\x12\n" +
 	"\x04name\x18\r \x01(\tR\x04name\x120\n" +

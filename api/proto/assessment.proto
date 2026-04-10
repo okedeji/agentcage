@@ -37,8 +37,7 @@ message AssessmentConfig {
   google.protobuf.Duration max_duration = 5;
   int32 max_chain_depth = 6;
   Guidance guidance = 8;
-  repeated string exclude_hosts = 9;
-  repeated string exclude_paths = 10;
+  repeated string skip_paths = 9;
   map<string, string> tags = 11;
   NotificationConfig notifications = 12;
   string name = 13;

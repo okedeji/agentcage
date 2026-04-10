@@ -109,12 +109,7 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 	if p.GetMaxDuration() != nil {
 		cfg.MaxDuration = p.GetMaxDuration().AsDuration()
 	}
-	if len(p.GetExcludeHosts()) > 0 || len(p.GetExcludePaths()) > 0 {
-		cfg.Exclude = assessment.ExcludeConfig{
-			Hosts: p.GetExcludeHosts(),
-			Paths: p.GetExcludePaths(),
-		}
-	}
+	cfg.SkipPaths = p.GetSkipPaths()
 	if n := p.GetNotifications(); n != nil {
 		cfg.Notifications = assessment.NotificationConfig{
 			Webhook:    n.GetWebhook(),
@@ -220,8 +215,7 @@ func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
 		TotalTokenBudget:   cfg.TokenBudget,
 		MaxChainDepth:      cfg.MaxChainDepth,
 		MaxConcurrentCages: cfg.MaxConcurrent,
-		ExcludeHosts:       cfg.Exclude.Hosts,
-		ExcludePaths:       cfg.Exclude.Paths,
+		SkipPaths:          cfg.SkipPaths,
 		Tags:               cfg.Tags,
 		Scope: &pb.TargetScope{
 			Hosts: cfg.Target.Hosts,

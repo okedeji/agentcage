@@ -27,6 +27,7 @@ type Env struct {
 	ScopeHosts   []string        `json:"scope_hosts"`
 	ScopePorts   []string        `json:"scope_ports,omitempty"`
 	ScopePaths   []string        `json:"scope_paths,omitempty"`
+	SkipPaths    []string        `json:"skip_paths,omitempty"`
 	TokenBudget  int64           `json:"token_budget,omitempty"`
 	ProxyMode    string          `json:"proxy_mode"`
 	VulnClass    string          `json:"vuln_class,omitempty"`

@@ -24,10 +24,10 @@ type Plan struct {
 }
 
 type Target struct {
-	Hosts   []string `yaml:"hosts"`
-	Ports   []string `yaml:"ports"`
-	Paths   []string `yaml:"paths"`
-	Exclude []string `yaml:"exclude"`
+	Hosts     []string `yaml:"hosts"`
+	Ports     []string `yaml:"ports"`
+	Paths     []string `yaml:"paths"`
+	SkipPaths []string `yaml:"skip_paths"`
 }
 
 type Budget struct {
@@ -121,8 +121,8 @@ func Merge(base, override *Plan) *Plan {
 	if len(override.Target.Paths) > 0 {
 		out.Target.Paths = override.Target.Paths
 	}
-	if len(override.Target.Exclude) > 0 {
-		out.Target.Exclude = override.Target.Exclude
+	if len(override.Target.SkipPaths) > 0 {
+		out.Target.SkipPaths = override.Target.SkipPaths
 	}
 
 	if override.Budget.Tokens > 0 {
@@ -265,7 +265,7 @@ type RawFlags struct {
 	Target           string
 	Ports            []string
 	Paths            []string
-	Exclude          []string
+	SkipPaths        []string
 	TokenBudget      int64
 	MaxDuration      string
 	MaxChainDepth    int
@@ -303,8 +303,8 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) *Plan {
 	if explicit["path"] {
 		p.Target.Paths = f.Paths
 	}
-	if explicit["exclude"] {
-		p.Target.Exclude = f.Exclude
+	if explicit["skip-path"] {
+		p.Target.SkipPaths = f.SkipPaths
 	}
 	if explicit["token-budget"] {
 		p.Budget.Tokens = f.TokenBudget
