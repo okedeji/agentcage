@@ -61,18 +61,18 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 		return "", fmt.Errorf("cage %s: %w", cageID, err)
 	}
 
-	// Verify bundle integrity FIRST. Before copying the base rootfs,
-	// before mounting, before any install commands. A tampered bundle
-	// that gets past this check can't execute install hooks via
-	// chroot, because there's nothing to chroot into yet.
-	if bundle.FilesHash != "" {
-		hash, hashErr := cagefile.HashDir(bundleFilesDir)
-		if hashErr != nil {
-			return "", fmt.Errorf("hashing agent files for verification: %w", hashErr)
-		}
-		if "sha256:"+hash != bundle.FilesHash {
-			return "", fmt.Errorf("cage %s: agent files hash mismatch, bundle may be tampered (expected %s, got sha256:%s)", cageID, bundle.FilesHash, hash)
-		}
+	// Before copying the base rootfs, before mounting, before any
+	// install commands. A tampered bundle can't execute install
+	// hooks via chroot because there's nothing to chroot into yet.
+	if bundle.FilesHash == "" {
+		return "", fmt.Errorf("cage %s: bundle has no files hash, refusing to assemble unverified code", cageID)
+	}
+	hash, hashErr := cagefile.HashDir(bundleFilesDir)
+	if hashErr != nil {
+		return "", fmt.Errorf("hashing agent files for verification: %w", hashErr)
+	}
+	if "sha256:"+hash != bundle.FilesHash {
+		return "", fmt.Errorf("cage %s: agent files hash mismatch, bundle may be tampered (expected %s, got sha256:%s)", cageID, bundle.FilesHash, hash)
 	}
 
 	rootfsPath = filepath.Join(b.workDir, cageID+".ext4")
@@ -118,20 +118,23 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	}
 	defer func() {
 		if err := unmountExt4(ctx, mountDir); err != nil {
-			// Leave the mount dir for SweepStale to reclaim later.
+			// Fail the assembly so the caller doesn't boot from a
+			// rootfs that's still mounted by the assembler.
+			retErr = fmt.Errorf("unmounting rootfs for cage %s: %w", cageID, err)
 			return
 		}
 		_ = os.RemoveAll(mountDir)
 	}()
 
-	// Install user-requested Alpine packages
+	// Chroot installs run with the orchestrator's network access.
+	// Pinned versions in the Cagefile mitigate dependency confusion;
+	// full network isolation requires a local package mirror.
 	if len(bundle.Packages) > 0 {
 		if err := installPackages(ctx, mountDir, bundle.Packages); err != nil {
 			return "", fmt.Errorf("installing packages: %w", err)
 		}
 	}
 
-	// Install language-specific dependencies
 	if len(bundle.PipDeps) > 0 {
 		if err := installPipDeps(ctx, mountDir, bundle.PipDeps); err != nil {
 			return "", fmt.Errorf("installing pip dependencies: %w", err)

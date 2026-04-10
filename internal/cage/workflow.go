@@ -74,8 +74,8 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		ScopePorts:   cfg.Scope.Ports,
 		ScopePaths:   cfg.Scope.Paths,
 		SkipPaths:    cfg.SkipPaths,
-		ProxyMode: cfg.ProxyConfig.Mode.String(),
-		Guidance:  cfg.Guidance,
+		ProxyMode:    cfg.ProxyConfig.Mode.String(),
+		Guidance:     cfg.Guidance,
 	}
 	if cfg.LLM != nil {
 		env.TokenBudget = cfg.LLM.TokenBudget
