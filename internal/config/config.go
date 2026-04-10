@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/okedeji/agentcage/internal/envvar"
 )
 
 // Config is the single source of truth for all agentcage platform configuration.
@@ -251,10 +253,9 @@ type NATSConfig struct {
 }
 
 type TemporalConfig struct {
-	Address      string             `yaml:"address"`
-	Namespace    string             `yaml:"namespace"`
-	TLS          *TemporalTLSConfig `yaml:"tls,omitempty"`
-	APIKeyEnvVar string             `yaml:"api_key_env,omitempty"`
+	Address   string             `yaml:"address"`
+	Namespace string             `yaml:"namespace"`
+	TLS       *TemporalTLSConfig `yaml:"tls,omitempty"`
 }
 
 type TemporalTLSConfig struct {
@@ -325,9 +326,8 @@ type OTelConfig struct {
 // is handled by the agent and the external gateway. agentcage only
 // enforces the endpoint, token budget, and metering.
 type LLMConfig struct {
-	Endpoint  string        `yaml:"endpoint"`
-	APIKeyEnv string        `yaml:"api_key_env"`
-	Timeout   time.Duration `yaml:"timeout"`
+	Endpoint string        `yaml:"endpoint"`
+	Timeout  time.Duration `yaml:"timeout"`
 }
 
 // FleetConfig defines bare metal hosts for multi-host mode.
@@ -338,9 +338,8 @@ type FleetConfig struct {
 }
 
 type ProvisionerConfig struct {
-	WebhookURL  string        `yaml:"webhook_url"`
-	APIKeyEnvVar string       `yaml:"api_key_env,omitempty"`
-	Timeout     time.Duration `yaml:"timeout,omitempty"`
+	WebhookURL string        `yaml:"webhook_url"`
+	Timeout    time.Duration `yaml:"timeout,omitempty"`
 }
 
 type HostConfig struct {
@@ -455,9 +454,8 @@ type MonitoringConfig struct {
 	DefaultAction    string            `yaml:"default_action"`
 }
 
-// ComplianceConfig enables optional compliance framework enforcement.
 type ComplianceConfig struct {
-	Framework          string        `yaml:"framework"`
+	Frameworks         []string      `yaml:"frameworks"`
 	AuditRetention     string        `yaml:"audit_retention"`
 	MaxConcurrentCages int32         `yaml:"max_concurrent_cages"`
 	RequireIntervention bool         `yaml:"require_intervention"`
@@ -495,7 +493,7 @@ type ActivityTimeoutsConfig struct {
 
 // DefaultPath returns the default config file path under the agentcage home directory.
 func DefaultPath() (string, error) {
-	if d := os.Getenv("AGENTCAGE_HOME"); d != "" {
+	if d := envvar.Get(envvar.Home); d != "" {
 		return filepath.Join(d, "config.yaml"), nil
 	}
 	home, err := os.UserHomeDir()
@@ -529,10 +527,10 @@ func Resolve(explicit string) string {
 	if explicit != "" {
 		return explicit
 	}
-	if envPath := os.Getenv("AGENTCAGE_CONFIG"); envPath != "" {
+	if envPath := envvar.Get(envvar.Config); envPath != "" {
 		return envPath
 	}
-	if d := os.Getenv("AGENTCAGE_HOME"); d != "" {
+	if d := envvar.Get(envvar.Home); d != "" {
 		homePath := filepath.Join(d, "config.yaml")
 		if _, err := os.Stat(homePath); err == nil {
 			return homePath
@@ -557,6 +555,10 @@ var validCageTypes = map[string]bool{
 	"discovery":  true,
 	"validator":  true,
 	"escalation": true,
+}
+
+func Marshal(cfg *Config) ([]byte, error) {
+	return yaml.Marshal(cfg)
 }
 
 func Parse(data []byte) (*Config, error) {
@@ -877,9 +879,6 @@ func Merge(base, override *Config) *Config {
 	// LLM
 	if override.LLM.Endpoint != "" {
 		result.LLM.Endpoint = override.LLM.Endpoint
-	}
-	if override.LLM.APIKeyEnv != "" {
-		result.LLM.APIKeyEnv = override.LLM.APIKeyEnv
 	}
 	if override.LLM.Timeout > 0 {
 		result.LLM.Timeout = override.LLM.Timeout

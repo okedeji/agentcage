@@ -19,6 +19,7 @@ import (
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/envvar"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/metrics"
 )
@@ -75,11 +76,7 @@ func connectTemporal(ctx context.Context, cfg *config.Config, spireSocket string
 				log.Info("Temporal mTLS enabled", "cert", tc.TLS.CertFile)
 			}
 		}
-		if tc.APIKeyEnvVar != "" {
-			apiKey := os.Getenv(tc.APIKeyEnvVar)
-			if apiKey == "" {
-				return nil, "", fmt.Errorf("temporal API key env var %s is not set", tc.APIKeyEnvVar)
-			}
+		if apiKey := envvar.Get(envvar.Temporal); apiKey != "" {
 			opts.Credentials = client.NewAPIKeyStaticCredentials(apiKey)
 			log.Info("Temporal API key auth enabled")
 		}

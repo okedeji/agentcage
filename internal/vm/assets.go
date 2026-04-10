@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/okedeji/agentcage/internal/envvar"
 )
 
 const (
@@ -32,7 +34,7 @@ func LinuxBinaryPath() string {
 }
 
 func homeDir() string {
-	if d := os.Getenv("AGENTCAGE_HOME"); d != "" {
+	if d := envvar.Get(envvar.Home); d != "" {
 		return d
 	}
 	home, err := os.UserHomeDir()

@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/go-logr/logr"
 
 	"github.com/okedeji/agentcage/internal/alert"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/envvar"
 	"github.com/okedeji/agentcage/internal/fleet"
 )
 
@@ -74,10 +74,7 @@ func setupFleet(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.
 func buildHostProvisioner(cfg *config.Config, log logr.Logger) fleet.HostProvisioner {
 	pc := cfg.Fleet.Provisioner
 	if pc != nil && pc.WebhookURL != "" {
-		var apiKey string
-		if pc.APIKeyEnvVar != "" {
-			apiKey = os.Getenv(pc.APIKeyEnvVar)
-		}
+		apiKey := envvar.Get(envvar.FleetKey)
 		log.Info("fleet provisioner: webhook", "url", pc.WebhookURL)
 		return fleet.NewWebhookProvisioner(pc.WebhookURL, apiKey, pc.Timeout, log)
 	}

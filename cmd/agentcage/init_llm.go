@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/go-logr/logr"
 
 	"github.com/okedeji/agentcage/internal/alert"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/envvar"
 	"github.com/okedeji/agentcage/internal/gateway"
 )
 
@@ -25,13 +25,7 @@ func buildLLMClient(cfg *config.Config, alertDispatcher *alert.Dispatcher, log l
 		return nil, nil
 	}
 
-	var apiKey string
-	if cfg.LLM.APIKeyEnv != "" {
-		apiKey = os.Getenv(cfg.LLM.APIKeyEnv)
-		if apiKey == "" {
-			return nil, fmt.Errorf("LLM API key env var %s is not set", cfg.LLM.APIKeyEnv)
-		}
-	}
+	apiKey := envvar.Get(envvar.LLMKey)
 	client := gateway.NewClient(cfg.LLM.Endpoint, apiKey, cfg.LLM.Timeout, meter, budgetEnforcer, alertDispatcher)
 	log.Info("LLM gateway client configured", "endpoint", cfg.LLM.Endpoint, "auth", apiKey != "")
 	return client, nil

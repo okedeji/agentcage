@@ -131,7 +131,6 @@ cages:
     max_memory_mb: 16384
 llm:
   endpoint: "https://api.example.com/v1"
-  api_key_env: "MY_KEY"
 timeouts:
   provision_vm: 60s
 `
@@ -145,7 +144,6 @@ timeouts:
 	assert.Equal(t, int32(8), cfg.Cages["discovery"].MaxVCPUs)
 	assert.Equal(t, int32(16384), cfg.Cages["discovery"].MaxMemoryMB)
 	assert.Equal(t, "https://api.example.com/v1", cfg.LLM.Endpoint)
-	assert.Equal(t, "MY_KEY", cfg.LLM.APIKeyEnv)
 	assert.Equal(t, 60*time.Second, cfg.Timeouts.ProvisionVM)
 }
 
@@ -201,7 +199,8 @@ infrastructure:
 func TestLoad_ComplianceConfig(t *testing.T) {
 	content := `
 compliance:
-  framework: soc2
+  frameworks:
+    - soc2
   audit_retention: "7y"
   max_concurrent_cages: 500
   require_intervention: true
@@ -212,7 +211,7 @@ compliance:
 	require.NoError(t, err)
 
 	require.NotNil(t, cfg.Compliance)
-	assert.Equal(t, "soc2", cfg.Compliance.Framework)
+	assert.Equal(t, []string{"soc2"}, cfg.Compliance.Frameworks)
 	assert.Equal(t, int32(500), cfg.Compliance.MaxConcurrentCages)
 	assert.True(t, cfg.Compliance.RequireIntervention)
 }
@@ -296,14 +295,12 @@ func TestMerge_LLMOverride(t *testing.T) {
 	base := Defaults()
 	override := &Config{
 		LLM: LLMConfig{
-			Endpoint:  "https://api.anthropic.com/v1",
-			APIKeyEnv: "ANTHROPIC_API_KEY",
+			Endpoint: "https://api.anthropic.com/v1",
 		},
 	}
 
 	result := Merge(base, override)
 	assert.Equal(t, "https://api.anthropic.com/v1", result.LLM.Endpoint)
-	assert.Equal(t, "ANTHROPIC_API_KEY", result.LLM.APIKeyEnv)
 	assert.Equal(t, 30*time.Second, result.LLM.Timeout, "default timeout preserved")
 }
 

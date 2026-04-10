@@ -14,7 +14,9 @@ import (
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/cagefile"
+	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
+	"github.com/okedeji/agentcage/internal/envvar"
 	"github.com/okedeji/agentcage/internal/plan"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -36,14 +38,24 @@ func cmdRun(args []string) {
 	rf, fs := parseRunFlags(args)
 	explicit := explicitFlags(fs)
 
-	p := &plan.Plan{}
+	cfg := config.Defaults()
+	if resolved := config.Resolve(""); resolved != "" {
+		override, loadErr := config.Load(resolved)
+		if loadErr != nil {
+			fmt.Fprintf(os.Stderr, "error loading operator config: %v\n", loadErr)
+			os.Exit(1)
+		}
+		cfg = config.Merge(cfg, override)
+	}
+
+	p := plan.BasePlanFromConfig(cfg)
 	if rf.plan != "" {
 		loaded, err := plan.Load(rf.plan)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
-		p = loaded
+		p = plan.Merge(p, loaded)
 	}
 
 	override := plan.FlagsToOverride(explicit, plan.RawFlags{
@@ -65,7 +77,6 @@ func cmdRun(args []string) {
 		KnownWeaknesses:  []string(rf.knownWeaknesses),
 		RequirePoC:       rf.requirePoC,
 		HeadlessXSS:      rf.headlessXSS,
-		Schedule:         rf.schedule,
 		Notify:           rf.notify,
 		NotifyOnFinding:  rf.notifyOnFinding,
 		NotifyOnComplete: rf.notifyOnComplete,
@@ -82,9 +93,8 @@ func cmdRun(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-
-	if p.Schedule.Mode == "cron" || p.Schedule.Mode == "on_push" {
-		fmt.Fprintf(os.Stderr, "scheduled assessments are not yet supported (schedule.mode=%s)\n", p.Schedule.Mode)
+	if err := plan.EnforceConfigCeilings(p, cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -116,7 +126,7 @@ func cmdRun(args []string) {
 	info := resp.GetAssessment()
 	printAssessmentSummary(info, p, bundleRef)
 
-	if p.Output.Follow {
+	if plan.BoolVal(p.Output.Follow) {
 		followAssessment(conn, info.GetAssessmentId(), p.Output.Format)
 	}
 }
@@ -126,24 +136,11 @@ func prepareBundle(agentPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("agent path %s: %w", agentPath, err)
 	}
-
-	storeDir := filepath.Join(embedded.DataDir(), "bundles")
-	store, err := cagefile.NewBundleStore(storeDir)
-	if err != nil {
-		return "", err
-	}
-
 	if fi.IsDir() {
-		fmt.Println("Packing agent directory...")
-		ref, packErr := store.PackAndStore(agentPath, version, 0)
-		if packErr != nil {
-			return "", fmt.Errorf("packing agent: %w", packErr)
-		}
-		return ref, nil
+		return "", fmt.Errorf("agent path %s is a directory, not a .cage bundle (run 'agentcage pack %s' first)", agentPath, agentPath)
 	}
-
 	if !strings.HasSuffix(agentPath, ".cage") {
-		return "", fmt.Errorf("agent file %s does not have a .cage extension (use 'agentcage pack <dir>' to create one, or pass a directory to --agent)", agentPath)
+		return "", fmt.Errorf("agent file %s does not have a .cage extension (run 'agentcage pack <dir>' to create one)", agentPath)
 	}
 
 	fmt.Println("Verifying bundle...")
@@ -161,6 +158,12 @@ func prepareBundle(agentPath string) (string, error) {
 		return "", err
 	}
 
+	storeDir := filepath.Join(embedded.DataDir(), "bundles")
+	store, err := cagefile.NewBundleStore(storeDir)
+	if err != nil {
+		return "", err
+	}
+
 	ref, storeErr := store.Store(agentPath)
 	if storeErr != nil {
 		return "", fmt.Errorf("storing bundle: %w", storeErr)
@@ -169,10 +172,7 @@ func prepareBundle(agentPath string) (string, error) {
 }
 
 func dialOrchestrator() (*grpc.ClientConn, error) {
-	addr := os.Getenv("AGENTCAGE_GRPC_ADDR")
-	if addr == "" {
-		addr = "localhost:9090"
-	}
+	addr := envvar.GRPCAddress()
 
 	creds, err := buildClientCredentials()
 	if err != nil {
@@ -195,13 +195,12 @@ func dialOrchestrator() (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-// AGENTCAGE_TLS_CERT and AGENTCAGE_TLS_KEY enable mTLS.
-// AGENTCAGE_TLS_CA pins the server CA. Without any of these the
-// connection is plaintext, which is fine for localhost/dev.
+// Plaintext when no TLS env vars are set, which is fine for
+// localhost/dev.
 func buildClientCredentials() (credentials.TransportCredentials, error) {
-	certFile := os.Getenv("AGENTCAGE_TLS_CERT")
-	keyFile := os.Getenv("AGENTCAGE_TLS_KEY")
-	caFile := os.Getenv("AGENTCAGE_TLS_CA")
+	certFile := envvar.Get(envvar.TLSCert)
+	keyFile := envvar.Get(envvar.TLSKey)
+	caFile := envvar.Get(envvar.TLSCA)
 
 	if certFile == "" && keyFile == "" && caFile == "" {
 		return grpcinsecure.NewCredentials(), nil
@@ -274,11 +273,11 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) *pb.CreateAsse
 
 	cfg.Guidance = buildGuidanceProto(p)
 
-	if p.Notifications.Webhook != "" || p.Notifications.OnFinding || p.Notifications.OnComplete {
+	if p.Notifications.Webhook != "" || plan.BoolVal(p.Notifications.OnFinding) || plan.BoolVal(p.Notifications.OnComplete) {
 		cfg.Notifications = &pb.NotificationConfig{
 			Webhook:    p.Notifications.Webhook,
-			OnFinding:  p.Notifications.OnFinding,
-			OnComplete: p.Notifications.OnComplete,
+			OnFinding:  plan.BoolVal(p.Notifications.OnFinding),
+			OnComplete: plan.BoolVal(p.Notifications.OnComplete),
 		}
 	}
 
@@ -292,11 +291,11 @@ func buildGuidanceProto(p *plan.Plan) *pb.Guidance {
 	g := &pb.Guidance{}
 	hasContent := false
 
-	if len(p.Guidance.AttackSurface.Endpoints) > 0 || len(p.Guidance.AttackSurface.APISpecs) > 0 || p.Guidance.AttackSurface.LimitToListed {
+	if len(p.Guidance.AttackSurface.Endpoints) > 0 || len(p.Guidance.AttackSurface.APISpecs) > 0 || plan.BoolVal(p.Guidance.AttackSurface.LimitToListed) {
 		g.AttackSurface = &pb.AttackSurfaceGuidance{
 			Endpoints:     p.Guidance.AttackSurface.Endpoints,
 			ApiSpecs:      p.Guidance.AttackSurface.APISpecs,
-			LimitToListed: p.Guidance.AttackSurface.LimitToListed,
+			LimitToListed: plan.BoolVal(p.Guidance.AttackSurface.LimitToListed),
 		}
 		hasContent = true
 	}
@@ -317,10 +316,10 @@ func buildGuidanceProto(p *plan.Plan) *pb.Guidance {
 		hasContent = true
 	}
 
-	if p.Guidance.Validation.RequirePoC || p.Guidance.Validation.HeadlessBrowserXSS {
+	if plan.BoolVal(p.Guidance.Validation.RequirePoC) || plan.BoolVal(p.Guidance.Validation.HeadlessBrowserXSS) {
 		g.Validation = &pb.ValidationGuidance{
-			RequirePoc:         p.Guidance.Validation.RequirePoC,
-			HeadlessBrowserXss: p.Guidance.Validation.HeadlessBrowserXSS,
+			RequirePoc:         plan.BoolVal(p.Guidance.Validation.RequirePoC),
+			HeadlessBrowserXss: plan.BoolVal(p.Guidance.Validation.HeadlessBrowserXSS),
 		}
 		hasContent = true
 	}
@@ -355,7 +354,7 @@ func printAssessmentSummary(info *pb.AssessmentInfo, p *plan.Plan, bundleRef str
 	if p.Limits.MaxConcurrentCages > 0 {
 		fmt.Printf("  Cages:      up to %d concurrent\n", p.Limits.MaxConcurrentCages)
 	}
-	if !p.Output.Follow {
+	if !plan.BoolVal(p.Output.Follow) {
 		fmt.Printf("\nUse 'agentcage status --assessment %s' to monitor.\n", info.GetAssessmentId())
 	}
 }
@@ -497,15 +496,13 @@ func cageTypeNameToProto(name string) pb.CageType {
 	}
 }
 
-// parseRunFlags and helpers live in cmd because they're CLI wiring.
-
 func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	rf := &runFlags{}
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	fs.Usage = printRunUsage
 
 	fs.StringVar(&rf.plan, "plan", "", "path to assessment YAML plan file")
-	fs.StringVar(&rf.agent, "agent", "", "path to .cage bundle or agent directory")
+	fs.StringVar(&rf.agent, "agent", "", "path to .cage bundle")
 	fs.StringVar(&rf.target, "target", "", "target host(s), comma-separated")
 	fs.Var(&rf.ports, "port", "port to include (repeatable)")
 	fs.Var(&rf.paths, "path", "URL path to scope (repeatable)")
@@ -523,7 +520,6 @@ func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	fs.Var(&rf.knownWeaknesses, "known-weakness", "known weakness hint (repeatable)")
 	fs.BoolVar(&rf.requirePoC, "require-poc", false, "require PoC for every finding")
 	fs.BoolVar(&rf.headlessXSS, "headless-xss", false, "headless browser for XSS validation")
-	fs.StringVar(&rf.schedule, "schedule", "once", "\"once\" (default) or cron expression")
 	fs.StringVar(&rf.notify, "notify", "", "webhook URL for notifications")
 	fs.BoolVar(&rf.notifyOnFinding, "notify-on-finding", false, "notify per validated finding")
 	fs.BoolVar(&rf.notifyOnComplete, "notify-on-complete", false, "notify when assessment finishes")
@@ -557,7 +553,6 @@ type runFlags struct {
 	knownWeaknesses  stringSliceFlag
 	requirePoC       bool
 	headlessXSS      bool
-	schedule         string
 	notify           string
 	notifyOnFinding  bool
 	notifyOnComplete bool
@@ -583,10 +578,10 @@ func printRunUsage() {
 Examples:
   agentcage run --agent ./my-agent.cage --target example.com
   agentcage run --plan plans/staging.yaml --follow
-  agentcage run --agent ./agent/ --target api.example.com --focus sqli --require-poc
+  agentcage run --agent ./my-agent.cage --target api.example.com --focus sqli --require-poc
 
 Required (unless in plan file):
-  --agent              .cage file or agent directory
+  --agent              .cage bundle (run 'agentcage pack <dir>' first)
   --target             target host(s), comma-separated
 
 Plan file:
@@ -613,9 +608,6 @@ Guidance:
   --known-weakness     known weakness hint (repeatable)
   --require-poc        require PoC for every finding
   --headless-xss       headless browser for XSS validation
-
-Scheduling:
-  --schedule           "once" (default) or cron expression
 
 Notifications:
   --notify             webhook URL for notifications
