@@ -14,10 +14,11 @@ func TestBuildEgressRules_DomainHosts(t *testing.T) {
 	rules := BuildEgressRules("abc-123", scope, nil)
 
 	assert.Equal(t, "abc-123", rules.CageID)
-	assert.Empty(t, rules.AllowIPs)
 	require.Len(t, rules.AllowFQDNs, 2)
 	assert.Equal(t, "example.com", rules.AllowFQDNs[0])
 	assert.Equal(t, "api.target.io", rules.AllowFQDNs[1])
+	// FQDNs also resolve to IPs for nftables enforcement.
+	assert.NotEmpty(t, rules.AllowIPs)
 }
 
 func TestBuildEgressRules_IPHosts(t *testing.T) {
@@ -36,8 +37,7 @@ func TestBuildEgressRules_MixedHosts(t *testing.T) {
 
 	require.Len(t, rules.AllowFQDNs, 1)
 	assert.Equal(t, "example.com", rules.AllowFQDNs[0])
-	require.Len(t, rules.AllowIPs, 1)
-	assert.Equal(t, "93.184.216.34/32", rules.AllowIPs[0])
+	assert.Contains(t, rules.AllowIPs, "93.184.216.34/32")
 }
 
 func TestBuildEgressRules_WithExtras(t *testing.T) {
@@ -48,8 +48,7 @@ func TestBuildEgressRules_WithExtras(t *testing.T) {
 	require.Len(t, rules.AllowFQDNs, 2)
 	assert.Equal(t, "target.com", rules.AllowFQDNs[0])
 	assert.Equal(t, "gateway.internal.svc", rules.AllowFQDNs[1])
-	require.Len(t, rules.AllowIPs, 1)
-	assert.Equal(t, "10.0.0.50/32", rules.AllowIPs[0])
+	assert.Contains(t, rules.AllowIPs, "10.0.0.50/32")
 }
 
 func TestBuildEgressRules_WithPorts(t *testing.T) {

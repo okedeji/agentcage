@@ -30,6 +30,9 @@ type EgressRule struct {
 }
 
 // BuildEgressRules parses scope + extras into structured egress rules.
+// Resolves FQDNs to IPs so nftables can enforce at the network
+// layer. The DNS resolver inside the cage is the primary control;
+// resolved IPs here are a second layer for hardcoded-IP bypass.
 func BuildEgressRules(cageID string, scope cage.Scope, extras []string) EgressRule {
 	rule := EgressRule{CageID: cageID}
 
@@ -46,6 +49,19 @@ func BuildEgressRules(cageID string, scope cage.Scope, extras []string) EgressRu
 			}
 		} else {
 			rule.AllowFQDNs = append(rule.AllowFQDNs, host)
+			addrs, err := net.LookupHost(host)
+			if err != nil {
+				continue
+			}
+			for _, addr := range addrs {
+				if ip := net.ParseIP(addr); ip != nil {
+					if ip.To4() != nil {
+						rule.AllowIPs = append(rule.AllowIPs, addr+"/32")
+					} else {
+						rule.AllowIPs = append(rule.AllowIPs, addr+"/128")
+					}
+				}
+			}
 		}
 	}
 
@@ -145,25 +161,21 @@ func GenerateNFTRules(rule EgressRule) string {
 	// Allow loopback (for in-VM communication: proxy, sidecar)
 	b.WriteString("    oifname lo accept\n\n")
 
-	// Allow specific IPs
-	for _, cidr := range rule.AllowIPs {
-		fmt.Fprintf(&b, "    ip daddr %s accept\n", cidr)
-	}
-
-	// Allow DNS resolution for FQDNs (port 53)
-	if len(rule.AllowFQDNs) > 0 {
-		b.WriteString("\n    # DNS resolution for allowed FQDNs\n")
-		b.WriteString("    udp dport 53 accept\n")
-		b.WriteString("    tcp dport 53 accept\n")
-	}
-
-	// Port restrictions (if specified, only allow these ports)
+	// Per-IP rules, scoped to allowed ports when specified.
 	if len(rule.AllowPorts) > 0 {
 		ports := strings.Join(rule.AllowPorts, ", ")
-		fmt.Fprintf(&b, "\n    tcp dport { %s } accept\n", ports)
-	} else if len(rule.AllowIPs) > 0 || len(rule.AllowFQDNs) > 0 {
-		// No port restriction. All ports allowed to permitted destinations.
-		b.WriteString("\n    # No port restriction. All ports allowed to permitted destinations.\n")
+		for _, cidr := range rule.AllowIPs {
+			fmt.Fprintf(&b, "    ip daddr %s tcp dport { %s } accept\n", cidr, ports)
+		}
+	} else {
+		for _, cidr := range rule.AllowIPs {
+			fmt.Fprintf(&b, "    ip daddr %s accept\n", cidr)
+		}
+	}
+
+	if len(rule.AllowFQDNs) > 0 {
+		b.WriteString("\n    udp dport 53 accept\n")
+		b.WriteString("    tcp dport 53 accept\n")
 	}
 
 	b.WriteString("  }\n")

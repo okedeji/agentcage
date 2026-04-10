@@ -134,29 +134,31 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		"memory_mb", config.MemoryMB,
 	)
 
-	if err := cmd.Start(); err != nil {
+	cleanup := func() {
 		_ = teardownTAP(context.Background(), tapName)
+		_ = os.Remove(socketPath)
+	}
+
+	if err := cmd.Start(); err != nil {
+		cleanup()
 		return nil, fmt.Errorf("starting firecracker process: %w", err)
 	}
 
-	// Wait for the API socket to appear
 	if err := waitForSocket(ctx, socketPath, 5*time.Second); err != nil {
 		_ = cmd.Process.Kill()
-		_ = teardownTAP(context.Background(), tapName)
+		cleanup()
 		return nil, fmt.Errorf("waiting for firecracker API socket: %w", err)
 	}
 
-	// Configure the VM via the Firecracker API
 	if err := p.configureVM(ctx, socketPath, kernelPath, rootfsPath, config, tapName); err != nil {
 		_ = cmd.Process.Kill()
-		_ = teardownTAP(context.Background(), tapName)
+		cleanup()
 		return nil, fmt.Errorf("configuring VM: %w", err)
 	}
 
-	// Start the VM
 	if err := p.startVM(ctx, socketPath); err != nil {
 		_ = cmd.Process.Kill()
-		_ = teardownTAP(context.Background(), tapName)
+		cleanup()
 		return nil, fmt.Errorf("starting VM instance: %w", err)
 	}
 
