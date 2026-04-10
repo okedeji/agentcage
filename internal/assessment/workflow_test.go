@@ -53,6 +53,9 @@ func (assessmentActivityStub) GetFinding(_ context.Context, _ string) (findings.
 func (assessmentActivityStub) EmitProofGapIntervention(_ context.Context, _, _ string, _ []string) (string, error) {
 	return "", nil
 }
+func (assessmentActivityStub) GetAssessmentTokensConsumed(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
 func (assessmentActivityStub) NotifyFleetAssessmentComplete(_ context.Context, _ string) error {
 	return nil
 }

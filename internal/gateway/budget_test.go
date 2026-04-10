@@ -10,7 +10,7 @@ import (
 
 func TestBudgetEnforcer_UnderBudget(t *testing.T) {
 	meter := NewTokenMeter()
-	meter.Record("cage-1", "gpt-4", 100, 50)
+	meter.Record("cage-1", "assess-1", "gpt-4", 100, 50)
 	enforcer := NewBudgetEnforcer(meter)
 
 	err := enforcer.Check("cage-1", 1000)
@@ -19,7 +19,7 @@ func TestBudgetEnforcer_UnderBudget(t *testing.T) {
 
 func TestBudgetEnforcer_AtBudget(t *testing.T) {
 	meter := NewTokenMeter()
-	meter.Record("cage-1", "gpt-4", 500, 500)
+	meter.Record("cage-1", "assess-1", "gpt-4", 500, 500)
 	enforcer := NewBudgetEnforcer(meter)
 
 	err := enforcer.Check("cage-1", 1000)
@@ -29,7 +29,7 @@ func TestBudgetEnforcer_AtBudget(t *testing.T) {
 
 func TestBudgetEnforcer_OverBudget(t *testing.T) {
 	meter := NewTokenMeter()
-	meter.Record("cage-1", "gpt-4", 600, 500)
+	meter.Record("cage-1", "assess-1", "gpt-4", 600, 500)
 	enforcer := NewBudgetEnforcer(meter)
 
 	err := enforcer.Check("cage-1", 1000)
@@ -39,7 +39,7 @@ func TestBudgetEnforcer_OverBudget(t *testing.T) {
 
 func TestBudgetEnforcer_RemainingUnderBudget(t *testing.T) {
 	meter := NewTokenMeter()
-	meter.Record("cage-1", "gpt-4", 100, 50)
+	meter.Record("cage-1", "assess-1", "gpt-4", 100, 50)
 	enforcer := NewBudgetEnforcer(meter)
 
 	remaining := enforcer.Remaining("cage-1", 1000)
@@ -48,7 +48,7 @@ func TestBudgetEnforcer_RemainingUnderBudget(t *testing.T) {
 
 func TestBudgetEnforcer_RemainingOverBudget(t *testing.T) {
 	meter := NewTokenMeter()
-	meter.Record("cage-1", "gpt-4", 600, 500)
+	meter.Record("cage-1", "assess-1", "gpt-4", 600, 500)
 	enforcer := NewBudgetEnforcer(meter)
 
 	remaining := enforcer.Remaining("cage-1", 1000)

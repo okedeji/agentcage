@@ -51,7 +51,7 @@ func TestChatCompletion_Success(t *testing.T) {
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
-	got, err := client.ChatCompletion(context.Background(), "cage-1", 1000, req)
+	got, err := client.ChatCompletion(context.Background(), "cage-1", "assess-1", 1000, req)
 	require.NoError(t, err)
 	assert.Equal(t, "chatcmpl-abc123", got.ID)
 	assert.Equal(t, int64(15), got.Usage.TotalTokens)
@@ -69,14 +69,14 @@ func TestChatCompletion_BudgetExhausted(t *testing.T) {
 	defer srv.Close()
 
 	client, meter := newTestClient(srv.URL)
-	meter.Record("cage-1", "gpt-4", 500, 500)
+	meter.Record("cage-1", "assess-1", "gpt-4", 500, 500)
 
 	req := LLMRequest{
 		Model:    "gpt-4",
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
-	_, err := client.ChatCompletion(context.Background(), "cage-1", 1000, req)
+	_, err := client.ChatCompletion(context.Background(), "cage-1", "assess-1", 1000, req)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrBudgetExhausted))
 	assert.False(t, called)
@@ -103,7 +103,7 @@ func TestChatCompletion_MissingUsageData(t *testing.T) {
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
-	_, err := client.ChatCompletion(context.Background(), "cage-1", 1000, req)
+	_, err := client.ChatCompletion(context.Background(), "cage-1", "assess-1", 1000, req)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrNoUsageData))
 }
@@ -123,7 +123,7 @@ func TestChatCompletion_Timeout(t *testing.T) {
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
-	_, err := client.ChatCompletion(context.Background(), "cage-1", 1000, req)
+	_, err := client.ChatCompletion(context.Background(), "cage-1", "assess-1", 1000, req)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, context.DeadlineExceeded))
 }
@@ -141,7 +141,7 @@ func TestChatCompletion_InvalidJSON(t *testing.T) {
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
-	_, err := client.ChatCompletion(context.Background(), "cage-1", 1000, req)
+	_, err := client.ChatCompletion(context.Background(), "cage-1", "assess-1", 1000, req)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unmarshaling LLM response")
 }
@@ -170,7 +170,7 @@ func TestChatCompletion_RequestBodySentCorrectly(t *testing.T) {
 		},
 	}
 
-	_, err := client.ChatCompletion(context.Background(), "cage-1", 1000, req)
+	_, err := client.ChatCompletion(context.Background(), "cage-1", "assess-1", 1000, req)
 	require.NoError(t, err)
 
 	assert.Equal(t, "gpt-4", received.Model)

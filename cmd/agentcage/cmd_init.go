@@ -157,7 +157,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
 
-	llmClient, err := buildLLMClient(cfg, alertDispatcher, log)
+	llmClient, tokenMeter, err := buildLLMClient(cfg, alertDispatcher, log)
 	if err != nil {
 		return err
 	}
@@ -202,6 +202,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Coordinator:   findingsCoordinator,
 		Fleet:         fleetSetup.autoscaler,
 		Assessments:   assessmentSvc,
+		Tokens:        tokenMeter,
 		LLMClient:     llmClient,
 		Proofs:        proofLib,
 		Interventions: iSvc,

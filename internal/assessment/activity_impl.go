@@ -31,6 +31,11 @@ const ProofGapTimeout = 24 * time.Hour
 // ActivityImpl provides concrete implementations of all assessment
 // lifecycle activities. It wires the cage server, findings store,
 // planner, and proof library together.
+// Returns total tokens consumed across all cages in an assessment.
+type TokenQuerier interface {
+	AssessmentTokens(assessmentID string) int64
+}
+
 type ActivityImpl struct {
 	cages         *cage.Service
 	findings      findings.FindingStore
@@ -38,6 +43,7 @@ type ActivityImpl struct {
 	coordinator   *findings.Coordinator
 	fleet         FleetSignaler
 	assessments   *Service
+	tokens        TokenQuerier
 	planner       *Planner
 	proofs        *ProofLibrary
 	interventions ProofGapEmitter
@@ -51,6 +57,7 @@ type ActivityImplConfig struct {
 	Coordinator   *findings.Coordinator
 	Fleet         FleetSignaler
 	Assessments   *Service
+	Tokens        TokenQuerier
 	LLMClient     *gateway.Client
 	Proofs        *ProofLibrary
 	Interventions ProofGapEmitter
@@ -69,6 +76,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		coordinator:   cfg.Coordinator,
 		fleet:         cfg.Fleet,
 		assessments:   cfg.Assessments,
+		tokens:        cfg.Tokens,
 		planner:       planner,
 		proofs:        cfg.Proofs,
 		interventions: cfg.Interventions,
@@ -96,6 +104,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("PlanNextActions", a.PlanNextActions)
 	pin("LookupProof", a.LookupProof)
 	pin("EmitProofGapIntervention", a.EmitProofGapIntervention)
+	pin("GetAssessmentTokensConsumed", a.GetAssessmentTokensConsumed)
 	pin("NotifyFleetAssessmentComplete", a.NotifyFleetAssessmentComplete)
 	pin("NotifyAssessmentComplete", a.NotifyAssessmentComplete)
 }
@@ -252,6 +261,13 @@ func (a *ActivityImpl) LookupProof(_ context.Context, vulnClass string) (*Proof,
 	// based on candidate evidence.
 	a.log.V(1).Info("proof selected", "vuln_class", vulnClass, "validation_type", available[0].ValidationType)
 	return available[0], nil
+}
+
+func (a *ActivityImpl) GetAssessmentTokensConsumed(_ context.Context, assessmentID string) (int64, error) {
+	if a.tokens == nil {
+		return 0, nil
+	}
+	return a.tokens.AssessmentTokens(assessmentID), nil
 }
 
 func (a *ActivityImpl) NotifyFleetAssessmentComplete(_ context.Context, assessmentID string) error {

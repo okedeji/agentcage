@@ -63,7 +63,7 @@ func (p *Planner) PlanNextActions(ctx context.Context, state CoordinatorState) (
 		return CoordinatorDecision{}, fmt.Errorf("marshaling coordinator state: %w", err)
 	}
 
-	resp, err := p.client.ChatCompletion(ctx, "coordinator", 0, gateway.LLMRequest{
+	resp, err := p.client.ChatCompletion(ctx, "coordinator", state.AssessmentID, 0, gateway.LLMRequest{
 		Model: "",
 		Messages: []gateway.LLMMessage{
 			{Role: "system", Content: coordinatorSystemPrompt},

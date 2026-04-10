@@ -129,6 +129,17 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	for iteration := int32(0); iteration < maxIterations; iteration++ {
 		result.Iterations = iteration + 1
 
+		var tokensUsed int64
+		if cfg.TokenBudget > 0 {
+			tokenCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+			_ = workflow.ExecuteActivity(tokenCtx, "GetAssessmentTokensConsumed", input.AssessmentID).Get(ctx, &tokensUsed)
+			if tokensUsed >= cfg.TokenBudget {
+				logger.Info("token budget exhausted, ending exploitation",
+					"assessment_id", input.AssessmentID, "consumed", tokensUsed, "budget", cfg.TokenBudget)
+				break
+			}
+		}
+
 		allFindings, err := getAllFindings(ctx, input.AssessmentID)
 		if err != nil {
 			return failResult(result, "fetching findings for coordinator (iteration %d): %v", iteration, err), nil
@@ -144,6 +155,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 			Findings:       SummarizeFindings(allFindings),
 			CagesCompleted: cagesCompleted,
 			Coverage:       coverage,
+			TokensUsed:     tokensUsed,
 			TokenBudget:    cfg.TokenBudget,
 			TimeElapsed:    elapsed,
 			TimeLimit:      cfg.MaxDuration,

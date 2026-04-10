@@ -11,6 +11,7 @@ type TokenMeter struct {
 }
 
 type cageMetrics struct {
+	assessmentID string
 	inputTokens  atomic.Int64
 	outputTokens atomic.Int64
 }
@@ -19,7 +20,7 @@ func NewTokenMeter() *TokenMeter {
 	return &TokenMeter{cages: make(map[string]*cageMetrics)}
 }
 
-func (m *TokenMeter) Record(cageID, model string, input, output int64) {
+func (m *TokenMeter) Record(cageID, assessmentID, model string, input, output int64) {
 	m.mu.RLock()
 	cm, ok := m.cages[cageID]
 	m.mu.RUnlock()
@@ -28,7 +29,7 @@ func (m *TokenMeter) Record(cageID, model string, input, output int64) {
 		m.mu.Lock()
 		cm, ok = m.cages[cageID]
 		if !ok {
-			cm = &cageMetrics{}
+			cm = &cageMetrics{assessmentID: assessmentID}
 			m.cages[cageID] = cm
 		}
 		m.mu.Unlock()
@@ -36,6 +37,18 @@ func (m *TokenMeter) Record(cageID, model string, input, output int64) {
 
 	cm.inputTokens.Add(input)
 	cm.outputTokens.Add(output)
+}
+
+func (m *TokenMeter) AssessmentTokens(assessmentID string) int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var total int64
+	for _, cm := range m.cages {
+		if cm.assessmentID == assessmentID {
+			total += cm.inputTokens.Load() + cm.outputTokens.Load()
+		}
+	}
+	return total
 }
 
 func (m *TokenMeter) GetUsage(cageID string) TokenUsage {

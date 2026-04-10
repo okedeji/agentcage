@@ -13,20 +13,20 @@ import (
 
 // Without an LLM endpoint the assessment coordinator can't plan
 // cages, but discovery and validator workflows still run.
-func buildLLMClient(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.Logger) (*gateway.Client, error) {
+func buildLLMClient(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.Logger) (*gateway.Client, *gateway.TokenMeter, error) {
 	meter := gateway.NewTokenMeter()
 	budgetEnforcer := gateway.NewBudgetEnforcer(meter)
 
 	if cfg.LLM.Endpoint == "" {
 		if cfg.LLMRequiredDefault() {
-			return nil, fmt.Errorf("posture=strict: llm.endpoint is required (the assessment coordinator and discovery cages cannot run without an LLM)")
+			return nil, nil, fmt.Errorf("posture=strict: llm.endpoint is required (the assessment coordinator and discovery cages cannot run without an LLM)")
 		}
 		log.Info("WARNING: no LLM endpoint configured. Assessment coordinator will not be able to plan cages.")
-		return nil, nil
+		return nil, meter, nil
 	}
 
 	apiKey := envvar.Get(envvar.LLMKey)
 	client := gateway.NewClient(cfg.LLM.Endpoint, apiKey, cfg.LLM.Timeout, meter, budgetEnforcer, alertDispatcher)
 	log.Info("LLM gateway client configured", "endpoint", cfg.LLM.Endpoint, "auth", apiKey != "")
-	return client, nil
+	return client, meter, nil
 }

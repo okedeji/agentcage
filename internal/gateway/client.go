@@ -67,7 +67,7 @@ func NewClient(endpoint, apiKey string, timeout time.Duration, meter *TokenMeter
 	}
 }
 
-func (c *Client) ChatCompletion(ctx context.Context, cageID string, tokenBudget int64, req LLMRequest) (*LLMResponse, error) {
+func (c *Client) ChatCompletion(ctx context.Context, cageID, assessmentID string, tokenBudget int64, req LLMRequest) (*LLMResponse, error) {
 	if err := c.budget.Check(cageID, tokenBudget); err != nil {
 		return nil, fmt.Errorf("checking budget for cage %s: %w", cageID, err)
 	}
@@ -91,7 +91,7 @@ func (c *Client) ChatCompletion(ctx context.Context, cageID string, tokenBudget 
 		return nil, ErrNoUsageData
 	}
 
-	c.meter.Record(cageID, resp.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
+	c.meter.Record(cageID, assessmentID, resp.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
 
 	return &resp, nil
 }

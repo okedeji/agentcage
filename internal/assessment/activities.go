@@ -27,5 +27,6 @@ type Activities interface {
 	LookupProof(ctx context.Context, vulnClass string) (*Proof, error)
 	GetFinding(ctx context.Context, findingID string) (findings.Finding, error)
 	EmitProofGapIntervention(ctx context.Context, assessmentID, vulnClass string, findingIDs []string) (string, error)
+	GetAssessmentTokensConsumed(ctx context.Context, assessmentID string) (int64, error)
 	NotifyAssessmentComplete(ctx context.Context, assessmentID string, config NotificationConfig, status Status, findingsValidated int32, name string, tags map[string]string) error
 }
