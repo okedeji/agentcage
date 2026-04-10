@@ -10,18 +10,17 @@ import (
 )
 
 type Plan struct {
-	Name          string                 `yaml:"name"`
-	Agent         string                 `yaml:"agent"`
-	Target        Target                 `yaml:"target"`
-	Budget        Budget                 `yaml:"budget"`
-	Limits        Limits                 `yaml:"limits"`
-	CageTypes     map[string]CageType    `yaml:"cage_types"`
-	Guidance      Guidance               `yaml:"guidance"`
-	Notifications Notifications          `yaml:"notifications"`
-	Schedule      Schedule               `yaml:"schedule"`
-	Output        Output                 `yaml:"output"`
-	Tags          map[string]string      `yaml:"tags"`
-	CustomerID    string                 `yaml:"customer_id"`
+	Name          string              `yaml:"name"`
+	Agent         string              `yaml:"agent"`
+	Target        Target              `yaml:"target"`
+	Budget        Budget              `yaml:"budget"`
+	Limits        Limits              `yaml:"limits"`
+	CageTypes     map[string]CageType `yaml:"cage_types"`
+	Guidance      Guidance            `yaml:"guidance"`
+	Notifications Notifications       `yaml:"notifications"`
+	Output        Output              `yaml:"output"`
+	Tags          map[string]string   `yaml:"tags"`
+	CustomerID    string              `yaml:"customer_id"`
 }
 
 type Target struct {
@@ -59,7 +58,7 @@ type Guidance struct {
 type AttackSurface struct {
 	Endpoints     []string `yaml:"endpoints"`
 	APISpecs      []string `yaml:"api_specs"`
-	LimitToListed bool     `yaml:"limit_to_listed"`
+	LimitToListed *bool    `yaml:"limit_to_listed,omitempty"`
 }
 
 type Priorities struct {
@@ -73,25 +72,19 @@ type Strategy struct {
 }
 
 type Validation struct {
-	RequirePoC         bool `yaml:"require_poc"`
-	HeadlessBrowserXSS bool `yaml:"headless_browser_xss"`
+	RequirePoC         *bool `yaml:"require_poc,omitempty"`
+	HeadlessBrowserXSS *bool `yaml:"headless_browser_xss,omitempty"`
 }
 
 type Notifications struct {
 	Webhook    string `yaml:"webhook"`
-	OnFinding  bool   `yaml:"on_finding"`
-	OnComplete bool   `yaml:"on_complete"`
-}
-
-type Schedule struct {
-	Mode   string `yaml:"mode"`
-	Cron   string `yaml:"cron"`
-	Branch string `yaml:"branch"`
+	OnFinding  *bool  `yaml:"on_finding,omitempty"`
+	OnComplete *bool  `yaml:"on_complete,omitempty"`
 }
 
 type Output struct {
 	Format string `yaml:"format"`
-	Follow bool   `yaml:"follow"`
+	Follow *bool  `yaml:"follow,omitempty"`
 }
 
 func Load(path string) (*Plan, error) {
@@ -106,8 +99,7 @@ func Load(path string) (*Plan, error) {
 	return &p, nil
 }
 
-// Boolean fields can only escalate to true, never back to false.
-// Intentional for security flags like require_poc and headless_xss.
+// --require-poc=false can override a plan that has require_poc: true.
 func Merge(base, override *Plan) *Plan {
 	out := *base
 
@@ -166,8 +158,8 @@ func Merge(base, override *Plan) *Plan {
 	if len(override.Guidance.AttackSurface.APISpecs) > 0 {
 		out.Guidance.AttackSurface.APISpecs = override.Guidance.AttackSurface.APISpecs
 	}
-	if override.Guidance.AttackSurface.LimitToListed {
-		out.Guidance.AttackSurface.LimitToListed = true
+	if override.Guidance.AttackSurface.LimitToListed != nil {
+		out.Guidance.AttackSurface.LimitToListed = override.Guidance.AttackSurface.LimitToListed
 	}
 	if len(override.Guidance.Priorities.VulnClasses) > 0 {
 		out.Guidance.Priorities.VulnClasses = override.Guidance.Priorities.VulnClasses
@@ -181,32 +173,28 @@ func Merge(base, override *Plan) *Plan {
 	if len(override.Guidance.Strategy.KnownWeaknesses) > 0 {
 		out.Guidance.Strategy.KnownWeaknesses = override.Guidance.Strategy.KnownWeaknesses
 	}
-	if override.Guidance.Validation.RequirePoC {
-		out.Guidance.Validation.RequirePoC = true
+	if override.Guidance.Validation.RequirePoC != nil {
+		out.Guidance.Validation.RequirePoC = override.Guidance.Validation.RequirePoC
 	}
-	if override.Guidance.Validation.HeadlessBrowserXSS {
-		out.Guidance.Validation.HeadlessBrowserXSS = true
+	if override.Guidance.Validation.HeadlessBrowserXSS != nil {
+		out.Guidance.Validation.HeadlessBrowserXSS = override.Guidance.Validation.HeadlessBrowserXSS
 	}
 
 	if override.Notifications.Webhook != "" {
 		out.Notifications.Webhook = override.Notifications.Webhook
 	}
-	if override.Notifications.OnFinding {
-		out.Notifications.OnFinding = true
+	if override.Notifications.OnFinding != nil {
+		out.Notifications.OnFinding = override.Notifications.OnFinding
 	}
-	if override.Notifications.OnComplete {
-		out.Notifications.OnComplete = true
-	}
-
-	if override.Schedule.Mode != "" {
-		out.Schedule = override.Schedule
+	if override.Notifications.OnComplete != nil {
+		out.Notifications.OnComplete = override.Notifications.OnComplete
 	}
 
 	if override.Output.Format != "" {
 		out.Output.Format = override.Output.Format
 	}
-	if override.Output.Follow {
-		out.Output.Follow = true
+	if override.Output.Follow != nil {
+		out.Output.Follow = override.Output.Follow
 	}
 
 	if len(override.Tags) > 0 {
@@ -218,9 +206,6 @@ func Merge(base, override *Plan) *Plan {
 
 // Call before Validate so validation sees the complete plan.
 func ApplyDefaults(p *Plan) {
-	if p.Schedule.Mode == "" {
-		p.Schedule.Mode = "once"
-	}
 	if p.Output.Format == "" {
 		p.Output.Format = "text"
 	}
@@ -262,19 +247,6 @@ func Validate(p *Plan) error {
 			}
 		}
 	}
-	switch p.Schedule.Mode {
-	case "once", "":
-	case "cron":
-		if p.Schedule.Cron == "" {
-			return fmt.Errorf("schedule.mode is cron but schedule.cron is empty")
-		}
-	case "on_push":
-		if p.Schedule.Branch == "" {
-			return fmt.Errorf("schedule.mode is on_push but schedule.branch is empty")
-		}
-	default:
-		return fmt.Errorf("unknown schedule.mode %q (supported: once, cron, on_push)", p.Schedule.Mode)
-	}
 	switch p.Output.Format {
 	case "text", "json", "":
 	default:
@@ -302,7 +274,6 @@ type RawFlags struct {
 	KnownWeaknesses  []string
 	RequirePoC       bool
 	HeadlessXSS      bool
-	Schedule         string
 	Notify           string
 	NotifyOnFinding  bool
 	NotifyOnComplete bool
@@ -313,8 +284,6 @@ type RawFlags struct {
 	CustomerID       string
 }
 
-// Fields for flags not passed on the command line stay at zero value
-// so Merge ignores them.
 func FlagsToOverride(explicit map[string]bool, f RawFlags) *Plan {
 	p := &Plan{}
 
@@ -367,30 +336,22 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) *Plan {
 		p.Guidance.Strategy.KnownWeaknesses = f.KnownWeaknesses
 	}
 	if explicit["require-poc"] {
-		p.Guidance.Validation.RequirePoC = f.RequirePoC
+		p.Guidance.Validation.RequirePoC = boolPtr(f.RequirePoC)
 	}
 	if explicit["headless-xss"] {
-		p.Guidance.Validation.HeadlessBrowserXSS = f.HeadlessXSS
-	}
-	if explicit["schedule"] {
-		if f.Schedule == "once" {
-			p.Schedule.Mode = "once"
-		} else {
-			p.Schedule.Mode = "cron"
-			p.Schedule.Cron = f.Schedule
-		}
+		p.Guidance.Validation.HeadlessBrowserXSS = boolPtr(f.HeadlessXSS)
 	}
 	if explicit["notify"] {
 		p.Notifications.Webhook = f.Notify
 	}
 	if explicit["notify-on-finding"] {
-		p.Notifications.OnFinding = f.NotifyOnFinding
+		p.Notifications.OnFinding = boolPtr(f.NotifyOnFinding)
 	}
 	if explicit["notify-on-complete"] {
-		p.Notifications.OnComplete = f.NotifyOnComplete
+		p.Notifications.OnComplete = boolPtr(f.NotifyOnComplete)
 	}
 	if explicit["follow"] {
-		p.Output.Follow = f.Follow
+		p.Output.Follow = boolPtr(f.Follow)
 	}
 	if explicit["format"] {
 		p.Output.Format = f.Format
@@ -406,6 +367,16 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) *Plan {
 	}
 
 	return p
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+// BoolVal returns the value of a *bool, defaulting to false if nil.
+func BoolVal(b *bool) bool {
+	if b == nil {
+		return false
+	}
+	return *b
 }
 
 func splitAndTrim(s, sep string) []string {

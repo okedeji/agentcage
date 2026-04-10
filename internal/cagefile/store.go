@@ -70,36 +70,6 @@ func (s *BundleStore) Exists(ref string) bool {
 	return err == nil
 }
 
-// Packs directly into the store directory to avoid an intermediate
-// copy of the full bundle.
-func (s *BundleStore) PackAndStore(dir, version string, maxSize int64) (string, error) {
-	tmp := filepath.Join(s.dir, fmt.Sprintf("pack-%d.tmp", os.Getpid()))
-	manifest, err := PackToFile(dir, version, tmp, maxSize)
-	if err != nil {
-		_ = os.Remove(tmp)
-		return "", err
-	}
-	_ = manifest
-
-	hash, err := hashFile(tmp)
-	if err != nil {
-		_ = os.Remove(tmp)
-		return "", fmt.Errorf("hashing packed bundle: %w", err)
-	}
-
-	dest := s.Path(hash)
-	if _, statErr := os.Stat(dest); statErr == nil {
-		_ = os.Remove(tmp)
-		return hash, nil
-	}
-
-	if err := os.Rename(tmp, dest); err != nil {
-		_ = os.Remove(tmp)
-		return "", fmt.Errorf("finalizing bundle in store: %w", err)
-	}
-	return hash, nil
-}
-
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

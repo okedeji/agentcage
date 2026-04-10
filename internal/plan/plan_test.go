@@ -58,7 +58,7 @@ customer_id: acme
 	assert.Equal(t, []string{"soc2", "hipaa"}, p.Limits.Compliance)
 	assert.Equal(t, []string{"sqli"}, p.Guidance.Priorities.VulnClasses)
 	assert.Equal(t, "Django app", p.Guidance.Strategy.Context)
-	assert.True(t, p.Guidance.Validation.RequirePoC)
+	assert.True(t, BoolVal(p.Guidance.Validation.RequirePoC))
 	assert.Equal(t, "red-team", p.Tags["team"])
 	assert.Equal(t, "acme", p.CustomerID)
 }
@@ -130,16 +130,25 @@ func TestMerge_EmptyOverridePreservesBase(t *testing.T) {
 	assert.Equal(t, int32(5), result.Limits.MaxChainDepth)
 }
 
-func TestMerge_BooleansOnlyEscalateToTrue(t *testing.T) {
+func TestMerge_BooleanOverrideBothDirections(t *testing.T) {
+	tr := boolPtr(true)
+	fa := boolPtr(false)
+
 	base := &Plan{
-		Guidance: Guidance{Validation: Validation{RequirePoC: true}},
-	}
-	override := &Plan{
-		Guidance: Guidance{Validation: Validation{RequirePoC: false}},
+		Guidance: Guidance{Validation: Validation{RequirePoC: tr}},
 	}
 
+	// Explicit false overrides true.
+	override := &Plan{
+		Guidance: Guidance{Validation: Validation{RequirePoC: fa}},
+	}
 	result := Merge(base, override)
-	assert.True(t, result.Guidance.Validation.RequirePoC)
+	assert.False(t, BoolVal(result.Guidance.Validation.RequirePoC))
+
+	// nil (omitted) does not clobber base.
+	override2 := &Plan{}
+	result2 := Merge(base, override2)
+	assert.True(t, BoolVal(result2.Guidance.Validation.RequirePoC))
 }
 
 func TestMerge_CageTypesOverridePerKey(t *testing.T) {
@@ -208,28 +217,6 @@ func TestValidate_InvalidCageType(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown cage type")
 }
 
-func TestValidate_InvalidScheduleMode(t *testing.T) {
-	p := &Plan{
-		Agent:    "./agent.cage",
-		Target:   Target{Hosts: []string{"example.com"}},
-		Schedule: Schedule{Mode: "hourly"},
-	}
-	err := Validate(p)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown schedule.mode")
-}
-
-func TestValidate_CronWithoutExpression(t *testing.T) {
-	p := &Plan{
-		Agent:    "./agent.cage",
-		Target:   Target{Hosts: []string{"example.com"}},
-		Schedule: Schedule{Mode: "cron"},
-	}
-	err := Validate(p)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "schedule.cron is empty")
-}
-
 func TestValidate_InvalidOutputFormat(t *testing.T) {
 	p := &Plan{
 		Agent:  "./agent.cage",
@@ -248,7 +235,6 @@ func TestValidate_ValidMinimalPlan(t *testing.T) {
 	}
 	ApplyDefaults(p)
 	require.NoError(t, Validate(p))
-	assert.Equal(t, "once", p.Schedule.Mode)
 	assert.Equal(t, "text", p.Output.Format)
 }
 
@@ -273,24 +259,6 @@ func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
 	assert.Equal(t, int64(0), p.Budget.Tokens)
 }
 
-func TestFlagsToOverride_ScheduleCron(t *testing.T) {
-	explicit := map[string]bool{"schedule": true}
-	f := RawFlags{Schedule: "0 2 * * 1"}
-
-	p := FlagsToOverride(explicit, f)
-
-	assert.Equal(t, "cron", p.Schedule.Mode)
-	assert.Equal(t, "0 2 * * 1", p.Schedule.Cron)
-}
-
-func TestFlagsToOverride_ScheduleOnce(t *testing.T) {
-	explicit := map[string]bool{"schedule": true}
-	f := RawFlags{Schedule: "once"}
-
-	p := FlagsToOverride(explicit, f)
-
-	assert.Equal(t, "once", p.Schedule.Mode)
-}
 
 func TestParseTags(t *testing.T) {
 	tags := []string{"team=red", "env=staging", "novalue"}
