@@ -18,10 +18,8 @@ import (
 	"github.com/okedeji/agentcage/internal/rca"
 )
 
-// ScopeValidator validates cage scope against policies.
 // Defined here to avoid a circular dependency with the enforcement package.
 type ScopeValidator interface {
-	ValidateScope(ctx context.Context, scope Scope) error
 	ValidateCageConfig(ctx context.Context, config Config) error
 }
 
@@ -124,8 +122,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin := func(name string, fn interface{}) {
 		w.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: name})
 	}
-	pin("ValidateScope", a.ValidateScope)
-	pin("ValidateCageType", a.ValidateCageType)
+	pin("ValidateCageConfig", a.ValidateCageConfig)
 	pin("IssueIdentity", a.IssueIdentity)
 	pin("FetchSecrets", a.FetchSecrets)
 	pin("AssembleRootfs", a.AssembleRootfs)
@@ -164,17 +161,9 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 	}
 }
 
-func (a *ActivityImpl) ValidateScope(ctx context.Context, config Config) error {
+func (a *ActivityImpl) ValidateCageConfig(ctx context.Context, config Config) error {
 	if a.validator == nil {
-		a.log.V(1).Info("scope validation skipped, no validator configured")
-		return nil
-	}
-	return a.validator.ValidateScope(ctx, config.Scope)
-}
-
-func (a *ActivityImpl) ValidateCageType(ctx context.Context, config Config) error {
-	if a.validator == nil {
-		a.log.V(1).Info("cage type validation skipped, no validator configured")
+		a.log.V(1).Info("cage config validation skipped, no validator configured")
 		return nil
 	}
 	return a.validator.ValidateCageConfig(ctx, config)
@@ -183,7 +172,7 @@ func (a *ActivityImpl) ValidateCageType(ctx context.Context, config Config) erro
 func (a *ActivityImpl) IssueIdentity(ctx context.Context, cageID string, ttl time.Duration) (*identity.SVID, error) {
 	if a.identity == nil {
 		a.log.V(1).Info("identity issuance skipped, no SPIRE configured", "cage_id", cageID)
-		return &identity.SVID{ID: "dev-" + cageID, SpiffeID: "spiffe://agentcage.local/cage/" + cageID, CageID: cageID}, nil
+		return &identity.SVID{ID: "dev-" + cageID, SpiffeID: "spiffe://agentcage.local/cage/" + cageID, CageID: cageID, ExpiresAt: time.Now().Add(ttl)}, nil
 	}
 	svid, err := a.identity.Issue(ctx, cageID, ttl)
 	if err != nil {
@@ -196,7 +185,7 @@ func (a *ActivityImpl) IssueIdentity(ctx context.Context, cageID string, ttl tim
 func (a *ActivityImpl) FetchSecrets(ctx context.Context, svid *identity.SVID, assessmentID string) (*identity.VaultToken, error) {
 	if a.secrets == nil {
 		a.log.V(1).Info("secret fetch skipped, no Vault configured", "cage_id", svid.CageID)
-		return &identity.VaultToken{CageID: svid.CageID}, nil
+		return &identity.VaultToken{CageID: svid.CageID, Token: "dev-token", ExpiresAt: time.Now().Add(24 * time.Hour)}, nil
 	}
 	token, err := a.secrets.Authenticate(ctx, svid)
 	if err != nil {
@@ -230,6 +219,8 @@ func (a *ActivityImpl) AssembleRootfs(ctx context.Context, cageID string, bundle
 	if err != nil {
 		return "", fmt.Errorf("cage %s: unpacking bundle: %w", cageID, err)
 	}
+
+	env.Entrypoint = manifest.Entrypoint
 
 	filesDir := filepath.Join(tmpDir, "files")
 	rootfsPath, err := a.rootfs.Assemble(ctx, cageID, manifest, filesDir, env)
@@ -488,9 +479,13 @@ func (a *ActivityImpl) RevokeVaultToken(ctx context.Context, token *identity.Vau
 	if a.secrets == nil {
 		return nil
 	}
-	if err := a.secrets.Revoke(ctx, token); err != nil {
-		return fmt.Errorf("revoking Vault token: %w", err)
+	if token.Token == "dev-token" {
+		return nil
 	}
+	if err := a.secrets.Revoke(ctx, token); err != nil {
+		return fmt.Errorf("revoking Vault token for cage %s: %w", token.CageID, err)
+	}
+	a.log.V(1).Info("vault token revoked", "cage_id", token.CageID)
 	return nil
 }
 

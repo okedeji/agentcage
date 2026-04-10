@@ -102,7 +102,8 @@ type Config struct {
 	LLM             *LLMGatewayConfig
 	ProxyConfig     ProxyConfig
 	ParentFindingID string
-	InputContext     []byte
+	VulnClass       string
+	InputContext    []byte
 }
 
 type Scope struct {

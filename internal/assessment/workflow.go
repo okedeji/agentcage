@@ -376,7 +376,8 @@ func spawnCoordinatorActions(
 				BundleRef:       cfg.BundleRef,
 				Scope:           action.Scope,
 				ParentFindingID: action.FindingID,
-				InputContext:     []byte(action.Objective),
+				VulnClass:       action.VulnClass,
+				InputContext:    []byte(action.Objective),
 			}
 			if tc, ok := cfg.CageDefaults[cageType]; ok {
 				cageCfg.Resources = tc.Resources

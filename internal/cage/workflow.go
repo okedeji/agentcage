@@ -43,14 +43,8 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	var setupReachedVM bool
 	var setupReachedPolicy bool
 
-	// --- Setup phase ---
-
-	if err := execActivity(withTimeout(ctx, t.ValidateScope), "ValidateScope", cfg); err != nil {
-		return failResult(result, "validating scope: %v", err), nil
-	}
-
-	if err := execActivity(withTimeout(ctx, t.ValidateScope), "ValidateCageType", cfg); err != nil {
-		return failResult(result, "validating cage type: %v", err), nil
+	if err := execActivity(withTimeout(ctx, t.ValidateScope), "ValidateCageConfig", cfg); err != nil {
+		return failResult(result, "validating cage config: %v", err), nil
 	}
 
 	if err := workflow.ExecuteActivity(
@@ -68,30 +62,29 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		return failResult(result, "fetching secrets: %v", err), nil
 	}
 
+	env := Env{
+		CageID:       input.CageID,
+		AssessmentID: cfg.AssessmentID,
+		CageType:     cfg.Type.String(),
+		Objective:    string(cfg.InputContext),
+		VulnClass:    cfg.VulnClass,
+		LLMEndpoint:  input.LLMEndpoint,
+		NATSAddr:     input.NATSAddr,
+		ScopeHosts:   cfg.Scope.Hosts,
+		ScopePorts:   cfg.Scope.Ports,
+		ScopePaths:   cfg.Scope.Paths,
+		ProxyMode:    cfg.ProxyConfig.Mode.String(),
+	}
+	if cfg.LLM != nil {
+		env.TokenBudget = cfg.LLM.TokenBudget
+	}
 	var rootfsPath string
-	if cfg.BundleRef != "" {
-		env := Env{
-			CageID:       input.CageID,
-			AssessmentID: cfg.AssessmentID,
-			CageType:     cfg.Type.String(),
-			Entrypoint:   "", // set by cage-init from manifest
-			LLMEndpoint:  input.LLMEndpoint,
-			NATSAddr:     input.NATSAddr,
-			ScopeHosts:   cfg.Scope.Hosts,
-			ScopePorts:   cfg.Scope.Ports,
-			ScopePaths:   cfg.Scope.Paths,
-			ProxyMode:    cfg.ProxyConfig.Mode.String(),
-		}
-		if cfg.LLM != nil {
-			env.TokenBudget = cfg.LLM.TokenBudget
-		}
-		if err := workflow.ExecuteActivity(
-			withHeartbeat(ctx, t.ProvisionVM, t.HeartbeatProvisionVM),
-			"AssembleRootfs", input.CageID, cfg.BundleRef, env,
-		).Get(ctx, &rootfsPath); err != nil {
-			cleanupIdentity(ctx, t, svid.ID, &token)
-			return failResult(result, "assembling rootfs: %v", err), nil
-		}
+	if err := workflow.ExecuteActivity(
+		withHeartbeat(ctx, t.ProvisionVM, t.HeartbeatProvisionVM),
+		"AssembleRootfs", input.CageID, cfg.BundleRef, env,
+	).Get(ctx, &rootfsPath); err != nil {
+		cleanupIdentity(ctx, t, svid.ID, &token)
+		return failResult(result, "assembling rootfs: %v", err), nil
 	}
 
 	if err := workflow.ExecuteActivity(

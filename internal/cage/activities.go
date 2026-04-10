@@ -44,8 +44,7 @@ func (r StopReason) RequiresRCA() bool {
 // provided by the orchestrator binary, which wires the real
 // dependencies (SPIRE, Vault, Cilium, Firecracker, etc.).
 type Activities interface {
-	ValidateScope(ctx context.Context, config Config) error
-	ValidateCageType(ctx context.Context, config Config) error
+	ValidateCageConfig(ctx context.Context, config Config) error
 	IssueIdentity(ctx context.Context, cageID string, ttl time.Duration) (*identity.SVID, error)
 	FetchSecrets(ctx context.Context, svid *identity.SVID, assessmentID string) (*identity.VaultToken, error)
 	AssembleRootfs(ctx context.Context, cageID string, bundleRef string, env Env) (string, error)

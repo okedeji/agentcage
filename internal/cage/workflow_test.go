@@ -20,8 +20,7 @@ import (
 // All methods are overridden via env.OnActivity in each test.
 type activityStub struct{}
 
-func (activityStub) ValidateScope(context.Context, Config) error { return nil }
-func (activityStub) ValidateCageType(context.Context, Config) error { return nil }
+func (activityStub) ValidateCageConfig(context.Context, Config) error { return nil }
 func (activityStub) IssueIdentity(context.Context, string, time.Duration) (*identity.SVID, error) {
 	return nil, nil
 }
@@ -58,6 +57,7 @@ func testWorkflowInput() CageWorkflowInput {
 		Config: Config{
 			AssessmentID: "test-assessment-1",
 			Type:         TypeDiscovery,
+			BundleRef:    "abc123def456",
 			Scope:        Scope{Hosts: []string{"target.example.com"}},
 			Resources:    ResourceLimits{VCPUs: 2, MemoryMB: 4096},
 			TimeLimits:   TimeLimits{MaxDuration: 5 * time.Minute},
@@ -120,10 +120,10 @@ func newTestEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 }
 
 func registerHappyPathMocks(env *testsuite.TestWorkflowEnvironment) {
-	env.OnActivity("ValidateScope", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("ValidateCageType", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("ValidateCageConfig", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("IssueIdentity", mock.Anything, mock.Anything, mock.Anything).Return(testSVID(), nil)
 	env.OnActivity("FetchSecrets", mock.Anything, mock.Anything, mock.Anything).Return(testVaultToken(), nil)
+	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -163,7 +163,7 @@ func TestCageWorkflow_HappyPath(t *testing.T) {
 
 func TestCageWorkflow_ValidationFailure(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity("ValidateScope", mock.Anything, mock.Anything).
+	env.OnActivity("ValidateCageConfig", mock.Anything, mock.Anything).
 		Return(errors.New("scope contains internal IP range"))
 
 	env.ExecuteWorkflow(CageWorkflow, testWorkflowInput())
@@ -173,7 +173,7 @@ func TestCageWorkflow_ValidationFailure(t *testing.T) {
 	var result CageWorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
 	assert.Equal(t, StateFailed, result.FinalState)
-	assert.Contains(t, result.Error, "validating scope")
+	assert.Contains(t, result.Error, "validating cage config")
 
 	env.AssertNotCalled(t, "ProvisionVM", mock.Anything, mock.Anything)
 	env.AssertNotCalled(t, "TeardownVM", mock.Anything, mock.Anything)
@@ -181,10 +181,10 @@ func TestCageWorkflow_ValidationFailure(t *testing.T) {
 
 func TestCageWorkflow_ProvisionFailure(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity("ValidateScope", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("ValidateCageType", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("ValidateCageConfig", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("IssueIdentity", mock.Anything, mock.Anything, mock.Anything).Return(testSVID(), nil)
 	env.OnActivity("FetchSecrets", mock.Anything, mock.Anything, mock.Anything).Return(testVaultToken(), nil)
+	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).
 		Return(nil, errors.New("no hosts available"))
 	env.OnActivity("RevokeSVID", mock.Anything, mock.Anything).Return(nil)
@@ -206,10 +206,10 @@ func TestCageWorkflow_ProvisionFailure(t *testing.T) {
 
 func TestCageWorkflow_TeardownMultiError(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity("ValidateScope", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("ValidateCageType", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("ValidateCageConfig", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("IssueIdentity", mock.Anything, mock.Anything, mock.Anything).Return(testSVID(), nil)
 	env.OnActivity("FetchSecrets", mock.Anything, mock.Anything, mock.Anything).Return(testVaultToken(), nil)
+	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -241,10 +241,10 @@ func TestCageWorkflow_TeardownMultiError(t *testing.T) {
 
 func TestCageWorkflow_SignalKill(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity("ValidateScope", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("ValidateCageType", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("ValidateCageConfig", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("IssueIdentity", mock.Anything, mock.Anything, mock.Anything).Return(testSVID(), nil)
 	env.OnActivity("FetchSecrets", mock.Anything, mock.Anything, mock.Anything).Return(testVaultToken(), nil)
+	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -284,10 +284,10 @@ func TestCageWorkflow_SignalKill(t *testing.T) {
 
 func TestCageWorkflow_MonitorTimeout(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity("ValidateScope", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("ValidateCageType", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("ValidateCageConfig", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("IssueIdentity", mock.Anything, mock.Anything, mock.Anything).Return(testSVID(), nil)
 	env.OnActivity("FetchSecrets", mock.Anything, mock.Anything, mock.Anything).Return(testVaultToken(), nil)
+	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("StartPayloadProxy", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -315,8 +315,7 @@ func TestCageWorkflow_MonitorTimeout(t *testing.T) {
 
 func TestCageWorkflow_FetchSecretsFailure_CleansUpSVID(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity("ValidateScope", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("ValidateCageType", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("ValidateCageConfig", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("IssueIdentity", mock.Anything, mock.Anything, mock.Anything).Return(testSVID(), nil)
 	env.OnActivity("FetchSecrets", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, errors.New("Vault sealed"))

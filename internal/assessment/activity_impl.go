@@ -37,6 +37,7 @@ type ActivityImpl struct {
 	bus           findings.Bus
 	coordinator   *findings.Coordinator
 	fleet         FleetSignaler
+	assessments   *Service
 	planner       *Planner
 	proofs        *ProofLibrary
 	interventions ProofGapEmitter
@@ -49,6 +50,7 @@ type ActivityImplConfig struct {
 	Bus           findings.Bus
 	Coordinator   *findings.Coordinator
 	Fleet         FleetSignaler
+	Assessments   *Service
 	LLMClient     *gateway.Client
 	Proofs        *ProofLibrary
 	Interventions ProofGapEmitter
@@ -66,6 +68,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		bus:           cfg.Bus,
 		coordinator:   cfg.Coordinator,
 		fleet:         cfg.Fleet,
+		assessments:   cfg.Assessments,
 		planner:       planner,
 		proofs:        cfg.Proofs,
 		interventions: cfg.Interventions,
@@ -141,6 +144,7 @@ func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID str
 		BundleRef:       bundleRef,
 		Scope:           cage.Scope{Hosts: []string{finding.Endpoint}},
 		ParentFindingID: finding.ID,
+		VulnClass:       finding.VulnClass,
 	}
 	if proof != nil {
 		// Serialize the full structured proof so the validator cage receives
@@ -193,6 +197,11 @@ func (a *ActivityImpl) UpdateFindingStatus(ctx context.Context, findingID string
 }
 
 func (a *ActivityImpl) UpdateAssessmentStatus(ctx context.Context, assessmentID string, status Status) error {
+	if a.assessments != nil {
+		if err := a.assessments.UpdateStatus(ctx, assessmentID, status); err != nil {
+			return err
+		}
+	}
 	a.log.Info("assessment status updated", "assessment_id", assessmentID, "status", status)
 	return nil
 }

@@ -21,6 +21,7 @@ func validDiscoveryConfig() cage.Config {
 	return cage.Config{
 		AssessmentID: "assess-1",
 		Type:         cage.TypeDiscovery,
+		BundleRef:    "abc123",
 		Scope: cage.Scope{
 			Hosts: []string{"example.com"},
 			Ports: []string{"443"},
@@ -36,6 +37,7 @@ func validValidatorConfig() cage.Config {
 	return cage.Config{
 		AssessmentID:    "assess-1",
 		Type:            cage.TypeValidator,
+		BundleRef:       "abc123",
 		Scope:           cage.Scope{Hosts: []string{"target.example.com"}, Ports: []string{"80"}},
 		Resources:       cage.ResourceLimits{VCPUs: 1, MemoryMB: 512},
 		TimeLimits:      cage.TimeLimits{MaxDuration: 30 * time.Second},
@@ -48,6 +50,7 @@ func validEscalationConfig() cage.Config {
 	return cage.Config{
 		AssessmentID:    "assess-1",
 		Type:            cage.TypeEscalation,
+		BundleRef:       "abc123",
 		Scope:           cage.Scope{Hosts: []string{"target.example.com"}, Ports: []string{"443"}},
 		Resources:       cage.ResourceLimits{VCPUs: 2, MemoryMB: 2048},
 		TimeLimits:      cage.TimeLimits{MaxDuration: 10 * time.Minute},

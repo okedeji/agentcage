@@ -146,7 +146,11 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 	}()
 
-	cageSvc := cage.NewService(temporalClient, cageValidator, db)
+	natsAddr := embedded.NATSURL()
+	if cfg.Infrastructure.IsExternalNATS() {
+		natsAddr = cfg.Infrastructure.NATS.URL
+	}
+	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, natsAddr, cage.TimeoutsFromConfig(cfg.Timeouts))
 	fleetSvc := fleet.NewService(fleetSetup.pool, fleetSetup.demand, fleetSetup.provisioner, log.WithValues("component", "fleet"))
 	assessmentSvc := assessment.NewService(temporalClient, db, fleetSetup.autoscaler, cfg.Assessment.MaxIterations)
 
@@ -197,6 +201,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Bus:           findingsBus,
 		Coordinator:   findingsCoordinator,
 		Fleet:         fleetSetup.autoscaler,
+		Assessments:   assessmentSvc,
 		LLMClient:     llmClient,
 		Proofs:        proofLib,
 		Interventions: iSvc,
