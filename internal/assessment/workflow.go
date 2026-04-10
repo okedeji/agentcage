@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	// WorkflowName is the registered name of AssessmentWorkflow in the
-	// Temporal worker. Pinned explicitly so a Go-side rename does not
-	// silently break in-flight workflows on the next history replay.
+	// Pinned so a Go-side rename does not silently break in-flight
+	// workflows on the next history replay.
 	WorkflowName = "AssessmentWorkflow"
 
 	TimeoutCreateCage      = 30 * time.Second
@@ -31,28 +30,17 @@ const (
 	DefaultMaxChainDepth   = int32(3)
 	DefaultMaxIterations   = int32(20)
 
-	// MinValidatorWait is the floor for per-finding validator wait time.
 	// Even a 5-second proof needs cage boot + teardown overhead.
 	MinValidatorWait = 60 * time.Second
-	// ValidatorWaitBuffer is added to the proof's MaxDurationSeconds to
-	// cover cage boot, payload proxy startup, and result reporting.
+	// Covers cage boot, payload proxy startup, and result reporting.
 	ValidatorWaitBuffer = 30 * time.Second
 
-	// MaxFindingsPerValidationPhase caps how many candidate findings the
-	// validation phase will process in a single assessment run. Beyond this,
-	// the workflow truncates and leaves the rest as candidates for the
-	// human-review gate.
+	// Beyond this the workflow leaves the rest for the human-review gate.
 	MaxFindingsPerValidationPhase = 500
 
-	// ProofGapWaitDeadline is the maximum time the validation phase will
-	// block waiting for an operator to resolve a proof_gap intervention.
 	ProofGapWaitDeadline = 24 * time.Hour
 )
 
-// validatorWaitFor returns the duration the workflow should sleep after
-// spawning a validator cage for the given proof. Honors the proof's declared
-// max_duration_seconds with a small buffer, bounded by MinValidatorWait
-// (floor) and TimeoutWaitForCage (ceiling).
 func validatorWaitFor(proof *Proof) time.Duration {
 	if proof == nil || proof.MaxDurationSeconds <= 0 {
 		return TimeoutWaitForCage
@@ -68,9 +56,8 @@ func validatorWaitFor(proof *Proof) time.Duration {
 }
 
 type AssessmentWorkflowInput struct {
-	AssessmentID  string
-	Config        Config
-	MaxIterations int32
+	AssessmentID string
+	Config       Config
 }
 
 type AssessmentWorkflowResult struct {
@@ -86,7 +73,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	result := AssessmentWorkflowResult{AssessmentID: input.AssessmentID}
 	cfg := input.Config
 
-	maxIterations := input.MaxIterations
+	maxIterations := cfg.MaxIterations
 	if maxIterations <= 0 {
 		maxIterations = DefaultMaxIterations
 	}
@@ -96,7 +83,8 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		maxChainDepth = DefaultMaxChainDepth
 	}
 
-	// ===== Phase 1: Initial surface mapping (deterministic) =====
+	coverage := make(map[string][]string)
+	var cagesCompleted []CageSummary
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusDiscovery); err != nil {
 		return failResult(result, "updating status to mapping: %v", err), nil
@@ -107,20 +95,19 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		return failResult(result, "creating discovery cage for surface mapping: %v", err), nil
 	}
 	result.TotalCages++
-	_ = discoveryCageID
+	cagesCompleted = append(cagesCompleted, CageSummary{
+		CageID:   discoveryCageID,
+		CageType: "discovery",
+	})
 
 	if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
 		return failResult(result, "waiting for surface mapping cage: %v", err), nil
 	}
 
-	// ===== Phase 2: LLM-driven coordinator loop =====
-
 	if err := updateStatus(ctx, input.AssessmentID, StatusExploitation); err != nil {
 		return failResult(result, "updating status to testing: %v", err), nil
 	}
 
-	coverage := make(map[string][]string)
-	var cagesCompleted []CageSummary
 	startTime := workflow.Now(ctx)
 
 	for iteration := int32(0); iteration < maxIterations; iteration++ {
@@ -146,7 +133,6 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 			TimeLimit:      cfg.MaxDuration,
 		}
 
-		// Call LLM coordinator
 		decision, err := planNextActions(ctx, state)
 		if err != nil {
 			return failResult(result, "coordinator planning (iteration %d): %v", iteration, err), nil
@@ -156,7 +142,6 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 			break
 		}
 
-		// Spawn cages from coordinator decisions
 		maxConcurrent := maxConcurrentForType(cfg, cage.TypeDiscovery)
 		spawned, completedSummaries, err := spawnCoordinatorActions(ctx, input.AssessmentID, cfg, decision.Actions, maxConcurrent)
 		if err != nil {
@@ -166,13 +151,10 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		cagesCompleted = append(cagesCompleted, completedSummaries...)
 		coverage = UpdateCoverage(coverage, decision.Actions)
 
-		// Wait for cages to complete
 		if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
 			return failResult(result, "waiting for cages (iteration %d): %v", iteration, err), nil
 		}
 	}
-
-	// ===== Phase 3: Validation (deterministic, proof-driven) =====
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusValidation); err != nil {
 		return failResult(result, "updating status to validating: %v", err), nil
@@ -189,8 +171,6 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	}
 	result.TotalCages += validatorCages
 
-	// ===== Phase 4: Escalation =====
-
 	validated, err := getValidatedFindings(ctx, input.AssessmentID)
 	if err != nil {
 		return failResult(result, "fetching validated findings for escalation: %v", err), nil
@@ -203,8 +183,6 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 	escalationCages := spawnEscalationCages(ctx, input.AssessmentID, cfg, validated, chainDepths, maxChainDepth)
 	result.TotalCages += escalationCages
-
-	// ===== Phase 5: Report generation + human review =====
 
 	validated, err = getValidatedFindings(ctx, input.AssessmentID)
 	if err != nil {
@@ -280,8 +258,6 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	return result, nil
 }
 
-// --- Activity helpers ---
-
 func assessmentActivityOptions(timeout time.Duration) workflow.ActivityOptions {
 	return workflow.ActivityOptions{
 		StartToCloseTimeout: timeout,
@@ -312,7 +288,6 @@ func createDiscoveryCage(ctx workflow.Context, assessmentID string, cfg Config) 
 		cageCfg.Resources = tc.Resources
 	}
 	if cfg.Guidance != nil {
-		// Guidance is read-only context the agent gets at startup.
 		// JSON for now; the agent deserializes as needed.
 		if data, err := json.Marshal(cfg.Guidance); err == nil {
 			cageCfg.InputContext = data
@@ -364,7 +339,6 @@ func maxConcurrentForType(cfg Config, cageType cage.Type) int32 {
 	return DefaultMaxConcurrent
 }
 
-// spawnCoordinatorActions creates cages from coordinator decisions.
 func spawnCoordinatorActions(
 	ctx workflow.Context,
 	assessmentID string,
@@ -479,15 +453,11 @@ func validateFindings(
 	for _, vulnClass := range classOrder {
 		group := pending[vulnClass]
 
-		// Look up proof for this vuln class. If missing, emit a proof_gap
-		// intervention and wait for the operator to either add a new proof
-		// (action=retry) or skip the group (action=skip).
 		proof, err := lookupProofWithGate(ctx, assessmentID, vulnClass, group)
 		if err != nil {
 			return validatedCount, cagesSpawned, err
 		}
 		if proof == nil {
-			// Operator skipped or timed out. Leave findings as candidates.
 			continue
 		}
 
@@ -520,11 +490,8 @@ func validateFindings(
 	return validatedCount, cagesSpawned, nil
 }
 
-// lookupProofWithGate runs LookupProof and, if no proof exists, emits a
-// proof_gap intervention scoped to the vuln class and waits for the operator
-// to resolve it. On retry it re-runs LookupProof (the intervention service
-// reloads ProofLibrary from disk before signaling). On skip or timeout it
-// returns nil so the caller leaves the candidates for human review.
+// On retry the intervention service reloads ProofLibrary from disk
+// before signaling, so the re-run sees newly added proofs.
 func lookupProofWithGate(
 	ctx workflow.Context,
 	assessmentID, vulnClass string,
@@ -559,13 +526,9 @@ func lookupProofWithGate(
 				"assessment_id", assessmentID, "vuln_class", vulnClass, "intervention_id", interventionID)
 			return nil, nil
 		}
-		// Retry: loop back and re-run LookupProof against the (now reloaded)
-		// proof library.
 	}
 }
 
-// waitForProofGap blocks until the matching proof_gap signal arrives or the
-// timeout fires. Returns nil on timeout.
 func waitForProofGap(ctx workflow.Context, interventionID string) *intervention.ProofGapSignal {
 	signalCh := workflow.GetSignalChannel(ctx, intervention.SignalProofGap)
 	timer := workflow.NewTimer(ctx, ProofGapWaitDeadline)
@@ -588,7 +551,6 @@ func waitForProofGap(ctx workflow.Context, interventionID string) *intervention.
 			return nil
 		}
 		// Multiple proof_gap interventions can be in flight serially.
-		// Drain the matching one.
 		if signal.InterventionID == interventionID {
 			return &signal
 		}
@@ -676,17 +638,14 @@ func retestFindings(
 	maxWait := MinValidatorWait
 
 	for _, adj := range adjustments {
-		// Load the real finding so the validator cage gets the right
-		// endpoint, vuln class, and parent linkage. Never spawn a
-		// retest against an empty Finding shell.
+		// Never spawn a retest against an empty Finding shell.
 		loadCtx := withActivityTimeout(ctx, TimeoutGetFindings)
 		var f findings.Finding
 		if err := workflow.ExecuteActivity(loadCtx, "GetFinding", adj.FindingID).Get(ctx, &f); err != nil {
 			return cages, fmt.Errorf("loading finding %s for retest: %w", adj.FindingID, err)
 		}
 
-		// Look up the proof for this finding's vuln class. Skip if missing
-		// rather than spawning a no-op cage with no validation plan.
+		// Skip rather than spawning a no-op cage with no validation plan.
 		lookupCtx := withActivityTimeout(ctx, TimeoutGetFindings)
 		var proof *Proof
 		_ = workflow.ExecuteActivity(lookupCtx, "LookupProof", f.VulnClass).Get(ctx, &proof)

@@ -23,7 +23,7 @@ func testConfig() Config {
 }
 
 func TestServer_GetAssessment_NotFound(t *testing.T) {
-	srv := NewService(nil, nil, nil)
+	srv := NewService(nil, nil, nil, 20)
 
 	_, err := srv.GetAssessment(context.Background(), "nonexistent-id")
 	require.Error(t, err)
@@ -33,7 +33,7 @@ func TestServer_GetAssessment_NotFound(t *testing.T) {
 func TestServer_CreateAssessment_StoresInfo(t *testing.T) {
 	// With a nil Temporal client, ExecuteWorkflow panics. This test verifies
 	// the server stores info before attempting to start the workflow.
-	srv := NewService(nil, nil, nil)
+	srv := NewService(nil, nil, nil, 20)
 	cfg := testConfig()
 
 	require.Panics(t, func() {

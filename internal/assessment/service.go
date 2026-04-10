@@ -25,19 +25,21 @@ type FleetSignaler interface {
 }
 
 type Service struct {
-	temporal    client.Client
-	db          *sql.DB
-	fleet       FleetSignaler
-	mu          sync.RWMutex
-	assessments map[string]*Info
+	temporal      client.Client
+	db            *sql.DB
+	fleet         FleetSignaler
+	maxIterations int32
+	mu            sync.RWMutex
+	assessments   map[string]*Info
 }
 
-func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler) *Service {
+func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, maxIterations int32) *Service {
 	return &Service{
-		temporal:    temporal,
-		db:          db,
-		fleet:       fleet,
-		assessments: make(map[string]*Info),
+		temporal:      temporal,
+		db:            db,
+		fleet:         fleet,
+		maxIterations: maxIterations,
+		assessments:   make(map[string]*Info),
 	}
 }
 
@@ -64,6 +66,9 @@ func (s *Service) CreateAssessment(ctx context.Context, config Config) (*Info, e
 	workflowOpts := client.StartWorkflowOptions{
 		ID:        "assessment-" + assessmentID,
 		TaskQueue: TaskQueue,
+	}
+	if config.MaxIterations <= 0 {
+		config.MaxIterations = s.maxIterations
 	}
 	input := AssessmentWorkflowInput{
 		AssessmentID: assessmentID,

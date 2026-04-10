@@ -69,8 +69,8 @@ func testInput() AssessmentWorkflowInput {
 			TokenBudget:   1000000,
 			MaxDuration:   2 * time.Hour,
 			MaxChainDepth: 3,
+			MaxIterations: 5,
 		},
-		MaxIterations: 5,
 	}
 }
 

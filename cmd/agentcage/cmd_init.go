@@ -148,7 +148,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	cageSvc := cage.NewService(temporalClient, cageValidator, db)
 	fleetSvc := fleet.NewService(fleetSetup.pool, fleetSetup.demand, fleetSetup.provisioner, log.WithValues("component", "fleet"))
-	assessmentSvc := assessment.NewService(temporalClient, db, fleetSetup.autoscaler)
+	assessmentSvc := assessment.NewService(temporalClient, db, fleetSetup.autoscaler, cfg.Assessment.MaxIterations)
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))

@@ -91,6 +91,7 @@ type Config struct {
 	MaxDuration      time.Duration
 	MaxChainDepth    int32
 	MaxConcurrent    int32
+	MaxIterations    int32
 	Compliance       []ComplianceFramework
 	Guidance         *Guidance
 	Tags             map[string]string
