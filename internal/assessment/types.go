@@ -58,28 +58,6 @@ func StatusFromString(s string) Status {
 	}
 }
 
-type ComplianceFramework int
-
-const (
-	ComplianceUnspecified ComplianceFramework = iota
-	ComplianceSOC2
-	ComplianceHIPAA
-	CompliancePCIDSS
-)
-
-func (f ComplianceFramework) String() string {
-	switch f {
-	case ComplianceSOC2:
-		return "soc2"
-	case ComplianceHIPAA:
-		return "hipaa"
-	case CompliancePCIDSS:
-		return "pci_dss"
-	default:
-		return "unspecified"
-	}
-}
-
 type Config struct {
 	CustomerID       string
 	Name             string
@@ -92,7 +70,6 @@ type Config struct {
 	MaxChainDepth    int32
 	MaxConcurrent    int32
 	MaxIterations    int32
-	Compliance       []ComplianceFramework
 	Guidance         *Guidance
 	Tags             map[string]string
 	Notifications    NotificationConfig

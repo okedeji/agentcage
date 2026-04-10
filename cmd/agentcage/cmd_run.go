@@ -68,7 +68,6 @@ func cmdRun(args []string) {
 		MaxDuration:      rf.maxDuration,
 		MaxChainDepth:    rf.maxChainDepth,
 		MaxConcurrent:    rf.maxConcurrent,
-		Compliance:       []string(rf.compliance),
 		Context:          rf.context,
 		Focus:            []string(rf.focus),
 		Skip:             []string(rf.skip),
@@ -254,10 +253,6 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) *pb.CreateAsse
 		cfg.MaxDuration = durationpb.New(d)
 	}
 
-	for _, c := range p.Limits.Compliance {
-		cfg.Compliance = append(cfg.Compliance, complianceToProto(c))
-	}
-
 	for name, ct := range p.CageTypes {
 		ctPb := &pb.CageTypeConfig{
 			Type:          cageTypeNameToProto(name),
@@ -347,9 +342,6 @@ func printAssessmentSummary(info *pb.AssessmentInfo, p *plan.Plan, bundleRef str
 			parts = append(parts, p.Budget.MaxDuration)
 		}
 		fmt.Printf("  Budget:     %s\n", strings.Join(parts, " / "))
-	}
-	if len(p.Limits.Compliance) > 0 {
-		fmt.Printf("  Compliance: %s\n", strings.Join(p.Limits.Compliance, ", "))
 	}
 	if p.Limits.MaxConcurrentCages > 0 {
 		fmt.Printf("  Cages:      up to %d concurrent\n", p.Limits.MaxConcurrentCages)
@@ -470,19 +462,6 @@ func excludePaths(exclude []string) []string {
 	return out
 }
 
-func complianceToProto(c string) pb.ComplianceFramework {
-	switch strings.ToLower(c) {
-	case "soc2":
-		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_SOC2
-	case "hipaa":
-		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_HIPAA
-	case "pci_dss":
-		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_PCI_DSS
-	default:
-		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_UNSPECIFIED
-	}
-}
-
 func cageTypeNameToProto(name string) pb.CageType {
 	switch name {
 	case "discovery":
@@ -511,7 +490,6 @@ func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	fs.StringVar(&rf.maxDuration, "max-duration", "", "assessment wall clock (e.g. 30m, 4h)")
 	fs.IntVar(&rf.maxChainDepth, "max-chain-depth", 0, "escalation chain depth limit")
 	fs.IntVar(&rf.maxConcurrent, "max-concurrent", 0, "max concurrent cages")
-	fs.Var(&rf.compliance, "compliance", "compliance framework (repeatable: soc2, hipaa, pci_dss)")
 	fs.StringVar(&rf.context, "context", "", "free-text context for the LLM coordinator")
 	fs.Var(&rf.focus, "focus", "vuln class to prioritize (repeatable)")
 	fs.Var(&rf.skip, "skip", "path to deprioritize (repeatable)")
@@ -544,7 +522,6 @@ type runFlags struct {
 	maxDuration      string
 	maxChainDepth    int
 	maxConcurrent    int
-	compliance       stringSliceFlag
 	context          string
 	focus            stringSliceFlag
 	skip             stringSliceFlag
@@ -597,7 +574,6 @@ Budget & limits:
   --max-duration       assessment wall clock (e.g. 30m, 4h)
   --max-chain-depth    escalation chain depth limit
   --max-concurrent     max concurrent cages
-  --compliance         compliance framework (repeatable: soc2, hipaa, pci_dss)
 
 Guidance:
   --context            free-text context for the LLM coordinator

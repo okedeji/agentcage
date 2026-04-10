@@ -1,9 +1,7 @@
 package enforcement
 
 import (
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,35 +19,6 @@ func TestGenerateRegoModules_ProducesAllModules(t *testing.T) {
 	assert.Contains(t, modules, "payload/rce_safe.rego")
 	assert.Contains(t, modules, "payload/ssrf_safe.rego")
 	assert.Contains(t, modules, "payload/xss_safe.rego")
-}
-
-func TestGenerateRegoModules_NoComplianceWithoutConfig(t *testing.T) {
-	cfg := config.Defaults()
-	cfg.Compliance = nil
-	modules := GenerateRegoModules(cfg)
-
-	for name := range modules {
-		assert.False(t, strings.HasPrefix(name, "compliance/"), "should not generate compliance module without config")
-	}
-}
-
-func TestGenerateRegoModules_WithCompliance(t *testing.T) {
-	cfg := config.Defaults()
-	cfg.Compliance = &config.ComplianceConfig{
-		Frameworks:          []string{"soc2"},
-		MaxConcurrentCages:  500,
-		RequireIntervention: true,
-		InterventionTimeout: 30 * time.Minute,
-	}
-	modules := GenerateRegoModules(cfg)
-
-	assert.Contains(t, modules, "compliance/soc2.rego")
-	rego := modules["compliance/soc2.rego"]
-	assert.Contains(t, rego, "package agentcage.compliance.soc2")
-	assert.Contains(t, rego, "500")
-	assert.Contains(t, rego, "audit_log_enabled")
-	assert.Contains(t, rego, "intervention_enabled")
-	assert.Contains(t, rego, "30")
 }
 
 func TestGenerateScopeRego_ContainsExpectedRules(t *testing.T) {

@@ -28,9 +28,6 @@ budget:
   max_duration: 4h
 limits:
   max_chain_depth: 3
-  compliance:
-    - soc2
-    - hipaa
 guidance:
   priorities:
     vuln_classes:
@@ -55,7 +52,6 @@ customer_id: acme
 	assert.Equal(t, int64(500000), p.Budget.Tokens)
 	assert.Equal(t, "4h", p.Budget.MaxDuration)
 	assert.Equal(t, int32(3), p.Limits.MaxChainDepth)
-	assert.Equal(t, []string{"soc2", "hipaa"}, p.Limits.Compliance)
 	assert.Equal(t, []string{"sqli"}, p.Guidance.Priorities.VulnClasses)
 	assert.Equal(t, "Django app", p.Guidance.Strategy.Context)
 	assert.True(t, BoolVal(p.Guidance.Validation.RequirePoC))
@@ -193,17 +189,6 @@ func TestValidate_InvalidDuration(t *testing.T) {
 	err := Validate(p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid max_duration")
-}
-
-func TestValidate_InvalidCompliance(t *testing.T) {
-	p := &Plan{
-		Agent:  "./agent.cage",
-		Target: Target{Hosts: []string{"example.com"}},
-		Limits: Limits{Compliance: []string{"gdpr"}},
-	}
-	err := Validate(p)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown compliance framework")
 }
 
 func TestValidate_InvalidCageType(t *testing.T) {

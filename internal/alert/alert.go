@@ -26,7 +26,6 @@ const (
 	// Policy categories
 	CategoryScopeViolation     Category = "scope_violation"
 	CategoryCageConfigViolation Category = "cage_config_violation"
-	CategoryComplianceViolation Category = "compliance_violation"
 
 	// Behavioral categories
 	CategoryPrivilegedShell     Category = "privileged_shell"

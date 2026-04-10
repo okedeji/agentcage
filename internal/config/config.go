@@ -32,7 +32,6 @@ type Config struct {
 	Scope          ScopeConfig                `yaml:"scope"`
 	Payload        map[string]PayloadConfig   `yaml:"payload"`
 	Monitoring     map[string]MonitoringConfig `yaml:"monitoring"`
-	Compliance     *ComplianceConfig          `yaml:"compliance"`
 	Notifications  NotificationsConfig        `yaml:"notifications"`
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
 	Intervention   InterventionConfig         `yaml:"intervention"`
@@ -452,14 +451,6 @@ type MonitoringConfig struct {
 	Rules            map[string]string `yaml:"rules"`
 	AllowedProcesses []string          `yaml:"allowed_processes"`
 	DefaultAction    string            `yaml:"default_action"`
-}
-
-type ComplianceConfig struct {
-	Frameworks         []string      `yaml:"frameworks"`
-	AuditRetention     string        `yaml:"audit_retention"`
-	MaxConcurrentCages int32         `yaml:"max_concurrent_cages"`
-	RequireIntervention bool         `yaml:"require_intervention"`
-	InterventionTimeout time.Duration `yaml:"intervention_timeout"`
 }
 
 // InterventionConfig controls the orchestrator-side intervention machinery.
@@ -971,11 +962,6 @@ func Merge(base, override *Config) *Config {
 		}
 	} else {
 		result.Monitoring = copyMonitoring(base.Monitoring)
-	}
-
-	// Compliance
-	if override.Compliance != nil {
-		result.Compliance = override.Compliance
 	}
 
 	// Timeouts

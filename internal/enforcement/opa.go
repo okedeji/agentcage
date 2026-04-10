@@ -17,14 +17,12 @@ type PolicyEngine interface {
 	EvaluateScope(ctx context.Context, scope cage.Scope, denyList []string) (PolicyDecision, error)
 	EvaluateCageConfig(ctx context.Context, config cage.Config) (PolicyDecision, error)
 	EvaluatePayload(ctx context.Context, vulnClass string, payload string) (PayloadDecision, string, error)
-	EvaluateCompliance(ctx context.Context, framework string, input map[string]any) (PolicyDecision, error)
 }
 
 type OPAEngine struct {
-	scopeQuery        rego.PreparedEvalQuery
-	cageTypeQuery     rego.PreparedEvalQuery
-	payloadQueries    map[string]rego.PreparedEvalQuery
-	complianceQueries map[string]rego.PreparedEvalQuery
+	scopeQuery     rego.PreparedEvalQuery
+	cageTypeQuery  rego.PreparedEvalQuery
+	payloadQueries map[string]rego.PreparedEvalQuery
 }
 
 // NewOPAEngine loads Rego policy files from a directory on disk.
@@ -43,8 +41,7 @@ func NewOPAEngine(policyDir string) (*OPAEngine, error) {
 // from the unified config.
 func NewOPAEngineFromModules(modules map[string]string) (*OPAEngine, error) {
 	e := &OPAEngine{
-		payloadQueries:    make(map[string]rego.PreparedEvalQuery),
-		complianceQueries: make(map[string]rego.PreparedEvalQuery),
+		payloadQueries: make(map[string]rego.PreparedEvalQuery),
 	}
 
 	scopeQuery, err := prepareQuery("data.agentcage.scope.deny", modules)
@@ -66,13 +63,6 @@ func NewOPAEngineFromModules(modules map[string]string) (*OPAEngine, error) {
 				return nil, fmt.Errorf("compiling payload policy %s: %w", parts, err)
 			}
 			e.payloadQueries[parts] = query
-		}
-		if parts := extractPolicyKey(name, "compliance"); parts != "" {
-			query, err := prepareQuery(fmt.Sprintf("data.agentcage.compliance.%s.deny", parts), modules)
-			if err != nil {
-				return nil, fmt.Errorf("compiling compliance policy %s: %w", parts, err)
-			}
-			e.complianceQueries[parts] = query
 		}
 		_ = content
 	}
@@ -164,20 +154,6 @@ func (e *OPAEngine) EvaluatePayload(ctx context.Context, vulnClass string, paylo
 	return PayloadAllow, "", nil
 }
 
-func (e *OPAEngine) EvaluateCompliance(ctx context.Context, framework string, input map[string]any) (PolicyDecision, error) {
-	q, ok := e.complianceQueries[framework]
-	if !ok {
-		return PolicyDecision{}, fmt.Errorf("no compliance policy for framework %q", framework)
-	}
-
-	violations, err := evaluate(ctx, q, input)
-	if err != nil {
-		return PolicyDecision{}, fmt.Errorf("evaluating compliance policy for %s: %w", framework, err)
-	}
-
-	return policyDecisionFromViolations(violations), nil
-}
-
 func loadRegoFiles(dir string) (map[string]string, error) {
 	modules := make(map[string]string)
 
@@ -259,7 +235,7 @@ func policyDecisionFromViolations(violations []string) PolicyDecision {
 }
 
 // extractPolicyKey returns the OPA package leaf name for a rego file under a
-// given subdirectory (e.g. "payload" or "compliance"). Returns empty string if
+// given subdirectory (e.g. "payload"). Returns empty string if
 // the file does not live under that subdirectory.
 func extractPolicyKey(filename, subdir string) string {
 	parts := strings.Split(filepath.ToSlash(filename), "/")

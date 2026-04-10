@@ -36,15 +36,6 @@ func BasePlanFromConfig(cfg *config.Config) *Plan {
 		p.Limits.MaxChainDepth = esc.MaxChainDepth
 	}
 
-	if cfg.Compliance != nil {
-		if len(cfg.Compliance.Frameworks) > 0 {
-			p.Limits.Compliance = cfg.Compliance.Frameworks
-		}
-		if cfg.Compliance.MaxConcurrentCages > 0 {
-			p.Limits.MaxConcurrentCages = cfg.Compliance.MaxConcurrentCages
-		}
-	}
-
 	return p
 }
 
@@ -65,10 +56,6 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 
 	if esc, ok := cfg.Cages["escalation"]; ok && esc.MaxChainDepth > 0 && p.Limits.MaxChainDepth > esc.MaxChainDepth {
 		return fmt.Errorf("max_chain_depth %d exceeds operator limit %d", p.Limits.MaxChainDepth, esc.MaxChainDepth)
-	}
-
-	if cfg.Compliance != nil && cfg.Compliance.MaxConcurrentCages > 0 && p.Limits.MaxConcurrentCages > cfg.Compliance.MaxConcurrentCages {
-		return fmt.Errorf("max_concurrent_cages %d exceeds operator limit %d", p.Limits.MaxConcurrentCages, cfg.Compliance.MaxConcurrentCages)
 	}
 
 	for name, ct := range p.CageTypes {

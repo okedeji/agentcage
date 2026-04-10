@@ -22,13 +22,6 @@ enum AssessmentStatus {
   ASSESSMENT_STATUS_REJECTED = 6;
 }
 
-enum ComplianceFramework {
-  COMPLIANCE_FRAMEWORK_UNSPECIFIED = 0;
-  COMPLIANCE_FRAMEWORK_SOC2 = 1;
-  COMPLIANCE_FRAMEWORK_HIPAA = 2;
-  COMPLIANCE_FRAMEWORK_PCI_DSS = 3;
-}
-
 message CageTypeConfig {
   agentcage.cage.v1.CageType type = 1;
   agentcage.cage.v1.ResourceLimits defaults = 2;
@@ -43,7 +36,6 @@ message AssessmentConfig {
   int64 total_token_budget = 4;
   google.protobuf.Duration max_duration = 5;
   int32 max_chain_depth = 6;
-  repeated ComplianceFramework compliance = 7;
   Guidance guidance = 8;
   repeated string exclude_hosts = 9;
   repeated string exclude_paths = 10;

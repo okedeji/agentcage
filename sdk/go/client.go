@@ -92,7 +92,6 @@ type RunConfig struct {
 	Target      []string      // target hosts
 	TokenBudget int64         // LLM token budget (0 = use config default)
 	MaxDuration time.Duration // assessment time limit (0 = use config default)
-	Compliance  string        // compliance framework (empty = none)
 }
 
 // Assessment represents a running or completed assessment.

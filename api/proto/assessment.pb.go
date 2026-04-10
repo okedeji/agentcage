@@ -84,58 +84,6 @@ func (AssessmentStatus) EnumDescriptor() ([]byte, []int) {
 	return file_api_proto_assessment_proto_rawDescGZIP(), []int{0}
 }
 
-type ComplianceFramework int32
-
-const (
-	ComplianceFramework_COMPLIANCE_FRAMEWORK_UNSPECIFIED ComplianceFramework = 0
-	ComplianceFramework_COMPLIANCE_FRAMEWORK_SOC2        ComplianceFramework = 1
-	ComplianceFramework_COMPLIANCE_FRAMEWORK_HIPAA       ComplianceFramework = 2
-	ComplianceFramework_COMPLIANCE_FRAMEWORK_PCI_DSS     ComplianceFramework = 3
-)
-
-// Enum value maps for ComplianceFramework.
-var (
-	ComplianceFramework_name = map[int32]string{
-		0: "COMPLIANCE_FRAMEWORK_UNSPECIFIED",
-		1: "COMPLIANCE_FRAMEWORK_SOC2",
-		2: "COMPLIANCE_FRAMEWORK_HIPAA",
-		3: "COMPLIANCE_FRAMEWORK_PCI_DSS",
-	}
-	ComplianceFramework_value = map[string]int32{
-		"COMPLIANCE_FRAMEWORK_UNSPECIFIED": 0,
-		"COMPLIANCE_FRAMEWORK_SOC2":        1,
-		"COMPLIANCE_FRAMEWORK_HIPAA":       2,
-		"COMPLIANCE_FRAMEWORK_PCI_DSS":     3,
-	}
-)
-
-func (x ComplianceFramework) Enum() *ComplianceFramework {
-	p := new(ComplianceFramework)
-	*p = x
-	return p
-}
-
-func (x ComplianceFramework) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (ComplianceFramework) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_proto_assessment_proto_enumTypes[1].Descriptor()
-}
-
-func (ComplianceFramework) Type() protoreflect.EnumType {
-	return &file_api_proto_assessment_proto_enumTypes[1]
-}
-
-func (x ComplianceFramework) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use ComplianceFramework.Descriptor instead.
-func (ComplianceFramework) EnumDescriptor() ([]byte, []int) {
-	return file_api_proto_assessment_proto_rawDescGZIP(), []int{1}
-}
-
 type CageTypeConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Type          CageType               `protobuf:"varint,1,opt,name=type,proto3,enum=agentcage.cage.v1.CageType" json:"type,omitempty"`
@@ -212,7 +160,6 @@ type AssessmentConfig struct {
 	TotalTokenBudget   int64                  `protobuf:"varint,4,opt,name=total_token_budget,json=totalTokenBudget,proto3" json:"total_token_budget,omitempty"`
 	MaxDuration        *durationpb.Duration   `protobuf:"bytes,5,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
 	MaxChainDepth      int32                  `protobuf:"varint,6,opt,name=max_chain_depth,json=maxChainDepth,proto3" json:"max_chain_depth,omitempty"`
-	Compliance         []ComplianceFramework  `protobuf:"varint,7,rep,packed,name=compliance,proto3,enum=agentcage.assessment.v1.ComplianceFramework" json:"compliance,omitempty"`
 	Guidance           *Guidance              `protobuf:"bytes,8,opt,name=guidance,proto3" json:"guidance,omitempty"`
 	ExcludeHosts       []string               `protobuf:"bytes,9,rep,name=exclude_hosts,json=excludeHosts,proto3" json:"exclude_hosts,omitempty"`
 	ExcludePaths       []string               `protobuf:"bytes,10,rep,name=exclude_paths,json=excludePaths,proto3" json:"exclude_paths,omitempty"`
@@ -294,13 +241,6 @@ func (x *AssessmentConfig) GetMaxChainDepth() int32 {
 		return x.MaxChainDepth
 	}
 	return 0
-}
-
-func (x *AssessmentConfig) GetCompliance() []ComplianceFramework {
-	if x != nil {
-		return x.Compliance
-	}
-	return nil
 }
 
 func (x *AssessmentConfig) GetGuidance() *Guidance {
@@ -1065,7 +1005,7 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2\x1b.agentcage.cage.v1.CageTypeR\x04type\x12=\n" +
 	"\bdefaults\x18\x02 \x01(\v2!.agentcage.cage.v1.ResourceLimitsR\bdefaults\x12%\n" +
 	"\x0emax_concurrent\x18\x03 \x01(\x05R\rmaxConcurrent\x12<\n" +
-	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xc4\x06\n" +
+	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xf6\x05\n" +
 	"\x10AssessmentConfig\x12\x1f\n" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\x124\n" +
@@ -1073,10 +1013,7 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x11cage_type_configs\x18\x03 \x03(\v2'.agentcage.assessment.v1.CageTypeConfigR\x0fcageTypeConfigs\x12,\n" +
 	"\x12total_token_budget\x18\x04 \x01(\x03R\x10totalTokenBudget\x12<\n" +
 	"\fmax_duration\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\x12&\n" +
-	"\x0fmax_chain_depth\x18\x06 \x01(\x05R\rmaxChainDepth\x12L\n" +
-	"\n" +
-	"compliance\x18\a \x03(\x0e2,.agentcage.assessment.v1.ComplianceFrameworkR\n" +
-	"compliance\x12=\n" +
+	"\x0fmax_chain_depth\x18\x06 \x01(\x05R\rmaxChainDepth\x12=\n" +
 	"\bguidance\x18\b \x01(\v2!.agentcage.assessment.v1.GuidanceR\bguidance\x12#\n" +
 	"\rexclude_hosts\x18\t \x03(\tR\fexcludeHosts\x12#\n" +
 	"\rexclude_paths\x18\n" +
@@ -1158,12 +1095,7 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x1cASSESSMENT_STATUS_VALIDATION\x10\x03\x12$\n" +
 	" ASSESSMENT_STATUS_PENDING_REVIEW\x10\x04\x12\x1e\n" +
 	"\x1aASSESSMENT_STATUS_APPROVED\x10\x05\x12\x1e\n" +
-	"\x1aASSESSMENT_STATUS_REJECTED\x10\x06*\x9c\x01\n" +
-	"\x13ComplianceFramework\x12$\n" +
-	" COMPLIANCE_FRAMEWORK_UNSPECIFIED\x10\x00\x12\x1d\n" +
-	"\x19COMPLIANCE_FRAMEWORK_SOC2\x10\x01\x12\x1e\n" +
-	"\x1aCOMPLIANCE_FRAMEWORK_HIPAA\x10\x02\x12 \n" +
-	"\x1cCOMPLIANCE_FRAMEWORK_PCI_DSS\x10\x032\xfc\x01\n" +
+	"\x1aASSESSMENT_STATUS_REJECTED\x10\x062\xfc\x01\n" +
 	"\x11AssessmentService\x12w\n" +
 	"\x10CreateAssessment\x120.agentcage.assessment.v1.CreateAssessmentRequest\x1a1.agentcage.assessment.v1.CreateAssessmentResponse\x12n\n" +
 	"\rGetAssessment\x12-.agentcage.assessment.v1.GetAssessmentRequest\x1a..agentcage.assessment.v1.GetAssessmentResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
@@ -1180,64 +1112,62 @@ func file_api_proto_assessment_proto_rawDescGZIP() []byte {
 	return file_api_proto_assessment_proto_rawDescData
 }
 
-var file_api_proto_assessment_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_api_proto_assessment_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_api_proto_assessment_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_api_proto_assessment_proto_goTypes = []any{
 	(AssessmentStatus)(0),            // 0: agentcage.assessment.v1.AssessmentStatus
-	(ComplianceFramework)(0),         // 1: agentcage.assessment.v1.ComplianceFramework
-	(*CageTypeConfig)(nil),           // 2: agentcage.assessment.v1.CageTypeConfig
-	(*AssessmentConfig)(nil),         // 3: agentcage.assessment.v1.AssessmentConfig
-	(*NotificationConfig)(nil),       // 4: agentcage.assessment.v1.NotificationConfig
-	(*Guidance)(nil),                 // 5: agentcage.assessment.v1.Guidance
-	(*AttackSurfaceGuidance)(nil),    // 6: agentcage.assessment.v1.AttackSurfaceGuidance
-	(*PrioritiesGuidance)(nil),       // 7: agentcage.assessment.v1.PrioritiesGuidance
-	(*AttackStrategyGuidance)(nil),   // 8: agentcage.assessment.v1.AttackStrategyGuidance
-	(*ValidationGuidance)(nil),       // 9: agentcage.assessment.v1.ValidationGuidance
-	(*AssessmentStats)(nil),          // 10: agentcage.assessment.v1.AssessmentStats
-	(*AssessmentInfo)(nil),           // 11: agentcage.assessment.v1.AssessmentInfo
-	(*CreateAssessmentRequest)(nil),  // 12: agentcage.assessment.v1.CreateAssessmentRequest
-	(*CreateAssessmentResponse)(nil), // 13: agentcage.assessment.v1.CreateAssessmentResponse
-	(*GetAssessmentRequest)(nil),     // 14: agentcage.assessment.v1.GetAssessmentRequest
-	(*GetAssessmentResponse)(nil),    // 15: agentcage.assessment.v1.GetAssessmentResponse
-	nil,                              // 16: agentcage.assessment.v1.AssessmentConfig.TagsEntry
-	(CageType)(0),                    // 17: agentcage.cage.v1.CageType
-	(*ResourceLimits)(nil),           // 18: agentcage.cage.v1.ResourceLimits
-	(*durationpb.Duration)(nil),      // 19: google.protobuf.Duration
-	(*TargetScope)(nil),              // 20: agentcage.cage.v1.TargetScope
-	(*timestamppb.Timestamp)(nil),    // 21: google.protobuf.Timestamp
+	(*CageTypeConfig)(nil),           // 1: agentcage.assessment.v1.CageTypeConfig
+	(*AssessmentConfig)(nil),         // 2: agentcage.assessment.v1.AssessmentConfig
+	(*NotificationConfig)(nil),       // 3: agentcage.assessment.v1.NotificationConfig
+	(*Guidance)(nil),                 // 4: agentcage.assessment.v1.Guidance
+	(*AttackSurfaceGuidance)(nil),    // 5: agentcage.assessment.v1.AttackSurfaceGuidance
+	(*PrioritiesGuidance)(nil),       // 6: agentcage.assessment.v1.PrioritiesGuidance
+	(*AttackStrategyGuidance)(nil),   // 7: agentcage.assessment.v1.AttackStrategyGuidance
+	(*ValidationGuidance)(nil),       // 8: agentcage.assessment.v1.ValidationGuidance
+	(*AssessmentStats)(nil),          // 9: agentcage.assessment.v1.AssessmentStats
+	(*AssessmentInfo)(nil),           // 10: agentcage.assessment.v1.AssessmentInfo
+	(*CreateAssessmentRequest)(nil),  // 11: agentcage.assessment.v1.CreateAssessmentRequest
+	(*CreateAssessmentResponse)(nil), // 12: agentcage.assessment.v1.CreateAssessmentResponse
+	(*GetAssessmentRequest)(nil),     // 13: agentcage.assessment.v1.GetAssessmentRequest
+	(*GetAssessmentResponse)(nil),    // 14: agentcage.assessment.v1.GetAssessmentResponse
+	nil,                              // 15: agentcage.assessment.v1.AssessmentConfig.TagsEntry
+	(CageType)(0),                    // 16: agentcage.cage.v1.CageType
+	(*ResourceLimits)(nil),           // 17: agentcage.cage.v1.ResourceLimits
+	(*durationpb.Duration)(nil),      // 18: google.protobuf.Duration
+	(*TargetScope)(nil),              // 19: agentcage.cage.v1.TargetScope
+	(*timestamppb.Timestamp)(nil),    // 20: google.protobuf.Timestamp
 }
 var file_api_proto_assessment_proto_depIdxs = []int32{
-	17, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
-	18, // 1: agentcage.assessment.v1.CageTypeConfig.defaults:type_name -> agentcage.cage.v1.ResourceLimits
-	19, // 2: agentcage.assessment.v1.CageTypeConfig.max_duration:type_name -> google.protobuf.Duration
-	20, // 3: agentcage.assessment.v1.AssessmentConfig.scope:type_name -> agentcage.cage.v1.TargetScope
-	2,  // 4: agentcage.assessment.v1.AssessmentConfig.cage_type_configs:type_name -> agentcage.assessment.v1.CageTypeConfig
-	19, // 5: agentcage.assessment.v1.AssessmentConfig.max_duration:type_name -> google.protobuf.Duration
-	1,  // 6: agentcage.assessment.v1.AssessmentConfig.compliance:type_name -> agentcage.assessment.v1.ComplianceFramework
-	5,  // 7: agentcage.assessment.v1.AssessmentConfig.guidance:type_name -> agentcage.assessment.v1.Guidance
-	16, // 8: agentcage.assessment.v1.AssessmentConfig.tags:type_name -> agentcage.assessment.v1.AssessmentConfig.TagsEntry
-	4,  // 9: agentcage.assessment.v1.AssessmentConfig.notifications:type_name -> agentcage.assessment.v1.NotificationConfig
-	6,  // 10: agentcage.assessment.v1.Guidance.attack_surface:type_name -> agentcage.assessment.v1.AttackSurfaceGuidance
-	7,  // 11: agentcage.assessment.v1.Guidance.priorities:type_name -> agentcage.assessment.v1.PrioritiesGuidance
-	8,  // 12: agentcage.assessment.v1.Guidance.attack_strategy:type_name -> agentcage.assessment.v1.AttackStrategyGuidance
-	9,  // 13: agentcage.assessment.v1.Guidance.validation:type_name -> agentcage.assessment.v1.ValidationGuidance
-	0,  // 14: agentcage.assessment.v1.AssessmentInfo.status:type_name -> agentcage.assessment.v1.AssessmentStatus
-	3,  // 15: agentcage.assessment.v1.AssessmentInfo.config:type_name -> agentcage.assessment.v1.AssessmentConfig
-	10, // 16: agentcage.assessment.v1.AssessmentInfo.stats:type_name -> agentcage.assessment.v1.AssessmentStats
-	21, // 17: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
-	21, // 18: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
-	3,  // 19: agentcage.assessment.v1.CreateAssessmentRequest.config:type_name -> agentcage.assessment.v1.AssessmentConfig
-	11, // 20: agentcage.assessment.v1.CreateAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
-	11, // 21: agentcage.assessment.v1.GetAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
-	12, // 22: agentcage.assessment.v1.AssessmentService.CreateAssessment:input_type -> agentcage.assessment.v1.CreateAssessmentRequest
-	14, // 23: agentcage.assessment.v1.AssessmentService.GetAssessment:input_type -> agentcage.assessment.v1.GetAssessmentRequest
-	13, // 24: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
-	15, // 25: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
-	24, // [24:26] is the sub-list for method output_type
-	22, // [22:24] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	16, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
+	17, // 1: agentcage.assessment.v1.CageTypeConfig.defaults:type_name -> agentcage.cage.v1.ResourceLimits
+	18, // 2: agentcage.assessment.v1.CageTypeConfig.max_duration:type_name -> google.protobuf.Duration
+	19, // 3: agentcage.assessment.v1.AssessmentConfig.scope:type_name -> agentcage.cage.v1.TargetScope
+	1,  // 4: agentcage.assessment.v1.AssessmentConfig.cage_type_configs:type_name -> agentcage.assessment.v1.CageTypeConfig
+	18, // 5: agentcage.assessment.v1.AssessmentConfig.max_duration:type_name -> google.protobuf.Duration
+	4,  // 6: agentcage.assessment.v1.AssessmentConfig.guidance:type_name -> agentcage.assessment.v1.Guidance
+	15, // 7: agentcage.assessment.v1.AssessmentConfig.tags:type_name -> agentcage.assessment.v1.AssessmentConfig.TagsEntry
+	3,  // 8: agentcage.assessment.v1.AssessmentConfig.notifications:type_name -> agentcage.assessment.v1.NotificationConfig
+	5,  // 9: agentcage.assessment.v1.Guidance.attack_surface:type_name -> agentcage.assessment.v1.AttackSurfaceGuidance
+	6,  // 10: agentcage.assessment.v1.Guidance.priorities:type_name -> agentcage.assessment.v1.PrioritiesGuidance
+	7,  // 11: agentcage.assessment.v1.Guidance.attack_strategy:type_name -> agentcage.assessment.v1.AttackStrategyGuidance
+	8,  // 12: agentcage.assessment.v1.Guidance.validation:type_name -> agentcage.assessment.v1.ValidationGuidance
+	0,  // 13: agentcage.assessment.v1.AssessmentInfo.status:type_name -> agentcage.assessment.v1.AssessmentStatus
+	2,  // 14: agentcage.assessment.v1.AssessmentInfo.config:type_name -> agentcage.assessment.v1.AssessmentConfig
+	9,  // 15: agentcage.assessment.v1.AssessmentInfo.stats:type_name -> agentcage.assessment.v1.AssessmentStats
+	20, // 16: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
+	20, // 17: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 18: agentcage.assessment.v1.CreateAssessmentRequest.config:type_name -> agentcage.assessment.v1.AssessmentConfig
+	10, // 19: agentcage.assessment.v1.CreateAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
+	10, // 20: agentcage.assessment.v1.GetAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
+	11, // 21: agentcage.assessment.v1.AssessmentService.CreateAssessment:input_type -> agentcage.assessment.v1.CreateAssessmentRequest
+	13, // 22: agentcage.assessment.v1.AssessmentService.GetAssessment:input_type -> agentcage.assessment.v1.GetAssessmentRequest
+	12, // 23: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
+	14, // 24: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
+	23, // [23:25] is the sub-list for method output_type
+	21, // [21:23] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_assessment_proto_init() }
@@ -1251,7 +1181,7 @@ func file_api_proto_assessment_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_assessment_proto_rawDesc), len(file_api_proto_assessment_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      1,
 			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,

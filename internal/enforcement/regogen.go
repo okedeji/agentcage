@@ -21,12 +21,6 @@ func GenerateRegoModules(cfg *config.Config) map[string]string {
 		modules[fmt.Sprintf("payload/%s_safe.rego", class)] = generatePayloadRego(class, pc)
 	}
 
-	if cfg.Compliance != nil {
-		for _, fw := range cfg.Compliance.Frameworks {
-			modules[fmt.Sprintf("compliance/%s.rego", fw)] = generateComplianceRego(fw, cfg.Compliance)
-		}
-	}
-
 	return modules
 }
 
@@ -129,28 +123,3 @@ func generatePayloadRego(class string, pc config.PayloadConfig) string {
 	return b.String()
 }
 
-func generateComplianceRego(framework string, comp *config.ComplianceConfig) string {
-	var b strings.Builder
-	upper := strings.ToUpper(framework)
-
-	fmt.Fprintf(&b, "package agentcage.compliance.%s\n\n", framework)
-
-	if comp.MaxConcurrentCages > 0 {
-		fmt.Fprintf(&b, "deny contains msg if {\n\tinput.max_concurrent_cages > %d\n\tmsg := sprintf(\"%s: maximum concurrent cages is %d, got %%d\", [input.max_concurrent_cages])\n}\n\n",
-			comp.MaxConcurrentCages, upper, comp.MaxConcurrentCages)
-	}
-
-	fmt.Fprintf(&b, "deny contains msg if {\n\tnot input.audit_log_enabled\n\tmsg := \"%s: audit logging must be enabled\"\n}\n\n", upper)
-
-	if comp.RequireIntervention {
-		fmt.Fprintf(&b, "deny contains msg if {\n\tnot input.intervention_enabled\n\tmsg := \"%s: human intervention must be enabled\"\n}\n\n", upper)
-
-		if comp.InterventionTimeout > 0 {
-			minutes := int(comp.InterventionTimeout.Minutes())
-			fmt.Fprintf(&b, "deny contains msg if {\n\tinput.intervention_timeout_minutes > %d\n\tmsg := sprintf(\"%s: intervention timeout cannot exceed %d minutes, got %%d\", [input.intervention_timeout_minutes])\n}\n",
-				minutes, upper, minutes)
-		}
-	}
-
-	return b.String()
-}

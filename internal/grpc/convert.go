@@ -115,9 +115,6 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 			Paths: p.GetExcludePaths(),
 		}
 	}
-	for _, c := range p.GetCompliance() {
-		cfg.Compliance = append(cfg.Compliance, complianceFromProto(c))
-	}
 	if n := p.GetNotifications(); n != nil {
 		cfg.Notifications = assessment.NotificationConfig{
 			Webhook:    n.GetWebhook(),
@@ -146,19 +143,6 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 		cfg.CageDefaults[t] = ctc
 	}
 	return cfg
-}
-
-func complianceFromProto(c pb.ComplianceFramework) assessment.ComplianceFramework {
-	switch c {
-	case pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_SOC2:
-		return assessment.ComplianceSOC2
-	case pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_HIPAA:
-		return assessment.ComplianceHIPAA
-	case pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_PCI_DSS:
-		return assessment.CompliancePCIDSS
-	default:
-		return assessment.ComplianceUnspecified
-	}
 }
 
 func guidanceFromProto(p *pb.Guidance) *assessment.Guidance {
@@ -248,9 +232,6 @@ func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
 	if cfg.MaxDuration > 0 {
 		out.MaxDuration = durationpb.New(cfg.MaxDuration)
 	}
-	for _, c := range cfg.Compliance {
-		out.Compliance = append(out.Compliance, complianceToProto(c))
-	}
 	if cfg.Notifications.Webhook != "" || cfg.Notifications.OnFinding || cfg.Notifications.OnComplete {
 		out.Notifications = &pb.NotificationConfig{
 			Webhook:    cfg.Notifications.Webhook,
@@ -273,19 +254,6 @@ func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
 		out.CageTypeConfigs = append(out.CageTypeConfigs, ctPb)
 	}
 	return out
-}
-
-func complianceToProto(c assessment.ComplianceFramework) pb.ComplianceFramework {
-	switch c {
-	case assessment.ComplianceSOC2:
-		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_SOC2
-	case assessment.ComplianceHIPAA:
-		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_HIPAA
-	case assessment.CompliancePCIDSS:
-		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_PCI_DSS
-	default:
-		return pb.ComplianceFramework_COMPLIANCE_FRAMEWORK_UNSPECIFIED
-	}
 }
 
 func guidanceToProto(g *assessment.Guidance) *pb.Guidance {

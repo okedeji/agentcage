@@ -36,9 +36,8 @@ type Budget struct {
 }
 
 type Limits struct {
-	MaxChainDepth      int32    `yaml:"max_chain_depth"`
-	MaxConcurrentCages int32    `yaml:"max_concurrent_cages"`
-	Compliance         []string `yaml:"compliance"`
+	MaxChainDepth      int32 `yaml:"max_chain_depth"`
+	MaxConcurrentCages int32 `yaml:"max_concurrent_cages"`
 }
 
 type CageType struct {
@@ -139,10 +138,6 @@ func Merge(base, override *Plan) *Plan {
 	if override.Limits.MaxConcurrentCages > 0 {
 		out.Limits.MaxConcurrentCages = override.Limits.MaxConcurrentCages
 	}
-	if len(override.Limits.Compliance) > 0 {
-		out.Limits.Compliance = override.Limits.Compliance
-	}
-
 	if len(override.CageTypes) > 0 {
 		if out.CageTypes == nil {
 			out.CageTypes = make(map[string]CageType)
@@ -245,13 +240,6 @@ func Validate(p *Plan) error {
 	if p.Notifications.Webhook != "" && !strings.HasPrefix(p.Notifications.Webhook, "http") {
 		return fmt.Errorf("notifications.webhook must be an HTTP(S) URL")
 	}
-	for _, c := range p.Limits.Compliance {
-		switch strings.ToLower(c) {
-		case "soc2", "hipaa", "pci_dss":
-		default:
-			return fmt.Errorf("unknown compliance framework %q (supported: soc2, hipaa, pci_dss)", c)
-		}
-	}
 	for name, ct := range p.CageTypes {
 		switch name {
 		case "discovery", "validator", "escalation":
@@ -282,7 +270,6 @@ type RawFlags struct {
 	MaxDuration      string
 	MaxChainDepth    int
 	MaxConcurrent    int
-	Compliance       []string
 	Context          string
 	Focus            []string
 	Skip             []string
@@ -330,9 +317,6 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) *Plan {
 	}
 	if explicit["max-concurrent"] {
 		p.Limits.MaxConcurrentCages = int32(f.MaxConcurrent)
-	}
-	if explicit["compliance"] {
-		p.Limits.Compliance = f.Compliance
 	}
 	if explicit["context"] {
 		p.Guidance.Strategy.Context = f.Context

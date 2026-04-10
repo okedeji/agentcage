@@ -1,13 +1,11 @@
 -- +migrate Up
 CREATE TYPE assessment_status AS ENUM ('discovery', 'exploitation', 'validation', 'pending_review', 'approved', 'rejected');
-CREATE TYPE compliance_framework AS ENUM ('soc2', 'hipaa', 'pci_dss');
 
 CREATE TABLE assessments (
     id              TEXT PRIMARY KEY,
     customer_id     TEXT NOT NULL,
     status          assessment_status NOT NULL DEFAULT 'discovery',
     config          JSONB NOT NULL,
-    compliance      compliance_framework,
     total_cages     INTEGER NOT NULL DEFAULT 0,
     active_cages    INTEGER NOT NULL DEFAULT 0,
     findings_candidate  INTEGER NOT NULL DEFAULT 0,
@@ -28,5 +26,4 @@ ALTER TABLE cages ADD CONSTRAINT fk_cages_assessment FOREIGN KEY (assessment_id)
 -- +migrate Down
 ALTER TABLE cages DROP CONSTRAINT IF EXISTS fk_cages_assessment;
 DROP TABLE IF EXISTS assessments;
-DROP TYPE IF EXISTS compliance_framework;
 DROP TYPE IF EXISTS assessment_status;

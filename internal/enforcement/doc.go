@@ -6,8 +6,8 @@
 // The package owns five concerns. Go-side validation in validate.go
 // catches structural problems (empty scope, private CIDRs, negative
 // rate limits) before OPA ever runs. The OPA engine in opa.go
-// evaluates scope, cage config, payload patterns, and compliance
-// frameworks against Rego policies generated from config at startup
+// evaluates scope, cage config, and payload patterns against Rego
+// policies generated from config at startup
 // (regogen.go). Falco rules are generated the same way (falcogen.go)
 // and the runtime alert handler routes each rule to a tripwire policy
 // (log, escalate to human, or immediate teardown). nftables egress

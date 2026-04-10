@@ -196,26 +196,6 @@ infrastructure:
 	assert.True(t, cfg.Infrastructure.IsExternalVault())
 }
 
-func TestLoad_ComplianceConfig(t *testing.T) {
-	content := `
-compliance:
-  frameworks:
-    - soc2
-  audit_retention: "7y"
-  max_concurrent_cages: 500
-  require_intervention: true
-  intervention_timeout: 30m
-`
-	path := writeTempFile(t, content)
-	cfg, err := Load(path)
-	require.NoError(t, err)
-
-	require.NotNil(t, cfg.Compliance)
-	assert.Equal(t, []string{"soc2"}, cfg.Compliance.Frameworks)
-	assert.Equal(t, int32(500), cfg.Compliance.MaxConcurrentCages)
-	assert.True(t, cfg.Compliance.RequireIntervention)
-}
-
 func TestMerge_PartialOverride(t *testing.T) {
 	base := Defaults()
 	override := &Config{
