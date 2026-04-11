@@ -28,8 +28,8 @@ type NATSBus struct {
 	js   jetstream.JetStream
 }
 
-func NewNATSBus(url string) (*NATSBus, error) {
-	nc, err := nats.Connect(url)
+func NewNATSBus(url string, opts ...nats.Option) (*NATSBus, error) {
+	nc, err := nats.Connect(url, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to NATS at %s: %w", url, err)
 	}
