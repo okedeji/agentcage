@@ -34,7 +34,7 @@ func TestNewManager_DefaultConfig_AllEmbedded(t *testing.T) {
 func TestNewManager_ExternalPostgres_Excluded(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Infrastructure.Postgres = &config.PostgresConfig{
-		URL: "postgres://external:5432/agentcage",
+		External: true,
 	}
 	m := NewManager(cfg, logr.Discard())
 
@@ -49,8 +49,8 @@ func TestNewManager_ExternalPostgres_Excluded(t *testing.T) {
 func TestNewManager_ExternalAll_OnlyFirecracker(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Infrastructure = config.InfrastructureConfig{
-		Postgres: &config.PostgresConfig{URL: "postgres://ext:5432/db"},
-		NATS:     &config.NATSConfig{URL: "nats://ext:4222"},
+		Postgres: &config.PostgresConfig{External: true},
+		NATS:     &config.NATSConfig{External: true},
 		Temporal: &config.TemporalConfig{Address: "ext:7233"},
 		SPIRE:    &config.SPIREConfig{ServerAddress: "ext:8081"},
 		Vault:    &config.VaultConfig{Address: "https://ext:8200"},

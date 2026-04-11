@@ -12,14 +12,27 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/findings"
+	"github.com/okedeji/agentcage/internal/identity"
 )
 
+func resolveNATSURL(ctx context.Context, cfg *config.Config, secrets identity.SecretReader) (string, error) {
+	if !cfg.Infrastructure.IsExternalNATS() {
+		return embedded.NATSURL(), nil
+	}
+	if secrets == nil {
+		return "", fmt.Errorf("external NATS requires Vault: store the connection URL at %s", identity.PathNATSURL)
+	}
+	val, err := identity.ReadSecretValue(ctx, secrets, identity.PathNATSURL)
+	if err != nil || val == "" {
+		return "", fmt.Errorf("reading NATS URL from Vault (%s): %w", identity.PathNATSURL, err)
+	}
+	return val, nil
+}
+
 // Bloom filter catches dupes before we hit Postgres on the hot path.
-func connectFindingsBus(ctx context.Context, cfg *config.Config, spireSocket string, trustDomain spiffeid.TrustDomain, db *sql.DB, log logr.Logger) (findings.Bus, *findings.PGStore, *findings.Coordinator, error) {
-	natsURL := embedded.NATSURL()
+func connectFindingsBus(ctx context.Context, cfg *config.Config, natsURL string, spireSocket string, trustDomain spiffeid.TrustDomain, db *sql.DB, log logr.Logger) (findings.Bus, *findings.PGStore, *findings.Coordinator, error) {
 	var natsOpts []nats.Option
 	if cfg.Infrastructure.IsExternalNATS() {
-		natsURL = cfg.Infrastructure.NATS.URL
 		if tlsCfg := buildSPIREClientTLS(ctx, spireSocket, trustDomain); tlsCfg != nil {
 			natsOpts = append(natsOpts, nats.Secure(tlsCfg))
 			log.Info("NATS mTLS enabled via SPIRE")

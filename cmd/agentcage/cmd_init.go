@@ -97,18 +97,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	spireSocket := resolveSpireSocket(cfg)
 	trustDomain := resolveTrustDomain(cfg)
 
-	db, err := connectDatabase(ctx, cfg, log)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close() }()
-
-	findingsBus, findingStore, findingsCoordinator, err := connectFindingsBus(ctx, cfg, spireSocket, trustDomain, db, log)
-	if err != nil {
-		return err
-	}
-	defer findingsBus.Close()
-
 	otelShutdown, err := setupTelemetry(ctx, cfg, log)
 	if err != nil {
 		return err
@@ -120,6 +108,8 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return err
 	}
 
+	// Identity and secrets must resolve before database and NATS because
+	// external service URLs (with embedded credentials) live in Vault.
 	svidIssuer, secretFetcher, secretReader, identityCleanup, err := connectIdentityAndSecrets(ctx, cfg, embeddedMgr, spireSocket, log)
 	if err != nil {
 		return err
@@ -131,6 +121,24 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 			return valErr
 		}
 	}
+
+	natsURL, err := resolveNATSURL(ctx, cfg, secretReader)
+	if err != nil {
+		identityCleanup()
+		return err
+	}
+
+	db, err := connectDatabase(ctx, cfg, secretReader, log)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	findingsBus, findingStore, findingsCoordinator, err := connectFindingsBus(ctx, cfg, natsURL, spireSocket, trustDomain, db, log)
+	if err != nil {
+		return err
+	}
+	defer findingsBus.Close()
 
 	temporalClient, temporalNamespace, err := connectTemporal(ctx, cfg, secretReader, spireSocket, trustDomain, log)
 	if err != nil {
@@ -161,11 +169,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 	}()
 
-	natsAddr := embedded.NATSURL()
-	if cfg.Infrastructure.IsExternalNATS() {
-		natsAddr = cfg.Infrastructure.NATS.URL
-	}
-	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, natsAddr, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
+	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, natsURL, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
 	fleetSvc := fleet.NewService(fleetSetup.pool, fleetSetup.demand, fleetSetup.provisioner, log.WithValues("component", "fleet"))
 	assessmentSvc := assessment.NewService(temporalClient, db, fleetSetup.autoscaler, cfg.Assessment.MaxIterations)
 
@@ -330,7 +334,8 @@ func validateRequiredSecrets(ctx context.Context, reader identity.SecretReader, 
 	}
 	checks := []required{
 		{identity.PathLLMKey, "orchestrator llm-api-key", cfg.LLM.Endpoint != ""},
-		{identity.PathNATSURL, "orchestrator nats-url", !cfg.Infrastructure.IsExternalNATS()},
+		{identity.PathNATSURL, "orchestrator nats-url", cfg.Infrastructure.IsExternalNATS()},
+		{identity.PathPostgresURL, "orchestrator postgres-url", cfg.Infrastructure.IsExternalPostgres()},
 		{identity.PathJudgeKey, "orchestrator judge-api-key", cfg.JudgeEndpoint() != ""},
 	}
 	if cfg.Infrastructure.IsExternalTemporal() {

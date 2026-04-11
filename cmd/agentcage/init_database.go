@@ -11,13 +11,21 @@ import (
 
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
+	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/migrations"
 )
 
-func connectDatabase(ctx context.Context, cfg *config.Config, log logr.Logger) (*sql.DB, error) {
+func connectDatabase(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, log logr.Logger) (*sql.DB, error) {
 	var dbURL string
 	if cfg.Infrastructure.IsExternalPostgres() {
-		dbURL = cfg.Infrastructure.Postgres.URL
+		if secrets == nil {
+			return nil, fmt.Errorf("external Postgres requires Vault: store the connection URL at %s", identity.PathPostgresURL)
+		}
+		val, err := identity.ReadSecretValue(ctx, secrets, identity.PathPostgresURL)
+		if err != nil || val == "" {
+			return nil, fmt.Errorf("reading Postgres URL from Vault (%s): %w", identity.PathPostgresURL, err)
+		}
+		dbURL = val
 	} else {
 		var urlErr error
 		dbURL, urlErr = embedded.PostgresURL()

@@ -283,11 +283,11 @@ type InfrastructureConfig struct {
 }
 
 type PostgresConfig struct {
-	URL string `yaml:"url"`
+	External bool `yaml:"external"`
 }
 
 type NATSConfig struct {
-	URL string `yaml:"url"`
+	External bool `yaml:"external"`
 }
 
 type TemporalConfig struct {
@@ -1060,11 +1060,11 @@ func copyMonitoring(m map[string]MonitoringConfig) map[string]MonitoringConfig {
 
 // IsExternal returns true if the user provided their own service address.
 func (c *InfrastructureConfig) IsExternalPostgres() bool {
-	return c.Postgres != nil && c.Postgres.URL != ""
+	return c.Postgres != nil && c.Postgres.External
 }
 
 func (c *InfrastructureConfig) IsExternalNATS() bool {
-	return c.NATS != nil && c.NATS.URL != ""
+	return c.NATS != nil && c.NATS.External
 }
 
 func (c *InfrastructureConfig) IsExternalTemporal() bool {

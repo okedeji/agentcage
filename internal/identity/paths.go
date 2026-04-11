@@ -11,11 +11,12 @@ const (
 	TargetPrefix               = "secret/data/agentcage/target/"
 	TargetMetadataPrefix       = "secret/metadata/agentcage/target/"
 
-	PathLLMKey      = OrchestratorPrefix + "llm-api-key"
-	PathTemporalKey = OrchestratorPrefix + "temporal-api-key"
-	PathFleetKey    = OrchestratorPrefix + "fleet-api-key"
-	PathNATSURL     = OrchestratorPrefix + "nats-url"
-	PathJudgeKey    = OrchestratorPrefix + "judge-api-key"
+	PathLLMKey       = OrchestratorPrefix + "llm-api-key"
+	PathTemporalKey  = OrchestratorPrefix + "temporal-api-key"
+	PathFleetKey     = OrchestratorPrefix + "fleet-api-key"
+	PathNATSURL      = OrchestratorPrefix + "nats-url"
+	PathPostgresURL  = OrchestratorPrefix + "postgres-url"
+	PathJudgeKey     = OrchestratorPrefix + "judge-api-key"
 )
 
 // EnvToVaultPath maps legacy AGENTCAGE_* env var names to Vault paths.
@@ -26,6 +27,7 @@ var EnvToVaultPath = map[string]string{
 	"AGENTCAGE_FLEET_API_KEY":     PathFleetKey,
 	"AGENTCAGE_JUDGE_API_KEY":     PathJudgeKey,
 	"AGENTCAGE_NATS_URL":          PathNATSURL,
+	"AGENTCAGE_POSTGRES_URL":      PathPostgresURL,
 }
 
 func ScopeDataPrefix(scope string) (string, error) {

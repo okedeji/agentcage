@@ -191,9 +191,9 @@ func TestLoad_InfrastructureOverrides(t *testing.T) {
 	content := `
 infrastructure:
   postgres:
-    url: "postgres://user:pass@prod-db:5432/agentcage"
+    external: true
   nats:
-    url: "nats://prod-nats:4222"
+    external: true
   temporal:
     address: "temporal.prod:7233"
   spire:
@@ -209,7 +209,6 @@ infrastructure:
 	require.NoError(t, err)
 
 	assert.True(t, cfg.Infrastructure.IsExternalPostgres())
-	assert.Equal(t, "postgres://user:pass@prod-db:5432/agentcage", cfg.Infrastructure.Postgres.URL)
 	assert.True(t, cfg.Infrastructure.IsExternalNATS())
 	assert.True(t, cfg.Infrastructure.IsExternalTemporal())
 	assert.True(t, cfg.Infrastructure.IsExternalSPIRE())
@@ -282,13 +281,12 @@ func TestMerge_InfrastructureOverride(t *testing.T) {
 	base := Defaults()
 	override := &Config{
 		Infrastructure: InfrastructureConfig{
-			Postgres: &PostgresConfig{URL: "postgres://prod:5432/ac"},
+			Postgres: &PostgresConfig{External: true},
 		},
 	}
 
 	result := Merge(base, override)
 	assert.True(t, result.Infrastructure.IsExternalPostgres())
-	assert.Equal(t, "postgres://prod:5432/ac", result.Infrastructure.Postgres.URL)
 	assert.False(t, result.Infrastructure.IsExternalNATS(), "unset services stay embedded")
 }
 
