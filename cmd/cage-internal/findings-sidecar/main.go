@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -89,8 +90,18 @@ func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID stri
 			SchemaVersion: findings.CurrentSchemaVersion,
 			Finding:       finding,
 		}
-		if err := bus.Publish(context.Background(), assessmentID, msg); err != nil {
-			logger.Error(err, "publishing finding to NATS", "finding_id", finding.ID)
+		var published bool
+		for attempt := 0; attempt < 3; attempt++ {
+			if err := bus.Publish(context.Background(), assessmentID, msg); err != nil {
+				logger.Error(err, "publishing finding to NATS, retrying", "finding_id", finding.ID, "attempt", attempt+1)
+				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+				continue
+			}
+			published = true
+			break
+		}
+		if !published {
+			logger.Error(nil, "finding dropped after 3 publish attempts", "finding_id", finding.ID)
 			continue
 		}
 

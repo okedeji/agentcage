@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // CageEnv mirrors cage.Env. The config injected by the rootfs
@@ -144,6 +145,14 @@ func startService(name string, bin string, args ...string) *exec.Cmd {
 		return nil
 	}
 	fmt.Printf("cage-init: started %s (pid=%d)\n", name, cmd.Process.Pid)
+
+	// Brief delay then check if the process crashed on startup.
+	time.Sleep(200 * time.Millisecond)
+	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+		fmt.Printf("cage-init: warning: %s exited immediately (code=%d)\n", name, cmd.ProcessState.ExitCode())
+		return nil
+	}
+
 	return cmd
 }
 
