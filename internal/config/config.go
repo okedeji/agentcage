@@ -320,10 +320,11 @@ type SPIREConfig struct {
 }
 
 type VaultConfig struct {
-	Address  string          `yaml:"address"`
-	AuthPath string          `yaml:"auth_path"`
-	Role     string          `yaml:"role"`
-	TLS      *VaultTLSConfig `yaml:"tls,omitempty"`
+	Address          string          `yaml:"address"`
+	AuthPath         string          `yaml:"auth_path"`
+	Role             string          `yaml:"role"`
+	OrchestratorRole string          `yaml:"orchestrator_role"`
+	TLS              *VaultTLSConfig `yaml:"tls,omitempty"`
 }
 
 // VaultTLSConfig controls how the orchestrator verifies Vault's

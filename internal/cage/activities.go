@@ -82,6 +82,7 @@ type Activities interface {
 	SuspendAgent(ctx context.Context, vmID string) error
 	ResumeAgent(ctx context.Context, vmID string) error
 	EnqueueIntervention(ctx context.Context, reqType InterventionType, priority InterventionPriority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error)
+	FetchTargetCredentials(ctx context.Context, credentialsKey string) ([]byte, error)
 	ExportAuditLog(ctx context.Context, cageID string) error
 	TeardownVM(ctx context.Context, vmID string) error
 	RevokeSVID(ctx context.Context, svidID string) error

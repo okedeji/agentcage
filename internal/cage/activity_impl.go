@@ -53,6 +53,12 @@ type AlertHandler interface {
 	HandleAlert(ctx context.Context, cageType Type, alert AlertEvent) (TripwirePolicy, error)
 }
 
+// TargetCredentialReader reads target credentials from Vault.
+// Defined here to avoid importing identity.SecretReader directly.
+type TargetCredentialReader interface {
+	ReadTargetCredentials(ctx context.Context, key string) ([]byte, error)
+}
+
 // AlertNotifier dispatches alert notifications to operators.
 // Defined here so the cage package can send alerts without importing
 // the alert package (accept interfaces, return structs).
@@ -94,6 +100,7 @@ type ActivityImpl struct {
 	auditStore        audit.Store
 	interventionQueue InterventionEnqueuer
 	payloadHolds      *PayloadHoldHandler
+	targetCreds       TargetCredentialReader
 	log               logr.Logger
 	allocMu           sync.Mutex
 	allocs            map[string]string // vmID -> hostID
@@ -113,6 +120,7 @@ type ActivityImplConfig struct {
 	AuditStore        audit.Store
 	InterventionQueue InterventionEnqueuer
 	PayloadHolds      *PayloadHoldHandler
+	TargetCreds       TargetCredentialReader
 	BundleStoreDir    string
 	Log               logr.Logger
 }
@@ -136,6 +144,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("SuspendAgent", a.SuspendAgent)
 	pin("ResumeAgent", a.ResumeAgent)
 	pin("EnqueueIntervention", a.EnqueueIntervention)
+	pin("FetchTargetCredentials", a.FetchTargetCredentials)
 	pin("ExportAuditLog", a.ExportAuditLog)
 	pin("TeardownVM", a.TeardownVM)
 	pin("RevokeSVID", a.RevokeSVID)
@@ -163,6 +172,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		auditStore:        cfg.AuditStore,
 		interventionQueue: cfg.InterventionQueue,
 		payloadHolds:      cfg.PayloadHolds,
+		targetCreds:       cfg.TargetCreds,
 		log:               cfg.Log.WithValues("component", "cage-activities"),
 		allocs:            make(map[string]string),
 	}
@@ -474,6 +484,18 @@ func (a *ActivityImpl) EnqueueIntervention(ctx context.Context, reqType Interven
 	}
 	a.log.Info("intervention enqueued", "cage_id", cageID, "intervention_id", id)
 	return id, nil
+}
+
+func (a *ActivityImpl) FetchTargetCredentials(ctx context.Context, credentialsKey string) ([]byte, error) {
+	if a.targetCreds == nil {
+		return nil, fmt.Errorf("target credential reader not configured")
+	}
+	data, err := a.targetCreds.ReadTargetCredentials(ctx, credentialsKey)
+	if err != nil {
+		return nil, fmt.Errorf("reading target credentials %s: %w", credentialsKey, err)
+	}
+	a.log.Info("target credentials fetched", "key", credentialsKey)
+	return data, nil
 }
 
 func (a *ActivityImpl) ExportAuditLog(_ context.Context, cageID string) error {

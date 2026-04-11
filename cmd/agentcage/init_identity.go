@@ -38,7 +38,7 @@ func connectIdentityAndSecrets(
 	embeddedMgr *embedded.Manager,
 	spireSocket string,
 	log logr.Logger,
-) (identity.SVIDIssuer, identity.SecretFetcher, func(), error) {
+) (identity.SVIDIssuer, identity.SecretFetcher, identity.SecretReader, func(), error) {
 	cleanups := []func(){}
 	cleanup := func() {
 		// LIFO, like stacked defers.
@@ -64,21 +64,21 @@ func connectIdentityAndSecrets(
 		log.Info("SPIRE not available, cages will use dev identities")
 	}
 
-	secretFetcher, err := buildSecretFetcher(ctx, cfg, embeddedMgr, spireSocket, &cleanups, log)
+	secretFetcher, secretReader, err := buildSecretFetcher(ctx, cfg, embeddedMgr, spireSocket, &cleanups, log)
 	if err != nil {
 		cleanup()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	if secretFetcher == nil {
 		if !cfg.AllowUnisolatedDefault() {
 			cleanup()
-			return nil, nil, nil, fmt.Errorf("no Vault configured: set infrastructure.vault.address, enable embedded Vault, or set cage_runtime.allow_unisolated=true for dev-mode secrets")
+			return nil, nil, nil, nil, fmt.Errorf("no Vault configured: set infrastructure.vault.address, enable embedded Vault, or set cage_runtime.allow_unisolated=true for dev-mode secrets")
 		}
 		log.Info("WARNING: Vault not configured, cages will use dev secrets (allow_unisolated=true)")
 	}
 
-	return svidIssuer, secretFetcher, cleanup, nil
+	return svidIssuer, secretFetcher, secretReader, cleanup, nil
 }
 
 func buildSecretFetcher(
@@ -88,14 +88,81 @@ func buildSecretFetcher(
 	spireSocket string,
 	cleanups *[]func(),
 	log logr.Logger,
-) (identity.SecretFetcher, error) {
+) (identity.SecretFetcher, identity.SecretReader, error) {
 	if cfg.Infrastructure.IsExternalVault() {
-		return buildVaultJWTClient(ctx, cfg, spireSocket, cleanups, log)
+		fetcher, err := buildVaultJWTClient(ctx, cfg, spireSocket, cleanups, log)
+		if err != nil {
+			return nil, nil, err
+		}
+		reader, err := buildOrchestratorSecretReader(ctx, cfg, spireSocket, cleanups, log)
+		if err != nil {
+			return nil, nil, err
+		}
+		return fetcher, reader, nil
 	}
 	if embeddedVault := embeddedMgr.EmbeddedVault(); embeddedVault != nil {
-		return buildEmbeddedVaultClient(ctx, embeddedVault, log)
+		fetcher, err := buildEmbeddedVaultClient(ctx, embeddedVault, log)
+		if err != nil {
+			return nil, nil, err
+		}
+		reader, err := identity.NewVaultTokenSecretReader(embeddedVault.Address(), embeddedVault.RootToken(), nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating embedded Vault secret reader: %w", err)
+		}
+		log.Info("orchestrator secret reader connected (embedded dev token)")
+		return fetcher, reader, nil
 	}
-	return nil, nil
+	return nil, nil, nil
+}
+
+// The orchestrator authenticates to Vault with its own SPIRE SVID using
+// a dedicated role ("orchestrator") that grants read access to
+// secret/agentcage/orchestrator/* and secret/agentcage/target/*.
+// Separate from the cage role which only accesses secret/cage/{cageID}/*.
+func buildOrchestratorSecretReader(
+	ctx context.Context,
+	cfg *config.Config,
+	spireSocket string,
+	cleanups *[]func(),
+	log logr.Logger,
+) (identity.SecretReader, error) {
+	vaultCfg := cfg.Infrastructure.Vault
+	authPath := vaultCfg.AuthPath
+	if authPath == "" {
+		authPath = "auth/jwt/login"
+	}
+	role := vaultCfg.OrchestratorRole
+	if role == "" {
+		role = "orchestrator"
+	}
+
+	tlsCfg, err := buildVaultTLSConfig(ctx, cfg, spireSocket)
+	if err != nil {
+		return nil, fmt.Errorf("building Vault TLS config for orchestrator reader: %w", err)
+	}
+
+	jwtSource, err := identity.NewSpireJWTSource(ctx, spireSocket)
+	if err != nil {
+		return nil, fmt.Errorf("opening SPIRE JWT source for orchestrator Vault auth: %w", err)
+	}
+	*cleanups = append(*cleanups, func() { _ = jwtSource.Close() })
+
+	reader, err := identity.NewVaultJWTSecretReader(identity.VaultJWTReaderConfig{
+		Address:   vaultCfg.Address,
+		AuthPath:  authPath,
+		Role:      role,
+		TLS:       tlsCfg,
+		JWTSource: jwtSource,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating orchestrator Vault reader: %w", err)
+	}
+
+	log.Info("orchestrator secret reader connected (jwt mode)",
+		"addr", vaultCfg.Address,
+		"role", role,
+	)
+	return reader, nil
 }
 
 // Production path. Vault JWT auth role scopes each cage's token

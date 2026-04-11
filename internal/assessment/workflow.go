@@ -325,6 +325,7 @@ func applyCageDefaults(cageCfg *cage.Config, cfg Config) {
 	}
 	cageCfg.ProxyConfig.ExtraBlock = cfg.ExtraBlock
 	cageCfg.ProxyConfig.ExtraFlag = cfg.ExtraFlag
+	cageCfg.Credentials = cfg.Credentials
 	applyGuidance(cageCfg, cfg.Guidance)
 }
 

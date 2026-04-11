@@ -27,9 +27,10 @@ type CageEnv struct {
 	VulnClass        string   `json:"vuln_class,omitempty"`
 	HostControlAddr  string   `json:"host_control_addr,omitempty"`
 	HoldTimeoutSec   int      `json:"hold_timeout_sec,omitempty"`
-	JudgeEndpoint    string   `json:"judge_endpoint,omitempty"`
-	JudgeConfidence  float64  `json:"judge_confidence,omitempty"`
-	JudgeTimeoutSec  int      `json:"judge_timeout_sec,omitempty"`
+	TargetCredentials json.RawMessage `json:"target_credentials,omitempty"`
+	JudgeEndpoint     string          `json:"judge_endpoint,omitempty"`
+	JudgeConfidence   float64         `json:"judge_confidence,omitempty"`
+	JudgeTimeoutSec   int             `json:"judge_timeout_sec,omitempty"`
 }
 
 const configPath = "/etc/agentcage/cage.json"
@@ -112,6 +113,9 @@ func main() {
 	}
 	if env.Objective != "" {
 		setEnv("AGENTCAGE_OBJECTIVE", env.Objective)
+	}
+	if len(env.TargetCredentials) > 0 {
+		setEnv("AGENTCAGE_TARGET_CREDENTIALS", string(env.TargetCredentials))
 	}
 
 	// 6. Exec the agent entrypoint.

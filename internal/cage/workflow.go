@@ -86,6 +86,17 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	if cfg.LLM != nil {
 		env.TokenBudget = cfg.LLM.TokenBudget
 	}
+	if cfg.Credentials != "" {
+		var credData []byte
+		if err := workflow.ExecuteActivity(
+			withTimeout(ctx, t.FetchSecrets),
+			"FetchTargetCredentials", cfg.Credentials,
+		).Get(ctx, &credData); err != nil {
+			cleanupIdentity(ctx, t, svid.ID, &token)
+			return failResult(result, "fetching target credentials: %v", err), nil
+		}
+		env.TargetCredentials = credData
+	}
 	var rootfsPath string
 	if err := workflow.ExecuteActivity(
 		withHeartbeat(ctx, t.ProvisionVM, t.HeartbeatProvisionVM),

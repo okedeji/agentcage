@@ -61,6 +61,8 @@ func main() {
 		cmdFalco(args)
 	case "config":
 		cmdConfig(args)
+	case "vault":
+		cmdVault(args)
 	case "version":
 		fmt.Printf("agentcage %s\n", version)
 	case "help", "--help", "-h":
@@ -101,6 +103,7 @@ Operate:
   audit             Manage audit chain (verify)
   falco             Manage Falco rules (export-rules)
   config            Manage operator config (show, export, import, get)
+  vault             Manage secrets (put, get, list, delete, rotate, import, migrate)
 
 Info:
   version           Show version info

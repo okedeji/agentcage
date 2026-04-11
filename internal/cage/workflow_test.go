@@ -42,6 +42,9 @@ func (activityStub) ResumeAgent(context.Context, string) error  { return nil }
 func (activityStub) EnqueueIntervention(context.Context, InterventionType, InterventionPriority, string, string, string, []byte, time.Duration) (string, error) {
 	return "int-test-1", nil
 }
+func (activityStub) FetchTargetCredentials(context.Context, string) ([]byte, error) {
+	return nil, nil
+}
 func (activityStub) ExportAuditLog(context.Context, string) error               { return nil }
 func (activityStub) TeardownVM(context.Context, string) error                   { return nil }
 func (activityStub) RevokeSVID(context.Context, string) error                   { return nil }

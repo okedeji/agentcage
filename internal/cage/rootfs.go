@@ -32,6 +32,7 @@ type Env struct {
 	VulnClass        string          `json:"vuln_class,omitempty"`
 	HostControlAddr  string          `json:"host_control_addr,omitempty"`
 	HoldTimeoutSec   int             `json:"hold_timeout_sec,omitempty"`
+	TargetCredentials json.RawMessage `json:"target_credentials,omitempty"`
 	JudgeEndpoint    string          `json:"judge_endpoint,omitempty"`
 	JudgeConfidence  float64         `json:"judge_confidence,omitempty"`
 	JudgeTimeoutSec  int             `json:"judge_timeout_sec,omitempty"`

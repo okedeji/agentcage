@@ -35,10 +35,11 @@ type PlanPattern struct {
 }
 
 type Target struct {
-	Hosts     []string `yaml:"hosts"`
-	Ports     []string `yaml:"ports"`
-	Paths     []string `yaml:"paths"`
-	SkipPaths []string `yaml:"skip_paths"`
+	Hosts       []string `yaml:"hosts"`
+	Ports       []string `yaml:"ports"`
+	Paths       []string `yaml:"paths"`
+	SkipPaths   []string `yaml:"skip_paths"`
+	Credentials string   `yaml:"credentials,omitempty"`
 }
 
 type Budget struct {
@@ -134,6 +135,9 @@ func Merge(base, override *Plan) *Plan {
 	}
 	if len(override.Target.SkipPaths) > 0 {
 		out.Target.SkipPaths = override.Target.SkipPaths
+	}
+	if override.Target.Credentials != "" {
+		out.Target.Credentials = override.Target.Credentials
 	}
 
 	if override.Budget.Tokens > 0 {

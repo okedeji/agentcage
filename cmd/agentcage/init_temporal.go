@@ -19,7 +19,7 @@ import (
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/envvar"
+	"github.com/okedeji/agentcage/internal/identity"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/metrics"
 )
@@ -33,7 +33,7 @@ func resolveTemporalAddr(cfg *config.Config) string {
 
 // Returns the resolved namespace so the readiness probe doesn't
 // recompute the "default" fallback.
-func connectTemporal(ctx context.Context, cfg *config.Config, spireSocket string, log logr.Logger) (client.Client, string, error) {
+func connectTemporal(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, spireSocket string, log logr.Logger) (client.Client, string, error) {
 	temporalAddr := resolveTemporalAddr(cfg)
 
 	fmt.Println("Connecting to Temporal...")
@@ -76,9 +76,11 @@ func connectTemporal(ctx context.Context, cfg *config.Config, spireSocket string
 				log.Info("Temporal mTLS enabled", "cert", tc.TLS.CertFile)
 			}
 		}
-		if apiKey := envvar.Get(envvar.Temporal); apiKey != "" {
-			opts.Credentials = client.NewAPIKeyStaticCredentials(apiKey)
-			log.Info("Temporal API key auth enabled")
+		if secrets != nil {
+			if apiKey, _ := identity.ReadSecretValue(ctx, secrets, identity.PathTemporalKey); apiKey != "" {
+				opts.Credentials = client.NewAPIKeyStaticCredentials(apiKey)
+				log.Info("Temporal API key auth enabled")
+			}
 		}
 	}
 

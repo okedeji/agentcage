@@ -187,7 +187,7 @@ func (v *VaultClient) Authenticate(ctx context.Context, svid *SVID) (*VaultToken
 				token.ExpiresAt = time.Now().Add(time.Duration(seconds) * time.Second)
 			}
 		}
-		if policies, ok := secret.Data["policies"].([]interface{}); ok {
+		if policies, ok := secret.Data["policies"].([]any); ok {
 			for _, p := range policies {
 				if s, ok := p.(string); ok {
 					token.Policies = append(token.Policies, s)
@@ -210,7 +210,7 @@ func (v *VaultClient) Authenticate(ctx context.Context, svid *SVID) (*VaultToken
 	}
 
 	c := v.cloneClient()
-	secret, err := c.Logical().WriteWithContext(ctx, v.authPath, map[string]interface{}{
+	secret, err := c.Logical().WriteWithContext(ctx, v.authPath, map[string]any{
 		"role": v.role,
 		"jwt":  jwt.Marshal(),
 	})
@@ -293,3 +293,187 @@ func (a *spireJWTAdapter) Close() error {
 	return a.src.Close()
 }
 
+// SecretReader reads and writes secrets in Vault using the orchestrator's
+// own identity. Unlike SecretFetcher (cage-scoped, SVID-authenticated),
+// SecretReader is process-scoped and authenticated once at startup.
+type SecretReader interface {
+	ReadSecret(ctx context.Context, path string) (map[string]any, error)
+	WriteSecret(ctx context.Context, path string, data map[string]any) error
+	DeleteSecret(ctx context.Context, path string) error
+	ListSecrets(ctx context.Context, prefix string) ([]string, error)
+}
+
+// VaultTokenSecretReader implements SecretReader using a static Vault token.
+// Used in embedded dev mode where the orchestrator has a root token.
+type VaultTokenSecretReader struct {
+	client *vaultapi.Client
+}
+
+func NewVaultTokenSecretReader(address, token string, tlsCfg *tls.Config) (*VaultTokenSecretReader, error) {
+	c, err := buildVaultAPIClient(address, tlsCfg)
+	if err != nil {
+		return nil, err
+	}
+	c.SetToken(token)
+	return &VaultTokenSecretReader{client: c}, nil
+}
+
+func (r *VaultTokenSecretReader) ReadSecret(ctx context.Context, path string) (map[string]any, error) {
+	secret, err := r.client.Logical().ReadWithContext(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	if secret == nil || secret.Data == nil {
+		return nil, nil
+	}
+	// KV v2: actual data is nested under "data" key.
+	if nested, ok := secret.Data["data"].(map[string]any); ok {
+		return nested, nil
+	}
+	return secret.Data, nil
+}
+
+func (r *VaultTokenSecretReader) WriteSecret(ctx context.Context, path string, data map[string]any) error {
+	_, err := r.client.Logical().WriteWithContext(ctx, path, map[string]any{
+		"data": data,
+	})
+	if err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
+}
+
+func (r *VaultTokenSecretReader) DeleteSecret(ctx context.Context, path string) error {
+	_, err := r.client.Logical().DeleteWithContext(ctx, path)
+	if err != nil {
+		return fmt.Errorf("deleting %s: %w", path, err)
+	}
+	return nil
+}
+
+func (r *VaultTokenSecretReader) ListSecrets(ctx context.Context, prefix string) ([]string, error) {
+	secret, err := r.client.Logical().ListWithContext(ctx, prefix)
+	if err != nil {
+		return nil, fmt.Errorf("listing %s: %w", prefix, err)
+	}
+	if secret == nil || secret.Data == nil {
+		return nil, nil
+	}
+	keys, ok := secret.Data["keys"].([]any)
+	if !ok {
+		return nil, nil
+	}
+	result := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if s, ok := k.(string); ok {
+			result = append(result, s)
+		}
+	}
+	return result, nil
+}
+
+// VaultJWTReaderConfig configures a SecretReader that authenticates to
+// Vault with the orchestrator's own SPIRE JWT-SVID.
+type VaultJWTReaderConfig struct {
+	Address   string
+	AuthPath  string
+	Role      string
+	TLS       *tls.Config
+	JWTSource JWTSource
+}
+
+// VaultJWTSecretReader implements SecretReader for production Vault.
+// Authenticates once at construction with a JWT-SVID and caches the token.
+type VaultJWTSecretReader struct {
+	client *vaultapi.Client
+}
+
+func NewVaultJWTSecretReader(cfg VaultJWTReaderConfig) (*VaultJWTSecretReader, error) {
+	if cfg.JWTSource == nil {
+		return nil, fmt.Errorf("vault jwt secret reader: JWTSource is required")
+	}
+	c, err := buildVaultAPIClient(cfg.Address, cfg.TLS)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	jwt, err := cfg.JWTSource.FetchJWTSVID(ctx, "vault")
+	if err != nil {
+		return nil, fmt.Errorf("fetching orchestrator JWT-SVID: %w", err)
+	}
+
+	authPath := cfg.AuthPath
+	if authPath == "" {
+		authPath = "auth/jwt/login"
+	}
+
+	secret, err := c.Logical().WriteWithContext(ctx, authPath, map[string]any{
+		"role": cfg.Role,
+		"jwt":  jwt.Marshal(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("authenticating orchestrator with Vault: %w", err)
+	}
+	if secret == nil || secret.Auth == nil {
+		return nil, fmt.Errorf("authenticating orchestrator with Vault: empty auth response")
+	}
+
+	c.SetToken(secret.Auth.ClientToken)
+	return &VaultJWTSecretReader{client: c}, nil
+}
+
+func (r *VaultJWTSecretReader) ReadSecret(ctx context.Context, path string) (map[string]any, error) {
+	secret, err := r.client.Logical().ReadWithContext(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	if secret == nil || secret.Data == nil {
+		return nil, nil
+	}
+	if nested, ok := secret.Data["data"].(map[string]any); ok {
+		return nested, nil
+	}
+	return secret.Data, nil
+}
+
+func (r *VaultJWTSecretReader) WriteSecret(ctx context.Context, path string, data map[string]any) error {
+	_, err := r.client.Logical().WriteWithContext(ctx, path, map[string]any{
+		"data": data,
+	})
+	if err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	return nil
+}
+
+func (r *VaultJWTSecretReader) DeleteSecret(ctx context.Context, path string) error {
+	_, err := r.client.Logical().DeleteWithContext(ctx, path)
+	if err != nil {
+		return fmt.Errorf("deleting %s: %w", path, err)
+	}
+	return nil
+}
+
+func (r *VaultJWTSecretReader) ListSecrets(ctx context.Context, prefix string) ([]string, error) {
+	secret, err := r.client.Logical().ListWithContext(ctx, prefix)
+	if err != nil {
+		return nil, fmt.Errorf("listing %s: %w", prefix, err)
+	}
+	if secret == nil || secret.Data == nil {
+		return nil, nil
+	}
+	keys, ok := secret.Data["keys"].([]any)
+	if !ok {
+		return nil, nil
+	}
+	result := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if s, ok := k.(string); ok {
+			result = append(result, s)
+		}
+	}
+	return result, nil
+}

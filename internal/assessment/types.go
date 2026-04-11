@@ -75,6 +75,7 @@ type Config struct {
 	Notifications    NotificationConfig
 	ExtraBlock       []cage.ProxyPatternEntry
 	ExtraFlag        []cage.ProxyPatternEntry
+	Credentials      string
 }
 
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -8,8 +9,8 @@ import (
 
 	"github.com/okedeji/agentcage/internal/alert"
 	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/envvar"
 	"github.com/okedeji/agentcage/internal/fleet"
+	"github.com/okedeji/agentcage/internal/identity"
 )
 
 type fleetSetup struct {
@@ -22,7 +23,7 @@ type fleetSetup struct {
 
 // Autoscaler is constructed here but started in runInit so its
 // cancel-on-death hookup shares context with the rest of shutdown.
-func setupFleet(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.Logger) (*fleetSetup, error) {
+func setupFleet(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, alertDispatcher *alert.Dispatcher, log logr.Logger) (*fleetSetup, error) {
 	pool := fleet.NewPoolManager()
 	demand := fleet.NewDemandLedger()
 
@@ -46,7 +47,7 @@ func setupFleet(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.
 	}
 	log.Info("fleet pool initialized", "hosts", status.TotalHosts, "total_slots", totalSlots)
 
-	provisioner := buildHostProvisioner(cfg, log)
+	provisioner := buildHostProvisioner(ctx, cfg, secrets, log)
 
 	autoscalerCfg := fleet.AutoscalerConfig{
 		PollInterval:         30 * time.Second,
@@ -71,10 +72,13 @@ func setupFleet(cfg *config.Config, alertDispatcher *alert.Dispatcher, log logr.
 	}, nil
 }
 
-func buildHostProvisioner(cfg *config.Config, log logr.Logger) fleet.HostProvisioner {
+func buildHostProvisioner(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, log logr.Logger) fleet.HostProvisioner {
 	pc := cfg.Fleet.Provisioner
 	if pc != nil && pc.WebhookURL != "" {
-		apiKey := envvar.Get(envvar.FleetKey)
+		var apiKey string
+		if secrets != nil {
+			apiKey, _ = identity.ReadSecretValue(ctx, secrets, identity.PathFleetKey)
+		}
 		log.Info("fleet provisioner: webhook", "url", pc.WebhookURL)
 		return fleet.NewWebhookProvisioner(pc.WebhookURL, apiKey, pc.Timeout, log)
 	}

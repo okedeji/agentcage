@@ -106,6 +106,7 @@ type Config struct {
 	SkipPaths       []string
 	Guidance        []byte
 	InputContext    []byte
+	Credentials     string
 }
 
 type Scope struct {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 	"path/filepath"
 
 	"github.com/go-logr/logr"
@@ -17,6 +18,7 @@ import (
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/enforcement"
 	"github.com/okedeji/agentcage/internal/fleet"
+	"github.com/okedeji/agentcage/internal/identity"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/intervention"
 	proxylog "github.com/okedeji/agentcage/internal/log"
@@ -117,7 +119,19 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	spireSocket := resolveSpireSocket(cfg)
 
-	temporalClient, temporalNamespace, err := connectTemporal(ctx, cfg, spireSocket, log)
+	svidIssuer, secretFetcher, secretReader, identityCleanup, err := connectIdentityAndSecrets(ctx, cfg, embeddedMgr, spireSocket, log)
+	if err != nil {
+		return err
+	}
+
+	if secretReader != nil {
+		if valErr := validateRequiredSecrets(ctx, secretReader, cfg); valErr != nil {
+			identityCleanup()
+			return valErr
+		}
+	}
+
+	temporalClient, temporalNamespace, err := connectTemporal(ctx, cfg, secretReader, spireSocket, log)
 	if err != nil {
 		return err
 	}
@@ -127,7 +141,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	scopeValidator := enforcement.NewScopeValidator(cfg)
 	cageValidator := buildCageValidator(cfg, opaEngine, scopeValidator, alertDispatcher)
 
-	fleetSetup, err := setupFleet(cfg, alertDispatcher, log)
+	fleetSetup, err := setupFleet(ctx, cfg, secretReader, alertDispatcher, log)
 	if err != nil {
 		return err
 	}
@@ -157,7 +171,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
 
-	llmClient, tokenMeter, err := buildLLMClient(cfg, alertDispatcher, log)
+	llmClient, tokenMeter, err := buildLLMClient(ctx, cfg, secretReader, alertDispatcher, log)
 	if err != nil {
 		return err
 	}
@@ -166,15 +180,9 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	if err != nil {
 		return err
 	}
-	// Operator-edited proofs need to land before the workflow retries.
 	iSvc.SetProofReloader(proofLib)
 
 	cageRuntime, err := setupCageRuntime(ctx, cfg, db, log)
-	if err != nil {
-		return err
-	}
-
-	svidIssuer, secretFetcher, identityCleanup, err := connectIdentityAndSecrets(ctx, cfg, embeddedMgr, spireSocket, log)
 	if err != nil {
 		return err
 	}
@@ -311,4 +319,44 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	shutdownSequence(cancel, deps, sigCh, log)
 
 	return nil
+}
+
+func validateRequiredSecrets(ctx context.Context, reader identity.SecretReader, cfg *config.Config) error {
+	type required struct {
+		path      string
+		label     string
+		condition bool
+	}
+	checks := []required{
+		{identity.PathLLMKey, "orchestrator llm-api-key", cfg.LLM.Endpoint != ""},
+		{identity.PathNATSURL, "orchestrator nats-url", !cfg.Infrastructure.IsExternalNATS()},
+		{identity.PathJudgeKey, "orchestrator judge-api-key", cfg.JudgeEndpoint() != ""},
+	}
+	if cfg.Infrastructure.IsExternalTemporal() {
+		checks = append(checks, required{identity.PathTemporalKey, "orchestrator temporal-api-key", true})
+	}
+
+	var missing []string
+	for _, c := range checks {
+		if !c.condition {
+			continue
+		}
+		val, err := identity.ReadSecretValue(ctx, reader, c.path)
+		if err != nil || val == "" {
+			missing = append(missing, c.label)
+		}
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+
+	var b strings.Builder
+	b.WriteString("required secrets missing from Vault:\n")
+	for _, m := range missing {
+		fmt.Fprintf(&b, "  %s\n", m)
+	}
+	b.WriteString("\nImport from file:  agentcage vault import --from-file secrets.env\n")
+	b.WriteString("Add individually:  agentcage vault put <scope> <key> <value>\n")
+	return errors.New(b.String())
 }
