@@ -313,8 +313,8 @@ func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, sc
 }
 
 
-func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Config) (StopReason, error) {
-	a.log.Info("monitoring cage", "cage_id", cageID, "max_duration", config.TimeLimits.MaxDuration)
+func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, config Config) (StopReason, error) {
+	a.log.Info("monitoring cage", "cage_id", cageID, "vm_id", vmID, "max_duration", config.TimeLimits.MaxDuration)
 
 	deadline := time.After(config.TimeLimits.MaxDuration)
 
@@ -363,13 +363,13 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID string, config Co
 			if a.provisioner == nil {
 				continue
 			}
-			status, err := a.provisioner.Status(ctx, cageID)
+			status, err := a.provisioner.Status(ctx, vmID)
 			if err != nil {
-				a.log.Error(err, "checking VM status", "cage_id", cageID)
+				a.log.Error(err, "checking VM status", "cage_id", cageID, "vm_id", vmID)
 				continue
 			}
 			if status == VMStatusStopped {
-				a.log.Info("cage agent completed", "cage_id", cageID)
+				a.log.Info("cage agent completed", "cage_id", cageID, "vm_id", vmID)
 				return StopReasonCompleted, nil
 			}
 		}
@@ -488,9 +488,9 @@ func (a *ActivityImpl) RemoveNetworkPolicy(ctx context.Context, cageID string) e
 	return nil
 }
 
-func (a *ActivityImpl) VerifyCleanup(ctx context.Context, cageID string) error {
+func (a *ActivityImpl) VerifyCleanup(ctx context.Context, cageID, vmID string) error {
 	if a.provisioner != nil {
-		status, err := a.provisioner.Status(ctx, cageID)
+		status, err := a.provisioner.Status(ctx, vmID)
 		if err != nil {
 			return fmt.Errorf("cage %s: checking VM status during cleanup: %w", cageID, err)
 		}

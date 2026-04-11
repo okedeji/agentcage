@@ -115,7 +115,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 
 	// --- Monitor phase ---
 
-	stopReason := runMonitorWithSignals(ctx, cfg, input.CageID, t)
+	stopReason := runMonitorWithSignals(ctx, cfg, input.CageID, vmHandle.ID, t)
 
 	// --- Teardown phase ---
 	// All steps execute regardless of individual failures. An orphaned VM
@@ -147,7 +147,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		}
 	}
 
-	if tErr := execActivity(withTimeout(ctx, t.VerifyCleanup), "VerifyCleanup", input.CageID); tErr != nil {
+	if tErr := execActivity(withTimeout(ctx, t.VerifyCleanup), "VerifyCleanup", input.CageID, vmHandle.ID); tErr != nil {
 		teardownErrs = append(teardownErrs, fmt.Errorf("verifying cleanup: %w", tErr))
 	}
 
@@ -182,10 +182,10 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	return result, nil
 }
 
-func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID string, t Timeouts) StopReason {
+func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID, vmID string, t Timeouts) StopReason {
 	monitorTimeout := cfg.TimeLimits.MaxDuration + 60*time.Second
 	monitorCtx := withHeartbeat(ctx, monitorTimeout, t.HeartbeatMonitorCage)
-	monitorFuture := workflow.ExecuteActivity(monitorCtx, "MonitorCage", cageID, cfg)
+	monitorFuture := workflow.ExecuteActivity(monitorCtx, "MonitorCage", cageID, vmID, cfg)
 
 	signalCh := workflow.GetSignalChannel(ctx, intervention.SignalIntervention)
 	sel := workflow.NewSelector(ctx)

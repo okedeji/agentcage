@@ -101,7 +101,9 @@ func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error
 		f.ParentFindingID = *parentID
 	}
 	if evidence != nil {
-		_ = json.Unmarshal(evidence, &f.Evidence)
+		if err := json.Unmarshal(evidence, &f.Evidence); err != nil {
+			return Finding{}, fmt.Errorf("unmarshaling evidence for finding %s: %w", findingID, err)
+		}
 	}
 	return f, nil
 }
@@ -144,7 +146,9 @@ func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, stat
 			f.ParentFindingID = *parentID
 		}
 		if evidence != nil {
-			_ = json.Unmarshal(evidence, &f.Evidence)
+			if err := json.Unmarshal(evidence, &f.Evidence); err != nil {
+				return nil, fmt.Errorf("unmarshaling evidence for finding %s: %w", f.ID, err)
+			}
 		}
 		results = append(results, f)
 	}

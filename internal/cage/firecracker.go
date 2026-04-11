@@ -107,7 +107,10 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 
 	// Set up TAP device for this VM
 	tapName := fmt.Sprintf("tap-%s", vmID[:8])
-	ipAddr := p.allocateIP()
+	ipAddr, ipErr := p.allocateIP()
+	if ipErr != nil {
+		return nil, ipErr
+	}
 
 	if err := setupTAP(ctx, tapName, ipAddr); err != nil {
 		return nil, fmt.Errorf("setting up TAP device %s: %w", tapName, err)
@@ -124,8 +127,14 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	cmd := exec.CommandContext(ctx, p.binPath,
 		"--api-sock", socketPath,
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	logFile := filepath.Join(os.TempDir(), "firecracker", vmID+".log")
+	if f, err := os.Create(logFile); err == nil {
+		cmd.Stdout = f
+		cmd.Stderr = f
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 
 	p.log.Info("starting firecracker",
 		"cage_id", config.CageID,
@@ -301,13 +310,13 @@ func firecrackerAPI(ctx context.Context, socketPath, method, path string, body a
 		return fmt.Errorf("marshaling request: %w", err)
 	}
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socketPath)
-			},
+	transport := &http.Transport{
+		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return net.Dial("unix", socketPath)
 		},
 	}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport}
 
 	req, err := http.NewRequestWithContext(ctx, method, "http://localhost"+path, bytes.NewReader(payload))
 	if err != nil {
@@ -373,15 +382,16 @@ func waitForSocket(ctx context.Context, path string, timeout time.Duration) erro
 var ipCounter uint32 = 1
 var ipMu sync.Mutex
 
-func (p *FirecrackerProvisioner) allocateIP() string {
+func (p *FirecrackerProvisioner) allocateIP() (string, error) {
 	ipMu.Lock()
 	defer ipMu.Unlock()
 	ipCounter++
-	// 172.20.0.0/16 for cage VMs. Avoids conflict with private ranges
-	// denied in scope config.
 	third := ipCounter / 252
 	fourth := (ipCounter % 252) + 2
-	return fmt.Sprintf("172.20.%d.%d", third, fourth)
+	if third > 255 {
+		return "", fmt.Errorf("IP address space exhausted (172.20.0.0/16, %d VMs allocated)", ipCounter)
+	}
+	return fmt.Sprintf("172.20.%d.%d", third, fourth), nil
 }
 
 func generateMAC(cageID string) string {

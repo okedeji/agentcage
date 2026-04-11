@@ -48,7 +48,7 @@ func main() {
 
 	// 2. Start payload-proxy
 	var proxy *exec.Cmd
-	if env.ProxyMode != "disabled" {
+	if env.ProxyMode != "disabled" && len(env.ScopeHosts) > 0 {
 		proxyArgs := []string{
 			"-listen", ":8080",
 			"-target", fmt.Sprintf("http://%s", env.ScopeHosts[0]),

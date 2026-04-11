@@ -50,13 +50,13 @@ type Activities interface {
 	AssembleRootfs(ctx context.Context, cageID string, bundleRef string, env Env) (string, error)
 	ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error)
 	ApplyNetworkPolicy(ctx context.Context, cageID string, scope Scope, extras []string) error
-	MonitorCage(ctx context.Context, cageID string, config Config) (StopReason, error)
+	MonitorCage(ctx context.Context, cageID, vmID string, config Config) (StopReason, error)
 	ExportAuditLog(ctx context.Context, cageID string) error
 	TeardownVM(ctx context.Context, vmID string) error
 	RevokeSVID(ctx context.Context, svidID string) error
 	RevokeVaultToken(ctx context.Context, token *identity.VaultToken) error
 	RemoveNetworkPolicy(ctx context.Context, cageID string) error
-	VerifyCleanup(ctx context.Context, cageID string) error
+	VerifyCleanup(ctx context.Context, cageID, vmID string) error
 	EmitRCA(ctx context.Context, cageID string, assessmentID string, reason string) error
 	RecordRunMetrics(ctx context.Context, cageID string, assessmentID string) error
 	RecordCostMetrics(ctx context.Context, cageID string, assessmentID string) error

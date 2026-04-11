@@ -34,7 +34,7 @@ func (activityStub) ProvisionVM(context.Context, VMConfig) (*VMHandle, error) { 
 func (activityStub) ApplyNetworkPolicy(context.Context, string, Scope, []string) error {
 	return nil
 }
-func (activityStub) MonitorCage(context.Context, string, Config) (StopReason, error) {
+func (activityStub) MonitorCage(context.Context, string, string, Config) (StopReason, error) {
 	return StopReasonCompleted, nil
 }
 func (activityStub) ExportAuditLog(context.Context, string) error               { return nil }
@@ -42,7 +42,7 @@ func (activityStub) TeardownVM(context.Context, string) error                   
 func (activityStub) RevokeSVID(context.Context, string) error                   { return nil }
 func (activityStub) RevokeVaultToken(context.Context, *identity.VaultToken) error { return nil }
 func (activityStub) RemoveNetworkPolicy(context.Context, string) error          { return nil }
-func (activityStub) VerifyCleanup(context.Context, string) error                { return nil }
+func (activityStub) VerifyCleanup(context.Context, string, string) error        { return nil }
 func (activityStub) EmitRCA(context.Context, string, string, string) error      { return nil }
 func (activityStub) RecordRunMetrics(context.Context, string, string) error     { return nil }
 func (activityStub) RecordCostMetrics(context.Context, string, string) error    { return nil }
@@ -123,13 +123,13 @@ func registerHappyPathMocks(env *testsuite.TestWorkflowEnvironment) {
 	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything).Return(StopReasonCompleted, nil)
+	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(StopReasonCompleted, nil)
 	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("TeardownVM", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RevokeSVID", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RevokeVaultToken", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RemoveNetworkPolicy", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RecordRunMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RecordCostMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 }
@@ -153,7 +153,7 @@ func TestCageWorkflow_HappyPath(t *testing.T) {
 	env.AssertCalled(t, "RevokeSVID", mock.Anything, mock.Anything)
 	env.AssertCalled(t, "RevokeVaultToken", mock.Anything, mock.Anything)
 	env.AssertCalled(t, "RemoveNetworkPolicy", mock.Anything, mock.Anything)
-	env.AssertCalled(t, "VerifyCleanup", mock.Anything, mock.Anything)
+	env.AssertCalled(t, "VerifyCleanup", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestCageWorkflow_ValidationFailure(t *testing.T) {
@@ -207,13 +207,13 @@ func TestCageWorkflow_TeardownMultiError(t *testing.T) {
 	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything).Return(StopReasonCompleted, nil)
+	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(StopReasonCompleted, nil)
 	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("TeardownVM", mock.Anything, mock.Anything).Return(errors.New("VM stuck"))
 	env.OnActivity("RevokeSVID", mock.Anything, mock.Anything).Return(errors.New("SPIRE unavailable"))
 	env.OnActivity("RevokeVaultToken", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RemoveNetworkPolicy", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RecordRunMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RecordCostMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
@@ -229,7 +229,7 @@ func TestCageWorkflow_TeardownMultiError(t *testing.T) {
 
 	env.AssertCalled(t, "RevokeVaultToken", mock.Anything, mock.Anything)
 	env.AssertCalled(t, "RemoveNetworkPolicy", mock.Anything, mock.Anything)
-	env.AssertCalled(t, "VerifyCleanup", mock.Anything, mock.Anything)
+	env.AssertCalled(t, "VerifyCleanup", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestCageWorkflow_SignalKill(t *testing.T) {
@@ -240,7 +240,7 @@ func TestCageWorkflow_SignalKill(t *testing.T) {
 	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything).
+	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(StopReasonCompleted, nil).
 		After(10 * time.Minute)
 	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
@@ -248,7 +248,7 @@ func TestCageWorkflow_SignalKill(t *testing.T) {
 	env.OnActivity("RevokeSVID", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RevokeVaultToken", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RemoveNetworkPolicy", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("EmitRCA", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RecordRunMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RecordCostMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -281,13 +281,13 @@ func TestCageWorkflow_MonitorTimeout(t *testing.T) {
 	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything).Return(StopReasonTimeout, nil)
+	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(StopReasonTimeout, nil)
 	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("TeardownVM", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RevokeSVID", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RevokeVaultToken", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RemoveNetworkPolicy", mock.Anything, mock.Anything).Return(nil)
-	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RecordRunMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RecordCostMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 

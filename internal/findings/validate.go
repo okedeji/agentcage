@@ -3,6 +3,7 @@ package findings
 import (
 	"errors"
 	"fmt"
+	"unicode/utf8"
 )
 
 var ErrInvalidFinding = errors.New("invalid finding")
@@ -72,7 +73,7 @@ func SanitizeFinding(f *Finding, limits *SanitizeLimits) {
 		f.Evidence.Response = f.Evidence.Response[:maxEvidenceResponseSize]
 	}
 	if len(f.Title) > maxTitleLength {
-		f.Title = f.Title[:maxTitleLength]
+		f.Title = truncateUTF8(f.Title, maxTitleLength)
 	}
 	if int64(len(f.Evidence.Screenshot)) > maxScreenshot {
 		f.Description += fmt.Sprintf(
@@ -81,4 +82,14 @@ func SanitizeFinding(f *Finding, limits *SanitizeLimits) {
 		)
 		f.Evidence.Screenshot = nil
 	}
+}
+
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
 }

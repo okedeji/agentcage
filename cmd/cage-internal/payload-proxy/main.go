@@ -10,7 +10,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/enforcement"
@@ -150,7 +149,7 @@ func main() {
 		}
 
 		// LLM requests: validate, forward, and meter
-		if llmHost != "" && strings.Contains(r.URL.Host, llmHost) {
+		if llmHost != "" && r.URL.Host == llmHost {
 			var llmReq gateway.LLMRequest
 			if err := json.Unmarshal(bodyBytes, &llmReq); err != nil {
 				logger.Info("llm request rejected: invalid JSON", "error", err)
