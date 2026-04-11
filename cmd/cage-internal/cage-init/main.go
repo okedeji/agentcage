@@ -24,8 +24,12 @@ type CageEnv struct {
 	ScopePorts   []string `json:"scope_ports,omitempty"`
 	ScopePaths   []string `json:"scope_paths,omitempty"`
 	TokenBudget  int64    `json:"token_budget,omitempty"`
-	ProxyMode    string   `json:"proxy_mode"`
-	VulnClass    string   `json:"vuln_class,omitempty"`
+	VulnClass        string   `json:"vuln_class,omitempty"`
+	HostControlAddr  string   `json:"host_control_addr,omitempty"`
+	HoldTimeoutSec   int      `json:"hold_timeout_sec,omitempty"`
+	JudgeEndpoint    string   `json:"judge_endpoint,omitempty"`
+	JudgeConfidence  float64  `json:"judge_confidence,omitempty"`
+	JudgeTimeoutSec  int      `json:"judge_timeout_sec,omitempty"`
 }
 
 const configPath = "/etc/agentcage/cage.json"
@@ -49,16 +53,37 @@ func main() {
 
 	// 2. Start payload-proxy
 	var proxy *exec.Cmd
-	if env.ProxyMode != "disabled" && len(env.ScopeHosts) > 0 {
+	if len(env.ScopeHosts) > 0 {
 		proxyArgs := []string{
 			"-listen", ":8080",
 			"-target", fmt.Sprintf("http://%s", env.ScopeHosts[0]),
+			"-cage-id", env.CageID,
+			"-cage-type", env.CageType,
+			"-assessment-id", env.AssessmentID,
 		}
 		if env.VulnClass != "" {
 			proxyArgs = append(proxyArgs, "-vuln-class", env.VulnClass)
 		}
 		if env.LLMEndpoint != "" {
 			proxyArgs = append(proxyArgs, "-llm-endpoint", env.LLMEndpoint)
+		}
+		if env.HostControlAddr != "" {
+			proxyArgs = append(proxyArgs,
+				"-control-listen", ":8081",
+				"-host-control", env.HostControlAddr,
+			)
+			if env.HoldTimeoutSec > 0 {
+				proxyArgs = append(proxyArgs, "-hold-timeout", fmt.Sprintf("%d", env.HoldTimeoutSec))
+			}
+		}
+		if env.JudgeEndpoint != "" {
+			proxyArgs = append(proxyArgs,
+				"-judge-endpoint", env.JudgeEndpoint,
+				"-judge-confidence", fmt.Sprintf("%.2f", env.JudgeConfidence),
+			)
+			if env.JudgeTimeoutSec > 0 {
+				proxyArgs = append(proxyArgs, "-judge-timeout", fmt.Sprintf("%d", env.JudgeTimeoutSec))
+			}
 		}
 		proxy = startService("payload-proxy", "/usr/local/bin/payload-proxy", proxyArgs...)
 	}
@@ -157,8 +182,10 @@ func startService(name string, bin string, args ...string) *exec.Cmd {
 }
 
 func setupIPTables() {
-	// Redirect all outbound TCP 80/443 through the payload proxy on :8080
+	// Redirect all outbound TCP 80/443 through the payload proxy on :8080.
+	// Exclude the control port (8081) so the host can reach it directly.
 	rules := [][]string{
+		{"iptables", "-t", "nat", "-A", "OUTPUT", "-p", "tcp", "--dport", "8081", "-j", "RETURN"},
 		{"iptables", "-t", "nat", "-A", "OUTPUT", "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-port", "8080"},
 		{"iptables", "-t", "nat", "-A", "OUTPUT", "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-port", "8080"},
 	}

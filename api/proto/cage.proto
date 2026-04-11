@@ -29,11 +29,9 @@ enum CageState {
   CAGE_STATE_FAILED = 7;
 }
 
-enum PayloadProxyMode {
-  PAYLOAD_PROXY_MODE_UNSPECIFIED = 0;
-  PAYLOAD_PROXY_MODE_BLOCKLIST = 1;
-  PAYLOAD_PROXY_MODE_CLASSIFY = 2;
-  PAYLOAD_PROXY_MODE_DISABLED = 3;
+message PatternEntry {
+  string pattern = 1;
+  string reason = 2;
 }
 
 message TargetScope {
@@ -69,8 +67,11 @@ message LLMGatewayConfig {
 }
 
 message PayloadProxyConfig {
-  PayloadProxyMode mode = 1;
-  repeated string blocklist_patterns = 2;
+  string judge_endpoint = 1;
+  double judge_confidence = 2;
+  int32 judge_timeout_seconds = 3;
+  repeated PatternEntry extra_block = 4;
+  repeated PatternEntry extra_flag = 5;
 }
 
 message CageConfig {

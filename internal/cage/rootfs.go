@@ -29,8 +29,12 @@ type Env struct {
 	ScopePaths   []string        `json:"scope_paths,omitempty"`
 	SkipPaths    []string        `json:"skip_paths,omitempty"`
 	TokenBudget  int64           `json:"token_budget,omitempty"`
-	ProxyMode    string          `json:"proxy_mode"`
-	VulnClass    string          `json:"vuln_class,omitempty"`
+	VulnClass        string          `json:"vuln_class,omitempty"`
+	HostControlAddr  string          `json:"host_control_addr,omitempty"`
+	HoldTimeoutSec   int             `json:"hold_timeout_sec,omitempty"`
+	JudgeEndpoint    string          `json:"judge_endpoint,omitempty"`
+	JudgeConfidence  float64         `json:"judge_confidence,omitempty"`
+	JudgeTimeoutSec  int             `json:"judge_timeout_sec,omitempty"`
 	Guidance json.RawMessage `json:"guidance,omitempty"`
 }
 

@@ -5,11 +5,14 @@ import (
 	"regexp"
 )
 
-// ProxyEngine inspects outbound payloads against compiled regex blocklist
-// patterns. Used by the payload-proxy inside each cage.
+// ProxyEngine inspects outbound payloads against compiled regex patterns.
+// Block patterns reject the request. Flag patterns (used in flag
+// mode) return PayloadHold so the proxy can pause the request and ask a
+// human. Block patterns are always checked first.
 type ProxyEngine struct {
-	vulnClass string
-	patterns  []*compiledPattern
+	vulnClass        string
+	blockPatterns    []*compiledPattern
+	flagPatterns []*compiledPattern
 }
 
 type compiledPattern struct {
@@ -17,9 +20,7 @@ type compiledPattern struct {
 	message string
 }
 
-// NewProxyEngine compiles the provided patterns and returns an engine that
-// inspects payloads for the given vulnerability class.
-func NewProxyEngine(vulnClass string, patterns map[string]string) (*ProxyEngine, error) {
+func compilePatterns(vulnClass string, patterns map[string]string) ([]*compiledPattern, error) {
 	compiled := make([]*compiledPattern, 0, len(patterns))
 	for pattern, message := range patterns {
 		re, err := regexp.Compile(pattern)
@@ -31,23 +32,43 @@ func NewProxyEngine(vulnClass string, patterns map[string]string) (*ProxyEngine,
 			message: message,
 		})
 	}
+	return compiled, nil
+}
 
+// NewProxyEngine compiles block patterns and optional flag patterns.
+// Flag patterns are only checked when non-nil; they return PayloadHold
+// for requests that are ambiguous enough to need human review.
+func NewProxyEngine(vulnClass string, blockPatterns map[string]string, flagPatterns map[string]string) (*ProxyEngine, error) {
+	block, err := compilePatterns(vulnClass, blockPatterns)
+	if err != nil {
+		return nil, err
+	}
+	var flag []*compiledPattern
+	if len(flagPatterns) > 0 {
+		flag, err = compilePatterns(vulnClass, flagPatterns)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &ProxyEngine{
-		vulnClass: vulnClass,
-		patterns:  compiled,
+		vulnClass:        vulnClass,
+		blockPatterns:    block,
+		flagPatterns: flag,
 	}, nil
 }
 
-// Inspect checks a request body and URL against all blocklist patterns.
-// Returns PayloadBlock with the matching pattern's message, or PayloadAllow.
+// Inspect checks a request against block patterns first, then flag
+// patterns. Returns PayloadBlock, PayloadHold, or PayloadAllow.
 func (e *ProxyEngine) Inspect(method, url string, body []byte) (PayloadDecision, string) {
 	content := string(body)
-	for _, p := range e.patterns {
-		if p.regex.MatchString(content) {
+	for _, p := range e.blockPatterns {
+		if p.regex.MatchString(content) || p.regex.MatchString(url) {
 			return PayloadBlock, p.message
 		}
-		if p.regex.MatchString(url) {
-			return PayloadBlock, p.message
+	}
+	for _, p := range e.flagPatterns {
+		if p.regex.MatchString(content) || p.regex.MatchString(url) {
+			return PayloadHold, p.message
 		}
 	}
 	return PayloadAllow, ""

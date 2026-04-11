@@ -12,6 +12,7 @@ const (
 	LLMKey   = "AGENTCAGE_LLM_API_KEY"
 	Temporal = "AGENTCAGE_TEMPORAL_API_KEY"
 	FleetKey = "AGENTCAGE_FLEET_API_KEY"
+	JudgeKey = "AGENTCAGE_JUDGE_API_KEY"
 
 	DefaultGRPCAddr = "localhost:9090"
 )

@@ -151,7 +151,7 @@ func TestProxyEngine_Inspect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			patterns := patternsFromConfig(cfg, tt.vulnClass)
-			engine, err := NewProxyEngine(tt.vulnClass, patterns)
+			engine, err := NewProxyEngine(tt.vulnClass, patterns, nil)
 			require.NoError(t, err)
 
 			decision, msg := engine.Inspect(tt.method, tt.url, []byte(tt.body))
@@ -164,7 +164,7 @@ func TestProxyEngine_Inspect(t *testing.T) {
 }
 
 func TestProxyEngine_NilPatterns(t *testing.T) {
-	engine, err := NewProxyEngine("unknown", nil)
+	engine, err := NewProxyEngine("unknown", nil, nil)
 	require.NoError(t, err)
 
 	decision, msg := engine.Inspect("GET", "http://anything.com", []byte("anything"))
@@ -176,7 +176,7 @@ func TestProxyEngine_InvalidRegex(t *testing.T) {
 	patterns := map[string]string{
 		"[invalid": "should fail",
 	}
-	_, err := NewProxyEngine("test", patterns)
+	_, err := NewProxyEngine("test", patterns, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "compiling pattern")
 }
@@ -184,7 +184,7 @@ func TestProxyEngine_InvalidRegex(t *testing.T) {
 func TestProxyEngine_ConcurrentInspect(t *testing.T) {
 	cfg := loadTestConfig(t)
 	patterns := patternsFromConfig(cfg, "sqli")
-	engine, err := NewProxyEngine("sqli", patterns)
+	engine, err := NewProxyEngine("sqli", patterns, nil)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -197,4 +197,34 @@ func TestProxyEngine_ConcurrentInspect(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestProxyEngine_FlagPatterns(t *testing.T) {
+	blockPatterns := map[string]string{
+		`(?i)\bDROP\s+TABLE`: "destructive SQL: DROP",
+	}
+	flagPatterns := map[string]string{
+		`(?i)\bUNION\s+SELECT`: "possible data extraction",
+	}
+
+	engine, err := NewProxyEngine("sqli", blockPatterns, flagPatterns)
+	require.NoError(t, err)
+
+	decision, reason := engine.Inspect("POST", "http://target.com", []byte("1' UNION SELECT username FROM users--"))
+	assert.Equal(t, PayloadHold, decision)
+	assert.Contains(t, reason, "data extraction")
+
+	decision, _ = engine.Inspect("POST", "http://target.com", []byte("'; DROP TABLE users;--"))
+	assert.Equal(t, PayloadBlock, decision, "block patterns take precedence over flag")
+
+	decision, _ = engine.Inspect("POST", "http://target.com", []byte("SELECT 1"))
+	assert.Equal(t, PayloadAllow, decision)
+}
+
+func TestProxyEngine_FlagNilFallsThrough(t *testing.T) {
+	engine, err := NewProxyEngine("sqli", nil, nil)
+	require.NoError(t, err)
+
+	decision, _ := engine.Inspect("POST", "http://target.com", []byte("anything"))
+	assert.Equal(t, PayloadAllow, decision)
 }

@@ -16,11 +16,22 @@ type Plan struct {
 	Budget        Budget              `yaml:"budget"`
 	Limits        Limits              `yaml:"limits"`
 	CageTypes     map[string]CageType `yaml:"cage_types"`
+	Payload       PlanPayload         `yaml:"payload"`
 	Guidance      Guidance            `yaml:"guidance"`
 	Notifications Notifications       `yaml:"notifications"`
 	Output        Output              `yaml:"output"`
 	Tags          map[string]string   `yaml:"tags"`
 	CustomerID    string              `yaml:"customer_id"`
+}
+
+type PlanPayload struct {
+	ExtraBlock []PlanPattern `yaml:"extra_block"`
+	ExtraFlag  []PlanPattern `yaml:"extra_flag"`
+}
+
+type PlanPattern struct {
+	Pattern string `yaml:"pattern"`
+	Reason  string `yaml:"reason"`
 }
 
 type Target struct {
@@ -190,6 +201,13 @@ func Merge(base, override *Plan) *Plan {
 	}
 	if override.Output.Follow != nil {
 		out.Output.Follow = override.Output.Follow
+	}
+
+	if len(override.Payload.ExtraBlock) > 0 {
+		out.Payload.ExtraBlock = override.Payload.ExtraBlock
+	}
+	if len(override.Payload.ExtraFlag) > 0 {
+		out.Payload.ExtraFlag = override.Payload.ExtraFlag
 	}
 
 	if len(override.Tags) > 0 {

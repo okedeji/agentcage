@@ -166,6 +166,8 @@ type AssessmentConfig struct {
 	Notifications      *NotificationConfig    `protobuf:"bytes,12,opt,name=notifications,proto3" json:"notifications,omitempty"`
 	Name               string                 `protobuf:"bytes,13,opt,name=name,proto3" json:"name,omitempty"`
 	MaxConcurrentCages int32                  `protobuf:"varint,14,opt,name=max_concurrent_cages,json=maxConcurrentCages,proto3" json:"max_concurrent_cages,omitempty"`
+	ExtraBlock         []*PatternEntry        `protobuf:"bytes,15,rep,name=extra_block,json=extraBlock,proto3" json:"extra_block,omitempty"`
+	ExtraFlag          []*PatternEntry        `protobuf:"bytes,16,rep,name=extra_flag,json=extraFlag,proto3" json:"extra_flag,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -282,6 +284,20 @@ func (x *AssessmentConfig) GetMaxConcurrentCages() int32 {
 		return x.MaxConcurrentCages
 	}
 	return 0
+}
+
+func (x *AssessmentConfig) GetExtraBlock() []*PatternEntry {
+	if x != nil {
+		return x.ExtraBlock
+	}
+	return nil
+}
+
+func (x *AssessmentConfig) GetExtraFlag() []*PatternEntry {
+	if x != nil {
+		return x.ExtraFlag
+	}
+	return nil
 }
 
 type NotificationConfig struct {
@@ -997,7 +1013,7 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2\x1b.agentcage.cage.v1.CageTypeR\x04type\x12=\n" +
 	"\bdefaults\x18\x02 \x01(\v2!.agentcage.cage.v1.ResourceLimitsR\bdefaults\x12%\n" +
 	"\x0emax_concurrent\x18\x03 \x01(\x05R\rmaxConcurrent\x12<\n" +
-	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xcb\x05\n" +
+	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xcd\x06\n" +
 	"\x10AssessmentConfig\x12\x1f\n" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\x124\n" +
@@ -1012,7 +1028,11 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x04tags\x18\v \x03(\v23.agentcage.assessment.v1.AssessmentConfig.TagsEntryR\x04tags\x12Q\n" +
 	"\rnotifications\x18\f \x01(\v2+.agentcage.assessment.v1.NotificationConfigR\rnotifications\x12\x12\n" +
 	"\x04name\x18\r \x01(\tR\x04name\x120\n" +
-	"\x14max_concurrent_cages\x18\x0e \x01(\x05R\x12maxConcurrentCages\x1a7\n" +
+	"\x14max_concurrent_cages\x18\x0e \x01(\x05R\x12maxConcurrentCages\x12@\n" +
+	"\vextra_block\x18\x0f \x03(\v2\x1f.agentcage.cage.v1.PatternEntryR\n" +
+	"extraBlock\x12>\n" +
+	"\n" +
+	"extra_flag\x18\x10 \x03(\v2\x1f.agentcage.cage.v1.PatternEntryR\textraFlag\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"n\n" +
@@ -1126,7 +1146,8 @@ var file_api_proto_assessment_proto_goTypes = []any{
 	(*ResourceLimits)(nil),           // 17: agentcage.cage.v1.ResourceLimits
 	(*durationpb.Duration)(nil),      // 18: google.protobuf.Duration
 	(*TargetScope)(nil),              // 19: agentcage.cage.v1.TargetScope
-	(*timestamppb.Timestamp)(nil),    // 20: google.protobuf.Timestamp
+	(*PatternEntry)(nil),             // 20: agentcage.cage.v1.PatternEntry
+	(*timestamppb.Timestamp)(nil),    // 21: google.protobuf.Timestamp
 }
 var file_api_proto_assessment_proto_depIdxs = []int32{
 	16, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
@@ -1138,27 +1159,29 @@ var file_api_proto_assessment_proto_depIdxs = []int32{
 	4,  // 6: agentcage.assessment.v1.AssessmentConfig.guidance:type_name -> agentcage.assessment.v1.Guidance
 	15, // 7: agentcage.assessment.v1.AssessmentConfig.tags:type_name -> agentcage.assessment.v1.AssessmentConfig.TagsEntry
 	3,  // 8: agentcage.assessment.v1.AssessmentConfig.notifications:type_name -> agentcage.assessment.v1.NotificationConfig
-	5,  // 9: agentcage.assessment.v1.Guidance.attack_surface:type_name -> agentcage.assessment.v1.AttackSurfaceGuidance
-	6,  // 10: agentcage.assessment.v1.Guidance.priorities:type_name -> agentcage.assessment.v1.PrioritiesGuidance
-	7,  // 11: agentcage.assessment.v1.Guidance.attack_strategy:type_name -> agentcage.assessment.v1.AttackStrategyGuidance
-	8,  // 12: agentcage.assessment.v1.Guidance.validation:type_name -> agentcage.assessment.v1.ValidationGuidance
-	0,  // 13: agentcage.assessment.v1.AssessmentInfo.status:type_name -> agentcage.assessment.v1.AssessmentStatus
-	2,  // 14: agentcage.assessment.v1.AssessmentInfo.config:type_name -> agentcage.assessment.v1.AssessmentConfig
-	9,  // 15: agentcage.assessment.v1.AssessmentInfo.stats:type_name -> agentcage.assessment.v1.AssessmentStats
-	20, // 16: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
-	20, // 17: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
-	2,  // 18: agentcage.assessment.v1.CreateAssessmentRequest.config:type_name -> agentcage.assessment.v1.AssessmentConfig
-	10, // 19: agentcage.assessment.v1.CreateAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
-	10, // 20: agentcage.assessment.v1.GetAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
-	11, // 21: agentcage.assessment.v1.AssessmentService.CreateAssessment:input_type -> agentcage.assessment.v1.CreateAssessmentRequest
-	13, // 22: agentcage.assessment.v1.AssessmentService.GetAssessment:input_type -> agentcage.assessment.v1.GetAssessmentRequest
-	12, // 23: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
-	14, // 24: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
-	23, // [23:25] is the sub-list for method output_type
-	21, // [21:23] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	20, // 9: agentcage.assessment.v1.AssessmentConfig.extra_block:type_name -> agentcage.cage.v1.PatternEntry
+	20, // 10: agentcage.assessment.v1.AssessmentConfig.extra_flag:type_name -> agentcage.cage.v1.PatternEntry
+	5,  // 11: agentcage.assessment.v1.Guidance.attack_surface:type_name -> agentcage.assessment.v1.AttackSurfaceGuidance
+	6,  // 12: agentcage.assessment.v1.Guidance.priorities:type_name -> agentcage.assessment.v1.PrioritiesGuidance
+	7,  // 13: agentcage.assessment.v1.Guidance.attack_strategy:type_name -> agentcage.assessment.v1.AttackStrategyGuidance
+	8,  // 14: agentcage.assessment.v1.Guidance.validation:type_name -> agentcage.assessment.v1.ValidationGuidance
+	0,  // 15: agentcage.assessment.v1.AssessmentInfo.status:type_name -> agentcage.assessment.v1.AssessmentStatus
+	2,  // 16: agentcage.assessment.v1.AssessmentInfo.config:type_name -> agentcage.assessment.v1.AssessmentConfig
+	9,  // 17: agentcage.assessment.v1.AssessmentInfo.stats:type_name -> agentcage.assessment.v1.AssessmentStats
+	21, // 18: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
+	21, // 19: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 20: agentcage.assessment.v1.CreateAssessmentRequest.config:type_name -> agentcage.assessment.v1.AssessmentConfig
+	10, // 21: agentcage.assessment.v1.CreateAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
+	10, // 22: agentcage.assessment.v1.GetAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
+	11, // 23: agentcage.assessment.v1.AssessmentService.CreateAssessment:input_type -> agentcage.assessment.v1.CreateAssessmentRequest
+	13, // 24: agentcage.assessment.v1.AssessmentService.GetAssessment:input_type -> agentcage.assessment.v1.GetAssessmentRequest
+	12, // 25: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
+	14, // 26: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
+	25, // [25:27] is the sub-list for method output_type
+	23, // [23:25] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_assessment_proto_init() }

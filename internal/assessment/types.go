@@ -73,6 +73,8 @@ type Config struct {
 	Guidance         *Guidance
 	Tags             map[string]string
 	Notifications    NotificationConfig
+	ExtraBlock       []cage.ProxyPatternEntry
+	ExtraFlag        []cage.ProxyPatternEntry
 }
 
 

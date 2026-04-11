@@ -323,7 +323,8 @@ func applyCageDefaults(cageCfg *cage.Config, cfg Config) {
 	if cfg.TokenBudget > 0 {
 		cageCfg.LLM = &cage.LLMGatewayConfig{TokenBudget: cfg.TokenBudget}
 	}
-	cageCfg.ProxyConfig = cage.ProxyConfig{Mode: cage.ProxyModeBlocklist}
+	cageCfg.ProxyConfig.ExtraBlock = cfg.ExtraBlock
+	cageCfg.ProxyConfig.ExtraFlag = cfg.ExtraFlag
 	applyGuidance(cageCfg, cfg.Guidance)
 }
 

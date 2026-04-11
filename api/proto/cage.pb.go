@@ -139,58 +139,6 @@ func (CageState) EnumDescriptor() ([]byte, []int) {
 	return file_api_proto_cage_proto_rawDescGZIP(), []int{1}
 }
 
-type PayloadProxyMode int32
-
-const (
-	PayloadProxyMode_PAYLOAD_PROXY_MODE_UNSPECIFIED PayloadProxyMode = 0
-	PayloadProxyMode_PAYLOAD_PROXY_MODE_BLOCKLIST   PayloadProxyMode = 1
-	PayloadProxyMode_PAYLOAD_PROXY_MODE_CLASSIFY    PayloadProxyMode = 2
-	PayloadProxyMode_PAYLOAD_PROXY_MODE_DISABLED    PayloadProxyMode = 3
-)
-
-// Enum value maps for PayloadProxyMode.
-var (
-	PayloadProxyMode_name = map[int32]string{
-		0: "PAYLOAD_PROXY_MODE_UNSPECIFIED",
-		1: "PAYLOAD_PROXY_MODE_BLOCKLIST",
-		2: "PAYLOAD_PROXY_MODE_CLASSIFY",
-		3: "PAYLOAD_PROXY_MODE_DISABLED",
-	}
-	PayloadProxyMode_value = map[string]int32{
-		"PAYLOAD_PROXY_MODE_UNSPECIFIED": 0,
-		"PAYLOAD_PROXY_MODE_BLOCKLIST":   1,
-		"PAYLOAD_PROXY_MODE_CLASSIFY":    2,
-		"PAYLOAD_PROXY_MODE_DISABLED":    3,
-	}
-)
-
-func (x PayloadProxyMode) Enum() *PayloadProxyMode {
-	p := new(PayloadProxyMode)
-	*p = x
-	return p
-}
-
-func (x PayloadProxyMode) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (PayloadProxyMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_proto_cage_proto_enumTypes[2].Descriptor()
-}
-
-func (PayloadProxyMode) Type() protoreflect.EnumType {
-	return &file_api_proto_cage_proto_enumTypes[2]
-}
-
-func (x PayloadProxyMode) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use PayloadProxyMode.Descriptor instead.
-func (PayloadProxyMode) EnumDescriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{2}
-}
-
 type RoutingStrategy int32
 
 const (
@@ -227,11 +175,11 @@ func (x RoutingStrategy) String() string {
 }
 
 func (RoutingStrategy) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_proto_cage_proto_enumTypes[3].Descriptor()
+	return file_api_proto_cage_proto_enumTypes[2].Descriptor()
 }
 
 func (RoutingStrategy) Type() protoreflect.EnumType {
-	return &file_api_proto_cage_proto_enumTypes[3]
+	return &file_api_proto_cage_proto_enumTypes[2]
 }
 
 func (x RoutingStrategy) Number() protoreflect.EnumNumber {
@@ -240,7 +188,59 @@ func (x RoutingStrategy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RoutingStrategy.Descriptor instead.
 func (RoutingStrategy) EnumDescriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{3}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{2}
+}
+
+type PatternEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Pattern       string                 `protobuf:"bytes,1,opt,name=pattern,proto3" json:"pattern,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PatternEntry) Reset() {
+	*x = PatternEntry{}
+	mi := &file_api_proto_cage_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PatternEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PatternEntry) ProtoMessage() {}
+
+func (x *PatternEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_cage_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PatternEntry.ProtoReflect.Descriptor instead.
+func (*PatternEntry) Descriptor() ([]byte, []int) {
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *PatternEntry) GetPattern() string {
+	if x != nil {
+		return x.Pattern
+	}
+	return ""
+}
+
+func (x *PatternEntry) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
 }
 
 type TargetScope struct {
@@ -255,7 +255,7 @@ type TargetScope struct {
 
 func (x *TargetScope) Reset() {
 	*x = TargetScope{}
-	mi := &file_api_proto_cage_proto_msgTypes[0]
+	mi := &file_api_proto_cage_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -267,7 +267,7 @@ func (x *TargetScope) String() string {
 func (*TargetScope) ProtoMessage() {}
 
 func (x *TargetScope) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[0]
+	mi := &file_api_proto_cage_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -280,7 +280,7 @@ func (x *TargetScope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TargetScope.ProtoReflect.Descriptor instead.
 func (*TargetScope) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{0}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *TargetScope) GetHosts() []string {
@@ -321,7 +321,7 @@ type ResourceLimits struct {
 
 func (x *ResourceLimits) Reset() {
 	*x = ResourceLimits{}
-	mi := &file_api_proto_cage_proto_msgTypes[1]
+	mi := &file_api_proto_cage_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -333,7 +333,7 @@ func (x *ResourceLimits) String() string {
 func (*ResourceLimits) ProtoMessage() {}
 
 func (x *ResourceLimits) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[1]
+	mi := &file_api_proto_cage_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -346,7 +346,7 @@ func (x *ResourceLimits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceLimits.ProtoReflect.Descriptor instead.
 func (*ResourceLimits) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{1}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ResourceLimits) GetVcpus() int32 {
@@ -372,7 +372,7 @@ type TimeLimits struct {
 
 func (x *TimeLimits) Reset() {
 	*x = TimeLimits{}
-	mi := &file_api_proto_cage_proto_msgTypes[2]
+	mi := &file_api_proto_cage_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -384,7 +384,7 @@ func (x *TimeLimits) String() string {
 func (*TimeLimits) ProtoMessage() {}
 
 func (x *TimeLimits) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[2]
+	mi := &file_api_proto_cage_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -397,7 +397,7 @@ func (x *TimeLimits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TimeLimits.ProtoReflect.Descriptor instead.
 func (*TimeLimits) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{2}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *TimeLimits) GetMaxDuration() *durationpb.Duration {
@@ -416,7 +416,7 @@ type RateLimits struct {
 
 func (x *RateLimits) Reset() {
 	*x = RateLimits{}
-	mi := &file_api_proto_cage_proto_msgTypes[3]
+	mi := &file_api_proto_cage_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -428,7 +428,7 @@ func (x *RateLimits) String() string {
 func (*RateLimits) ProtoMessage() {}
 
 func (x *RateLimits) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[3]
+	mi := &file_api_proto_cage_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -441,7 +441,7 @@ func (x *RateLimits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RateLimits.ProtoReflect.Descriptor instead.
 func (*RateLimits) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{3}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RateLimits) GetRequestsPerSecond() int32 {
@@ -461,7 +461,7 @@ type LLMGatewayConfig struct {
 
 func (x *LLMGatewayConfig) Reset() {
 	*x = LLMGatewayConfig{}
-	mi := &file_api_proto_cage_proto_msgTypes[4]
+	mi := &file_api_proto_cage_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -473,7 +473,7 @@ func (x *LLMGatewayConfig) String() string {
 func (*LLMGatewayConfig) ProtoMessage() {}
 
 func (x *LLMGatewayConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[4]
+	mi := &file_api_proto_cage_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -486,7 +486,7 @@ func (x *LLMGatewayConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LLMGatewayConfig.ProtoReflect.Descriptor instead.
 func (*LLMGatewayConfig) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{4}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *LLMGatewayConfig) GetTokenBudget() int64 {
@@ -504,16 +504,19 @@ func (x *LLMGatewayConfig) GetRoutingStrategy() RoutingStrategy {
 }
 
 type PayloadProxyConfig struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Mode              PayloadProxyMode       `protobuf:"varint,1,opt,name=mode,proto3,enum=agentcage.cage.v1.PayloadProxyMode" json:"mode,omitempty"`
-	BlocklistPatterns []string               `protobuf:"bytes,2,rep,name=blocklist_patterns,json=blocklistPatterns,proto3" json:"blocklist_patterns,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	JudgeEndpoint       string                 `protobuf:"bytes,1,opt,name=judge_endpoint,json=judgeEndpoint,proto3" json:"judge_endpoint,omitempty"`
+	JudgeConfidence     float64                `protobuf:"fixed64,2,opt,name=judge_confidence,json=judgeConfidence,proto3" json:"judge_confidence,omitempty"`
+	JudgeTimeoutSeconds int32                  `protobuf:"varint,3,opt,name=judge_timeout_seconds,json=judgeTimeoutSeconds,proto3" json:"judge_timeout_seconds,omitempty"`
+	ExtraBlock          []*PatternEntry        `protobuf:"bytes,4,rep,name=extra_block,json=extraBlock,proto3" json:"extra_block,omitempty"`
+	ExtraFlag           []*PatternEntry        `protobuf:"bytes,5,rep,name=extra_flag,json=extraFlag,proto3" json:"extra_flag,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *PayloadProxyConfig) Reset() {
 	*x = PayloadProxyConfig{}
-	mi := &file_api_proto_cage_proto_msgTypes[5]
+	mi := &file_api_proto_cage_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -525,7 +528,7 @@ func (x *PayloadProxyConfig) String() string {
 func (*PayloadProxyConfig) ProtoMessage() {}
 
 func (x *PayloadProxyConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[5]
+	mi := &file_api_proto_cage_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -538,19 +541,40 @@ func (x *PayloadProxyConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PayloadProxyConfig.ProtoReflect.Descriptor instead.
 func (*PayloadProxyConfig) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{5}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *PayloadProxyConfig) GetMode() PayloadProxyMode {
+func (x *PayloadProxyConfig) GetJudgeEndpoint() string {
 	if x != nil {
-		return x.Mode
+		return x.JudgeEndpoint
 	}
-	return PayloadProxyMode_PAYLOAD_PROXY_MODE_UNSPECIFIED
+	return ""
 }
 
-func (x *PayloadProxyConfig) GetBlocklistPatterns() []string {
+func (x *PayloadProxyConfig) GetJudgeConfidence() float64 {
 	if x != nil {
-		return x.BlocklistPatterns
+		return x.JudgeConfidence
+	}
+	return 0
+}
+
+func (x *PayloadProxyConfig) GetJudgeTimeoutSeconds() int32 {
+	if x != nil {
+		return x.JudgeTimeoutSeconds
+	}
+	return 0
+}
+
+func (x *PayloadProxyConfig) GetExtraBlock() []*PatternEntry {
+	if x != nil {
+		return x.ExtraBlock
+	}
+	return nil
+}
+
+func (x *PayloadProxyConfig) GetExtraFlag() []*PatternEntry {
+	if x != nil {
+		return x.ExtraFlag
 	}
 	return nil
 }
@@ -572,7 +596,7 @@ type CageConfig struct {
 
 func (x *CageConfig) Reset() {
 	*x = CageConfig{}
-	mi := &file_api_proto_cage_proto_msgTypes[6]
+	mi := &file_api_proto_cage_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -584,7 +608,7 @@ func (x *CageConfig) String() string {
 func (*CageConfig) ProtoMessage() {}
 
 func (x *CageConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[6]
+	mi := &file_api_proto_cage_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -597,7 +621,7 @@ func (x *CageConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CageConfig.ProtoReflect.Descriptor instead.
 func (*CageConfig) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{6}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CageConfig) GetAssessmentId() string {
@@ -678,7 +702,7 @@ type CageInfo struct {
 
 func (x *CageInfo) Reset() {
 	*x = CageInfo{}
-	mi := &file_api_proto_cage_proto_msgTypes[7]
+	mi := &file_api_proto_cage_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -690,7 +714,7 @@ func (x *CageInfo) String() string {
 func (*CageInfo) ProtoMessage() {}
 
 func (x *CageInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[7]
+	mi := &file_api_proto_cage_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -703,7 +727,7 @@ func (x *CageInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CageInfo.ProtoReflect.Descriptor instead.
 func (*CageInfo) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{7}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CageInfo) GetCageId() string {
@@ -764,7 +788,7 @@ type CreateCageRequest struct {
 
 func (x *CreateCageRequest) Reset() {
 	*x = CreateCageRequest{}
-	mi := &file_api_proto_cage_proto_msgTypes[8]
+	mi := &file_api_proto_cage_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -776,7 +800,7 @@ func (x *CreateCageRequest) String() string {
 func (*CreateCageRequest) ProtoMessage() {}
 
 func (x *CreateCageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[8]
+	mi := &file_api_proto_cage_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -789,7 +813,7 @@ func (x *CreateCageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCageRequest.ProtoReflect.Descriptor instead.
 func (*CreateCageRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{8}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CreateCageRequest) GetConfig() *CageConfig {
@@ -808,7 +832,7 @@ type CreateCageResponse struct {
 
 func (x *CreateCageResponse) Reset() {
 	*x = CreateCageResponse{}
-	mi := &file_api_proto_cage_proto_msgTypes[9]
+	mi := &file_api_proto_cage_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -820,7 +844,7 @@ func (x *CreateCageResponse) String() string {
 func (*CreateCageResponse) ProtoMessage() {}
 
 func (x *CreateCageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[9]
+	mi := &file_api_proto_cage_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -833,7 +857,7 @@ func (x *CreateCageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCageResponse.ProtoReflect.Descriptor instead.
 func (*CreateCageResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{9}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateCageResponse) GetCage() *CageInfo {
@@ -852,7 +876,7 @@ type GetCageRequest struct {
 
 func (x *GetCageRequest) Reset() {
 	*x = GetCageRequest{}
-	mi := &file_api_proto_cage_proto_msgTypes[10]
+	mi := &file_api_proto_cage_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -864,7 +888,7 @@ func (x *GetCageRequest) String() string {
 func (*GetCageRequest) ProtoMessage() {}
 
 func (x *GetCageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[10]
+	mi := &file_api_proto_cage_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -877,7 +901,7 @@ func (x *GetCageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCageRequest.ProtoReflect.Descriptor instead.
 func (*GetCageRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{10}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetCageRequest) GetCageId() string {
@@ -896,7 +920,7 @@ type GetCageResponse struct {
 
 func (x *GetCageResponse) Reset() {
 	*x = GetCageResponse{}
-	mi := &file_api_proto_cage_proto_msgTypes[11]
+	mi := &file_api_proto_cage_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -908,7 +932,7 @@ func (x *GetCageResponse) String() string {
 func (*GetCageResponse) ProtoMessage() {}
 
 func (x *GetCageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[11]
+	mi := &file_api_proto_cage_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -921,7 +945,7 @@ func (x *GetCageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCageResponse.ProtoReflect.Descriptor instead.
 func (*GetCageResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{11}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetCageResponse) GetCage() *CageInfo {
@@ -941,7 +965,7 @@ type DestroyCageRequest struct {
 
 func (x *DestroyCageRequest) Reset() {
 	*x = DestroyCageRequest{}
-	mi := &file_api_proto_cage_proto_msgTypes[12]
+	mi := &file_api_proto_cage_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -953,7 +977,7 @@ func (x *DestroyCageRequest) String() string {
 func (*DestroyCageRequest) ProtoMessage() {}
 
 func (x *DestroyCageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[12]
+	mi := &file_api_proto_cage_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -966,7 +990,7 @@ func (x *DestroyCageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyCageRequest.ProtoReflect.Descriptor instead.
 func (*DestroyCageRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{12}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DestroyCageRequest) GetCageId() string {
@@ -991,7 +1015,7 @@ type DestroyCageResponse struct {
 
 func (x *DestroyCageResponse) Reset() {
 	*x = DestroyCageResponse{}
-	mi := &file_api_proto_cage_proto_msgTypes[13]
+	mi := &file_api_proto_cage_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1003,7 +1027,7 @@ func (x *DestroyCageResponse) String() string {
 func (*DestroyCageResponse) ProtoMessage() {}
 
 func (x *DestroyCageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[13]
+	mi := &file_api_proto_cage_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1016,14 +1040,17 @@ func (x *DestroyCageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyCageResponse.ProtoReflect.Descriptor instead.
 func (*DestroyCageResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{13}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{14}
 }
 
 var File_api_proto_cage_proto protoreflect.FileDescriptor
 
 const file_api_proto_cage_proto_rawDesc = "" +
 	"\n" +
-	"\x14api/proto/cage.proto\x12\x11agentcage.cage.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"g\n" +
+	"\x14api/proto/cage.proto\x12\x11agentcage.cage.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"@\n" +
+	"\fPatternEntry\x12\x18\n" +
+	"\apattern\x18\x01 \x01(\tR\apattern\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"g\n" +
 	"\vTargetScope\x12\x14\n" +
 	"\x05hosts\x18\x01 \x03(\tR\x05hosts\x12\x14\n" +
 	"\x05ports\x18\x02 \x03(\tR\x05ports\x12\x14\n" +
@@ -1040,10 +1067,15 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\x13requests_per_second\x18\x01 \x01(\x05R\x11requestsPerSecond\"\x84\x01\n" +
 	"\x10LLMGatewayConfig\x12!\n" +
 	"\ftoken_budget\x18\x01 \x01(\x03R\vtokenBudget\x12M\n" +
-	"\x10routing_strategy\x18\x02 \x01(\x0e2\".agentcage.cage.v1.RoutingStrategyR\x0froutingStrategy\"|\n" +
-	"\x12PayloadProxyConfig\x127\n" +
-	"\x04mode\x18\x01 \x01(\x0e2#.agentcage.cage.v1.PayloadProxyModeR\x04mode\x12-\n" +
-	"\x12blocklist_patterns\x18\x02 \x03(\tR\x11blocklistPatterns\"\xaa\x04\n" +
+	"\x10routing_strategy\x18\x02 \x01(\x0e2\".agentcage.cage.v1.RoutingStrategyR\x0froutingStrategy\"\x9c\x02\n" +
+	"\x12PayloadProxyConfig\x12%\n" +
+	"\x0ejudge_endpoint\x18\x01 \x01(\tR\rjudgeEndpoint\x12)\n" +
+	"\x10judge_confidence\x18\x02 \x01(\x01R\x0fjudgeConfidence\x122\n" +
+	"\x15judge_timeout_seconds\x18\x03 \x01(\x05R\x13judgeTimeoutSeconds\x12@\n" +
+	"\vextra_block\x18\x04 \x03(\v2\x1f.agentcage.cage.v1.PatternEntryR\n" +
+	"extraBlock\x12>\n" +
+	"\n" +
+	"extra_flag\x18\x05 \x03(\v2\x1f.agentcage.cage.v1.PatternEntryR\textraFlag\"\xaa\x04\n" +
 	"\n" +
 	"CageConfig\x12#\n" +
 	"\rassessment_id\x18\x01 \x01(\tR\fassessmentId\x12/\n" +
@@ -1094,12 +1126,7 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\x11CAGE_STATE_PAUSED\x10\x04\x12\x1b\n" +
 	"\x17CAGE_STATE_TEARING_DOWN\x10\x05\x12\x18\n" +
 	"\x14CAGE_STATE_COMPLETED\x10\x06\x12\x15\n" +
-	"\x11CAGE_STATE_FAILED\x10\a*\x9a\x01\n" +
-	"\x10PayloadProxyMode\x12\"\n" +
-	"\x1ePAYLOAD_PROXY_MODE_UNSPECIFIED\x10\x00\x12 \n" +
-	"\x1cPAYLOAD_PROXY_MODE_BLOCKLIST\x10\x01\x12\x1f\n" +
-	"\x1bPAYLOAD_PROXY_MODE_CLASSIFY\x10\x02\x12\x1f\n" +
-	"\x1bPAYLOAD_PROXY_MODE_DISABLED\x10\x03*\xa0\x01\n" +
+	"\x11CAGE_STATE_FAILED\x10\a*\xa0\x01\n" +
 	"\x0fRoutingStrategy\x12 \n" +
 	"\x1cROUTING_STRATEGY_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fROUTING_STRATEGY_COST_OPTIMIZED\x10\x01\x12\"\n" +
@@ -1123,13 +1150,13 @@ func file_api_proto_cage_proto_rawDescGZIP() []byte {
 	return file_api_proto_cage_proto_rawDescData
 }
 
-var file_api_proto_cage_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_api_proto_cage_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_api_proto_cage_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_api_proto_cage_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_api_proto_cage_proto_goTypes = []any{
 	(CageType)(0),                 // 0: agentcage.cage.v1.CageType
 	(CageState)(0),                // 1: agentcage.cage.v1.CageState
-	(PayloadProxyMode)(0),         // 2: agentcage.cage.v1.PayloadProxyMode
-	(RoutingStrategy)(0),          // 3: agentcage.cage.v1.RoutingStrategy
+	(RoutingStrategy)(0),          // 2: agentcage.cage.v1.RoutingStrategy
+	(*PatternEntry)(nil),          // 3: agentcage.cage.v1.PatternEntry
 	(*TargetScope)(nil),           // 4: agentcage.cage.v1.TargetScope
 	(*ResourceLimits)(nil),        // 5: agentcage.cage.v1.ResourceLimits
 	(*TimeLimits)(nil),            // 6: agentcage.cage.v1.TimeLimits
@@ -1149,34 +1176,35 @@ var file_api_proto_cage_proto_goTypes = []any{
 }
 var file_api_proto_cage_proto_depIdxs = []int32{
 	18, // 0: agentcage.cage.v1.TimeLimits.max_duration:type_name -> google.protobuf.Duration
-	3,  // 1: agentcage.cage.v1.LLMGatewayConfig.routing_strategy:type_name -> agentcage.cage.v1.RoutingStrategy
-	2,  // 2: agentcage.cage.v1.PayloadProxyConfig.mode:type_name -> agentcage.cage.v1.PayloadProxyMode
-	0,  // 3: agentcage.cage.v1.CageConfig.type:type_name -> agentcage.cage.v1.CageType
-	4,  // 4: agentcage.cage.v1.CageConfig.scope:type_name -> agentcage.cage.v1.TargetScope
-	5,  // 5: agentcage.cage.v1.CageConfig.resources:type_name -> agentcage.cage.v1.ResourceLimits
-	6,  // 6: agentcage.cage.v1.CageConfig.time_limits:type_name -> agentcage.cage.v1.TimeLimits
-	7,  // 7: agentcage.cage.v1.CageConfig.rate_limits:type_name -> agentcage.cage.v1.RateLimits
-	8,  // 8: agentcage.cage.v1.CageConfig.llm_gateway:type_name -> agentcage.cage.v1.LLMGatewayConfig
-	9,  // 9: agentcage.cage.v1.CageConfig.proxy_config:type_name -> agentcage.cage.v1.PayloadProxyConfig
-	0,  // 10: agentcage.cage.v1.CageInfo.type:type_name -> agentcage.cage.v1.CageType
-	1,  // 11: agentcage.cage.v1.CageInfo.state:type_name -> agentcage.cage.v1.CageState
-	10, // 12: agentcage.cage.v1.CageInfo.config:type_name -> agentcage.cage.v1.CageConfig
-	19, // 13: agentcage.cage.v1.CageInfo.created_at:type_name -> google.protobuf.Timestamp
-	19, // 14: agentcage.cage.v1.CageInfo.updated_at:type_name -> google.protobuf.Timestamp
-	10, // 15: agentcage.cage.v1.CreateCageRequest.config:type_name -> agentcage.cage.v1.CageConfig
-	11, // 16: agentcage.cage.v1.CreateCageResponse.cage:type_name -> agentcage.cage.v1.CageInfo
-	11, // 17: agentcage.cage.v1.GetCageResponse.cage:type_name -> agentcage.cage.v1.CageInfo
-	12, // 18: agentcage.cage.v1.CageService.CreateCage:input_type -> agentcage.cage.v1.CreateCageRequest
-	14, // 19: agentcage.cage.v1.CageService.GetCage:input_type -> agentcage.cage.v1.GetCageRequest
-	16, // 20: agentcage.cage.v1.CageService.DestroyCage:input_type -> agentcage.cage.v1.DestroyCageRequest
-	13, // 21: agentcage.cage.v1.CageService.CreateCage:output_type -> agentcage.cage.v1.CreateCageResponse
-	15, // 22: agentcage.cage.v1.CageService.GetCage:output_type -> agentcage.cage.v1.GetCageResponse
-	17, // 23: agentcage.cage.v1.CageService.DestroyCage:output_type -> agentcage.cage.v1.DestroyCageResponse
-	21, // [21:24] is the sub-list for method output_type
-	18, // [18:21] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	2,  // 1: agentcage.cage.v1.LLMGatewayConfig.routing_strategy:type_name -> agentcage.cage.v1.RoutingStrategy
+	3,  // 2: agentcage.cage.v1.PayloadProxyConfig.extra_block:type_name -> agentcage.cage.v1.PatternEntry
+	3,  // 3: agentcage.cage.v1.PayloadProxyConfig.extra_flag:type_name -> agentcage.cage.v1.PatternEntry
+	0,  // 4: agentcage.cage.v1.CageConfig.type:type_name -> agentcage.cage.v1.CageType
+	4,  // 5: agentcage.cage.v1.CageConfig.scope:type_name -> agentcage.cage.v1.TargetScope
+	5,  // 6: agentcage.cage.v1.CageConfig.resources:type_name -> agentcage.cage.v1.ResourceLimits
+	6,  // 7: agentcage.cage.v1.CageConfig.time_limits:type_name -> agentcage.cage.v1.TimeLimits
+	7,  // 8: agentcage.cage.v1.CageConfig.rate_limits:type_name -> agentcage.cage.v1.RateLimits
+	8,  // 9: agentcage.cage.v1.CageConfig.llm_gateway:type_name -> agentcage.cage.v1.LLMGatewayConfig
+	9,  // 10: agentcage.cage.v1.CageConfig.proxy_config:type_name -> agentcage.cage.v1.PayloadProxyConfig
+	0,  // 11: agentcage.cage.v1.CageInfo.type:type_name -> agentcage.cage.v1.CageType
+	1,  // 12: agentcage.cage.v1.CageInfo.state:type_name -> agentcage.cage.v1.CageState
+	10, // 13: agentcage.cage.v1.CageInfo.config:type_name -> agentcage.cage.v1.CageConfig
+	19, // 14: agentcage.cage.v1.CageInfo.created_at:type_name -> google.protobuf.Timestamp
+	19, // 15: agentcage.cage.v1.CageInfo.updated_at:type_name -> google.protobuf.Timestamp
+	10, // 16: agentcage.cage.v1.CreateCageRequest.config:type_name -> agentcage.cage.v1.CageConfig
+	11, // 17: agentcage.cage.v1.CreateCageResponse.cage:type_name -> agentcage.cage.v1.CageInfo
+	11, // 18: agentcage.cage.v1.GetCageResponse.cage:type_name -> agentcage.cage.v1.CageInfo
+	12, // 19: agentcage.cage.v1.CageService.CreateCage:input_type -> agentcage.cage.v1.CreateCageRequest
+	14, // 20: agentcage.cage.v1.CageService.GetCage:input_type -> agentcage.cage.v1.GetCageRequest
+	16, // 21: agentcage.cage.v1.CageService.DestroyCage:input_type -> agentcage.cage.v1.DestroyCageRequest
+	13, // 22: agentcage.cage.v1.CageService.CreateCage:output_type -> agentcage.cage.v1.CreateCageResponse
+	15, // 23: agentcage.cage.v1.CageService.GetCage:output_type -> agentcage.cage.v1.GetCageResponse
+	17, // 24: agentcage.cage.v1.CageService.DestroyCage:output_type -> agentcage.cage.v1.DestroyCageResponse
+	22, // [22:25] is the sub-list for method output_type
+	19, // [19:22] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_cage_proto_init() }
@@ -1184,14 +1212,14 @@ func file_api_proto_cage_proto_init() {
 	if File_api_proto_cage_proto != nil {
 		return
 	}
-	file_api_proto_cage_proto_msgTypes[6].OneofWrappers = []any{}
+	file_api_proto_cage_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_cage_proto_rawDesc), len(file_api_proto_cage_proto_rawDesc)),
-			NumEnums:      4,
-			NumMessages:   14,
+			NumEnums:      3,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

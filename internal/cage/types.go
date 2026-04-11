@@ -133,30 +133,19 @@ type LLMGatewayConfig struct {
 	RoutingStrategy string
 }
 
-type ProxyMode int
-
-const (
-	ProxyModeBlocklist ProxyMode = iota + 1
-	ProxyModeClassify
-	ProxyModeDisabled
-)
-
-func (m ProxyMode) String() string {
-	switch m {
-	case ProxyModeBlocklist:
-		return "blocklist"
-	case ProxyModeClassify:
-		return "classify"
-	case ProxyModeDisabled:
-		return "disabled"
-	default:
-		return "unknown"
-	}
+// ProxyPatternEntry is a regex pattern with a human-readable reason.
+// Used for per-run extra block and flag patterns from the plan file.
+type ProxyPatternEntry struct {
+	Pattern string
+	Reason  string
 }
 
 type ProxyConfig struct {
-	Mode              ProxyMode
-	BlocklistPatterns []string
+	JudgeEndpoint   string
+	JudgeConfidence float64
+	JudgeTimeoutSec int
+	ExtraBlock      []ProxyPatternEntry
+	ExtraFlag       []ProxyPatternEntry
 }
 
 type Info struct {
