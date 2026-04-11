@@ -49,7 +49,8 @@ func (r *ReloadableCert) Reload() error {
 // GetCertificate, picking up reloads.
 func (r *ReloadableCert) TLSConfig() *tls.Config {
 	return &tls.Config{
-		MinVersion: tls.VersionTLS12,
+		MinVersion:   tls.VersionTLS12,
+		CipherSuites: PreferredCipherSuites,
 		GetCertificate: func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			c := r.current.Load()
 			if c == nil {

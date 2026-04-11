@@ -15,6 +15,7 @@ import (
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/config"
+	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/envvar"
 	"github.com/okedeji/agentcage/internal/plan"
@@ -205,7 +206,7 @@ func buildClientCredentials() (credentials.TransportCredentials, error) {
 		return grpcinsecure.NewCredentials(), nil
 	}
 
-	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, CipherSuites: agentgrpc.PreferredCipherSuites}
 
 	if certFile != "" && keyFile != "" {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)

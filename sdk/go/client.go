@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/grpc"
@@ -29,6 +30,8 @@ type ClientOption func(*clientOptions)
 type clientOptions struct {
 	tlsCertFile string
 	spireSocket string
+	trustDomain string
+	insecure    bool
 }
 
 // WithTLS configures TLS for the gRPC connection using the server's CA cert.
@@ -36,9 +39,20 @@ func WithTLS(certFile string) ClientOption {
 	return func(o *clientOptions) { o.tlsCertFile = certFile }
 }
 
-// WithSPIRE configures mTLS via SPIRE Workload API.
-func WithSPIRE(agentSocket string) ClientOption {
-	return func(o *clientOptions) { o.spireSocket = agentSocket }
+// WithInsecure explicitly opts into plaintext gRPC. Required for
+// localhost/dev; NewClient returns an error if no transport security
+// option is provided.
+func WithInsecure() ClientOption {
+	return func(o *clientOptions) { o.insecure = true }
+}
+
+// WithSPIRE configures mTLS via SPIRE Workload API. The trustDomain
+// restricts accepted server SVIDs to the specified SPIFFE trust domain.
+func WithSPIRE(agentSocket, trustDomain string) ClientOption {
+	return func(o *clientOptions) {
+		o.spireSocket = agentSocket
+		o.trustDomain = trustDomain
+	}
 }
 
 // NewClient connects to an agentcage orchestrator at the given address.
@@ -55,7 +69,11 @@ func NewClient(addr string, opts ...ClientOption) (*Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("connecting to SPIRE at %s: %w", o.spireSocket, err)
 		}
-		tlsCfg := tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())
+		td, tdErr := spiffeid.TrustDomainFromString(o.trustDomain)
+		if tdErr != nil {
+			return nil, fmt.Errorf("parsing trust domain %q: %w", o.trustDomain, tdErr)
+		}
+		tlsCfg := tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeMemberOf(td))
 		creds = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
 	case o.tlsCertFile != "":
 		tc, err := credentials.NewClientTLSFromFile(o.tlsCertFile, "")
@@ -63,8 +81,10 @@ func NewClient(addr string, opts ...ClientOption) (*Client, error) {
 			return nil, fmt.Errorf("loading TLS cert %s: %w", o.tlsCertFile, err)
 		}
 		creds = grpc.WithTransportCredentials(tc)
-	default:
+	case o.insecure:
 		creds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	default:
+		return nil, fmt.Errorf("no transport security configured: use WithTLS, WithSPIRE, or WithInsecure")
 	}
 
 	conn, err := grpc.NewClient(addr, creds)
