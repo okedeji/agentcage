@@ -16,6 +16,7 @@ const (
 	StopReasonTripwire
 	StopReasonBudgetExhausted
 	StopReasonError
+	StopReasonHumanReview
 )
 
 func (r StopReason) String() string {
@@ -30,6 +31,8 @@ func (r StopReason) String() string {
 		return "budget_exhausted"
 	case StopReasonError:
 		return "error"
+	case StopReasonHumanReview:
+		return "human_review"
 	default:
 		return "unknown"
 	}
@@ -37,6 +40,31 @@ func (r StopReason) String() string {
 
 func (r StopReason) RequiresRCA() bool {
 	return r == StopReasonTripwire || r == StopReasonError
+}
+
+// InterventionType mirrors intervention.Type so the cage package can
+// specify intervention types without importing intervention.
+type InterventionType int
+
+const (
+	InterventionTripwireEscalation InterventionType = 1
+	InterventionPayloadReview      InterventionType = 2
+)
+
+// InterventionPriority mirrors intervention.Priority.
+type InterventionPriority int
+
+const (
+	InterventionPriorityHigh     InterventionPriority = 3
+	InterventionPriorityCritical InterventionPriority = 4
+)
+
+// InterventionEnqueuer creates pending intervention requests in the queue.
+// Defined here so cage activities can enqueue without importing the
+// intervention package directly. The adapter in cmd/agentcage bridges
+// to intervention.Queue.Enqueue via type casts.
+type InterventionEnqueuer interface {
+	Enqueue(ctx context.Context, reqType InterventionType, priority InterventionPriority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error)
 }
 
 // Activities defines the operations the cage workflow can invoke.
@@ -51,6 +79,9 @@ type Activities interface {
 	ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error)
 	ApplyNetworkPolicy(ctx context.Context, cageID string, scope Scope, extras []string) error
 	MonitorCage(ctx context.Context, cageID, vmID string, config Config) (StopReason, error)
+	SuspendAgent(ctx context.Context, vmID string) error
+	ResumeAgent(ctx context.Context, vmID string) error
+	EnqueueIntervention(ctx context.Context, reqType InterventionType, priority InterventionPriority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error)
 	ExportAuditLog(ctx context.Context, cageID string) error
 	TeardownVM(ctx context.Context, vmID string) error
 	RevokeSVID(ctx context.Context, svidID string) error

@@ -4,8 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -14,6 +18,7 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/enforcement"
+	"github.com/okedeji/agentcage/internal/intervention"
 )
 
 type cageRuntimeSetup struct {
@@ -134,4 +139,50 @@ func openFalcoReader(ctx context.Context, cfg *config.Config, log logr.Logger) (
 
 	log.Info("Falco alert reader configured", "socket", socket)
 	return cage.NewFalcoAlertReader(socket, log), nil
+}
+
+// startHoldControlServer binds an HTTP server that receives payload hold
+// notifications from in-cage proxies. The handler is a cage.PayloadHoldHandler
+// which enqueues interventions and relays decisions back.
+func startHoldControlServer(addr string, handler *cage.PayloadHoldHandler, cancel context.CancelFunc, log logr.Logger) error {
+	mux := http.NewServeMux()
+	mux.Handle("/payload-hold", handler)
+
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("binding hold control server on %s: %w", addr, err)
+	}
+	log.Info("payload hold control server started", "addr", lis.Addr().String())
+
+	go func() {
+		if srvErr := http.Serve(lis, mux); srvErr != nil {
+			log.Error(srvErr, "payload hold control server stopped")
+			cancel()
+		}
+	}()
+	return nil
+}
+
+// portFromAddr extracts the port portion from a host:port address string.
+func portFromAddr(addr string) string {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return strings.TrimPrefix(addr, ":")
+	}
+	return port
+}
+
+// interventionQueueAdapter bridges cage.InterventionEnqueuer (int params)
+// and intervention.Queue (typed params) so the cage package does not
+// import intervention.
+type interventionQueueAdapter struct {
+	q *intervention.Queue
+}
+
+func (a *interventionQueueAdapter) Enqueue(ctx context.Context, reqType cage.InterventionType, priority cage.InterventionPriority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error) {
+	req, err := a.q.Enqueue(ctx, intervention.Type(reqType), intervention.Priority(priority), cageID, assessmentID, description, contextData, timeout)
+	if err != nil {
+		return "", err
+	}
+	return req.ID, nil
 }

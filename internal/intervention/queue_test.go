@@ -99,6 +99,10 @@ func (n *recordingNotifier) NotifyTimedOut(_ context.Context, req Request) error
 	return nil
 }
 
+func (n *recordingNotifier) NotifyExpiring(_ context.Context, _ Request, _ time.Duration) error {
+	return nil
+}
+
 func newTestQueue() (*Queue, *memStore, *recordingNotifier) {
 	store := newMemStore()
 	notifier := &recordingNotifier{}

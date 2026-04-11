@@ -16,6 +16,7 @@ type Notifier interface {
 	NotifyCreated(ctx context.Context, req Request) error
 	NotifyResolved(ctx context.Context, req Request) error
 	NotifyTimedOut(ctx context.Context, req Request) error
+	NotifyExpiring(ctx context.Context, req Request, remaining time.Duration) error
 }
 
 type WebhookPayload struct {
@@ -54,6 +55,10 @@ func (w *WebhookNotifier) NotifyResolved(ctx context.Context, req Request) error
 
 func (w *WebhookNotifier) NotifyTimedOut(ctx context.Context, req Request) error {
 	return w.dispatch(ctx, "intervention.timed_out", req)
+}
+
+func (w *WebhookNotifier) NotifyExpiring(ctx context.Context, req Request, remaining time.Duration) error {
+	return w.dispatch(ctx, "intervention.expiring", req)
 }
 
 func (w *WebhookNotifier) dispatch(ctx context.Context, event string, req Request) error {
@@ -138,6 +143,15 @@ func (n *LogNotifier) NotifyResolved(_ context.Context, req Request) error {
 	return nil
 }
 
+func (n *LogNotifier) NotifyExpiring(_ context.Context, req Request, remaining time.Duration) error {
+	n.log.Info("INTERVENTION EXPIRING, operator action required",
+		"intervention_id", req.ID,
+		"cage_id", req.CageID,
+		"remaining", remaining,
+	)
+	return nil
+}
+
 func (n *LogNotifier) NotifyTimedOut(_ context.Context, req Request) error {
 	n.log.Info("INTERVENTION TIMED OUT, cage will be killed",
 		"intervention_id", req.ID,
@@ -180,6 +194,15 @@ func (m *MultiNotifier) NotifyResolved(ctx context.Context, req Request) error {
 	return nil
 }
 
+func (m *MultiNotifier) NotifyExpiring(ctx context.Context, req Request, remaining time.Duration) error {
+	for _, n := range m.notifiers {
+		if err := n.NotifyExpiring(ctx, req, remaining); err != nil {
+			m.log.Error(err, "notifier failed on expiring event", "intervention_id", req.ID)
+		}
+	}
+	return nil
+}
+
 func (m *MultiNotifier) NotifyTimedOut(ctx context.Context, req Request) error {
 	for _, n := range m.notifiers {
 		if err := n.NotifyTimedOut(ctx, req); err != nil {
@@ -191,6 +214,7 @@ func (m *MultiNotifier) NotifyTimedOut(ctx context.Context, req Request) error {
 
 type NoopNotifier struct{}
 
-func (n *NoopNotifier) NotifyCreated(_ context.Context, _ Request) error  { return nil }
-func (n *NoopNotifier) NotifyResolved(_ context.Context, _ Request) error { return nil }
-func (n *NoopNotifier) NotifyTimedOut(_ context.Context, _ Request) error { return nil }
+func (n *NoopNotifier) NotifyCreated(_ context.Context, _ Request) error                    { return nil }
+func (n *NoopNotifier) NotifyResolved(_ context.Context, _ Request) error                   { return nil }
+func (n *NoopNotifier) NotifyTimedOut(_ context.Context, _ Request) error                   { return nil }
+func (n *NoopNotifier) NotifyExpiring(_ context.Context, _ Request, _ time.Duration) error  { return nil }

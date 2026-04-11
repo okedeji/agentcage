@@ -37,6 +37,11 @@ func (activityStub) ApplyNetworkPolicy(context.Context, string, Scope, []string)
 func (activityStub) MonitorCage(context.Context, string, string, Config) (StopReason, error) {
 	return StopReasonCompleted, nil
 }
+func (activityStub) SuspendAgent(context.Context, string) error { return nil }
+func (activityStub) ResumeAgent(context.Context, string) error  { return nil }
+func (activityStub) EnqueueIntervention(context.Context, InterventionType, InterventionPriority, string, string, string, []byte, time.Duration) (string, error) {
+	return "int-test-1", nil
+}
 func (activityStub) ExportAuditLog(context.Context, string) error               { return nil }
 func (activityStub) TeardownVM(context.Context, string) error                   { return nil }
 func (activityStub) RevokeSVID(context.Context, string) error                   { return nil }
@@ -61,7 +66,7 @@ func testWorkflowInput() CageWorkflowInput {
 			TimeLimits:   TimeLimits{MaxDuration: 5 * time.Minute},
 			RateLimits:   RateLimits{RequestsPerSecond: 100},
 			LLM:          &LLMGatewayConfig{TokenBudget: 100000, RoutingStrategy: "cost_optimized"},
-			ProxyConfig:  ProxyConfig{Mode: ProxyModeBlocklist},
+			ProxyConfig:  ProxyConfig{},
 		},
 		Timeouts: Timeouts{
 			ValidateScope:        5 * time.Second,
@@ -76,7 +81,11 @@ func testWorkflowInput() CageWorkflowInput {
 			VerifyCleanup:        10 * time.Second,
 			HeartbeatProvisionVM: 10 * time.Second,
 			HeartbeatMonitorCage: 30 * time.Second,
+			SuspendAgent:         10 * time.Second,
+			ResumeAgent:          10 * time.Second,
+			EnqueueIntervention:  10 * time.Second,
 		},
+		InterventionTimeout: 15 * time.Minute,
 	}
 }
 
@@ -124,6 +133,9 @@ func registerHappyPathMocks(env *testsuite.TestWorkflowEnvironment) {
 	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
 	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(StopReasonCompleted, nil)
+	env.OnActivity("SuspendAgent", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("ResumeAgent", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("EnqueueIntervention", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("int-test-1", nil)
 	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("TeardownVM", mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity("RevokeSVID", mock.Anything, mock.Anything).Return(nil)
@@ -322,5 +334,109 @@ func TestCageWorkflow_FetchSecretsFailure_CleansUpSVID(t *testing.T) {
 	env.AssertCalled(t, "RevokeSVID", mock.Anything, mock.Anything)
 	env.AssertNotCalled(t, "RevokeVaultToken", mock.Anything, mock.Anything)
 	env.AssertNotCalled(t, "ProvisionVM", mock.Anything, mock.Anything)
+}
+
+func registerHumanReviewSetupMocks(env *testsuite.TestWorkflowEnvironment) {
+	env.OnActivity("ValidateCageConfig", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("IssueIdentity", mock.Anything, mock.Anything, mock.Anything).Return(testSVID(), nil)
+	env.OnActivity("FetchSecrets", mock.Anything, mock.Anything, mock.Anything).Return(testVaultToken(), nil)
+	env.OnActivity("AssembleRootfs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("/tmp/test.ext4", nil)
+	env.OnActivity("ProvisionVM", mock.Anything, mock.Anything).Return(testVMHandle(), nil)
+	env.OnActivity("ApplyNetworkPolicy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("SuspendAgent", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("ResumeAgent", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("EnqueueIntervention", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("int-test-1", nil)
+	env.OnActivity("ExportAuditLog", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("TeardownVM", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("RevokeSVID", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("RevokeVaultToken", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("RemoveNetworkPolicy", mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("VerifyCleanup", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("EmitRCA", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("RecordRunMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity("RecordCostMetrics", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+}
+
+func TestCageWorkflow_HumanReview_Resume(t *testing.T) {
+	env := newTestEnv(t)
+	registerHumanReviewSetupMocks(env)
+
+	monitorCall := 0
+	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(func(ctx context.Context, cageID, vmID string, cfg Config) (StopReason, error) {
+			monitorCall++
+			if monitorCall == 1 {
+				return StopReasonHumanReview, nil
+			}
+			return StopReasonCompleted, nil
+		})
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(intervention.SignalIntervention, intervention.InterventionSignal{
+			Action:    intervention.ActionResume,
+			Rationale: "false alarm",
+		})
+	}, 30*time.Second)
+
+	env.ExecuteWorkflow(CageWorkflow, testWorkflowInput())
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	var result CageWorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	assert.Equal(t, StateCompleted, result.FinalState)
+	assert.Equal(t, StopReasonCompleted, result.StopReason)
+
+	env.AssertCalled(t, "SuspendAgent", mock.Anything, mock.Anything)
+	env.AssertCalled(t, "ResumeAgent", mock.Anything, mock.Anything)
+	env.AssertCalled(t, "EnqueueIntervention", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestCageWorkflow_HumanReview_Kill(t *testing.T) {
+	env := newTestEnv(t)
+	registerHumanReviewSetupMocks(env)
+
+	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(StopReasonHumanReview, nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(intervention.SignalIntervention, intervention.InterventionSignal{
+			Action:    intervention.ActionKill,
+			Rationale: "confirmed malicious",
+		})
+	}, 30*time.Second)
+
+	env.ExecuteWorkflow(CageWorkflow, testWorkflowInput())
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	var result CageWorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	assert.Equal(t, StopReasonTripwire, result.StopReason)
+	assert.Equal(t, StateFailed, result.FinalState)
+
+	env.AssertCalled(t, "SuspendAgent", mock.Anything, mock.Anything)
+	env.AssertNotCalled(t, "ResumeAgent", mock.Anything, mock.Anything)
+	env.AssertCalled(t, "EmitRCA", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestCageWorkflow_HumanReview_Timeout(t *testing.T) {
+	env := newTestEnv(t)
+	registerHumanReviewSetupMocks(env)
+
+	env.OnActivity("MonitorCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(StopReasonHumanReview, nil)
+
+	env.ExecuteWorkflow(CageWorkflow, testWorkflowInput())
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	var result CageWorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+	assert.Equal(t, StopReasonTripwire, result.StopReason)
+	assert.Equal(t, StateFailed, result.FinalState)
+
+	env.AssertCalled(t, "SuspendAgent", mock.Anything, mock.Anything)
+	env.AssertNotCalled(t, "ResumeAgent", mock.Anything, mock.Anything)
 }
 

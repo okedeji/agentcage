@@ -150,7 +150,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 	if cfg.Infrastructure.IsExternalNATS() {
 		natsAddr = cfg.Infrastructure.NATS.URL
 	}
-	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, natsAddr, cage.TimeoutsFromConfig(cfg.Timeouts))
+	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, natsAddr, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
 	fleetSvc := fleet.NewService(fleetSetup.pool, fleetSetup.demand, fleetSetup.provisioner, log.WithValues("component", "fleet"))
 	assessmentSvc := assessment.NewService(temporalClient, db, fleetSetup.autoscaler, cfg.Assessment.MaxIterations)
 
@@ -179,20 +179,31 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return err
 	}
 
+	holdControlAddr := cfg.InterventionHoldControlAddr()
+	payloadHoldHandler := cage.NewPayloadHoldHandler(cage.PayloadHoldConfig{
+		Enqueuer:        &interventionQueueAdapter{q: iQueue},
+		InterventionTTL: cfg.InterventionTimeout(),
+		ControlPort:     portFromAddr(holdControlAddr),
+		Log:             log,
+	})
+	iSvc.SetPayloadHoldResolver(payloadHoldHandler)
+
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
-		Provisioner:    cageRuntime.provisioner,
-		Rootfs:         cageRuntime.rootfs,
-		BundleStoreDir: filepath.Join(embedded.DataDir(), "bundles"),
-		Network:        cageRuntime.network,
-		Validator:      scopeValidator,
-		AlertHandler:   alertHandler,
-		AlertNotifier:  alertDispatcher,
-		FalcoReader:    cageRuntime.falcoReader,
-		FleetPool:      fleet.NewCagePoolAdapter(fleetSetup.pool),
-		AuditStore:     cageRuntime.auditStore,
-		Identity:       svidIssuer,
-		Secrets:        secretFetcher,
-		Log:            log,
+		Provisioner:       cageRuntime.provisioner,
+		Rootfs:            cageRuntime.rootfs,
+		BundleStoreDir:    filepath.Join(embedded.DataDir(), "bundles"),
+		Network:           cageRuntime.network,
+		Validator:         scopeValidator,
+		AlertHandler:      alertHandler,
+		AlertNotifier:     alertDispatcher,
+		FalcoReader:       cageRuntime.falcoReader,
+		FleetPool:         fleet.NewCagePoolAdapter(fleetSetup.pool),
+		AuditStore:        cageRuntime.auditStore,
+		Identity:          svidIssuer,
+		Secrets:           secretFetcher,
+		InterventionQueue: &interventionQueueAdapter{q: iQueue},
+		PayloadHolds:      payloadHoldHandler,
+		Log:               log,
 	})
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
@@ -235,7 +246,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 
 	enforcerLog := log.WithValues("component", "timeout-enforcer")
 	pollInterval := cfg.InterventionPollInterval()
-	timeoutEnforcer := intervention.NewTimeoutEnforcer(iQueue, temporalClient, pollInterval, enforcerLog)
+	timeoutEnforcer := intervention.NewTimeoutEnforcer(iQueue, temporalClient, notifier, pollInterval, cfg.InterventionWarningThreshold(), enforcerLog)
 	enforcerLog.Info("timeout enforcer started", "interval", pollInterval)
 	go func() {
 		// If the enforcer dies, timed-out interventions stop firing.
@@ -264,6 +275,11 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return err
 	}
 	serveGRPC(grpcServer, lis, cancel, log)
+
+	if err := startHoldControlServer(holdControlAddr, payloadHoldHandler, cancel, log); err != nil {
+		shutdownSequence(cancel, deps, nil, log)
+		return fmt.Errorf("starting payload hold control server: %w", err)
+	}
 
 	if err := waitForGRPCReady(ctx, cfg, grpcAddr); err != nil {
 		shutdownSequence(cancel, deps, nil, log)

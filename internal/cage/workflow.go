@@ -18,11 +18,13 @@ import (
 const WorkflowName = "CageWorkflow"
 
 type CageWorkflowInput struct {
-	Config      Config
-	CageID      string
-	LLMEndpoint string
-	NATSAddr    string
-	Timeouts    Timeouts
+	Config              Config
+	CageID              string
+	LLMEndpoint         string
+	NATSAddr            string
+	HostControlAddr     string
+	Timeouts            Timeouts
+	InterventionTimeout time.Duration
 }
 
 type CageWorkflowResult struct {
@@ -74,8 +76,12 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		ScopePorts:   cfg.Scope.Ports,
 		ScopePaths:   cfg.Scope.Paths,
 		SkipPaths:    cfg.SkipPaths,
-		ProxyMode:    cfg.ProxyConfig.Mode.String(),
-		Guidance:     cfg.Guidance,
+		Guidance:         cfg.Guidance,
+		HostControlAddr:  input.HostControlAddr,
+		HoldTimeoutSec:   int(input.InterventionTimeout.Seconds()),
+		JudgeEndpoint:    cfg.ProxyConfig.JudgeEndpoint,
+		JudgeConfidence:  cfg.ProxyConfig.JudgeConfidence,
+		JudgeTimeoutSec:  cfg.ProxyConfig.JudgeTimeoutSec,
 	}
 	if cfg.LLM != nil {
 		env.TokenBudget = cfg.LLM.TokenBudget
@@ -104,6 +110,9 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	setupReachedVM = true
 
 	extras := []string{input.LLMEndpoint, input.NATSAddr}
+	if cfg.ProxyConfig.JudgeEndpoint != "" {
+		extras = append(extras, cfg.ProxyConfig.JudgeEndpoint)
+	}
 	if err := execActivity(
 		withTimeout(ctx, t.ApplyPolicy),
 		"ApplyNetworkPolicy", input.CageID, cfg.Scope, extras,
@@ -115,7 +124,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 
 	// --- Monitor phase ---
 
-	stopReason := runMonitorWithSignals(ctx, cfg, input.CageID, vmHandle.ID, t)
+	stopReason := runMonitorWithSignals(ctx, cfg, input.CageID, vmHandle.ID, t, input.InterventionTimeout)
 
 	// --- Teardown phase ---
 	// All steps execute regardless of individual failures. An orphaned VM
@@ -182,46 +191,125 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	return result, nil
 }
 
-func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID, vmID string, t Timeouts) StopReason {
-	monitorTimeout := cfg.TimeLimits.MaxDuration + 60*time.Second
-	monitorCtx := withHeartbeat(ctx, monitorTimeout, t.HeartbeatMonitorCage)
-	monitorFuture := workflow.ExecuteActivity(monitorCtx, "MonitorCage", cageID, vmID, cfg)
-
+func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID, vmID string, t Timeouts, interventionTimeout time.Duration) StopReason {
 	signalCh := workflow.GetSignalChannel(ctx, intervention.SignalIntervention)
-	sel := workflow.NewSelector(ctx)
+	remaining := cfg.TimeLimits.MaxDuration
 
-	var stopReason StopReason
-	var monitorErr error
-	var monitorDone bool
+	for {
+		monitorStart := workflow.Now(ctx)
 
-	sel.AddFuture(monitorFuture, func(f workflow.Future) {
-		monitorErr = f.Get(ctx, &stopReason)
-		monitorDone = true
-	})
+		adjustedCfg := cfg
+		adjustedCfg.TimeLimits.MaxDuration = remaining
 
-	sel.AddReceive(signalCh, func(ch workflow.ReceiveChannel, more bool) {
-		var signal intervention.InterventionSignal
-		ch.Receive(ctx, &signal)
+		monitorDeadline := remaining + 60*time.Second
+		monitorCtx := withHeartbeat(ctx, monitorDeadline, t.HeartbeatMonitorCage)
+		monitorFuture := workflow.ExecuteActivity(monitorCtx, "MonitorCage", cageID, vmID, adjustedCfg)
 
-		switch signal.Action {
-		case intervention.ActionKill:
-			stopReason = StopReasonTripwire
+		sel := workflow.NewSelector(ctx)
+		var stopReason StopReason
+		var monitorErr error
+		var monitorDone bool
+
+		sel.AddFuture(monitorFuture, func(f workflow.Future) {
+			monitorErr = f.Get(ctx, &stopReason)
 			monitorDone = true
-		case intervention.ActionResume, intervention.ActionAdjustAndResume:
-			// MonitorCage activity handles the actual pause/resume mechanics.
-			// The signal is consumed so the selector can re-enter the loop.
+		})
+
+		sel.AddReceive(signalCh, func(ch workflow.ReceiveChannel, more bool) {
+			var signal intervention.InterventionSignal
+			ch.Receive(ctx, &signal)
+
+			switch signal.Action {
+			case intervention.ActionKill:
+				stopReason = StopReasonTripwire
+				monitorDone = true
+			case intervention.ActionResume, intervention.ActionAdjustAndResume:
+				// Consumed during the review wait below; safe to ignore here.
+			}
+		})
+
+		for !monitorDone {
+			sel.Select(ctx)
 		}
-	})
 
-	for !monitorDone {
-		sel.Select(ctx)
+		if monitorErr != nil && stopReason == 0 {
+			stopReason = StopReasonError
+		}
+
+		if stopReason != StopReasonHumanReview {
+			return stopReason
+		}
+
+		// Workflows started before this version never see StopReasonHumanReview
+		// because their MonitorCage didn't return it. The gate protects replay:
+		// old histories take the default branch and treat it as a tripwire kill.
+		v := workflow.GetVersion(ctx, "add-human-review-pause", workflow.DefaultVersion, 1)
+		if v == workflow.DefaultVersion {
+			return StopReasonTripwire
+		}
+
+		elapsed := workflow.Now(ctx).Sub(monitorStart)
+		remaining -= elapsed
+		if remaining <= 0 {
+			return StopReasonTimeout
+		}
+
+		// Freeze the VM so the agent can't act while waiting for human decision.
+		if err := execActivity(withTimeout(ctx, t.SuspendAgent), "SuspendAgent", vmID); err != nil {
+			return StopReasonError
+		}
+
+		// Create a pending intervention for the operator to resolve.
+		// No retries: if the enqueue fails, fail-closed is the right answer.
+		var interventionID string
+		enqueueCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: t.EnqueueIntervention,
+			RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+		})
+		if err := workflow.ExecuteActivity(
+			enqueueCtx,
+			"EnqueueIntervention",
+			InterventionTripwireEscalation,
+			InterventionPriorityCritical,
+			cageID, cfg.AssessmentID,
+			"Falco tripwire fired: human review required",
+			[]byte(nil),
+			interventionTimeout,
+		).Get(ctx, &interventionID); err != nil {
+			// Can't page a human. Fail-closed: kill.
+			return StopReasonError
+		}
+
+		// Wait for the operator's signal or the safety-net timer.
+		// The TimeoutEnforcer sends ActionKill when the intervention
+		// expires; this timer is a belt-and-suspenders backstop.
+		reviewSel := workflow.NewSelector(ctx)
+		safetyTimer := workflow.NewTimer(ctx, interventionTimeout+30*time.Second)
+		var reviewAction intervention.Action
+
+		reviewSel.AddReceive(signalCh, func(ch workflow.ReceiveChannel, more bool) {
+			var signal intervention.InterventionSignal
+			ch.Receive(ctx, &signal)
+			reviewAction = signal.Action
+		})
+
+		reviewSel.AddFuture(safetyTimer, func(f workflow.Future) {
+			reviewAction = intervention.ActionKill
+		})
+
+		reviewSel.Select(ctx)
+
+		switch reviewAction {
+		case intervention.ActionResume, intervention.ActionAdjustAndResume:
+			if err := execActivity(withTimeout(ctx, t.ResumeAgent), "ResumeAgent", vmID); err != nil {
+				return StopReasonError
+			}
+			continue
+		default:
+			// ActionKill, timeout, or unknown action. Fail-closed.
+			return StopReasonTripwire
+		}
 	}
-
-	if monitorErr != nil && stopReason == 0 {
-		stopReason = StopReasonError
-	}
-
-	return stopReason
 }
 
 func withTimeout(ctx workflow.Context, timeout time.Duration) workflow.Context {

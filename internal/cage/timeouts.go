@@ -21,6 +21,9 @@ type Timeouts struct {
 
 	HeartbeatProvisionVM time.Duration
 	HeartbeatMonitorCage time.Duration
+	SuspendAgent         time.Duration
+	ResumeAgent          time.Duration
+	EnqueueIntervention  time.Duration
 }
 
 // TimeoutsFromConfig builds a Timeouts value from the parsed configuration.
@@ -38,5 +41,8 @@ func TimeoutsFromConfig(at config.ActivityTimeoutsConfig) Timeouts {
 		VerifyCleanup:        at.VerifyCleanup,
 		HeartbeatProvisionVM: at.HeartbeatProvisionVM,
 		HeartbeatMonitorCage: at.HeartbeatMonitorCage,
+		SuspendAgent:         at.SuspendAgent,
+		ResumeAgent:          at.ResumeAgent,
+		EnqueueIntervention:  at.EnqueueIntervention,
 	}
 }

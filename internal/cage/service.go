@@ -22,25 +22,29 @@ var ErrCageNotFound = errors.New("cage not found")
 type ConfigValidator func(Config) error
 
 type Service struct {
-	temporal    client.Client
-	validate    ConfigValidator
-	db          *sql.DB
-	llmEndpoint string
-	natsAddr    string
-	timeouts    Timeouts
-	mu          sync.RWMutex
-	cages       map[string]*Info
+	temporal             client.Client
+	validate             ConfigValidator
+	db                   *sql.DB
+	llmEndpoint          string
+	natsAddr             string
+	hostControlAddr      string
+	timeouts             Timeouts
+	interventionTimeout  time.Duration
+	mu                   sync.RWMutex
+	cages                map[string]*Info
 }
 
-func NewService(temporal client.Client, validate ConfigValidator, db *sql.DB, llmEndpoint, natsAddr string, timeouts Timeouts) *Service {
+func NewService(temporal client.Client, validate ConfigValidator, db *sql.DB, llmEndpoint, natsAddr, hostControlAddr string, timeouts Timeouts, interventionTimeout time.Duration) *Service {
 	return &Service{
-		temporal:    temporal,
-		validate:    validate,
-		db:          db,
-		llmEndpoint: llmEndpoint,
-		natsAddr:    natsAddr,
-		timeouts:    timeouts,
-		cages:       make(map[string]*Info),
+		temporal:            temporal,
+		validate:            validate,
+		db:                  db,
+		llmEndpoint:         llmEndpoint,
+		natsAddr:            natsAddr,
+		hostControlAddr:     hostControlAddr,
+		timeouts:            timeouts,
+		interventionTimeout: interventionTimeout,
+		cages:               make(map[string]*Info),
 	}
 }
 
@@ -74,11 +78,13 @@ func (s *Service) CreateCage(ctx context.Context, config Config) (*Info, error) 
 		TaskQueue: TaskQueue,
 	}
 	input := CageWorkflowInput{
-		CageID:      cageID,
-		Config:      config,
-		LLMEndpoint: s.llmEndpoint,
-		NATSAddr:    s.natsAddr,
-		Timeouts:    s.timeouts,
+		CageID:              cageID,
+		Config:              config,
+		LLMEndpoint:         s.llmEndpoint,
+		NATSAddr:            s.natsAddr,
+		HostControlAddr:     s.hostControlAddr,
+		Timeouts:            s.timeouts,
+		InterventionTimeout: s.interventionTimeout,
 	}
 
 	if _, err := s.temporal.ExecuteWorkflow(ctx, workflowOpts, CageWorkflow, input); err != nil {

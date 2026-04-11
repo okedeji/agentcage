@@ -58,6 +58,33 @@ func TestDefaults_HasAllActivityTimeouts(t *testing.T) {
 	assert.Equal(t, 10*time.Second, at.VerifyCleanup)
 	assert.Equal(t, 10*time.Second, at.HeartbeatProvisionVM)
 	assert.Equal(t, 30*time.Second, at.HeartbeatMonitorCage)
+	assert.Equal(t, 10*time.Second, at.SuspendAgent)
+	assert.Equal(t, 10*time.Second, at.ResumeAgent)
+	assert.Equal(t, 10*time.Second, at.EnqueueIntervention)
+}
+
+func TestDefaults_InterventionAccessors(t *testing.T) {
+	cfg := Defaults()
+
+	assert.Equal(t, 30*time.Second, cfg.InterventionPollInterval())
+	assert.Equal(t, 15*time.Minute, cfg.InterventionTimeout())
+	assert.InDelta(t, 0.7, cfg.InterventionWarningThreshold(), 0.001)
+}
+
+func TestLoad_InterventionOverride(t *testing.T) {
+	content := `
+intervention:
+  timeout: 10m
+  warning_threshold: 0.5
+  poll_interval: 15s
+`
+	path := writeTempFile(t, content)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, 10*time.Minute, cfg.InterventionTimeout())
+	assert.InDelta(t, 0.5, cfg.InterventionWarningThreshold(), 0.001)
+	assert.Equal(t, 15*time.Second, cfg.InterventionPollInterval())
 }
 
 func TestDefaults_HasThreeMonitoringSets(t *testing.T) {

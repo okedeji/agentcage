@@ -13,18 +13,24 @@ type WorkflowSignaler interface {
 }
 
 type TimeoutEnforcer struct {
-	queue        *Queue
-	signaler     WorkflowSignaler
-	pollInterval time.Duration
-	logger       logr.Logger
+	queue            *Queue
+	signaler         WorkflowSignaler
+	notifier         Notifier
+	pollInterval     time.Duration
+	warningThreshold float64
+	warned           map[string]bool
+	logger           logr.Logger
 }
 
-func NewTimeoutEnforcer(queue *Queue, signaler WorkflowSignaler, pollInterval time.Duration, logger logr.Logger) *TimeoutEnforcer {
+func NewTimeoutEnforcer(queue *Queue, signaler WorkflowSignaler, notifier Notifier, pollInterval time.Duration, warningThreshold float64, logger logr.Logger) *TimeoutEnforcer {
 	return &TimeoutEnforcer{
-		queue:        queue,
-		signaler:     signaler,
-		pollInterval: pollInterval,
-		logger:       logger,
+		queue:            queue,
+		signaler:         signaler,
+		notifier:         notifier,
+		pollInterval:     pollInterval,
+		warningThreshold: warningThreshold,
+		warned:           make(map[string]bool),
+		logger:           logger,
 	}
 }
 
@@ -43,7 +49,11 @@ func (e *TimeoutEnforcer) Run(ctx context.Context) error {
 }
 
 func (e *TimeoutEnforcer) pollOnce(ctx context.Context) {
-	expired := e.queue.GetExpired(time.Now())
+	now := time.Now()
+
+	e.warnApproaching(ctx, now)
+
+	expired := e.queue.GetExpired(now)
 	for _, req := range expired {
 		log := e.logger.WithValues(
 			"intervention_id", req.ID,
@@ -59,6 +69,51 @@ func (e *TimeoutEnforcer) pollOnce(ctx context.Context) {
 
 		if err := e.queue.TimeOut(ctx, req.ID); err != nil {
 			log.Error(err, "marking intervention as timed out")
+		}
+
+		delete(e.warned, req.ID)
+	}
+}
+
+// warnApproaching sends a warning notification for interventions that have
+// passed the configured threshold of their timeout without a human response.
+// Also prunes the warned set of interventions that are no longer pending.
+func (e *TimeoutEnforcer) warnApproaching(ctx context.Context, now time.Time) {
+	if e.warningThreshold <= 0 || e.warningThreshold >= 1 {
+		return
+	}
+
+	pending, err := e.queue.GetPending(ctx)
+	if err != nil {
+		e.logger.Error(err, "listing pending interventions for warning check")
+		return
+	}
+
+	pendingIDs := make(map[string]bool, len(pending))
+	for _, req := range pending {
+		pendingIDs[req.ID] = true
+
+		if e.warned[req.ID] {
+			continue
+		}
+		threshold := req.CreatedAt.Add(time.Duration(float64(req.Timeout) * e.warningThreshold))
+		if now.Before(threshold) {
+			continue
+		}
+		remaining := req.CreatedAt.Add(req.Timeout).Sub(now).Truncate(time.Second)
+		if notifyErr := e.notifier.NotifyExpiring(ctx, *req, remaining); notifyErr != nil {
+			e.logger.Error(notifyErr, "sending expiration warning", "intervention_id", req.ID)
+		}
+		e.warned[req.ID] = true
+		e.logger.Info("intervention expiration warning sent",
+			"intervention_id", req.ID,
+			"remaining", remaining,
+		)
+	}
+
+	for id := range e.warned {
+		if !pendingIDs[id] {
+			delete(e.warned, id)
 		}
 	}
 }

@@ -48,14 +48,17 @@ type VMProvisioner interface {
 	Provision(ctx context.Context, config VMConfig) (*VMHandle, error)
 	Terminate(ctx context.Context, vmID string) error
 	Status(ctx context.Context, vmID string) (VMStatus, error)
+	PauseVM(ctx context.Context, vmID string) error
+	ResumeVM(ctx context.Context, vmID string) error
 }
 
 // MockProvisioner is an in-memory VM provisioner for tests and CI
 // environments without KVM. It tracks VM state in maps but does not
 // create real VMs. The real provisioner is FirecrackerProvisioner.
 type MockProvisioner struct {
-	mu  sync.Mutex
-	vms map[string]*VMHandle
+	mu     sync.Mutex
+	vms    map[string]*VMHandle
+	paused map[string]bool
 	// byCageID enables idempotent provisioning: if a cage already
 	// has a VM, we return the existing handle instead of creating a duplicate.
 	byCageID map[string]string
@@ -64,6 +67,7 @@ type MockProvisioner struct {
 func NewMockProvisioner() *MockProvisioner {
 	return &MockProvisioner{
 		vms:      make(map[string]*VMHandle),
+		paused:   make(map[string]bool),
 		byCageID: make(map[string]string),
 	}
 }
@@ -110,4 +114,26 @@ func (p *MockProvisioner) Status(_ context.Context, vmID string) (VMStatus, erro
 		return VMStatusRunning, nil
 	}
 	return VMStatusStopped, nil
+}
+
+func (p *MockProvisioner) PauseVM(_ context.Context, vmID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if _, ok := p.vms[vmID]; !ok {
+		return fmt.Errorf("VM %s not found", vmID)
+	}
+	p.paused[vmID] = true
+	return nil
+}
+
+func (p *MockProvisioner) ResumeVM(_ context.Context, vmID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if _, ok := p.vms[vmID]; !ok {
+		return fmt.Errorf("VM %s not found", vmID)
+	}
+	delete(p.paused, vmID)
+	return nil
 }

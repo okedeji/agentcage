@@ -15,11 +15,19 @@ type ProofReloader interface {
 	Reload() error
 }
 
+// PayloadHoldResolver relays hold decisions back to the in-cage proxy.
+// Defined here as an interface so the concrete implementation in cage/
+// does not create an import cycle.
+type PayloadHoldResolver interface {
+	ReleaseHold(ctx context.Context, interventionID string, allow bool) error
+}
+
 type Service struct {
-	queue        *Queue
-	signaler     WorkflowSignaler
-	proofLibrary ProofReloader
-	logger       logr.Logger
+	queue             *Queue
+	signaler          WorkflowSignaler
+	proofLibrary      ProofReloader
+	payloadHoldResolver PayloadHoldResolver
+	logger            logr.Logger
 }
 
 func NewService(queue *Queue, signaler WorkflowSignaler, logger logr.Logger) *Service {
@@ -36,6 +44,13 @@ func NewService(queue *Queue, signaler WorkflowSignaler, logger logr.Logger) *Se
 // is currently in memory.
 func (s *Service) SetProofReloader(p ProofReloader) {
 	s.proofLibrary = p
+}
+
+// SetPayloadHoldResolver installs the resolver that relays payload hold
+// decisions back to the in-cage proxy. Optional: if unset, payload hold
+// interventions are resolved in the queue but the proxy times out.
+func (s *Service) SetPayloadHoldResolver(r PayloadHoldResolver) {
+	s.payloadHoldResolver = r
 }
 
 // EnqueueProofGap creates a pending proof_gap intervention scoped to an
@@ -138,6 +153,16 @@ func (s *Service) ResolveCageIntervention(ctx context.Context, interventionID st
 		},
 	); err != nil {
 		return fmt.Errorf("signaling cage workflow for intervention %s: %w", interventionID, err)
+	}
+
+	// Payload hold decisions also need to reach the proxy inside the VM.
+	// The workflow signal handles ActionKill (tears down the cage); Allow
+	// and Block go directly to the proxy's control endpoint.
+	if req.Type == TypePayloadReview && s.payloadHoldResolver != nil {
+		allow := action == ActionAllow
+		if err := s.payloadHoldResolver.ReleaseHold(ctx, interventionID, allow); err != nil {
+			s.logger.Error(err, "relaying payload hold decision to proxy", "intervention_id", interventionID)
+		}
 	}
 
 	s.logger.Info("cage intervention resolved",

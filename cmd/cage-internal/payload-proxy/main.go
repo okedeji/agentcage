@@ -6,10 +6,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
+	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/enforcement"
@@ -19,9 +25,19 @@ import (
 
 func main() {
 	listenAddr := flag.String("listen", ":8080", "proxy listen address")
+	controlAddr := flag.String("control-listen", "", "control endpoint for hold release (e.g. :8081). Disabled when empty.")
 	targetAddr := flag.String("target", "", "upstream target address")
 	vulnClass := flag.String("vuln-class", "", "vulnerability class for blocklist selection")
 	llmEndpoint := flag.String("llm-endpoint", "", "external LLM endpoint URL. Requests to this host are metered, not inspected.")
+	hostControlURL := flag.String("host-control", "", "host-side control endpoint URL for hold notifications")
+	holdTimeoutSec := flag.Int("hold-timeout", 300, "seconds to wait for a hold decision before fail-closed block")
+	maxHeld := flag.Int("max-held", 10, "maximum concurrent held requests before fail-closed block")
+	cageID := flag.String("cage-id", "", "cage ID for hold notifications")
+	cageType := flag.String("cage-type", "", "cage type for judge context")
+	assessmentID := flag.String("assessment-id", "", "assessment ID for judge context")
+	judgeEndpoint := flag.String("judge-endpoint", "", "LLM-as-a-Judge classification endpoint")
+	judgeConfidence := flag.Float64("judge-confidence", 0.7, "confidence threshold for judge decisions")
+	judgeTimeout := flag.Int("judge-timeout", 10, "judge endpoint timeout in seconds")
 	flag.Parse()
 
 	if *targetAddr == "" {
@@ -37,14 +53,22 @@ func main() {
 
 	cfg := config.Defaults()
 
-	allPatterns := cfg.BlocklistPatterns()
-	entries := allPatterns[*vulnClass]
-	patterns := make(map[string]string, len(entries))
-	for _, e := range entries {
-		patterns[e.Pattern] = e.Reason
+	blockEntries := cfg.BlocklistPatterns()[*vulnClass]
+	blockPatterns := make(map[string]string, len(blockEntries))
+	for _, e := range blockEntries {
+		blockPatterns[e.Pattern] = e.Reason
 	}
 
-	engine, err := enforcement.NewProxyEngine(*vulnClass, patterns)
+	flagEntries := cfg.FlagPatterns()[*vulnClass]
+	var flagPatterns map[string]string
+	if len(flagEntries) > 0 {
+		flagPatterns = make(map[string]string, len(flagEntries))
+		for _, e := range flagEntries {
+			flagPatterns[e.Pattern] = e.Reason
+		}
+	}
+
+	engine, err := enforcement.NewProxyEngine(*vulnClass, blockPatterns, flagPatterns)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: compiling proxy patterns: %v\n", err)
 		os.Exit(1)
@@ -56,6 +80,29 @@ func main() {
 		os.Exit(1)
 	}
 	logger = logger.WithValues("component", "payload-proxy", "vuln_class", *vulnClass)
+
+	holdTimeout := time.Duration(*holdTimeoutSec) * time.Second
+	var holdMgr *HoldManager
+	if *controlAddr != "" {
+		holdMgr = NewHoldManager(*maxHeld)
+		lis, lisErr := net.Listen("tcp", *controlAddr)
+		if lisErr != nil {
+			fmt.Fprintf(os.Stderr, "error: control server bind %s: %v\n", *controlAddr, lisErr)
+			os.Exit(1)
+		}
+		go serveControlEndpoint(lis, holdMgr, logger)
+	}
+
+	var judge *enforcement.JudgeClient
+	if *judgeEndpoint != "" {
+		judgeAPIKey := os.Getenv("AGENTCAGE_JUDGE_API_KEY")
+		judge = enforcement.NewJudgeClient(
+			*judgeEndpoint,
+			*judgeConfidence,
+			judgeAPIKey,
+			time.Duration(*judgeTimeout)*time.Second,
+		)
+	}
 
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
@@ -173,14 +220,40 @@ func main() {
 			return
 		}
 
-		// Target requests: inspect payload against blocklist
+		// Pipeline: block patterns → flag patterns → judge → allow
 		decision, reason := engine.Inspect(r.Method, r.URL.String(), bodyBytes)
-		if decision == enforcement.PayloadBlock {
+
+		switch decision {
+		case enforcement.PayloadBlock:
 			logger.Info("payload blocked", "method", r.Method, "url", r.URL.String(), "reason", reason)
 			http.Error(w, fmt.Sprintf("blocked by payload proxy: %s", reason), http.StatusForbidden)
 			return
+
+		case enforcement.PayloadHold:
+			if handlePayloadHold(w, r, holdMgr, holdTimeout, *hostControlURL, *cageID, reason, logger) {
+				return
+			}
+
+		case enforcement.PayloadAllow:
+			if judge != nil {
+				jDecision, jReason, jErr := judge.Evaluate(*cageType, *vulnClass, *assessmentID, r.Method, r.URL.String(), bodyBytes)
+				if jErr != nil {
+					logger.Error(jErr, "judge evaluation failed, blocking (fail-closed)", "method", r.Method, "url", r.URL.String())
+					http.Error(w, "blocked by payload proxy: judge unreachable", http.StatusForbidden)
+					return
+				}
+				switch jDecision {
+				case enforcement.PayloadBlock:
+					logger.Info("payload blocked by judge", "method", r.Method, "url", r.URL.String(), "reason", jReason)
+					http.Error(w, fmt.Sprintf("blocked by judge: %s", jReason), http.StatusForbidden)
+					return
+				case enforcement.PayloadHold:
+					if handlePayloadHold(w, r, holdMgr, holdTimeout, *hostControlURL, *cageID, jReason, logger) {
+						return
+					}
+				}
+			}
 		}
-		logger.V(1).Info("payload allowed", "method", r.Method, "url", r.URL.String())
 
 		if len(bodyBytes) > 0 {
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -189,9 +262,105 @@ func main() {
 		proxy.ServeHTTP(w, r)
 	})
 
-	logger.Info("starting payload proxy", "listen", *listenAddr, "target", *targetAddr, "llm_metering_enabled", llmHost != "")
+	logger.Info("starting payload proxy", "listen", *listenAddr, "target", *targetAddr, "llm_metering_enabled", llmHost != "", "hold_enabled", holdMgr != nil)
 	if srvErr := http.ListenAndServe(*listenAddr, handler); srvErr != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", srvErr)
 		os.Exit(1)
 	}
+}
+
+func serveControlEndpoint(lis net.Listener, holdMgr *HoldManager, logger logr.Logger) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hold/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		// Path: /hold/{holdID}/release
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/hold/"), "/")
+		if len(parts) != 2 || parts[1] != "release" {
+			http.Error(w, "expected /hold/{id}/release", http.StatusBadRequest)
+			return
+		}
+		holdID := parts[0]
+
+		var body struct {
+			Decision string `json:"decision"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		var decision HoldDecision
+		switch body.Decision {
+		case "allow":
+			decision = HoldAllow
+		case "block":
+			decision = HoldBlock
+		default:
+			http.Error(w, "decision must be 'allow' or 'block'", http.StatusBadRequest)
+			return
+		}
+
+		if err := holdMgr.Release(holdID, decision); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	if err := http.Serve(lis, mux); err != nil {
+		fmt.Fprintf(os.Stderr, "control server error: %v\n", err)
+	}
+}
+
+// handlePayloadHold holds a request for human review. Returns true if the
+// request was handled (blocked or allowed after review), false if hold
+// infrastructure is unavailable and the caller should fall through to allow.
+func handlePayloadHold(w http.ResponseWriter, r *http.Request, holdMgr *HoldManager, holdTimeout time.Duration, hostControlURL, cageID, reason string, logger logr.Logger) bool {
+	if holdMgr == nil {
+		logger.Info("payload would be held but hold manager not configured, blocking", "method", r.Method, "url", r.URL.String(), "reason", reason)
+		http.Error(w, fmt.Sprintf("blocked by payload proxy (no hold configured): %s", reason), http.StatusForbidden)
+		return true
+	}
+	holdID := uuid.NewString()
+	logger.Info("payload held for review", "hold_id", holdID, "method", r.Method, "url", r.URL.String(), "reason", reason)
+	if err := notifyHostHold(hostControlURL, holdID, cageID, r.Method, r.URL.String(), reason); err != nil {
+		logger.Info("host notification failed, blocking payload", "hold_id", holdID, "error", err.Error())
+		http.Error(w, "blocked by payload proxy: host unreachable for review", http.StatusForbidden)
+		return true
+	}
+	decision := holdMgr.Hold(holdID, holdTimeout)
+	if decision == HoldBlock {
+		logger.Info("held payload blocked", "hold_id", holdID)
+		http.Error(w, "blocked by payload review", http.StatusForbidden)
+		return true
+	}
+	logger.Info("held payload allowed", "hold_id", holdID)
+	return false
+}
+
+var holdNotifyClient = &http.Client{Timeout: 5 * time.Second}
+
+func notifyHostHold(hostURL, holdID, cageID, method, reqURL, reason string) error {
+	if hostURL == "" {
+		return fmt.Errorf("no host control URL configured")
+	}
+	payload, _ := json.Marshal(map[string]string{
+		"hold_id": holdID,
+		"cage_id": cageID,
+		"method":  method,
+		"url":     reqURL,
+		"reason":  reason,
+	})
+	resp, err := holdNotifyClient.Post(hostURL+"/payload-hold", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("notifying host: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("host rejected hold notification: status %d", resp.StatusCode)
+	}
+	return nil
 }

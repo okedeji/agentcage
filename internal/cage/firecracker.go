@@ -250,6 +250,34 @@ func (p *FirecrackerProvisioner) Status(_ context.Context, vmID string) (VMStatu
 	return VMStatusRunning, nil
 }
 
+func (p *FirecrackerProvisioner) PauseVM(ctx context.Context, vmID string) error {
+	p.mu.Lock()
+	vm, ok := p.vms[vmID]
+	p.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("VM %s not found", vmID)
+	}
+	if err := firecrackerAPI(ctx, vm.handle.SocketPath, "PATCH", "/vm", map[string]any{"state": "Paused"}); err != nil {
+		return fmt.Errorf("VM %s (cage %s): pausing: %w", vmID, vm.handle.CageID, err)
+	}
+	return nil
+}
+
+func (p *FirecrackerProvisioner) ResumeVM(ctx context.Context, vmID string) error {
+	p.mu.Lock()
+	vm, ok := p.vms[vmID]
+	p.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("VM %s not found", vmID)
+	}
+	if err := firecrackerAPI(ctx, vm.handle.SocketPath, "PATCH", "/vm", map[string]any{"state": "Resumed"}); err != nil {
+		return fmt.Errorf("VM %s (cage %s): resuming: %w", vmID, vm.handle.CageID, err)
+	}
+	return nil
+}
+
 // configureVM sends boot source, drives, machine config, and network config
 // to the Firecracker API.
 func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernelPath, rootfsPath string, cfg VMConfig, tapName string) error {

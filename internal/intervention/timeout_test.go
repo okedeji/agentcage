@@ -44,7 +44,7 @@ func (m *mockSignaler) getSignals() []signalRecord {
 func newTestEnforcer() (*TimeoutEnforcer, *Queue, *mockSignaler) {
 	q, _, _ := newTestQueue()
 	sig := &mockSignaler{}
-	e := NewTimeoutEnforcer(q, sig, 10*time.Millisecond, logr.Discard())
+	e := NewTimeoutEnforcer(q, sig, &NoopNotifier{}, 10*time.Millisecond, 0.7, logr.Discard())
 	return e, q, sig
 }
 

@@ -80,37 +80,41 @@ type FleetPool interface {
 // dependency is logged and skipped so local mode works without SPIRE,
 // Vault, or Falco.
 type ActivityImpl struct {
-	provisioner    VMProvisioner
-	rootfs         *RootfsBuilder
-	bundleStoreDir string
-	network        NetworkPolicy
-	validator      ScopeValidator
-	alertHandler   AlertHandler
-	alertNotifier  AlertNotifier
-	falcoReader    *FalcoAlertReader
-	fleetPool      FleetPool
-	identity       identity.SVIDIssuer
-	secrets        identity.SecretFetcher
-	auditStore     audit.Store
-	log            logr.Logger
-	allocMu        sync.Mutex
-	allocs         map[string]string // vmID -> hostID
+	provisioner       VMProvisioner
+	rootfs            *RootfsBuilder
+	bundleStoreDir    string
+	network           NetworkPolicy
+	validator         ScopeValidator
+	alertHandler      AlertHandler
+	alertNotifier     AlertNotifier
+	falcoReader       *FalcoAlertReader
+	fleetPool         FleetPool
+	identity          identity.SVIDIssuer
+	secrets           identity.SecretFetcher
+	auditStore        audit.Store
+	interventionQueue InterventionEnqueuer
+	payloadHolds      *PayloadHoldHandler
+	log               logr.Logger
+	allocMu           sync.Mutex
+	allocs            map[string]string // vmID -> hostID
 }
 
 type ActivityImplConfig struct {
-	Provisioner   VMProvisioner
-	Rootfs        *RootfsBuilder
-	Network       NetworkPolicy
-	Validator     ScopeValidator
-	AlertHandler  AlertHandler
-	AlertNotifier AlertNotifier
-	FalcoReader   *FalcoAlertReader
-	FleetPool     FleetPool
-	Identity      identity.SVIDIssuer
-	Secrets       identity.SecretFetcher
-	AuditStore     audit.Store
-	BundleStoreDir string
-	Log            logr.Logger
+	Provisioner       VMProvisioner
+	Rootfs            *RootfsBuilder
+	Network           NetworkPolicy
+	Validator         ScopeValidator
+	AlertHandler      AlertHandler
+	AlertNotifier     AlertNotifier
+	FalcoReader       *FalcoAlertReader
+	FleetPool         FleetPool
+	Identity          identity.SVIDIssuer
+	Secrets           identity.SecretFetcher
+	AuditStore        audit.Store
+	InterventionQueue InterventionEnqueuer
+	PayloadHolds      *PayloadHoldHandler
+	BundleStoreDir    string
+	Log               logr.Logger
 }
 
 // RegisterActivities pins the cage activity surface to an explicit list of
@@ -129,6 +133,9 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("ProvisionVM", a.ProvisionVM)
 	pin("ApplyNetworkPolicy", a.ApplyNetworkPolicy)
 	pin("MonitorCage", a.MonitorCage)
+	pin("SuspendAgent", a.SuspendAgent)
+	pin("ResumeAgent", a.ResumeAgent)
+	pin("EnqueueIntervention", a.EnqueueIntervention)
 	pin("ExportAuditLog", a.ExportAuditLog)
 	pin("TeardownVM", a.TeardownVM)
 	pin("RevokeSVID", a.RevokeSVID)
@@ -142,20 +149,22 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 	return &ActivityImpl{
-		provisioner:    cfg.Provisioner,
-		rootfs:         cfg.Rootfs,
-		bundleStoreDir: cfg.BundleStoreDir,
-		network:        cfg.Network,
-		validator:      cfg.Validator,
-		alertHandler:   cfg.AlertHandler,
-		alertNotifier:  cfg.AlertNotifier,
-		falcoReader:    cfg.FalcoReader,
-		fleetPool:      cfg.FleetPool,
-		identity:       cfg.Identity,
-		secrets:        cfg.Secrets,
-		auditStore:     cfg.AuditStore,
-		log:            cfg.Log.WithValues("component", "cage-activities"),
-		allocs:         make(map[string]string),
+		provisioner:       cfg.Provisioner,
+		rootfs:            cfg.Rootfs,
+		bundleStoreDir:    cfg.BundleStoreDir,
+		network:           cfg.Network,
+		validator:         cfg.Validator,
+		alertHandler:      cfg.AlertHandler,
+		alertNotifier:     cfg.AlertNotifier,
+		falcoReader:       cfg.FalcoReader,
+		fleetPool:         cfg.FleetPool,
+		identity:          cfg.Identity,
+		secrets:           cfg.Secrets,
+		auditStore:        cfg.AuditStore,
+		interventionQueue: cfg.InterventionQueue,
+		payloadHolds:      cfg.PayloadHolds,
+		log:               cfg.Log.WithValues("component", "cage-activities"),
+		allocs:            make(map[string]string),
 	}
 }
 
@@ -296,6 +305,10 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 		a.allocMu.Unlock()
 	}
 
+	if a.payloadHolds != nil {
+		a.payloadHolds.RegisterVM(vmConfig.CageID, handle.IPAddress)
+	}
+
 	a.log.Info("VM provisioned", "cage_id", vmConfig.CageID, "vm_id", handle.ID, "ip", handle.IPAddress, "host_id", hostID)
 	return handle, nil
 }
@@ -355,8 +368,11 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, con
 				a.log.Error(err, "evaluating Falco alert", "cage_id", cageID, "rule", alert.RuleName)
 				continue
 			}
-			if policy == TripwireImmediateTeardown {
+			switch policy {
+			case TripwireImmediateTeardown:
 				return StopReasonTripwire, nil
+			case TripwireHumanReview:
+				return StopReasonHumanReview, nil
 			}
 
 		case <-ticker.C:
@@ -422,6 +438,42 @@ func tripwireActionName(p TripwirePolicy) string {
 	default:
 		return "unknown"
 	}
+}
+
+func (a *ActivityImpl) SuspendAgent(ctx context.Context, vmID string) error {
+	if a.provisioner == nil {
+		a.log.Info("WARNING: suspend skipped, no provisioner configured — cage is NOT paused", "vm_id", vmID)
+		return nil
+	}
+	if err := a.provisioner.PauseVM(ctx, vmID); err != nil {
+		return fmt.Errorf("pausing VM %s: %w", vmID, err)
+	}
+	a.log.Info("agent suspended", "vm_id", vmID)
+	return nil
+}
+
+func (a *ActivityImpl) ResumeAgent(ctx context.Context, vmID string) error {
+	if a.provisioner == nil {
+		a.log.Info("WARNING: resume skipped, no provisioner configured", "vm_id", vmID)
+		return nil
+	}
+	if err := a.provisioner.ResumeVM(ctx, vmID); err != nil {
+		return fmt.Errorf("resuming VM %s: %w", vmID, err)
+	}
+	a.log.Info("agent resumed", "vm_id", vmID)
+	return nil
+}
+
+func (a *ActivityImpl) EnqueueIntervention(ctx context.Context, reqType InterventionType, priority InterventionPriority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error) {
+	if a.interventionQueue == nil {
+		return "", fmt.Errorf("cage %s: intervention queue not configured", cageID)
+	}
+	id, err := a.interventionQueue.Enqueue(ctx, reqType, priority, cageID, assessmentID, description, contextData, timeout)
+	if err != nil {
+		return "", fmt.Errorf("cage %s: enqueuing intervention: %w", cageID, err)
+	}
+	a.log.Info("intervention enqueued", "cage_id", cageID, "intervention_id", id)
+	return id, nil
 }
 
 func (a *ActivityImpl) ExportAuditLog(_ context.Context, cageID string) error {
@@ -503,6 +555,10 @@ func (a *ActivityImpl) VerifyCleanup(ctx context.Context, cageID, vmID string) e
 		if err := a.rootfs.Cleanup(cageID); err != nil {
 			a.log.Error(err, "cleaning up rootfs", "cage_id", cageID)
 		}
+	}
+
+	if a.payloadHolds != nil {
+		a.payloadHolds.UnregisterVM(cageID)
 	}
 
 	a.log.Info("cleanup verified", "cage_id", cageID)

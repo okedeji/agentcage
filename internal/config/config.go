@@ -35,6 +35,7 @@ type Config struct {
 	Notifications  NotificationsConfig        `yaml:"notifications"`
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
 	Intervention   InterventionConfig         `yaml:"intervention"`
+	Judge          *JudgeConfig               `yaml:"judge,omitempty"`
 }
 
 // boolPtr returns a pointer to b. Used by Defaults() and tests to populate
@@ -168,6 +169,54 @@ func (c *Config) InterventionPollInterval() time.Duration {
 		return c.Intervention.PollInterval
 	}
 	return 30 * time.Second
+}
+
+// InterventionTimeout returns the configured human decision timeout,
+// falling back to 15 minutes when unset.
+func (c *Config) InterventionTimeout() time.Duration {
+	if c.Intervention.Timeout > 0 {
+		return c.Intervention.Timeout
+	}
+	return 15 * time.Minute
+}
+
+// InterventionWarningThreshold returns the fraction of the timeout that
+// must elapse before a warning notification fires. Falls back to 0.7.
+func (c *Config) InterventionWarningThreshold() float64 {
+	if c.Intervention.WarningThreshold > 0 {
+		return c.Intervention.WarningThreshold
+	}
+	return 0.7
+}
+
+// InterventionHoldControlAddr returns the host-side HTTP address for
+// payload hold notifications. Falls back to ":9091".
+func (c *Config) InterventionHoldControlAddr() string {
+	if c.Intervention.HoldControlAddr != "" {
+		return c.Intervention.HoldControlAddr
+	}
+	return ":9091"
+}
+
+func (c *Config) JudgeEndpoint() string {
+	if c.Judge != nil {
+		return c.Judge.Endpoint
+	}
+	return ""
+}
+
+func (c *Config) JudgeConfidenceThreshold() float64 {
+	if c.Judge != nil && c.Judge.ConfidenceThreshold > 0 {
+		return c.Judge.ConfidenceThreshold
+	}
+	return 0.7
+}
+
+func (c *Config) JudgeTimeout() time.Duration {
+	if c.Judge != nil && c.Judge.Timeout > 0 {
+		return c.Judge.Timeout
+	}
+	return 10 * time.Second
 }
 
 // LLMRequiredDefault returns whether a working LLM endpoint is
@@ -433,9 +482,12 @@ type ScopeConfig struct {
 	DenyLocalhost *bool    `yaml:"deny_localhost,omitempty"`
 }
 
-// PayloadConfig defines blocklist patterns for a vulnerability class.
+// PayloadConfig defines blocklist and flag patterns for a vulnerability
+// class. Block patterns reject the request. Flag patterns trigger a
+// human-review hold when the proxy runs in flag mode.
 type PayloadConfig struct {
-	Block []PatternEntry `yaml:"block"`
+	Block    []PatternEntry `yaml:"block"`
+	Flag []PatternEntry `yaml:"flag,omitempty"`
 }
 
 // PatternEntry is a single regex pattern with a human-readable reason.
@@ -454,14 +506,37 @@ type MonitoringConfig struct {
 }
 
 // InterventionConfig controls the orchestrator-side intervention machinery.
-// Today this is just the timeout-enforcer poll cadence; future fields can
-// land here without polluting other configs.
 type InterventionConfig struct {
 	// PollInterval is how often the timeout enforcer scans the queue for
-	// expired interventions. Defaults to 30 seconds. Lower values reduce
-	// the latency between an intervention's deadline and its TIMED_OUT
-	// state but increase database load. Useful to lower in tests.
+	// expired interventions. Defaults to 30 seconds.
 	PollInterval time.Duration `yaml:"poll_interval"`
+
+	// Timeout is how long to wait for a human decision on any
+	// intervention (tripwire pause, payload hold). If no decision
+	// arrives, the system acts fail-closed: tripwires kill the cage,
+	// payload holds block the request. Defaults to 15 minutes.
+	Timeout time.Duration `yaml:"timeout"`
+
+	// WarningThreshold is the fraction of the intervention timeout that
+	// must elapse before a warning notification is sent to the operator.
+	// Defaults to 0.7 (70%).
+	WarningThreshold float64 `yaml:"warning_threshold"`
+
+	// HoldControlAddr is the host-side HTTP address that receives
+	// payload hold notifications from in-cage proxies. Defaults to
+	// ":9091". Set to "" to disable payload hold support.
+	HoldControlAddr string `yaml:"hold_control_addr"`
+}
+
+// JudgeConfig configures the external LLM-as-a-Judge endpoint that
+// evaluates payload safety. When configured, every request that passes
+// block and flag patterns is sent to this endpoint for classification.
+// Nil means the judge is disabled and only regex patterns are used.
+// The API key is read from AGENTCAGE_JUDGE_API_KEY at runtime.
+type JudgeConfig struct {
+	Endpoint            string        `yaml:"endpoint"`
+	ConfidenceThreshold float64       `yaml:"confidence_threshold"`
+	Timeout             time.Duration `yaml:"timeout"`
 }
 
 // ActivityTimeoutsConfig holds Temporal activity timeouts. Rarely
@@ -479,6 +554,9 @@ type ActivityTimeoutsConfig struct {
 	VerifyCleanup        time.Duration `yaml:"verify_cleanup"`
 	HeartbeatProvisionVM time.Duration `yaml:"heartbeat_provision_vm"`
 	HeartbeatMonitorCage time.Duration `yaml:"heartbeat_monitor_cage"`
+	SuspendAgent         time.Duration `yaml:"suspend_agent"`
+	ResumeAgent          time.Duration `yaml:"resume_agent"`
+	EnqueueIntervention  time.Duration `yaml:"enqueue_intervention"`
 }
 
 // DefaultPath returns the default config file path under the agentcage home directory.
@@ -766,6 +844,9 @@ func defaultTimeouts() ActivityTimeoutsConfig {
 		VerifyCleanup:        10 * time.Second,
 		HeartbeatProvisionVM: 10 * time.Second,
 		HeartbeatMonitorCage: 30 * time.Second,
+		SuspendAgent:         10 * time.Second,
+		ResumeAgent:          10 * time.Second,
+		EnqueueIntervention:  10 * time.Second,
 	}
 }
 
@@ -965,6 +1046,11 @@ func Merge(base, override *Config) *Config {
 	// Timeouts
 	result.Timeouts = mergeTimeouts(base.Timeouts, override.Timeouts)
 
+	// Judge
+	if override.Judge != nil {
+		result.Judge = override.Judge
+	}
+
 	return &result
 }
 
@@ -988,6 +1074,9 @@ func mergeTimeouts(base, override ActivityTimeoutsConfig) ActivityTimeoutsConfig
 		VerifyCleanup:        mt(base.VerifyCleanup, override.VerifyCleanup),
 		HeartbeatProvisionVM: mt(base.HeartbeatProvisionVM, override.HeartbeatProvisionVM),
 		HeartbeatMonitorCage: mt(base.HeartbeatMonitorCage, override.HeartbeatMonitorCage),
+		SuspendAgent:         mt(base.SuspendAgent, override.SuspendAgent),
+		ResumeAgent:          mt(base.ResumeAgent, override.ResumeAgent),
+		EnqueueIntervention:  mt(base.EnqueueIntervention, override.EnqueueIntervention),
 	}
 }
 
@@ -1002,9 +1091,11 @@ func copyCageTypes(m map[string]CageTypeConfig) map[string]CageTypeConfig {
 func copyPayload(m map[string]PayloadConfig) map[string]PayloadConfig {
 	out := make(map[string]PayloadConfig, len(m))
 	for k, v := range m {
-		entries := make([]PatternEntry, len(v.Block))
-		copy(entries, v.Block)
-		out[k] = PayloadConfig{Block: entries}
+		block := make([]PatternEntry, len(v.Block))
+		copy(block, v.Block)
+		flag := make([]PatternEntry, len(v.Flag))
+		copy(flag, v.Flag)
+		out[k] = PayloadConfig{Block: block, Flag: flag}
 	}
 	return out
 }
@@ -1066,6 +1157,17 @@ func (c *Config) BlocklistPatterns() map[string][]PatternEntry {
 	out := make(map[string][]PatternEntry, len(c.Payload))
 	for class, pc := range c.Payload {
 		out[class] = pc.Block
+	}
+	return out
+}
+
+// FlagPatterns returns payload flag patterns for the proxy engine.
+func (c *Config) FlagPatterns() map[string][]PatternEntry {
+	out := make(map[string][]PatternEntry, len(c.Payload))
+	for class, pc := range c.Payload {
+		if len(pc.Flag) > 0 {
+			out[class] = pc.Flag
+		}
 	}
 	return out
 }
