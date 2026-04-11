@@ -115,11 +115,9 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return err
 	}
 
-	if secretReader != nil {
-		if valErr := validateRequiredSecrets(ctx, secretReader, cfg); valErr != nil {
-			identityCleanup()
-			return valErr
-		}
+	if valErr := validateRequiredSecrets(ctx, secretReader, cfg); valErr != nil {
+		identityCleanup()
+		return valErr
 	}
 
 	natsURL, err := resolveNATSURL(ctx, cfg, secretReader)
@@ -340,6 +338,20 @@ func validateRequiredSecrets(ctx context.Context, reader identity.SecretReader, 
 	}
 	if cfg.Infrastructure.IsExternalTemporal() {
 		checks = append(checks, required{identity.PathTemporalKey, "orchestrator temporal-api-key", true})
+	}
+
+	var needed []string
+	for _, c := range checks {
+		if c.condition {
+			needed = append(needed, c.label)
+		}
+	}
+
+	if reader == nil {
+		if len(needed) > 0 {
+			return fmt.Errorf("vault not available but required secrets are configured: %v\nimport secrets with: agentcage vault import --from-file secrets.env", needed)
+		}
+		return nil
 	}
 
 	var missing []string

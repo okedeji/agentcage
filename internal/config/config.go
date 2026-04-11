@@ -15,12 +15,11 @@ import (
 // Config is the single source of truth for all agentcage platform configuration.
 // One file in, everything else (Rego policies, Falco rules, SPIRE config) generated at startup.
 type Config struct {
-	// Posture is the top-level security stance. "strict" (default) makes
-	// every missing dependency a fatal startup error and refuses dev
-	// affordances like loopback-only TLS bypass and gRPC reflection. "dev"
-	// relaxes the entire stack for laptop development. Subsystem-level
-	// flags (cage_runtime.allow_unisolated, etc.) override the posture
-	// default for the operator who needs a mixed setup.
+	// Posture controls network and scope defaults. "strict" (default)
+	// enforces TLS, denies localhost/wildcard targets, requires LLM.
+	// "dev" relaxes those for laptop development. Cage isolation is
+	// separate: cage_runtime.allow_unisolated controls Firecracker and
+	// Falco independently of posture.
 	Posture        Posture                    `yaml:"posture"`
 	Infrastructure InfrastructureConfig       `yaml:"infrastructure"`
 	GRPC           GRPCConfig                 `yaml:"grpc"`
@@ -46,13 +45,13 @@ func boolPtr(b bool) *bool { return &b }
 type Posture int
 
 const (
-	// PostureStrict is the default. Missing deps are fatal; dev affordances
-	// (gRPC reflection, no-TLS global bind, mock provisioner fallback) are
-	// rejected unless explicitly overridden by a subsystem flag.
+	// PostureStrict is the default. gRPC reflection off, no-TLS global
+	// bind refused, LLM endpoint required, scope denies localhost and
+	// wildcards, OTel insecure forbidden.
 	PostureStrict Posture = iota
-	// PostureDev relaxes the entire stack: missing deps degrade gracefully,
-	// gRPC reflection is enabled, mock provisioner is allowed, and the
-	// no-TLS global bind check is skipped. For laptop development only.
+	// PostureDev relaxes network and scope constraints for laptop
+	// development: gRPC reflection on, plaintext global bind allowed,
+	// missing LLM non-fatal, localhost and wildcard targets permitted.
 	PostureDev
 )
 
@@ -94,11 +93,11 @@ type CageRuntimeConfig struct {
 	// KernelPath overrides the path to the vmlinux kernel. If empty, the
 	// orchestrator falls back to <embedded.BinDir>/vmlinux.
 	KernelPath string `yaml:"kernel_path"`
-	// AllowUnisolated permits the mock provisioner to run agents directly on
-	// the host (no microVM boundary), the no-TLS global gRPC bind, and the
-	// other dev-mode degradations. If unset, it derives from the top-level
-	// posture: dev → true, strict → false. Operators with a mixed setup
-	// (strict posture but one unisolated subsystem) can set this explicitly.
+	// AllowUnisolated permits the mock provisioner (no microVM boundary)
+	// and tolerates missing Falco (no behavioral tripwires). Only controls
+	// cage isolation. Network, TLS, and secret management are governed by
+	// the top-level posture and their own config fields. If unset, derives
+	// from posture: dev=true, strict=false.
 	AllowUnisolated *bool `yaml:"allow_unisolated,omitempty"`
 }
 

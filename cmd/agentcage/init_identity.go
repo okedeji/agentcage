@@ -98,11 +98,8 @@ func connectIdentityAndSecrets(
 	}
 
 	if secretFetcher == nil {
-		if !cfg.AllowUnisolatedDefault() {
-			cleanup()
-			return nil, nil, nil, nil, fmt.Errorf("no Vault configured: set infrastructure.vault.address, enable embedded Vault, or set cage_runtime.allow_unisolated=true for dev-mode secrets")
-		}
-		log.Info("WARNING: Vault not configured, cages will use dev secrets (allow_unisolated=true)")
+		cleanup()
+		return nil, nil, nil, nil, fmt.Errorf("no Vault available: embedded Vault should start automatically, or set infrastructure.vault.address for external Vault")
 	}
 
 	return svidIssuer, secretFetcher, secretReader, cleanup, nil
