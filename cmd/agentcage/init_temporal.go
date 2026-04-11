@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	enums "go.temporal.io/api/enums/v1"
 	taskqueue "go.temporal.io/api/taskqueue/v1"
 	"go.temporal.io/api/workflowservice/v1"
@@ -20,7 +19,6 @@ import (
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/identity"
-	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/metrics"
 )
 
@@ -33,7 +31,7 @@ func resolveTemporalAddr(cfg *config.Config) string {
 
 // Returns the resolved namespace so the readiness probe doesn't
 // recompute the "default" fallback.
-func connectTemporal(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, spireSocket string, log logr.Logger) (client.Client, string, error) {
+func connectTemporal(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, spireSocket string, trustDomain spiffeid.TrustDomain, log logr.Logger) (client.Client, string, error) {
 	temporalAddr := resolveTemporalAddr(cfg)
 
 	fmt.Println("Connecting to Temporal...")
@@ -48,39 +46,17 @@ func connectTemporal(ctx context.Context, cfg *config.Config, secrets identity.S
 		if tc.Namespace != "" {
 			opts.Namespace = tc.Namespace
 		}
-		if tc.TLS != nil {
-			switch {
-			case tc.TLS.Internal:
-				internalTLS, spireErr := agentgrpc.SPIREClientTLS(ctx, "unix://"+spireSocket)
-				if spireErr != nil {
-					return nil, "", fmt.Errorf("configuring internal mTLS for Temporal: %w", spireErr)
-				}
-				opts.ConnectionOptions = client.ConnectionOptions{TLS: internalTLS}
-				log.Info("Temporal mTLS enabled via internal identity provider")
-			case tc.TLS.CertFile != "":
-				cert, tlsErr := tls.LoadX509KeyPair(tc.TLS.CertFile, tc.TLS.KeyFile)
-				if tlsErr != nil {
-					return nil, "", fmt.Errorf("loading Temporal TLS cert: %w", tlsErr)
-				}
-				tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
-				if tc.TLS.CAFile != "" {
-					caCert, caErr := os.ReadFile(tc.TLS.CAFile)
-					if caErr != nil {
-						return nil, "", fmt.Errorf("reading Temporal CA file: %w", caErr)
-					}
-					pool := x509.NewCertPool()
-					pool.AppendCertsFromPEM(caCert)
-					tlsCfg.RootCAs = pool
-				}
-				opts.ConnectionOptions = client.ConnectionOptions{TLS: tlsCfg}
-				log.Info("Temporal mTLS enabled", "cert", tc.TLS.CertFile)
-			}
-		}
-		if secrets != nil {
-			if apiKey, _ := identity.ReadSecretValue(ctx, secrets, identity.PathTemporalKey); apiKey != "" {
-				opts.Credentials = client.NewAPIKeyStaticCredentials(apiKey)
-				log.Info("Temporal API key auth enabled")
-			}
+	}
+
+	if tlsCfg := buildSPIREClientTLS(ctx, spireSocket, trustDomain); tlsCfg != nil {
+		opts.ConnectionOptions = client.ConnectionOptions{TLS: tlsCfg}
+		log.Info("Temporal mTLS enabled via SPIRE")
+	}
+
+	if secrets != nil {
+		if apiKey, _ := identity.ReadSecretValue(ctx, secrets, identity.PathTemporalKey); apiKey != "" {
+			opts.Credentials = client.NewAPIKeyStaticCredentials(apiKey)
+			log.Info("Temporal API key auth enabled")
 		}
 	}
 

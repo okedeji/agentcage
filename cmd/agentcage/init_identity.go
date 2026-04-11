@@ -3,18 +3,16 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
-	"github.com/spiffe/go-spiffe/v2/workloadapi"
-
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
+	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/identity"
 )
 
@@ -24,6 +22,35 @@ func resolveSpireSocket(cfg *config.Config) string {
 		socket = cfg.Infrastructure.SPIRE.AgentSocket
 	}
 	return socket
+}
+
+// resolveTrustDomain returns the SPIFFE trust domain for mTLS authorization.
+// External SPIRE uses the operator-configured domain; embedded uses the
+// built-in default.
+func resolveTrustDomain(cfg *config.Config) spiffeid.TrustDomain {
+	if cfg.Infrastructure.IsExternalSPIRE() && cfg.Infrastructure.SPIRE.TrustDomain != "" {
+		td, err := spiffeid.TrustDomainFromString(cfg.Infrastructure.SPIRE.TrustDomain)
+		if err == nil {
+			return td
+		}
+	}
+	td, _ := spiffeid.TrustDomainFromString("agentcage.local")
+	return td
+}
+
+// buildSPIREClientTLS returns a SPIRE-backed tls.Config when the SPIRE
+// socket exists, nil otherwise. Nil tells Go's TLS stack to verify
+// against the system trust store, which handles managed services
+// (Temporal Cloud, HCP Vault) that serve certs from public CAs.
+func buildSPIREClientTLS(ctx context.Context, spireSocket string, trustDomain spiffeid.TrustDomain) *tls.Config {
+	if _, err := os.Stat(spireSocket); err != nil {
+		return nil
+	}
+	tlsCfg, err := agentgrpc.SPIREClientTLS(ctx, "unix://"+spireSocket, trustDomain)
+	if err != nil {
+		return nil
+	}
+	return tlsCfg
 }
 
 // A healthy Vault answers in well under a second; a wedged one hangs boot.
@@ -136,10 +163,7 @@ func buildOrchestratorSecretReader(
 		role = "orchestrator"
 	}
 
-	tlsCfg, err := buildVaultTLSConfig(ctx, cfg, spireSocket)
-	if err != nil {
-		return nil, fmt.Errorf("building Vault TLS config for orchestrator reader: %w", err)
-	}
+	tlsCfg := buildSPIREClientTLS(ctx, spireSocket, resolveTrustDomain(cfg))
 
 	jwtSource, err := identity.NewSpireJWTSource(ctx, spireSocket)
 	if err != nil {
@@ -184,10 +208,7 @@ func buildVaultJWTClient(
 		role = "cage"
 	}
 
-	tlsCfg, tlsErr := buildVaultTLSConfig(ctx, cfg, spireSocket)
-	if tlsErr != nil {
-		return nil, fmt.Errorf("building Vault TLS config: %w", tlsErr)
-	}
+	tlsCfg := buildSPIREClientTLS(ctx, spireSocket, resolveTrustDomain(cfg))
 
 	jwtSource, jwtErr := identity.NewSpireJWTSource(ctx, spireSocket)
 	if jwtErr != nil {
@@ -217,7 +238,7 @@ func buildVaultJWTClient(
 		"addr", vaultCfg.Address,
 		"auth_path", authPath,
 		"role", role,
-		"tls", vaultTLSMode(cfg))
+		"tls", vaultTLSMode(tlsCfg))
 	return vaultClient, nil
 }
 
@@ -246,60 +267,11 @@ func buildEmbeddedVaultClient(
 	return vaultClient, nil
 }
 
-func buildVaultTLSConfig(ctx context.Context, cfg *config.Config, spireSocket string) (*tls.Config, error) {
-	vaultCfg := cfg.Infrastructure.Vault
-	if vaultCfg == nil || vaultCfg.TLS == nil {
-		return nil, nil
-	}
-	t := vaultCfg.TLS
-
-	if cfg.VaultSkipVerifyDefault() {
-		return &tls.Config{InsecureSkipVerify: true}, nil //nolint:gosec // explicit operator opt-in; rejected by validatePosture in strict mode
-	}
-
-	if t.Internal {
-		source, err := workloadapi.NewX509Source(ctx, workloadapi.WithClientOptions(
-			workloadapi.WithAddr("unix://"+spireSocket),
-		))
-		if err != nil {
-			return nil, fmt.Errorf("opening SPIRE X.509 source for Vault TLS: %w", err)
-		}
-		// Any SVID from our trust domain is accepted as Vault. Pin a
-		// specific SPIFFE ID here if the trust domain ever holds more
-		// than one Vault.
-		return tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny()), nil
-	}
-
-	if t.CACertFile != "" {
-		caBytes, err := os.ReadFile(t.CACertFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading vault ca_cert_file %s: %w", t.CACertFile, err)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(caBytes) {
-			return nil, fmt.Errorf("vault ca_cert_file %s: no PEM certs found", t.CACertFile)
-		}
-		return &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}, nil
-	}
-
-	return nil, nil
-}
-
 // vaultTLSMode is a short label for startup log lines so operators
 // don't have to grep config.
-func vaultTLSMode(cfg *config.Config) string {
-	vaultCfg := cfg.Infrastructure.Vault
-	if vaultCfg == nil || vaultCfg.TLS == nil {
+func vaultTLSMode(tlsCfg *tls.Config) string {
+	if tlsCfg == nil {
 		return "system"
 	}
-	switch {
-	case cfg.VaultSkipVerifyDefault():
-		return "insecure-skip-verify"
-	case vaultCfg.TLS.Internal:
-		return "spire-internal"
-	case vaultCfg.TLS.CACertFile != "":
-		return "ca-pinned"
-	default:
-		return "system"
-	}
+	return "spire"
 }

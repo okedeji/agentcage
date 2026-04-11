@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -26,6 +27,7 @@ func buildGRPCServer(
 	ctx context.Context,
 	cfg *config.Config,
 	spireSocket string,
+	trustDomain spiffeid.TrustDomain,
 	services agentgrpc.Services,
 	log logr.Logger,
 ) (*grpc.Server, *agentgrpc.ReloadableCert, error) {
@@ -52,7 +54,7 @@ func buildGRPCServer(
 	var reloadableCert *agentgrpc.ReloadableCert
 	switch {
 	case cfg.GRPC.UseInternalTLS():
-		tlsCfg, tlsErr := agentgrpc.SPIREServerTLS(ctx, "unix://"+spireSocket)
+		tlsCfg, tlsErr := agentgrpc.SPIREServerTLS(ctx, "unix://"+spireSocket, trustDomain)
 		if tlsErr != nil {
 			return nil, nil, fmt.Errorf("configuring internal mTLS for gRPC: %w", tlsErr)
 		}

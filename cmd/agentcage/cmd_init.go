@@ -94,13 +94,16 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return fmt.Errorf("starting local services: %w", err)
 	}
 
+	spireSocket := resolveSpireSocket(cfg)
+	trustDomain := resolveTrustDomain(cfg)
+
 	db, err := connectDatabase(ctx, cfg, log)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
 
-	findingsBus, findingStore, findingsCoordinator, err := connectFindingsBus(cfg, db, log)
+	findingsBus, findingStore, findingsCoordinator, err := connectFindingsBus(ctx, cfg, spireSocket, trustDomain, db, log)
 	if err != nil {
 		return err
 	}
@@ -117,8 +120,6 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		return err
 	}
 
-	spireSocket := resolveSpireSocket(cfg)
-
 	svidIssuer, secretFetcher, secretReader, identityCleanup, err := connectIdentityAndSecrets(ctx, cfg, embeddedMgr, spireSocket, log)
 	if err != nil {
 		return err
@@ -131,7 +132,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		}
 	}
 
-	temporalClient, temporalNamespace, err := connectTemporal(ctx, cfg, secretReader, spireSocket, log)
+	temporalClient, temporalNamespace, err := connectTemporal(ctx, cfg, secretReader, spireSocket, trustDomain, log)
 	if err != nil {
 		return err
 	}
@@ -228,7 +229,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		Log:           log,
 	})
 
-	grpcServer, reloadableCert, err := buildGRPCServer(ctx, cfg, spireSocket, agentgrpc.Services{
+	grpcServer, reloadableCert, err := buildGRPCServer(ctx, cfg, spireSocket, trustDomain, agentgrpc.Services{
 		Cages:         cageSvc,
 		Assessments:   assessmentSvc,
 		Interventions: iSvc,

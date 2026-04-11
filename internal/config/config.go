@@ -112,16 +112,6 @@ func (c *Config) AllowUnisolatedDefault() bool {
 	return c.Posture == PostureDev
 }
 
-// VaultSkipVerifyDefault returns the effective value of vault.tls.skip_verify
-// after applying the posture default. Strict never defaults this on; dev
-// honors operator override but also defaults to off.
-func (c *Config) VaultSkipVerifyDefault() bool {
-	if c.Infrastructure.Vault != nil && c.Infrastructure.Vault.TLS != nil && c.Infrastructure.Vault.TLS.SkipVerify != nil {
-		return *c.Infrastructure.Vault.TLS.SkipVerify
-	}
-	return false
-}
-
 // OTelInsecureDefault returns the effective value of otel.insecure after
 // applying the posture default. Strict never defaults this on; dev honors
 // operator override but also defaults to off.
@@ -301,16 +291,8 @@ type NATSConfig struct {
 }
 
 type TemporalConfig struct {
-	Address   string             `yaml:"address"`
-	Namespace string             `yaml:"namespace"`
-	TLS       *TemporalTLSConfig `yaml:"tls,omitempty"`
-}
-
-type TemporalTLSConfig struct {
-	CertFile string `yaml:"cert_file"`
-	KeyFile  string `yaml:"key_file"`
-	CAFile   string `yaml:"ca_file,omitempty"`
-	Internal bool   `yaml:"internal,omitempty"`
+	Address   string `yaml:"address"`
+	Namespace string `yaml:"namespace"`
 }
 
 type SPIREConfig struct {
@@ -320,39 +302,10 @@ type SPIREConfig struct {
 }
 
 type VaultConfig struct {
-	Address          string          `yaml:"address"`
-	AuthPath         string          `yaml:"auth_path"`
-	Role             string          `yaml:"role"`
-	OrchestratorRole string          `yaml:"orchestrator_role"`
-	TLS              *VaultTLSConfig `yaml:"tls,omitempty"`
-}
-
-// VaultTLSConfig controls how the orchestrator verifies Vault's
-// server certificate. Asymmetric to GRPCConfig.TLS because the
-// orchestrator is a client here, not a server. agentcage
-// authenticates to Vault via JWT-SVID (auth/jwt/login), not Vault's
-// cert auth method, so no client cert or key.
-type VaultTLSConfig struct {
-	// Internal=true uses the SPIRE trust bundle to verify Vault's
-	// certificate. Vault must present a server cert from the same SPIFFE
-	// trust domain agentcage is bound to.
-	Internal bool `yaml:"internal,omitempty"`
-	// CACertFile pins an operator-provided CA bundle. Used when Internal is
-	// false and the operator runs their own PKI for Vault.
-	CACertFile string `yaml:"ca_cert_file,omitempty"`
-	// SkipVerify disables TLS verification entirely. Posture default: never
-	// (strict refuses to start if explicitly set). Dev mode tolerates it
-	// when set, but never defaults it on. Pointer so unset is distinct
-	// from explicit false.
-	SkipVerify *bool `yaml:"skip_verify,omitempty"`
-}
-
-func (c *VaultConfig) UseInternalTLS() bool {
-	return c.TLS != nil && c.TLS.Internal
-}
-
-func (c *VaultConfig) UseExternalTLS() bool {
-	return c.TLS != nil && c.TLS.CACertFile != "" && !c.TLS.Internal
+	Address          string `yaml:"address"`
+	AuthPath         string `yaml:"auth_path"`
+	Role             string `yaml:"role"`
+	OrchestratorRole string `yaml:"orchestrator_role"`
 }
 
 type FalcoConfig struct {
@@ -653,22 +606,8 @@ func validatePosture(cfg *Config) error {
 		return nil
 	}
 
-	if cfg.Infrastructure.Vault != nil {
-		v := cfg.Infrastructure.Vault
-		if v.TLS == nil {
-			return fmt.Errorf("posture=strict: external vault.address %q requires vault.tls (set vault.tls.internal=true or vault.tls.ca_cert_file)", v.Address)
-		}
-		if v.TLS.SkipVerify != nil && *v.TLS.SkipVerify {
-			return fmt.Errorf("posture=strict: vault.tls.skip_verify=true is forbidden")
-		}
-	}
-
 	if cfg.Infrastructure.OTel != nil && cfg.Infrastructure.OTel.Insecure != nil && *cfg.Infrastructure.OTel.Insecure {
 		return fmt.Errorf("posture=strict: otel.insecure=true is forbidden")
-	}
-
-	if cfg.Infrastructure.Temporal != nil && cfg.Infrastructure.Temporal.Address != "" && cfg.Infrastructure.Temporal.TLS == nil {
-		return fmt.Errorf("posture=strict: external temporal.address %q requires temporal.tls", cfg.Infrastructure.Temporal.Address)
 	}
 
 	return nil

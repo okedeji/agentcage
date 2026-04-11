@@ -196,9 +196,6 @@ infrastructure:
     url: "nats://prod-nats:4222"
   temporal:
     address: "temporal.prod:7233"
-    tls:
-      cert_file: /etc/agentcage/temporal.crt
-      key_file: /etc/agentcage/temporal.key
   spire:
     server_address: "spire.prod:8081"
     trust_domain: "company.internal"
@@ -206,8 +203,6 @@ infrastructure:
     address: "https://vault.prod:8200"
     auth_path: "auth/jwt"
     role: "agentcage"
-    tls:
-      ca_cert_file: /etc/agentcage/vault-ca.pem
 `
 	path := writeTempFile(t, content)
 	cfg, err := Load(path)
