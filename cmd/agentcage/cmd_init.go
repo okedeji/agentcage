@@ -30,21 +30,17 @@ var _ = cmdInit
 func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
-	grpcAddr := fs.String("grpc-addr", "127.0.0.1:9090", "gRPC server listen address. Loopback only by default; pass 0.0.0.0:9090 to expose on all interfaces, but only with auth/TLS configured.")
 	logFormat := fs.String("log-format", "json", "log output format (json or text)")
 	_ = fs.Parse(args)
 
-	if err := runInit(*configFile, *grpcAddr, *logFormat); err != nil {
+	if err := runInit(*configFile, *logFormat); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runInit(configFile, grpcAddr, logFormat string) error {
-	defaultPath, err := config.DefaultPath()
-	if err != nil {
-		return fmt.Errorf("resolving default config path: %w", err)
-	}
+func runInit(configFile, logFormat string) error {
+	defaultPath := config.DefaultPath()
 	created, err := config.WriteDefaults(defaultPath)
 	if err != nil {
 		return fmt.Errorf("writing default config: %w", err)
@@ -281,6 +277,7 @@ func runInit(configFile, grpcAddr, logFormat string) error {
 		embeddedMgr:      embeddedMgr,
 	}
 
+	grpcAddr := cfg.GRPCListenAddr()
 	lis, _, err := startGRPCListener(grpcAddr, cfg, log)
 	if err != nil {
 		return err
