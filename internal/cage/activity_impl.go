@@ -369,14 +369,17 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, con
 
 		case alert, ok := <-alertCh:
 			if !ok {
-				a.log.V(1).Info("Falco alert stream closed", "cage_id", cageID)
-				alertCh = make(chan AlertEvent)
-				continue
+				// Falco stream died. The cage is now unmonitored. Escalate
+				// to human review so the operator decides whether to resume.
+				a.log.Error(nil, "Falco alert stream closed unexpectedly, escalating to human review", "cage_id", cageID)
+				return StopReasonHumanReview, nil
 			}
 			policy, err := a.EvaluateAlert(ctx, config.Type, config.AssessmentID, alert)
 			if err != nil {
-				a.log.Error(err, "evaluating Falco alert", "cage_id", cageID, "rule", alert.RuleName)
-				continue
+				// Can't determine if this alert is dangerous. Escalate
+				// to human review rather than ignoring a potential breach.
+				a.log.Error(err, "evaluating Falco alert failed, escalating to human review", "cage_id", cageID, "rule", alert.RuleName)
+				return StopReasonHumanReview, nil
 			}
 			switch policy {
 			case TripwireImmediateTeardown:
@@ -450,6 +453,9 @@ func tripwireActionName(p TripwirePolicy) string {
 	}
 }
 
+// SuspendAgent pauses the VM. Must be idempotent: pausing an already-paused
+// VM succeeds silently. Temporal retries on failure, and the workflow may
+// call this more than once if a review cycle races with a signal.
 func (a *ActivityImpl) SuspendAgent(ctx context.Context, vmID string) error {
 	if a.provisioner == nil {
 		a.log.Info("WARNING: suspend skipped, no provisioner configured — cage is NOT paused", "vm_id", vmID)
@@ -462,6 +468,8 @@ func (a *ActivityImpl) SuspendAgent(ctx context.Context, vmID string) error {
 	return nil
 }
 
+// ResumeAgent unpauses the VM. Must be idempotent: resuming an already-running
+// VM succeeds silently. Same retry and race reasoning as SuspendAgent.
 func (a *ActivityImpl) ResumeAgent(ctx context.Context, vmID string) error {
 	if a.provisioner == nil {
 		a.log.Info("WARNING: resume skipped, no provisioner configured", "vm_id", vmID)
