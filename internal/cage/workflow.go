@@ -203,6 +203,13 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 }
 
 func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID, vmID string, t Timeouts, interventionTimeout time.Duration) StopReason {
+	if interventionTimeout <= 0 {
+		interventionTimeout = 15 * time.Minute
+	}
+	if interventionTimeout > 24*time.Hour {
+		interventionTimeout = 24 * time.Hour
+	}
+
 	signalCh := workflow.GetSignalChannel(ctx, intervention.SignalIntervention)
 	remaining := cfg.TimeLimits.MaxDuration
 
@@ -235,7 +242,9 @@ func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID, vmID string
 				stopReason = StopReasonTripwire
 				monitorDone = true
 			case intervention.ActionResume, intervention.ActionAdjustAndResume:
-				// Consumed during the review wait below; safe to ignore here.
+				// Stale signal from a previous review cycle that arrived after
+				// we already resumed. Consuming it here prevents it from
+				// auto-resolving the next review without operator input.
 			}
 		})
 
@@ -251,18 +260,15 @@ func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID, vmID string
 			return stopReason
 		}
 
-		// Workflows started before this version never see StopReasonHumanReview
-		// because their MonitorCage didn't return it. The gate protects replay:
-		// old histories take the default branch and treat it as a tripwire kill.
+		// Replay guard: workflows started before human-review-pause was added
+		// never returned StopReasonHumanReview from MonitorCage. If Temporal
+		// replays an old history through this code, the default branch kills
+		// the cage. In-flight cages that hit a tripwire during an upgrade are
+		// killed rather than entering a review flow their history can't replay.
+		// This is intentional: fail-closed over replay corruption.
 		v := workflow.GetVersion(ctx, "add-human-review-pause", workflow.DefaultVersion, 1)
 		if v == workflow.DefaultVersion {
 			return StopReasonTripwire
-		}
-
-		elapsed := workflow.Now(ctx).Sub(monitorStart)
-		remaining -= elapsed
-		if remaining <= 0 {
-			return StopReasonTimeout
 		}
 
 		// Freeze the VM so the agent can't act while waiting for human decision.
@@ -296,28 +302,42 @@ func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID, vmID string
 		// expires; this timer is a belt-and-suspenders backstop.
 		reviewSel := workflow.NewSelector(ctx)
 		safetyTimer := workflow.NewTimer(ctx, interventionTimeout+30*time.Second)
-		var reviewAction intervention.Action
+		var reviewSignal intervention.InterventionSignal
 
 		reviewSel.AddReceive(signalCh, func(ch workflow.ReceiveChannel, more bool) {
-			var signal intervention.InterventionSignal
-			ch.Receive(ctx, &signal)
-			reviewAction = signal.Action
+			ch.Receive(ctx, &reviewSignal)
 		})
 
 		reviewSel.AddFuture(safetyTimer, func(f workflow.Future) {
-			reviewAction = intervention.ActionKill
+			reviewSignal = intervention.InterventionSignal{Action: intervention.ActionKill, Rationale: "safety-net timeout"}
 		})
 
 		reviewSel.Select(ctx)
 
-		switch reviewAction {
+		workflow.GetLogger(ctx).Info("intervention review decision received",
+			"cage_id", cageID,
+			"action", reviewSignal.Action,
+			"rationale", reviewSignal.Rationale,
+			"has_adjustments", len(reviewSignal.Adjustments) > 0,
+		)
+
+		switch reviewSignal.Action {
 		case intervention.ActionResume, intervention.ActionAdjustAndResume:
+			// TODO(directive-channel): when the agent directive channel
+			// lands, write reviewSignal.Adjustments to the directive
+			// file before resuming. Until then, adjustments are logged
+			// but not forwarded to the agent.
 			if err := execActivity(withTimeout(ctx, t.ResumeAgent), "ResumeAgent", vmID); err != nil {
 				return StopReasonError
 			}
+			// Deduct the full cycle: monitoring + suspend + review wait + resume.
+			elapsed := workflow.Now(ctx).Sub(monitorStart)
+			remaining -= elapsed
+			if remaining <= 0 {
+				return StopReasonTimeout
+			}
 			continue
 		default:
-			// ActionKill, timeout, or unknown action. Fail-closed.
 			return StopReasonTripwire
 		}
 	}
