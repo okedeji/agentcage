@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	"github.com/okedeji/agentcage/internal/envvar"
+	"github.com/okedeji/agentcage/internal/config"
 )
 
 // Service is the lifecycle interface for an embedded infrastructure component.
@@ -29,16 +29,8 @@ type Service interface {
 }
 
 // DataDir returns the root data directory for agentcage embedded services.
-// Defaults to ~/.agentcage if AGENTCAGE_HOME is not set.
 func DataDir() string {
-	if d := os.Getenv(envvar.Home); d != "" {
-		return d
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".agentcage"
-	}
-	return filepath.Join(home, ".agentcage")
+	return config.HomeDir()
 }
 
 // BinDir returns the directory where downloaded binaries are stored.

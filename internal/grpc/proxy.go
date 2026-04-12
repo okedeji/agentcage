@@ -8,12 +8,12 @@ import (
 	"time"
 
 	pb "github.com/okedeji/agentcage/api/proto"
-	"github.com/okedeji/agentcage/internal/envvar"
+	"github.com/okedeji/agentcage/internal/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var ProxyTarget = envvar.GRPCAddress()
+var ProxyTarget = config.DefaultGRPCAddr
 
 // Proxy dials the gRPC server and dispatches the command.
 func Proxy(cmd string, args []string) {

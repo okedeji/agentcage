@@ -120,7 +120,8 @@ func TestFirecrackerDownloader_Paths(t *testing.T) {
 }
 
 func TestDataDir(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", "/tmp/test-agentcage")
+	config.SetHome("/tmp/test-agentcage")
+	defer config.SetHome("")
 	assert.Equal(t, "/tmp/test-agentcage", DataDir())
 	assert.Equal(t, "/tmp/test-agentcage/bin", BinDir())
 	assert.Equal(t, "/tmp/test-agentcage/logs", LogDir())
@@ -129,7 +130,8 @@ func TestDataDir(t *testing.T) {
 }
 
 func TestEnsureDirs(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	config.SetHome(t.TempDir())
+	defer config.SetHome("")
 	err := EnsureDirs()
 	require.NoError(t, err)
 

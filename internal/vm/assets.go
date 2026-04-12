@@ -1,11 +1,10 @@
 package vm
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 
-	"github.com/okedeji/agentcage/internal/envvar"
+	"github.com/okedeji/agentcage/internal/config"
 )
 
 const (
@@ -34,12 +33,5 @@ func LinuxBinaryPath() string {
 }
 
 func homeDir() string {
-	if d := envvar.Get(envvar.Home); d != "" {
-		return d
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".agentcage"
-	}
-	return filepath.Join(home, ".agentcage")
+	return config.HomeDir()
 }

@@ -8,9 +8,30 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/okedeji/agentcage/internal/envvar"
 )
+
+// homeOverride is set once at startup via SetHome. Zero value means
+// use the default (~/.agentcage).
+var homeOverride string
+
+// SetHome sets the agentcage home directory. Call once from main
+// before any other config or embedded function.
+func SetHome(dir string) { homeOverride = dir }
+
+// HomeDir returns the agentcage home directory. Uses the value from
+// SetHome, or defaults to ~/.agentcage.
+func HomeDir() string {
+	if homeOverride != "" {
+		return homeOverride
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".agentcage"
+	}
+	return filepath.Join(home, ".agentcage")
+}
+
+const DefaultGRPCAddr = "localhost:9090"
 
 // Config is the single source of truth for all agentcage platform configuration.
 // One file in, everything else (Rego policies, Falco rules, SPIRE config) generated at startup.
@@ -35,6 +56,31 @@ type Config struct {
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
 	Intervention   InterventionConfig         `yaml:"intervention"`
 	Judge          *JudgeConfig               `yaml:"judge,omitempty"`
+	Server         ServerConfig               `yaml:"server"`
+}
+
+// ServerConfig is the CLI-side connection config. Written by
+// `agentcage login`, read by `agentcage run` and other client commands.
+// Ignored by the orchestrator (which uses grpc.tls for its server cert).
+type ServerConfig struct {
+	Address  string          `yaml:"address,omitempty"`
+	TLS      *ClientTLSConfig `yaml:"tls,omitempty"`
+	Insecure bool            `yaml:"insecure,omitempty"`
+}
+
+// ClientTLSConfig holds paths for client-side TLS credentials.
+type ClientTLSConfig struct {
+	CertFile string `yaml:"cert_file,omitempty"`
+	KeyFile  string `yaml:"key_file,omitempty"`
+	CAFile   string `yaml:"ca_file,omitempty"`
+}
+
+// ServerAddress returns the configured server address or the default.
+func (c *Config) ServerAddress() string {
+	if c.Server.Address != "" {
+		return c.Server.Address
+	}
+	return DefaultGRPCAddr
 }
 
 // boolPtr returns a pointer to b. Used by Defaults() and tests to populate
@@ -228,17 +274,25 @@ type WebhookConfig struct {
 }
 
 type GRPCConfig struct {
-	TLS *TLSConfig `yaml:"tls"`
+	// Address is the server bind address. Defaults to 127.0.0.1:9090
+	// (loopback only). Set to 0.0.0.0:9090 to expose on all interfaces,
+	// but only with TLS configured in strict posture.
+	Address string     `yaml:"address,omitempty"`
+	TLS     *TLSConfig `yaml:"tls"`
 	// Reflection enables the gRPC server reflection service for debugging
-	// with grpcurl. Posture default: dev=true, strict=false. Operators with
-	// strict posture but a need for reflection (e.g. grpcurl from the same
-	// host) can set this to true explicitly.
+	// with grpcurl. Posture default: dev=true, strict=false.
 	Reflection *bool `yaml:"reflection,omitempty"`
 	// ReadyProbeTimeout bounds the post-Serve self-ping that gates the
-	// "agentcage ready" banner. The 5s default has headroom for cold
-	// starts where the embedded stack is still warming up. Tune up if
-	// you see startup flakes on slow hosts.
+	// "agentcage ready" banner. Defaults to 5s.
 	ReadyProbeTimeout time.Duration `yaml:"ready_probe_timeout,omitempty"`
+}
+
+// GRPCListenAddr returns the configured bind address or the default.
+func (c *Config) GRPCListenAddr() string {
+	if c.GRPC.Address != "" {
+		return c.GRPC.Address
+	}
+	return DefaultGRPCAddr
 }
 
 // ReadyProbeTimeoutOrDefault returns the configured ready-probe timeout
@@ -513,15 +567,8 @@ type ActivityTimeoutsConfig struct {
 }
 
 // DefaultPath returns the default config file path under the agentcage home directory.
-func DefaultPath() (string, error) {
-	if d := envvar.Get(envvar.Home); d != "" {
-		return filepath.Join(d, "config.yaml"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolving home directory: %w", err)
-	}
-	return filepath.Join(home, ".agentcage", "config.yaml"), nil
+func DefaultPath() string {
+	return filepath.Join(HomeDir(), "config.yaml")
 }
 
 // WriteDefaults writes the default config to path, creating parent directories.
@@ -544,25 +591,14 @@ func WriteDefaults(path string) (bool, error) {
 }
 
 // Resolve returns the first config file path that exists, or "" if none found.
+// Checks: explicit path, <HomeDir>/config.yaml, /etc/agentcage/config.yaml.
 func Resolve(explicit string) string {
 	if explicit != "" {
 		return explicit
 	}
-	if envPath := envvar.Get(envvar.Config); envPath != "" {
-		return envPath
-	}
-	if d := envvar.Get(envvar.Home); d != "" {
-		homePath := filepath.Join(d, "config.yaml")
-		if _, err := os.Stat(homePath); err == nil {
-			return homePath
-		}
-	}
-	home, err := os.UserHomeDir()
-	if err == nil {
-		userPath := filepath.Join(home, ".agentcage", "config.yaml")
-		if _, err := os.Stat(userPath); err == nil {
-			return userPath
-		}
+	homePath := DefaultPath()
+	if _, err := os.Stat(homePath); err == nil {
+		return homePath
 	}
 	systemPath := "/etc/agentcage/config.yaml"
 	if _, err := os.Stat(systemPath); err == nil {

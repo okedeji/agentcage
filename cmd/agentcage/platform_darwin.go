@@ -17,8 +17,8 @@ import (
 	"time"
 
 	pb "github.com/okedeji/agentcage/api/proto"
+	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
-	"github.com/okedeji/agentcage/internal/envvar"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/vm"
 	"google.golang.org/grpc"
@@ -41,15 +41,7 @@ func platformInit(args []string) {
 
 	// VM reads from this directory via VirtioFS, so it has to exist
 	// before we boot.
-	home := envvar.Get(envvar.Home)
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "agentcage init: resolving home: %v\n", err)
-			os.Exit(1)
-		}
-		home = userHome + "/.agentcage"
-	}
+	home := config.HomeDir()
 	if err := os.MkdirAll(home, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: creating home: %v\n", err)
 		os.Exit(1)
@@ -208,7 +200,7 @@ func platformStop(_ []string) {
 
 // Returns true only once the gRPC server is confirmed unreachable.
 func stopViaGRPC() bool {
-	conn, err := grpc.NewClient(envvar.GRPCAddress(),
+	conn, err := grpc.NewClient(config.DefaultGRPCAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {

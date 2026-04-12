@@ -17,7 +17,6 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/embedded"
-	"github.com/okedeji/agentcage/internal/envvar"
 	"github.com/okedeji/agentcage/internal/plan"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -104,7 +103,7 @@ func cmdRun(args []string) {
 		os.Exit(1)
 	}
 
-	conn, err := dialOrchestrator()
+	conn, err := dialOrchestrator(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -171,10 +170,10 @@ func prepareBundle(agentPath string) (string, error) {
 	return ref, nil
 }
 
-func dialOrchestrator() (*grpc.ClientConn, error) {
-	addr := envvar.GRPCAddress()
+func dialOrchestrator(cfg *config.Config) (*grpc.ClientConn, error) {
+	addr := cfg.ServerAddress()
 
-	creds, err := buildClientCredentials()
+	creds, err := buildClientCredentials(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("building TLS credentials: %w", err)
 	}
@@ -195,35 +194,32 @@ func dialOrchestrator() (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
-// Plaintext when no TLS env vars are set, which is fine for
-// localhost/dev.
-func buildClientCredentials() (credentials.TransportCredentials, error) {
-	certFile := envvar.Get(envvar.TLSCert)
-	keyFile := envvar.Get(envvar.TLSKey)
-	caFile := envvar.Get(envvar.TLSCA)
-
-	if certFile == "" && keyFile == "" && caFile == "" {
+// Plaintext when no TLS is configured, which is fine for localhost/dev.
+// Configure via `agentcage login` or the server.tls section in config.
+func buildClientCredentials(cfg *config.Config) (credentials.TransportCredentials, error) {
+	t := cfg.Server.TLS
+	if cfg.Server.Insecure || t == nil {
 		return grpcinsecure.NewCredentials(), nil
 	}
 
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, CipherSuites: agentgrpc.PreferredCipherSuites}
 
-	if certFile != "" && keyFile != "" {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if t.CertFile != "" && t.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
 		if err != nil {
-			return nil, fmt.Errorf("loading client cert %s: %w", certFile, err)
+			return nil, fmt.Errorf("loading client cert %s: %w", t.CertFile, err)
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	}
 
-	if caFile != "" {
-		ca, err := os.ReadFile(caFile)
+	if t.CAFile != "" {
+		ca, err := os.ReadFile(t.CAFile)
 		if err != nil {
-			return nil, fmt.Errorf("reading CA file %s: %w", caFile, err)
+			return nil, fmt.Errorf("reading CA file %s: %w", t.CAFile, err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(ca) {
-			return nil, fmt.Errorf("CA file %s: no PEM certs found", caFile)
+			return nil, fmt.Errorf("CA file %s: no PEM certs found", t.CAFile)
 		}
 		tlsCfg.RootCAs = pool
 	}

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/okedeji/agentcage/internal/config"
 )
@@ -102,12 +103,8 @@ func cmdConfigImport(args []string) {
 		os.Exit(1)
 	}
 
-	dest, err := config.DefaultPath()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error resolving config path: %v\n", err)
-		os.Exit(1)
-	}
-	if err := os.MkdirAll(dest[:len(dest)-len("config.yaml")-1], 0755); err != nil {
+	dest := config.DefaultPath()
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "error creating config directory: %v\n", err)
 		os.Exit(1)
 	}
