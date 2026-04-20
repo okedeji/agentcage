@@ -109,10 +109,11 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	if err := workflow.ExecuteActivity(
 		withHeartbeat(ctx, t.ProvisionVM, t.HeartbeatProvisionVM),
 		"ProvisionVM", VMConfig{
-			CageID:     input.CageID,
-			VCPUs:      cfg.Resources.VCPUs,
-			MemoryMB:   cfg.Resources.MemoryMB,
-			RootfsPath: rootfsPath,
+			CageID:       input.CageID,
+			AssessmentID: cfg.AssessmentID,
+			VCPUs:        cfg.Resources.VCPUs,
+			MemoryMB:     cfg.Resources.MemoryMB,
+			RootfsPath:   rootfsPath,
 		},
 	).Get(ctx, &vmHandle); err != nil {
 		cleanupIdentity(ctx, t, svid.ID, &token)

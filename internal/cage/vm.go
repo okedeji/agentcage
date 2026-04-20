@@ -29,11 +29,12 @@ func (s VMStatus) String() string {
 }
 
 type VMConfig struct {
-	CageID     string
-	VCPUs      int32
-	MemoryMB   int32
-	RootfsPath string
-	KernelPath string
+	CageID       string
+	AssessmentID string
+	VCPUs        int32
+	MemoryMB     int32
+	RootfsPath   string
+	KernelPath   string
 }
 
 type VMHandle struct {

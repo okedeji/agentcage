@@ -225,6 +225,7 @@ func runInit(configFile, logFormat string) error {
 		Secrets:           secretFetcher,
 		InterventionQueue: &interventionQueueAdapter{q: iQueue},
 		PayloadHolds:      payloadHoldHandler,
+		AgentHolds:        agentHoldListener,
 		LogCollector:      logCollector,
 		Log:               log,
 	})

@@ -101,6 +101,7 @@ type ActivityImpl struct {
 	auditStore        audit.Store
 	interventionQueue InterventionEnqueuer
 	payloadHolds      *PayloadHoldHandler
+	agentHolds        *AgentHoldListener
 	targetCreds       TargetCredentialReader
 	directiveWriter   *DirectiveWriter
 	logCollector      *VsockCollector
@@ -124,6 +125,7 @@ type ActivityImplConfig struct {
 	AuditStore        audit.Store
 	InterventionQueue InterventionEnqueuer
 	PayloadHolds      *PayloadHoldHandler
+	AgentHolds        *AgentHoldListener
 	TargetCreds       TargetCredentialReader
 	LogCollector      *VsockCollector
 	BundleStoreDir    string
@@ -178,6 +180,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		auditStore:        cfg.AuditStore,
 		interventionQueue: cfg.InterventionQueue,
 		payloadHolds:      cfg.PayloadHolds,
+		agentHolds:        cfg.AgentHolds,
 		targetCreds:       cfg.TargetCreds,
 		directiveWriter:   NewDirectiveWriter(),
 		logCollector:      cfg.LogCollector,
@@ -330,6 +333,10 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 
 	if a.payloadHolds != nil {
 		a.payloadHolds.RegisterVM(vmConfig.CageID, handle.IPAddress)
+	}
+
+	if a.agentHolds != nil {
+		a.agentHolds.StartForVM(ctx, handle.ID, vmConfig.CageID, vmConfig.AssessmentID, handle.VsockPath)
 	}
 
 	a.log.Info("VM provisioned", "cage_id", vmConfig.CageID, "vm_id", handle.ID, "ip", handle.IPAddress, "host_id", hostID)
@@ -599,6 +606,10 @@ func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
 	a.allocMu.Lock()
 	delete(a.vsockPaths, vmID)
 	a.allocMu.Unlock()
+
+	if a.agentHolds != nil {
+		a.agentHolds.StopForVM(vmID)
+	}
 
 	if a.fleetPool != nil {
 		a.allocMu.Lock()

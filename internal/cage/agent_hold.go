@@ -91,18 +91,22 @@ func (l *AgentHoldListener) ResolveHold(interventionID string, allowed bool, mes
 }
 
 func (l *AgentHoldListener) listenLoop(ctx context.Context, vmID, cageID, assessmentID, vsockPath string) {
-	// The Firecracker vsock UDS accepts connections from the host side.
-	// For agent-initiated holds, the guest connects to the host (CID 2)
-	// on port 53. On the host side, Firecracker delivers these as
-	// connections on the UDS. We accept them and handle the hold protocol.
-	//
-	// In practice, the vsock UDS is a single socket. The host side needs
-	// to accept connections that arrive when the guest dials out. We
-	// listen on the UDS to accept guest-initiated connections.
+	// Firecracker's vsock UDS handles guest-initiated connections.
+	// When the guest dials host CID 2 on port 53, Firecracker
+	// delivers it on the host-side UDS. We listen on the UDS and
+	// accept these connections. Each accepted connection carries a
+	// port identifier so we can filter for port 53.
 	lis, err := net.Listen("unix", vsockPath+".hold")
 	if err != nil {
 		l.log.Error(err, "listening for agent holds", "vm_id", vmID, "path", vsockPath)
 		return
+	}
+
+	// Firecracker needs to know we're listening. Connect to the
+	// vsock UDS and register as a listener for port 53.
+	if regErr := registerVsockHostListener(vsockPath, VsockPortHold); regErr != nil {
+		l.log.Error(regErr, "registering vsock host listener", "vm_id", vmID, "port", VsockPortHold)
+		// Fall back to the UDS listener for guest connections
 	}
 
 	l.mu.Lock()
@@ -128,6 +132,32 @@ func (l *AgentHoldListener) listenLoop(ctx context.Context, vmID, cageID, assess
 		}
 		go l.handleHoldConn(ctx, conn, cageID, assessmentID)
 	}
+}
+
+// registerVsockHostListener tells Firecracker to forward guest-initiated
+// connections on a given port to a host-side UDS. Firecracker expects a
+// listener to connect to the vsock UDS and write "LISTEN <port>\n".
+func registerVsockHostListener(vsockPath string, port int) error {
+	conn, err := net.Dial("unix", vsockPath)
+	if err != nil {
+		return fmt.Errorf("dialing vsock UDS for LISTEN: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	cmd := fmt.Sprintf("LISTEN %d\n", port)
+	if _, err := conn.Write([]byte(cmd)); err != nil {
+		return fmt.Errorf("sending LISTEN %d: %w", port, err)
+	}
+
+	buf := make([]byte, 32)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("reading LISTEN response: %w", err)
+	}
+	if n < 2 || string(buf[:2]) != "OK" {
+		return fmt.Errorf("LISTEN rejected: %s", string(buf[:n]))
+	}
+	return nil
 }
 
 func (l *AgentHoldListener) handleHoldConn(ctx context.Context, conn net.Conn, cageID, assessmentID string) {
