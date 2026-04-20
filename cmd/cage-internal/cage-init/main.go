@@ -57,6 +57,7 @@ func main() {
 		"/usr/local/bin/directive-sidecar",
 		"-directive-file", "/var/run/agentcage/directives.json",
 		"-hold-socket", "/var/run/agentcage/hold.sock",
+		"-log-socket", "/var/run/agentcage/logs.sock",
 	)
 
 	// 3. Start payload-proxy

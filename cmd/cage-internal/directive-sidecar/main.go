@@ -321,11 +321,25 @@ func collectLocal(conn net.Conn, out chan<- []byte) {
 
 func forwardToHost(conn net.Conn, lines <-chan []byte) {
 	defer func() { _ = conn.Close() }()
-	for line := range lines {
-		line = append(line, '\n')
-		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if _, err := conn.Write(line); err != nil {
-			return
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				return
+			}
+			line = append(line, '\n')
+			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if _, err := conn.Write(line); err != nil {
+				return
+			}
+		case <-time.After(30 * time.Second):
+			// Liveness probe: attempt a zero-byte write to detect
+			// a disconnected host. If the connection is dead, the
+			// write deadline fires and we exit cleanly.
+			_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			if _, err := conn.Write(nil); err != nil {
+				return
+			}
 		}
 	}
 }

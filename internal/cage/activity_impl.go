@@ -556,10 +556,6 @@ func (a *ActivityImpl) WriteDirective(ctx context.Context, vmID string, directiv
 		a.log.Info("directive write skipped, no vsock path for VM", "vm_id", vmID)
 		return nil
 	}
-	if a.directiveWriter == nil {
-		a.log.Info("directive write skipped, no directive writer configured", "vm_id", vmID)
-		return nil
-	}
 	if err := a.directiveWriter.Write(ctx, vsockPath, directive); err != nil {
 		return fmt.Errorf("VM %s: writing directive: %w", vmID, err)
 	}
