@@ -70,6 +70,10 @@ func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
 			continue
 		}
 		name := e.Name()
+		if strings.HasSuffix(name, ".vsock") {
+			_ = os.Remove(filepath.Join(socketDir, name))
+			continue
+		}
 		// Sockets are named "<vmID>.sock". Derive the matching tap name.
 		if !strings.HasSuffix(name, ".sock") {
 			continue
@@ -171,11 +175,13 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		return nil, fmt.Errorf("starting VM instance: %w", err)
 	}
 
+	vsockPath := strings.TrimSuffix(socketPath, ".sock") + ".vsock"
 	handle := &VMHandle{
 		ID:         vmID,
 		CageID:     config.CageID,
 		IPAddress:  ipAddr,
 		SocketPath: socketPath,
+		VsockPath:  vsockPath,
 		StartedAt:  time.Now(),
 	}
 
@@ -223,8 +229,9 @@ func (p *FirecrackerProvisioner) Terminate(ctx context.Context, vmID string) err
 		errs = append(errs, fmt.Errorf("tearing down TAP device: %w", err))
 	}
 
-	// Clean up socket
+	// Clean up sockets
 	_ = os.Remove(vm.handle.SocketPath)
+	_ = os.Remove(vm.handle.VsockPath)
 
 	p.log.Info("cage VM terminated", "vm_id", vmID, "cage_id", vm.handle.CageID)
 
@@ -312,12 +319,24 @@ func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernel
 
 	// Set network interface
 	network := map[string]any{
-		"iface_id":         "eth0",
-		"host_dev_name":    tapName,
-		"guest_mac":        generateMAC(cfg.CageID),
+		"iface_id":      "eth0",
+		"host_dev_name": tapName,
+		"guest_mac":     generateMAC(cfg.CageID),
 	}
 	if err := firecrackerAPI(ctx, socket, "PUT", "/network-interfaces/eth0", network); err != nil {
 		return fmt.Errorf("setting network interface: %w", err)
+	}
+
+	// Vsock enables bidirectional host↔guest communication for
+	// directives, agent-initiated holds, and log forwarding without
+	// touching the network stack or mounting the rootfs from outside.
+	vsockUDS := strings.TrimSuffix(socket, ".sock") + ".vsock"
+	vsock := map[string]any{
+		"guest_cid": 3,
+		"uds_path":  vsockUDS,
+	}
+	if err := firecrackerAPI(ctx, socket, "PUT", "/vsock", vsock); err != nil {
+		return fmt.Errorf("setting vsock device: %w", err)
 	}
 
 	return nil

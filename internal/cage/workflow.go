@@ -322,22 +322,54 @@ func runMonitorWithSignals(ctx workflow.Context, cfg Config, cageID, vmID string
 		)
 
 		switch reviewSignal.Action {
-		case intervention.ActionResume, intervention.ActionAdjustAndResume:
-			// TODO(directive-channel): when the agent directive channel
-			// lands, write reviewSignal.Adjustments to the directive
-			// file before resuming. Until then, adjustments are logged
-			// but not forwarded to the agent.
+		case intervention.ActionResume:
+			directive := Directive{
+				Sequence:     workflow.Now(ctx).UnixMilli(),
+				Instructions: []DirectiveInstruction{{Type: DirectiveContinue}},
+			}
+			_ = execActivity(withTimeout(ctx, t.WriteDirective), "WriteDirective", vmID, directive)
 			if err := execActivity(withTimeout(ctx, t.ResumeAgent), "ResumeAgent", vmID); err != nil {
 				return StopReasonError
 			}
-			// Deduct the full cycle: monitoring + suspend + review wait + resume.
 			elapsed := workflow.Now(ctx).Sub(monitorStart)
 			remaining -= elapsed
 			if remaining <= 0 {
 				return StopReasonTimeout
 			}
 			continue
+
+		case intervention.ActionAdjustAndResume:
+			msg := reviewSignal.Rationale
+			if m, ok := reviewSignal.Adjustments["message"]; ok {
+				msg = m
+			}
+			directive := Directive{
+				Sequence: workflow.Now(ctx).UnixMilli(),
+				Instructions: []DirectiveInstruction{{
+					Type:    DirectiveRedirect,
+					Message: msg,
+				}},
+			}
+			_ = execActivity(withTimeout(ctx, t.WriteDirective), "WriteDirective", vmID, directive)
+			if err := execActivity(withTimeout(ctx, t.ResumeAgent), "ResumeAgent", vmID); err != nil {
+				return StopReasonError
+			}
+			elapsed := workflow.Now(ctx).Sub(monitorStart)
+			remaining -= elapsed
+			if remaining <= 0 {
+				return StopReasonTimeout
+			}
+			continue
+
 		default:
+			directive := Directive{
+				Sequence: workflow.Now(ctx).UnixMilli(),
+				Instructions: []DirectiveInstruction{{
+					Type:   DirectiveTerminate,
+					Reason: reviewSignal.Rationale,
+				}},
+			}
+			_ = execActivity(withTimeout(ctx, t.WriteDirective), "WriteDirective", vmID, directive)
 			return StopReasonTripwire
 		}
 	}

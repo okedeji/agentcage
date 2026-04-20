@@ -52,7 +52,14 @@ func main() {
 		"-cage-id", env.CageID,
 	)
 
-	// 2. Start payload-proxy
+	// 2. Start directive-sidecar
+	directiveSidecar := startService("directive-sidecar",
+		"/usr/local/bin/directive-sidecar",
+		"-directive-file", "/var/run/agentcage/directives.json",
+		"-hold-socket", "/var/run/agentcage/hold.sock",
+	)
+
+	// 3. Start payload-proxy
 	var proxy *exec.Cmd
 	if len(env.ScopeHosts) > 0 {
 		proxyArgs := []string{
@@ -117,6 +124,8 @@ func main() {
 	if len(env.TargetCredentials) > 0 {
 		setEnv("AGENTCAGE_TARGET_CREDENTIALS", string(env.TargetCredentials))
 	}
+	setEnv("AGENTCAGE_DIRECTIVES_FILE", "/var/run/agentcage/directives.json")
+	setEnv("AGENTCAGE_HOLD_SOCKET", "/var/run/agentcage/hold.sock")
 
 	// 6. Exec the agent entrypoint.
 	// This replaces PID 1 with the agent process. When the agent
@@ -145,12 +154,12 @@ func main() {
 
 	if err := agentCmd.Run(); err != nil {
 		fmt.Printf("cage-init: agent exited with error: %v\n", err)
-		cleanup(sidecar, proxy)
+		cleanup(sidecar, directiveSidecar, proxy)
 		os.Exit(1)
 	}
 
 	fmt.Println("cage-init: agent completed successfully")
-	cleanup(sidecar, proxy)
+	cleanup(sidecar, directiveSidecar, proxy)
 }
 
 func loadConfig() (*CageEnv, error) {

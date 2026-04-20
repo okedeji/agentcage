@@ -67,6 +67,9 @@ type InterventionEnqueuer interface {
 	Enqueue(ctx context.Context, reqType InterventionType, priority InterventionPriority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error)
 }
 
+// InterventionAgentHold is the type value for agent-initiated holds.
+const InterventionAgentHold InterventionType = 6
+
 // Activities defines the operations the cage workflow can invoke.
 // Each method maps to a Temporal activity. Implementations are
 // provided by the orchestrator binary, which wires the real
@@ -81,6 +84,7 @@ type Activities interface {
 	MonitorCage(ctx context.Context, cageID, vmID string, config Config) (StopReason, error)
 	SuspendAgent(ctx context.Context, vmID string) error
 	ResumeAgent(ctx context.Context, vmID string) error
+	WriteDirective(ctx context.Context, vmID string, directive Directive) error
 	EnqueueIntervention(ctx context.Context, reqType InterventionType, priority InterventionPriority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error)
 	FetchTargetCredentials(ctx context.Context, credentialsKey string) ([]byte, error)
 	ExportAuditLog(ctx context.Context, cageID string) error

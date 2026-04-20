@@ -563,6 +563,7 @@ type ActivityTimeoutsConfig struct {
 	HeartbeatMonitorCage time.Duration `yaml:"heartbeat_monitor_cage"`
 	SuspendAgent         time.Duration `yaml:"suspend_agent"`
 	ResumeAgent          time.Duration `yaml:"resume_agent"`
+	WriteDirective       time.Duration `yaml:"write_directive"`
 	EnqueueIntervention  time.Duration `yaml:"enqueue_intervention"`
 }
 
@@ -821,6 +822,7 @@ func defaultTimeouts() ActivityTimeoutsConfig {
 		HeartbeatMonitorCage: 30 * time.Second,
 		SuspendAgent:         10 * time.Second,
 		ResumeAgent:          10 * time.Second,
+		WriteDirective:       15 * time.Second,
 		EnqueueIntervention:  10 * time.Second,
 	}
 }
@@ -1051,6 +1053,7 @@ func mergeTimeouts(base, override ActivityTimeoutsConfig) ActivityTimeoutsConfig
 		HeartbeatMonitorCage: mt(base.HeartbeatMonitorCage, override.HeartbeatMonitorCage),
 		SuspendAgent:         mt(base.SuspendAgent, override.SuspendAgent),
 		ResumeAgent:          mt(base.ResumeAgent, override.ResumeAgent),
+		WriteDirective:       mt(base.WriteDirective, override.WriteDirective),
 		EnqueueIntervention:  mt(base.EnqueueIntervention, override.EnqueueIntervention),
 	}
 }

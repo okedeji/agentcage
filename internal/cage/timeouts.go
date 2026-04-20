@@ -23,6 +23,7 @@ type Timeouts struct {
 	HeartbeatMonitorCage time.Duration
 	SuspendAgent         time.Duration
 	ResumeAgent          time.Duration
+	WriteDirective       time.Duration
 	EnqueueIntervention  time.Duration
 }
 
@@ -43,6 +44,7 @@ func TimeoutsFromConfig(at config.ActivityTimeoutsConfig) Timeouts {
 		HeartbeatMonitorCage: at.HeartbeatMonitorCage,
 		SuspendAgent:         at.SuspendAgent,
 		ResumeAgent:          at.ResumeAgent,
+		WriteDirective:       at.WriteDirective,
 		EnqueueIntervention:  at.EnqueueIntervention,
 	}
 }

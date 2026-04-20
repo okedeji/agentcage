@@ -10,6 +10,7 @@ const (
 	TypeReportReview
 	TypePolicyViolation
 	TypeProofGap
+	TypeAgentHold
 )
 
 func (t Type) String() string {
@@ -24,6 +25,8 @@ func (t Type) String() string {
 		return "policy_violation"
 	case TypeProofGap:
 		return "proof_gap"
+	case TypeAgentHold:
+		return "agent_hold"
 	default:
 		return "unknown"
 	}

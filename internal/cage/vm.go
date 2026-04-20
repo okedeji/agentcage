@@ -41,6 +41,7 @@ type VMHandle struct {
 	CageID     string
 	IPAddress  string
 	SocketPath string
+	VsockPath  string
 	StartedAt  time.Time
 }
 
@@ -86,6 +87,7 @@ func (p *MockProvisioner) Provision(ctx context.Context, config VMConfig) (*VMHa
 		CageID:     config.CageID,
 		IPAddress:  fmt.Sprintf("172.20.0.%d", len(p.vms)+2),
 		SocketPath: fmt.Sprintf("/tmp/firecracker/%s.sock", id),
+		VsockPath:  fmt.Sprintf("/tmp/firecracker/%s.vsock", id),
 		StartedAt:  time.Now(),
 	}
 	p.vms[id] = handle

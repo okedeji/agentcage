@@ -3,6 +3,7 @@ package cage
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -101,9 +102,12 @@ type ActivityImpl struct {
 	interventionQueue InterventionEnqueuer
 	payloadHolds      *PayloadHoldHandler
 	targetCreds       TargetCredentialReader
+	directiveWriter   *DirectiveWriter
+	logCollector      *VsockCollector
 	log               logr.Logger
 	allocMu           sync.Mutex
 	allocs            map[string]string // vmID -> hostID
+	vsockPaths        map[string]string // vmID -> vsock UDS path
 }
 
 type ActivityImplConfig struct {
@@ -121,6 +125,7 @@ type ActivityImplConfig struct {
 	InterventionQueue InterventionEnqueuer
 	PayloadHolds      *PayloadHoldHandler
 	TargetCreds       TargetCredentialReader
+	LogCollector      *VsockCollector
 	BundleStoreDir    string
 	Log               logr.Logger
 }
@@ -143,6 +148,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("MonitorCage", a.MonitorCage)
 	pin("SuspendAgent", a.SuspendAgent)
 	pin("ResumeAgent", a.ResumeAgent)
+	pin("WriteDirective", a.WriteDirective)
 	pin("EnqueueIntervention", a.EnqueueIntervention)
 	pin("FetchTargetCredentials", a.FetchTargetCredentials)
 	pin("ExportAuditLog", a.ExportAuditLog)
@@ -173,8 +179,11 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		interventionQueue: cfg.InterventionQueue,
 		payloadHolds:      cfg.PayloadHolds,
 		targetCreds:       cfg.TargetCreds,
+		directiveWriter:   NewDirectiveWriter(),
+		logCollector:      cfg.LogCollector,
 		log:               cfg.Log.WithValues("component", "cage-activities"),
 		allocs:            make(map[string]string),
+		vsockPaths:        make(map[string]string),
 	}
 }
 
@@ -315,6 +324,10 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 		a.allocMu.Unlock()
 	}
 
+	a.allocMu.Lock()
+	a.vsockPaths[handle.ID] = handle.VsockPath
+	a.allocMu.Unlock()
+
 	if a.payloadHolds != nil {
 		a.payloadHolds.RegisterVM(vmConfig.CageID, handle.IPAddress)
 	}
@@ -338,6 +351,14 @@ func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, sc
 
 func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, config Config) (StopReason, error) {
 	a.log.Info("monitoring cage", "cage_id", cageID, "vm_id", vmID, "max_duration", config.TimeLimits.MaxDuration)
+
+	// Start vsock log forwarding if collector is available
+	a.allocMu.Lock()
+	vsockPath := a.vsockPaths[vmID]
+	a.allocMu.Unlock()
+	if vsockPath != "" && a.logCollector != nil {
+		go a.collectLogs(ctx, cageID, vsockPath)
+	}
 
 	deadline := time.After(config.TimeLimits.MaxDuration)
 
@@ -402,6 +423,40 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, con
 				return StopReasonCompleted, nil
 			}
 		}
+	}
+}
+
+// collectLogs connects to the VM's vsock on the log port and feeds
+// the stream into the VsockCollector. Runs in a goroutine for the
+// lifetime of MonitorCage; connection errors are logged, not fatal.
+func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string) {
+	conn, err := net.DialTimeout("unix", vsockPath, 5*time.Second)
+	if err != nil {
+		a.log.V(1).Info("vsock log connection failed, logs unavailable", "cage_id", cageID, "error", err.Error())
+		return
+	}
+
+	// Firecracker vsock host-side protocol: CONNECT <port>
+	connectCmd := fmt.Sprintf("CONNECT %d\n", VsockPortLogs)
+	if _, err := conn.Write([]byte(connectCmd)); err != nil {
+		_ = conn.Close()
+		a.log.V(1).Info("vsock log CONNECT failed", "cage_id", cageID, "error", err.Error())
+		return
+	}
+
+	buf := make([]byte, 32)
+	n, err := conn.Read(buf)
+	if err != nil || n < 2 || string(buf[:2]) != "OK" {
+		_ = conn.Close()
+		a.log.V(1).Info("vsock log CONNECT rejected", "cage_id", cageID)
+		return
+	}
+
+	a.logCollector.RegisterConn(cageID, conn)
+	defer a.logCollector.StopCollecting(cageID)
+
+	if err := a.logCollector.CollectFromCage(ctx, cageID, conn); err != nil {
+		a.log.V(1).Info("vsock log collection ended", "cage_id", cageID, "error", err.Error())
 	}
 }
 
@@ -482,6 +537,29 @@ func (a *ActivityImpl) ResumeAgent(ctx context.Context, vmID string) error {
 	return nil
 }
 
+// WriteDirective sends a directive to the cage's directive-sidecar over
+// vsock before the VM is resumed. The sidecar writes it to disk so the
+// agent can read it on its next loop iteration.
+func (a *ActivityImpl) WriteDirective(ctx context.Context, vmID string, directive Directive) error {
+	a.allocMu.Lock()
+	vsockPath := a.vsockPaths[vmID]
+	a.allocMu.Unlock()
+
+	if vsockPath == "" {
+		a.log.Info("directive write skipped, no vsock path for VM", "vm_id", vmID)
+		return nil
+	}
+	if a.directiveWriter == nil {
+		a.log.Info("directive write skipped, no directive writer configured", "vm_id", vmID)
+		return nil
+	}
+	if err := a.directiveWriter.Write(ctx, vsockPath, directive); err != nil {
+		return fmt.Errorf("VM %s: writing directive: %w", vmID, err)
+	}
+	a.log.Info("directive written", "vm_id", vmID, "sequence", directive.Sequence)
+	return nil
+}
+
 func (a *ActivityImpl) EnqueueIntervention(ctx context.Context, reqType InterventionType, priority InterventionPriority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error) {
 	if a.interventionQueue == nil {
 		return "", fmt.Errorf("cage %s: intervention queue not configured", cageID)
@@ -517,6 +595,10 @@ func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
 			return fmt.Errorf("terminating VM %s: %w", vmID, err)
 		}
 	}
+
+	a.allocMu.Lock()
+	delete(a.vsockPaths, vmID)
+	a.allocMu.Unlock()
 
 	if a.fleetPool != nil {
 		a.allocMu.Lock()

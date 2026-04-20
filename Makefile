@@ -21,7 +21,7 @@ build-vm-rootfs:
 build-cage-rootfs: build-cage-internal
 	./scripts/build-cage-rootfs.sh $(BINDIR)/cage-rootfs-$(shell uname -m).ext4
 
-CAGE_INTERNAL := cage-init payload-proxy findings-sidecar
+CAGE_INTERNAL := cage-init payload-proxy findings-sidecar directive-sidecar
 
 build-cage-internal: $(addprefix build-cage-internal-,$(CAGE_INTERNAL))
 
