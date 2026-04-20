@@ -132,6 +132,7 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 		TokenBudget:   p.GetTotalTokenBudget(),
 		MaxChainDepth: p.GetMaxChainDepth(),
 		MaxConcurrent: p.GetMaxConcurrentCages(),
+		MaxIterations: p.GetMaxIterations(),
 		Tags:          p.GetTags(),
 	}
 	if s := p.GetScope(); s != nil {
@@ -248,6 +249,7 @@ func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
 		TotalTokenBudget:   cfg.TokenBudget,
 		MaxChainDepth:      cfg.MaxChainDepth,
 		MaxConcurrentCages: cfg.MaxConcurrent,
+		MaxIterations:      cfg.MaxIterations,
 		SkipPaths:          cfg.SkipPaths,
 		Tags:               cfg.Tags,
 		Scope: &pb.TargetScope{

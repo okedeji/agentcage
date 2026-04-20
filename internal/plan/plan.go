@@ -50,6 +50,7 @@ type Budget struct {
 type Limits struct {
 	MaxChainDepth      int32 `yaml:"max_chain_depth"`
 	MaxConcurrentCages int32 `yaml:"max_concurrent_cages"`
+	MaxIterations      int32 `yaml:"max_iterations"`
 }
 
 type CageType struct {
@@ -152,6 +153,9 @@ func Merge(base, override *Plan) *Plan {
 	}
 	if override.Limits.MaxConcurrentCages > 0 {
 		out.Limits.MaxConcurrentCages = override.Limits.MaxConcurrentCages
+	}
+	if override.Limits.MaxIterations > 0 {
+		out.Limits.MaxIterations = override.Limits.MaxIterations
 	}
 	if len(override.CageTypes) > 0 {
 		if out.CageTypes == nil {
@@ -292,6 +296,7 @@ type RawFlags struct {
 	MaxDuration      string
 	MaxChainDepth    int
 	MaxConcurrent    int
+	MaxIterations    int
 	Context          string
 	Focus            []string
 	Skip             []string
@@ -339,6 +344,9 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) *Plan {
 	}
 	if explicit["max-concurrent"] {
 		p.Limits.MaxConcurrentCages = int32(f.MaxConcurrent)
+	}
+	if explicit["max-iterations"] {
+		p.Limits.MaxIterations = int32(f.MaxIterations)
 	}
 	if explicit["context"] {
 		p.Guidance.Strategy.Context = f.Context

@@ -130,6 +130,28 @@ func (s *Service) UpdateStatus(ctx context.Context, assessmentID string, status 
 	return nil
 }
 
+func (s *Service) UpdateStats(ctx context.Context, assessmentID string, stats Stats) error {
+	s.mu.Lock()
+	info, ok := s.assessments[assessmentID]
+	if ok {
+		info.Stats = stats
+		info.UpdatedAt = time.Now()
+	}
+	s.mu.Unlock()
+
+	if s.db == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE assessments SET updated_at = $1 WHERE id = $2`,
+		time.Now(), assessmentID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating assessment %s stats: %w", assessmentID, err)
+	}
+	return nil
+}
+
 func (s *Service) persistAssessment(ctx context.Context, info *Info) error {
 	if s.db == nil {
 		return nil

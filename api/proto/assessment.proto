@@ -44,6 +44,7 @@ message AssessmentConfig {
   int32 max_concurrent_cages = 14;
   repeated agentcage.cage.v1.PatternEntry extra_block = 15;
   repeated agentcage.cage.v1.PatternEntry extra_flag = 16;
+  int32 max_iterations = 17;
 }
 
 message NotificationConfig {

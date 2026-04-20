@@ -190,6 +190,8 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 	}
 
+	syncStats(ctx, input.AssessmentID, result)
+
 	if err := updateStatus(ctx, input.AssessmentID, StatusValidation); err != nil {
 		return failResult(result, "updating status to validating: %v", err), nil
 	}
@@ -224,7 +226,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	}
 	result.Findings = int32(len(validated))
 
-	if err := generateReport(ctx, input.AssessmentID, validated); err != nil {
+	if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, validated); err != nil {
 		return failResult(result, "generating draft report: %v", err), nil
 	}
 
@@ -263,7 +265,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 		result.Findings = int32(len(validated))
 
-		if err := generateReport(ctx, input.AssessmentID, validated); err != nil {
+		if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, validated); err != nil {
 			return failResult(result, "generating final report after retest: %v", err), nil
 		}
 		if err := updateStatus(ctx, input.AssessmentID, StatusApproved); err != nil {
@@ -277,6 +279,8 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 		result.FinalStatus = StatusRejected
 	}
+
+	syncStats(ctx, input.AssessmentID, result)
 
 	// Best-effort notifications. Failure should not fail the assessment.
 	_ = workflow.ExecuteActivity(
@@ -303,6 +307,17 @@ func assessmentActivityOptions(timeout time.Duration) workflow.ActivityOptions {
 
 func withActivityTimeout(ctx workflow.Context, timeout time.Duration) workflow.Context {
 	return workflow.WithActivityOptions(ctx, assessmentActivityOptions(timeout))
+}
+
+func syncStats(ctx workflow.Context, assessmentID string, result AssessmentWorkflowResult) {
+	stats := Stats{
+		TotalCages:        result.TotalCages,
+		FindingsValidated: result.Findings,
+	}
+	_ = workflow.ExecuteActivity(
+		withActivityTimeout(ctx, TimeoutUpdateStatus),
+		"UpdateAssessmentStats", assessmentID, stats,
+	).Get(ctx, nil)
 }
 
 func updateStatus(ctx workflow.Context, assessmentID string, status Status) error {
@@ -382,9 +397,9 @@ func getValidatedFindings(ctx workflow.Context, assessmentID string) ([]findings
 	return result, err
 }
 
-func generateReport(ctx workflow.Context, assessmentID string, validated []findings.Finding) error {
+func generateReport(ctx workflow.Context, assessmentID, customerID string, validated []findings.Finding) error {
 	actCtx := withActivityTimeout(ctx, TimeoutGenerateReport)
-	return workflow.ExecuteActivity(actCtx, "GenerateReport", assessmentID, validated).Get(ctx, nil)
+	return workflow.ExecuteActivity(actCtx, "GenerateReport", assessmentID, customerID, validated).Get(ctx, nil)
 }
 
 func maxConcurrentForType(cfg Config, cageType cage.Type) int32 {
@@ -536,6 +551,10 @@ func validateFindings(
 			for _, u := range updated {
 				if u.ID == f.ID && u.Status == findings.StatusValidated {
 					validatedCount++
+					_ = workflow.ExecuteActivity(
+						withActivityTimeout(ctx, TimeoutUpdateStatus),
+						"NotifyFinding", assessmentID, cfg.Notifications, u,
+					).Get(ctx, nil)
 					break
 				}
 			}

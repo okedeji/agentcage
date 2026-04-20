@@ -168,6 +168,7 @@ type AssessmentConfig struct {
 	MaxConcurrentCages int32                  `protobuf:"varint,14,opt,name=max_concurrent_cages,json=maxConcurrentCages,proto3" json:"max_concurrent_cages,omitempty"`
 	ExtraBlock         []*PatternEntry        `protobuf:"bytes,15,rep,name=extra_block,json=extraBlock,proto3" json:"extra_block,omitempty"`
 	ExtraFlag          []*PatternEntry        `protobuf:"bytes,16,rep,name=extra_flag,json=extraFlag,proto3" json:"extra_flag,omitempty"`
+	MaxIterations      int32                  `protobuf:"varint,17,opt,name=max_iterations,json=maxIterations,proto3" json:"max_iterations,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -298,6 +299,13 @@ func (x *AssessmentConfig) GetExtraFlag() []*PatternEntry {
 		return x.ExtraFlag
 	}
 	return nil
+}
+
+func (x *AssessmentConfig) GetMaxIterations() int32 {
+	if x != nil {
+		return x.MaxIterations
+	}
+	return 0
 }
 
 type NotificationConfig struct {
@@ -1013,7 +1021,7 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2\x1b.agentcage.cage.v1.CageTypeR\x04type\x12=\n" +
 	"\bdefaults\x18\x02 \x01(\v2!.agentcage.cage.v1.ResourceLimitsR\bdefaults\x12%\n" +
 	"\x0emax_concurrent\x18\x03 \x01(\x05R\rmaxConcurrent\x12<\n" +
-	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xcd\x06\n" +
+	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xf4\x06\n" +
 	"\x10AssessmentConfig\x12\x1f\n" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\x124\n" +
@@ -1032,7 +1040,8 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\vextra_block\x18\x0f \x03(\v2\x1f.agentcage.cage.v1.PatternEntryR\n" +
 	"extraBlock\x12>\n" +
 	"\n" +
-	"extra_flag\x18\x10 \x03(\v2\x1f.agentcage.cage.v1.PatternEntryR\textraFlag\x1a7\n" +
+	"extra_flag\x18\x10 \x03(\v2\x1f.agentcage.cage.v1.PatternEntryR\textraFlag\x12%\n" +
+	"\x0emax_iterations\x18\x11 \x01(\x05R\rmaxIterations\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"n\n" +

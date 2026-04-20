@@ -68,6 +68,7 @@ func cmdRun(args []string) {
 		MaxDuration:      rf.maxDuration,
 		MaxChainDepth:    rf.maxChainDepth,
 		MaxConcurrent:    rf.maxConcurrent,
+		MaxIterations:    rf.maxIterations,
 		Context:          rf.context,
 		Focus:            []string(rf.focus),
 		Skip:             []string(rf.skip),
@@ -236,6 +237,10 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) *pb.CreateAsse
 		MaxConcurrentCages: p.Limits.MaxConcurrentCages,
 		SkipPaths:          p.Target.SkipPaths,
 		Tags:               p.Tags,
+	}
+
+	if p.Limits.MaxIterations > 0 {
+		cfg.MaxIterations = p.Limits.MaxIterations
 	}
 
 	cfg.Scope = &pb.TargetScope{
@@ -473,6 +478,7 @@ func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	fs.StringVar(&rf.maxDuration, "max-duration", "", "assessment wall clock (e.g. 30m, 4h)")
 	fs.IntVar(&rf.maxChainDepth, "max-chain-depth", 0, "escalation chain depth limit")
 	fs.IntVar(&rf.maxConcurrent, "max-concurrent", 0, "max concurrent cages")
+	fs.IntVar(&rf.maxIterations, "max-iterations", 0, "max coordinator iterations (default 20)")
 	fs.StringVar(&rf.context, "context", "", "free-text context for the LLM coordinator")
 	fs.Var(&rf.focus, "focus", "vuln class to prioritize (repeatable)")
 	fs.Var(&rf.skip, "skip", "path to deprioritize (repeatable)")
@@ -505,6 +511,7 @@ type runFlags struct {
 	maxDuration      string
 	maxChainDepth    int
 	maxConcurrent    int
+	maxIterations    int
 	context          string
 	focus            stringSliceFlag
 	skip             stringSliceFlag

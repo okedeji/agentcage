@@ -100,11 +100,13 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("GetFinding", a.GetFinding)
 	pin("UpdateFindingStatus", a.UpdateFindingStatus)
 	pin("UpdateAssessmentStatus", a.UpdateAssessmentStatus)
+	pin("UpdateAssessmentStats", a.UpdateAssessmentStats)
 	pin("GenerateReport", a.GenerateReport)
 	pin("PlanNextActions", a.PlanNextActions)
 	pin("LookupProof", a.LookupProof)
 	pin("EmitProofGapIntervention", a.EmitProofGapIntervention)
 	pin("GetAssessmentTokensConsumed", a.GetAssessmentTokensConsumed)
+	pin("NotifyFinding", a.NotifyFinding)
 	pin("NotifyFleetAssessmentComplete", a.NotifyFleetAssessmentComplete)
 	pin("NotifyAssessmentComplete", a.NotifyAssessmentComplete)
 }
@@ -205,6 +207,17 @@ func (a *ActivityImpl) UpdateFindingStatus(ctx context.Context, findingID string
 	return a.findings.UpdateStatus(ctx, findingID, status)
 }
 
+func (a *ActivityImpl) UpdateAssessmentStats(ctx context.Context, assessmentID string, stats Stats) error {
+	if a.assessments != nil {
+		if err := a.assessments.UpdateStats(ctx, assessmentID, stats); err != nil {
+			return err
+		}
+	}
+	a.log.V(1).Info("assessment stats updated", "assessment_id", assessmentID,
+		"total_cages", stats.TotalCages, "findings_validated", stats.FindingsValidated)
+	return nil
+}
+
 func (a *ActivityImpl) UpdateAssessmentStatus(ctx context.Context, assessmentID string, status Status) error {
 	if a.assessments != nil {
 		if err := a.assessments.UpdateStatus(ctx, assessmentID, status); err != nil {
@@ -215,8 +228,8 @@ func (a *ActivityImpl) UpdateAssessmentStatus(ctx context.Context, assessmentID 
 	return nil
 }
 
-func (a *ActivityImpl) GenerateReport(ctx context.Context, assessmentID string, validated []findings.Finding) ([]byte, error) {
-	report, err := GenerateReport(assessmentID, "", validated)
+func (a *ActivityImpl) GenerateReport(ctx context.Context, assessmentID, customerID string, validated []findings.Finding) ([]byte, error) {
+	report, err := GenerateReport(assessmentID, customerID, validated)
 	if err != nil {
 		return nil, fmt.Errorf("generating report for assessment %s: %w", assessmentID, err)
 	}
@@ -268,6 +281,35 @@ func (a *ActivityImpl) GetAssessmentTokensConsumed(_ context.Context, assessment
 		return 0, nil
 	}
 	return a.tokens.AssessmentTokens(assessmentID), nil
+}
+
+func (a *ActivityImpl) NotifyFinding(ctx context.Context, assessmentID string, config NotificationConfig, finding findings.Finding) error {
+	if config.Webhook == "" || !config.OnFinding {
+		return nil
+	}
+	body := map[string]any{
+		"assessment_id": assessmentID,
+		"event":         "finding_validated",
+		"finding_id":    finding.ID,
+		"title":         finding.Title,
+		"severity":      finding.Severity.String(),
+		"vuln_class":    finding.VulnClass,
+		"endpoint":      finding.Endpoint,
+	}
+	payloadBytes, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, config.Webhook, strings.NewReader(string(payloadBytes)))
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		a.log.Error(err, "finding webhook failed", "assessment_id", assessmentID, "finding_id", finding.ID)
+		return nil
+	}
+	_ = resp.Body.Close()
+	a.log.V(1).Info("finding webhook sent", "assessment_id", assessmentID, "finding_id", finding.ID, "status_code", resp.StatusCode)
+	return nil
 }
 
 func (a *ActivityImpl) NotifyFleetAssessmentComplete(_ context.Context, assessmentID string) error {
