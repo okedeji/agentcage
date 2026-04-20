@@ -126,6 +126,7 @@ func main() {
 	}
 	setEnv("AGENTCAGE_DIRECTIVES_FILE", "/var/run/agentcage/directives.json")
 	setEnv("AGENTCAGE_HOLD_SOCKET", "/var/run/agentcage/hold.sock")
+	setEnv("AGENTCAGE_LOG_SOCKET", "/var/run/agentcage/logs.sock")
 
 	// 6. Exec the agent entrypoint.
 	// This replaces PID 1 with the agent process. When the agent

@@ -68,8 +68,8 @@ func (l *AgentHoldListener) StopForVM(vmID string) {
 
 // ResolveHold sends a response to a blocked agent hold request.
 // Called by the intervention service when an operator resolves an
-// agent_hold intervention.
-func (l *AgentHoldListener) ResolveHold(interventionID string, response AgentHoldResponse) error {
+// agent_hold intervention. The signature matches intervention.AgentHoldResolver.
+func (l *AgentHoldListener) ResolveHold(interventionID string, allowed bool, message string) error {
 	l.mu.Lock()
 	ch, ok := l.pending[interventionID]
 	if ok {
@@ -81,6 +81,7 @@ func (l *AgentHoldListener) ResolveHold(interventionID string, response AgentHol
 		return fmt.Errorf("no pending agent hold for intervention %s", interventionID)
 	}
 
+	response := AgentHoldResponse{Allowed: allowed, Message: message}
 	select {
 	case ch <- response:
 		return nil

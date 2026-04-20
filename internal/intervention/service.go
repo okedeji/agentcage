@@ -22,12 +22,20 @@ type PayloadHoldResolver interface {
 	ReleaseHold(ctx context.Context, interventionID string, allow bool) error
 }
 
+// AgentHoldResolver relays hold decisions back to the agent inside the
+// cage via the vsock-backed AgentHoldListener. Same pattern as
+// PayloadHoldResolver but for agent-initiated holds.
+type AgentHoldResolver interface {
+	ResolveHold(interventionID string, allowed bool, message string) error
+}
+
 type Service struct {
-	queue             *Queue
-	signaler          WorkflowSignaler
-	proofLibrary      ProofReloader
+	queue               *Queue
+	signaler            WorkflowSignaler
+	proofLibrary        ProofReloader
 	payloadHoldResolver PayloadHoldResolver
-	logger            logr.Logger
+	agentHoldResolver   AgentHoldResolver
+	logger              logr.Logger
 }
 
 func NewService(queue *Queue, signaler WorkflowSignaler, logger logr.Logger) *Service {
@@ -51,6 +59,13 @@ func (s *Service) SetProofReloader(p ProofReloader) {
 // interventions are resolved in the queue but the proxy times out.
 func (s *Service) SetPayloadHoldResolver(r PayloadHoldResolver) {
 	s.payloadHoldResolver = r
+}
+
+// SetAgentHoldResolver installs the resolver that relays agent hold
+// decisions back to the agent via vsock. Optional: if unset, agent hold
+// interventions are resolved in the queue but the agent times out.
+func (s *Service) SetAgentHoldResolver(r AgentHoldResolver) {
+	s.agentHoldResolver = r
 }
 
 // EnqueueProofGap creates a pending proof_gap intervention scoped to an
@@ -162,6 +177,15 @@ func (s *Service) ResolveCageIntervention(ctx context.Context, interventionID st
 		allow := action == ActionAllow
 		if err := s.payloadHoldResolver.ReleaseHold(ctx, interventionID, allow); err != nil {
 			s.logger.Error(err, "relaying payload hold decision to proxy", "intervention_id", interventionID)
+		}
+	}
+
+	// Agent hold decisions go back to the agent over the vsock hold
+	// connection. The agent is blocked on a socket read; this unblocks it.
+	if req.Type == TypeAgentHold && s.agentHoldResolver != nil {
+		allowed := action == ActionAllow || action == ActionResume
+		if err := s.agentHoldResolver.ResolveHold(interventionID, allowed, rationale); err != nil {
+			s.logger.Error(err, "relaying agent hold decision", "intervention_id", interventionID)
 		}
 	}
 

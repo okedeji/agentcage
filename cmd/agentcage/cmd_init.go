@@ -195,6 +195,21 @@ func runInit(configFile, logFormat string) error {
 	})
 	iSvc.SetPayloadHoldResolver(payloadHoldHandler)
 
+	agentHoldListener := cage.NewAgentHoldListener(cage.AgentHoldListenerConfig{
+		Enqueuer:        &interventionQueueAdapter{q: iQueue},
+		InterventionTTL: cfg.InterventionTimeout(),
+		Log:             log,
+	})
+	iSvc.SetAgentHoldResolver(agentHoldListener)
+
+	cageLogDir := filepath.Join(embedded.DataDir(), "cage-logs")
+	logSink, err := cage.NewFileSink(cageLogDir)
+	if err != nil {
+		return fmt.Errorf("creating cage log sink: %w", err)
+	}
+	defer logSink.Close()
+	logCollector := cage.NewVsockCollector(log.WithValues("component", "vsock-collector"), logSink)
+
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
 		Provisioner:       cageRuntime.provisioner,
 		Rootfs:            cageRuntime.rootfs,
@@ -210,6 +225,7 @@ func runInit(configFile, logFormat string) error {
 		Secrets:           secretFetcher,
 		InterventionQueue: &interventionQueueAdapter{q: iQueue},
 		PayloadHolds:      payloadHoldHandler,
+		LogCollector:      logCollector,
 		Log:               log,
 	})
 

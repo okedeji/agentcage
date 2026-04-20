@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -104,6 +105,54 @@ func NewStdoutSink(logger logr.Logger) *StdoutSink {
 func (s *StdoutSink) Write(cageID, source string, line []byte) error {
 	s.logger.Info("cage log", "cage_id", cageID, "source", source, "raw", string(line))
 	return nil
+}
+
+// FileSink writes cage logs to per-cage files under a directory.
+// Each cage gets its own log file: <dir>/<cageID>.log. The CLI
+// command `agentcage logs --cage <id>` tails this file.
+type FileSink struct {
+	dir    string
+	mu     sync.Mutex
+	files  map[string]*os.File
+}
+
+func NewFileSink(dir string) (*FileSink, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("creating cage log dir %s: %w", dir, err)
+	}
+	return &FileSink{dir: dir, files: make(map[string]*os.File)}, nil
+}
+
+func (s *FileSink) Write(cageID, source string, line []byte) error {
+	s.mu.Lock()
+	f, ok := s.files[cageID]
+	if !ok {
+		var err error
+		path := fmt.Sprintf("%s/%s.log", s.dir, cageID)
+		f, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			s.mu.Unlock()
+			return fmt.Errorf("opening cage log %s: %w", path, err)
+		}
+		s.files[cageID] = f
+	}
+	s.mu.Unlock()
+
+	entry := fmt.Sprintf("[%s] %s\n", source, line)
+	_, err := f.WriteString(entry)
+	return err
+}
+
+// Dir returns the log directory path for use by the CLI.
+func (s *FileSink) Dir() string { return s.dir }
+
+// Close closes all open log files.
+func (s *FileSink) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, f := range s.files {
+		_ = f.Close()
+	}
 }
 
 // OTelSink forwards cage logs to an OpenTelemetry collector.

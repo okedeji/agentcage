@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/okedeji/agentcage/internal/embedded"
 )
@@ -30,8 +31,18 @@ func cmdLogs(args []string) {
 	}
 
 	if *cageID != "" {
-		fmt.Printf("Streaming logs for cage %s...\n", *cageID)
-		fmt.Println("  (requires vsock connection — pending)")
+		cageLogDir := filepath.Join(embedded.DataDir(), "cage-logs")
+		logFile := filepath.Join(cageLogDir, *cageID+".log")
+		if _, err := os.Stat(logFile); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "no logs for cage %s (expected %s)\n", *cageID, logFile)
+			fmt.Fprintf(os.Stderr, "  the cage may not have started or log forwarding is not connected\n")
+			os.Exit(1)
+		}
+		fmt.Printf("Tailing cage %s logs (%s)...\n", *cageID, logFile)
+		tail := exec.Command("tail", "-f", logFile)
+		tail.Stdout = os.Stdout
+		tail.Stderr = os.Stderr
+		_ = tail.Run()
 		return
 	}
 
