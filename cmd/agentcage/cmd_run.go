@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,6 +25,8 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
+const cmdRunTimeout = 10 * time.Minute
+
 type stringSliceFlag []string
 
 func (s *stringSliceFlag) String() string     { return strings.Join(*s, ",") }
@@ -34,6 +37,12 @@ func cmdRun(args []string) {
 		printRunUsage()
 		os.Exit(1)
 	}
+
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	setupCtx, setupCancel := context.WithTimeout(sigCtx, cmdRunTimeout)
+	defer setupCancel()
 
 	rf, fs := parseRunFlags(args)
 	explicit := explicitFlags(fs)
@@ -58,7 +67,7 @@ func cmdRun(args []string) {
 		p = plan.Merge(p, loaded)
 	}
 
-	override := plan.FlagsToOverride(explicit, plan.RawFlags{
+	override, err := plan.FlagsToOverride(explicit, plan.RawFlags{
 		Agent:            rf.agent,
 		Target:           rf.target,
 		Ports:            []string(rf.ports),
@@ -86,6 +95,10 @@ func cmdRun(args []string) {
 		Tags:             []string(rf.tags),
 		CustomerID:       rf.customerID,
 	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 	p = plan.Merge(p, override)
 
 	plan.ApplyDefaults(p)
@@ -98,13 +111,18 @@ func cmdRun(args []string) {
 		os.Exit(1)
 	}
 
-	bundleRef, err := prepareBundle(p.Agent)
+	if setupCtx.Err() != nil {
+		fmt.Fprintf(os.Stderr, "interrupted\n")
+		os.Exit(1)
+	}
+
+	bundleRef, err := prepareBundle(setupCtx, p.Agent)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	conn, err := dialOrchestrator(cfg)
+	conn, err := dialOrchestrator(setupCtx, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -117,11 +135,11 @@ func cmdRun(args []string) {
 		os.Exit(1)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	createCtx, createCancel := context.WithTimeout(setupCtx, 30*time.Second)
+	defer createCancel()
 
 	client := pb.NewAssessmentServiceClient(conn)
-	resp, err := client.CreateAssessment(ctx, req)
+	resp, err := client.CreateAssessment(createCtx, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error creating assessment: %v\n", err)
 		os.Exit(1)
@@ -135,7 +153,7 @@ func cmdRun(args []string) {
 	}
 }
 
-func prepareBundle(agentPath string) (string, error) {
+func prepareBundle(ctx context.Context, agentPath string) (string, error) {
 	fi, err := os.Stat(agentPath)
 	if err != nil {
 		return "", fmt.Errorf("agent path %s: %w", agentPath, err)
@@ -152,6 +170,23 @@ func prepareBundle(agentPath string) (string, error) {
 			agentPath, float64(fi.Size())/(1024*1024), float64(cagefile.DefaultMaxBundleSize)/(1024*1024))
 	}
 
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+
+	fmt.Println("Storing bundle...")
+	storeDir := filepath.Join(embedded.DataDir(), "bundles")
+	store, storeInitErr := cagefile.NewBundleStore(storeDir)
+	if storeInitErr != nil {
+		return "", storeInitErr
+	}
+
+	ref, storeErr := store.Store(agentPath)
+	if storeErr != nil {
+		return "", fmt.Errorf("storing bundle: %w", storeErr)
+	}
+
+	// Verify the stored copy so we validate what we actually use.
 	fmt.Println("Verifying bundle...")
 	tmpDir, tmpErr := os.MkdirTemp("", "agentcage-verify-*")
 	if tmpErr != nil {
@@ -159,28 +194,21 @@ func prepareBundle(agentPath string) (string, error) {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	manifest, unpackErr := cagefile.UnpackFile(agentPath, tmpDir)
+	storedPath := store.Path(ref)
+	manifest, unpackErr := cagefile.UnpackFile(storedPath, tmpDir)
 	if unpackErr != nil {
+		_ = os.Remove(storedPath)
 		return "", fmt.Errorf("verifying bundle %s: %w", agentPath, unpackErr)
 	}
 	if err := cagefile.CheckCompatibility(manifest, version); err != nil {
+		_ = os.Remove(storedPath)
 		return "", err
 	}
 
-	storeDir := filepath.Join(embedded.DataDir(), "bundles")
-	store, err := cagefile.NewBundleStore(storeDir)
-	if err != nil {
-		return "", err
-	}
-
-	ref, storeErr := store.Store(agentPath)
-	if storeErr != nil {
-		return "", fmt.Errorf("storing bundle: %w", storeErr)
-	}
 	return ref, nil
 }
 
-func dialOrchestrator(cfg *config.Config) (*grpc.ClientConn, error) {
+func dialOrchestrator(ctx context.Context, cfg *config.Config) (*grpc.ClientConn, error) {
 	addr := cfg.ServerAddress()
 
 	creds, err := buildClientCredentials(cfg)
@@ -193,11 +221,11 @@ func dialOrchestrator(cfg *config.Config) (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("connecting to orchestrator at %s: %w", addr, err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	control := pb.NewControlServiceClient(conn)
-	if _, err := control.Ping(ctx, &pb.PingRequest{}); err != nil {
+	if _, err := control.Ping(pingCtx, &pb.PingRequest{}); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("orchestrator not reachable at %s (run 'agentcage init' first): %w", addr, err)
 	}
@@ -266,9 +294,20 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) (*pb.CreateAss
 		cfg.MaxDuration = durationpb.New(d)
 	}
 
-	for name, ct := range p.CageTypes {
+	cageNames := make([]string, 0, len(p.CageTypes))
+	for name := range p.CageTypes {
+		cageNames = append(cageNames, name)
+	}
+	sort.Strings(cageNames)
+
+	for _, name := range cageNames {
+		ct := p.CageTypes[name]
+		protoType, typeErr := cageTypeNameToProto(name)
+		if typeErr != nil {
+			return nil, typeErr
+		}
 		ctPb := &pb.CageTypeConfig{
-			Type:          cageTypeNameToProto(name),
+			Type:          protoType,
 			MaxConcurrent: ct.MaxConcurrent,
 			Defaults:      &pb.ResourceLimits{Vcpus: ct.VCPUs, MemoryMb: ct.MemoryMB},
 		}
@@ -392,7 +431,8 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 	client := pb.NewAssessmentServiceClient(conn)
 	jsonMode := format == "json"
 	var lastStatus string
-	var lastFindings int32
+	var lastValidated int32
+	var lastCandidate int32
 	var lastCages int32
 	var consecutiveErrors int
 	lastChange := time.Now()
@@ -449,7 +489,7 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 
 			validated := stats.GetFindingsValidated()
 			candidate := stats.GetFindingsCandidate()
-			if validated != lastFindings || (candidate > 0 && lastFindings == 0) {
+			if validated != lastValidated || candidate != lastCandidate {
 				if jsonMode {
 					fmt.Printf("{\"findings_candidate\":%d,\"findings_validated\":%d,\"findings_rejected\":%d,\"tokens_consumed\":%d}\n",
 						candidate, validated, stats.GetFindingsRejected(), stats.GetTokensConsumed())
@@ -457,7 +497,8 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 					fmt.Printf("  Findings: %d candidate, %d validated, %d rejected\n",
 						candidate, validated, stats.GetFindingsRejected())
 				}
-				lastFindings = validated
+				lastValidated = validated
+				lastCandidate = candidate
 				lastChange = time.Now()
 			}
 		}
@@ -483,6 +524,22 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 				fmt.Printf("Run 'agentcage report --assessment %s' for details.\n", assessmentID)
 			}
 			return
+		case pb.AssessmentStatus_ASSESSMENT_STATUS_FAILED:
+			if jsonMode {
+				fmt.Printf("{\"result\":\"failed\"}\n")
+			} else {
+				fmt.Printf("\nAssessment failed.\n")
+				fmt.Printf("Run 'agentcage logs --assessment %s' for details.\n", assessmentID)
+			}
+			return
+		case pb.AssessmentStatus_ASSESSMENT_STATUS_UNSPECIFIED:
+			if jsonMode {
+				fmt.Printf("{\"result\":\"error\",\"detail\":\"server returned unspecified status\"}\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "\nServer returned unspecified status for assessment %s.\n", assessmentID)
+				fmt.Fprintf(os.Stderr, "Run 'agentcage status --assessment %s' to check progress.\n", assessmentID)
+			}
+			return
 		}
 
 		if time.Since(lastChange) > followStaleTimeout {
@@ -496,16 +553,16 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 	}
 }
 
-func cageTypeNameToProto(name string) pb.CageType {
+func cageTypeNameToProto(name string) (pb.CageType, error) {
 	switch name {
 	case "discovery":
-		return pb.CageType_CAGE_TYPE_DISCOVERY
+		return pb.CageType_CAGE_TYPE_DISCOVERY, nil
 	case "validator":
-		return pb.CageType_CAGE_TYPE_VALIDATOR
+		return pb.CageType_CAGE_TYPE_VALIDATOR, nil
 	case "escalation":
-		return pb.CageType_CAGE_TYPE_ESCALATION
+		return pb.CageType_CAGE_TYPE_ESCALATION, nil
 	default:
-		return pb.CageType_CAGE_TYPE_UNSPECIFIED
+		return pb.CageType_CAGE_TYPE_UNSPECIFIED, fmt.Errorf("unknown cage type %q in proto conversion", name)
 	}
 }
 

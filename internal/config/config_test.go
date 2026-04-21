@@ -27,18 +27,24 @@ func TestDefaults_HasThreeCageTypes(t *testing.T) {
 	assert.Equal(t, 30*time.Minute, disc.MaxDuration)
 	assert.Equal(t, int32(4), disc.MaxVCPUs)
 	assert.Equal(t, int32(8192), disc.MaxMemoryMB)
+	assert.Equal(t, int32(2), disc.DefaultVCPUs)
+	assert.Equal(t, int32(4096), disc.DefaultMemoryMB)
 	assert.True(t, disc.RequiresLLM)
 
 	val := cfg.Cages["validator"]
 	assert.Equal(t, 60*time.Second, val.MaxDuration)
 	assert.Equal(t, int32(1), val.MaxVCPUs)
 	assert.Equal(t, int32(1024), val.MaxMemoryMB)
+	assert.Equal(t, int32(1), val.DefaultVCPUs)
+	assert.Equal(t, int32(512), val.DefaultMemoryMB)
 	assert.True(t, val.RequiresParentFinding)
 
 	esc := cfg.Cages["escalation"]
 	assert.Equal(t, 15*time.Minute, esc.MaxDuration)
 	assert.Equal(t, int32(2), esc.MaxVCPUs)
 	assert.Equal(t, int32(4096), esc.MaxMemoryMB)
+	assert.Equal(t, int32(1), esc.DefaultVCPUs)
+	assert.Equal(t, int32(2048), esc.DefaultMemoryMB)
 	assert.Equal(t, int32(3), esc.MaxChainDepth)
 }
 

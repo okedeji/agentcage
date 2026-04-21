@@ -412,10 +412,14 @@ type AutoscalerConfig struct {
 }
 
 // CageTypeConfig defines resource and behavioral limits for a cage type.
+// Default* fields are what cages receive when the plan does not specify
+// resources. Max* fields are ceilings that EnforceConfigCeilings checks.
 type CageTypeConfig struct {
 	MaxDuration          time.Duration `yaml:"max_duration"`
 	MaxVCPUs             int32         `yaml:"max_vcpus"`
 	MaxMemoryMB          int32         `yaml:"max_memory_mb"`
+	DefaultVCPUs         int32         `yaml:"default_vcpus"`
+	DefaultMemoryMB      int32         `yaml:"default_memory_mb"`
 	MaxConcurrent        int32         `yaml:"max_concurrent"`
 	RequiresLLM          bool          `yaml:"requires_llm"`
 	RequiresParentFinding bool         `yaml:"requires_parent_finding"`
@@ -688,17 +692,21 @@ func Defaults() *Config {
 		},
 		Cages: map[string]CageTypeConfig{
 			"discovery": {
-				MaxDuration:   30 * time.Minute,
-				MaxVCPUs:      4,
-				MaxMemoryMB:   8192,
-				MaxConcurrent: 10,
-				RequiresLLM:   true,
-				RateLimit:     1000,
+				MaxDuration:     30 * time.Minute,
+				MaxVCPUs:        4,
+				MaxMemoryMB:     8192,
+				DefaultVCPUs:    2,
+				DefaultMemoryMB: 4096,
+				MaxConcurrent:   10,
+				RequiresLLM:     true,
+				RateLimit:       1000,
 			},
 			"validator": {
 				MaxDuration:           60 * time.Second,
 				MaxVCPUs:              1,
 				MaxMemoryMB:           1024,
+				DefaultVCPUs:          1,
+				DefaultMemoryMB:       512,
 				MaxConcurrent:         20,
 				RequiresLLM:           false,
 				RequiresParentFinding: true,
@@ -708,6 +716,8 @@ func Defaults() *Config {
 				MaxDuration:           15 * time.Minute,
 				MaxVCPUs:              2,
 				MaxMemoryMB:           4096,
+				DefaultVCPUs:          1,
+				DefaultMemoryMB:       2048,
 				MaxConcurrent:         5,
 				RequiresLLM:           true,
 				RequiresParentFinding: true,
@@ -954,6 +964,12 @@ func Merge(base, override *Config) *Config {
 				}
 				if v.MaxMemoryMB > 0 {
 					existing.MaxMemoryMB = v.MaxMemoryMB
+				}
+				if v.DefaultVCPUs > 0 {
+					existing.DefaultVCPUs = v.DefaultVCPUs
+				}
+				if v.DefaultMemoryMB > 0 {
+					existing.DefaultMemoryMB = v.DefaultMemoryMB
 				}
 				if v.MaxConcurrent > 0 {
 					existing.MaxConcurrent = v.MaxConcurrent

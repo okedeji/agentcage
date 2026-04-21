@@ -2,6 +2,7 @@ package plan
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/okedeji/agentcage/internal/config"
@@ -22,9 +23,17 @@ func BasePlanFromConfig(cfg *config.Config) *Plan {
 	if len(cfg.Cages) > 0 {
 		p.CageTypes = make(map[string]CageType, len(cfg.Cages))
 		for name, ct := range cfg.Cages {
+			vcpus := ct.DefaultVCPUs
+			if vcpus <= 0 {
+				vcpus = ct.MaxVCPUs
+			}
+			mem := ct.DefaultMemoryMB
+			if mem <= 0 {
+				mem = ct.MaxMemoryMB
+			}
 			p.CageTypes[name] = CageType{
-				VCPUs:         ct.MaxVCPUs,
-				MemoryMB:      ct.MaxMemoryMB,
+				VCPUs:         vcpus,
+				MemoryMB:      mem,
 				MaxConcurrent: ct.MaxConcurrent,
 				MaxDuration:   ct.MaxDuration.String(),
 			}
@@ -49,7 +58,10 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 
 	if p.Budget.MaxDuration != "" && cfg.Assessment.MaxDuration > 0 {
 		d, err := time.ParseDuration(p.Budget.MaxDuration)
-		if err == nil && d > cfg.Assessment.MaxDuration {
+		if err != nil {
+			return fmt.Errorf("invalid max_duration %q: %w", p.Budget.MaxDuration, err)
+		}
+		if d > cfg.Assessment.MaxDuration {
 			return fmt.Errorf("max duration %s exceeds operator limit %s", p.Budget.MaxDuration, cfg.Assessment.MaxDuration)
 		}
 	}
@@ -64,6 +76,10 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 
 	if cfg.Assessment.MaxConcurrent > 0 && p.Limits.MaxConcurrentCages > cfg.Assessment.MaxConcurrent {
 		return fmt.Errorf("max_concurrent_cages %d exceeds operator limit %d", p.Limits.MaxConcurrentCages, cfg.Assessment.MaxConcurrent)
+	}
+
+	if cfg.Posture == config.PostureStrict && p.Notifications.Webhook != "" && strings.HasPrefix(p.Notifications.Webhook, "http://") {
+		return fmt.Errorf("posture=strict: webhook %q uses plaintext HTTP, HTTPS required", p.Notifications.Webhook)
 	}
 
 	for name, ct := range p.CageTypes {
@@ -82,7 +98,10 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 		}
 		if ct.MaxDuration != "" && cfgCt.MaxDuration > 0 {
 			d, err := time.ParseDuration(ct.MaxDuration)
-			if err == nil && d > cfgCt.MaxDuration {
+			if err != nil {
+				return fmt.Errorf("cage_types.%s: invalid max_duration %q: %w", name, ct.MaxDuration, err)
+			}
+			if d > cfgCt.MaxDuration {
 				return fmt.Errorf("cage_types.%s.max_duration %s exceeds operator limit %s", name, ct.MaxDuration, cfgCt.MaxDuration)
 			}
 		}

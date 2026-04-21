@@ -163,7 +163,24 @@ func Merge(base, override *Plan) *Plan {
 			out.CageTypes = make(map[string]CageType)
 		}
 		for k, v := range override.CageTypes {
-			out.CageTypes[k] = v
+			existing, ok := out.CageTypes[k]
+			if !ok {
+				out.CageTypes[k] = v
+				continue
+			}
+			if v.VCPUs > 0 {
+				existing.VCPUs = v.VCPUs
+			}
+			if v.MemoryMB > 0 {
+				existing.MemoryMB = v.MemoryMB
+			}
+			if v.MaxConcurrent > 0 {
+				existing.MaxConcurrent = v.MaxConcurrent
+			}
+			if v.MaxDuration != "" {
+				existing.MaxDuration = v.MaxDuration
+			}
+			out.CageTypes[k] = existing
 		}
 	}
 
@@ -253,8 +270,8 @@ func Validate(p *Plan) error {
 			return fmt.Errorf("target host cannot be empty")
 		}
 	}
-	if p.Budget.Tokens < 0 {
-		return fmt.Errorf("budget.tokens must not be negative")
+	if p.Budget.Tokens <= 0 {
+		return fmt.Errorf("budget.tokens must be positive (discovery cages require LLM tokens)")
 	}
 	if p.Budget.MaxDuration != "" {
 		if _, err := time.ParseDuration(p.Budget.MaxDuration); err != nil {
@@ -271,6 +288,9 @@ func Validate(p *Plan) error {
 	}
 	if p.Limits.MaxConcurrentCages < 0 {
 		return fmt.Errorf("max_concurrent_cages must not be negative")
+	}
+	if p.Limits.MaxIterations < 0 {
+		return fmt.Errorf("max_iterations must not be negative")
 	}
 	if p.Notifications.Webhook != "" {
 		u, err := url.Parse(p.Notifications.Webhook)
@@ -336,7 +356,7 @@ type RawFlags struct {
 	CustomerID       string
 }
 
-func FlagsToOverride(explicit map[string]bool, f RawFlags) *Plan {
+func FlagsToOverride(explicit map[string]bool, f RawFlags) (*Plan, error) {
 	p := &Plan{}
 
 	if explicit["agent"] {
@@ -412,13 +432,17 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) *Plan {
 		p.Name = f.Name
 	}
 	if explicit["tag"] {
-		p.Tags = ParseTags(f.Tags)
+		tags, err := ParseTags(f.Tags)
+		if err != nil {
+			return nil, err
+		}
+		p.Tags = tags
 	}
 	if explicit["customer-id"] {
 		p.CustomerID = f.CustomerID
 	}
 
-	return p
+	return p, nil
 }
 
 func boolPtr(v bool) *bool { return &v }
@@ -443,13 +467,14 @@ func splitAndTrim(s, sep string) []string {
 	return out
 }
 
-func ParseTags(tags []string) map[string]string {
+func ParseTags(tags []string) (map[string]string, error) {
 	m := make(map[string]string, len(tags))
 	for _, t := range tags {
 		k, v, ok := strings.Cut(t, "=")
-		if ok {
-			m[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		if !ok {
+			return nil, fmt.Errorf("malformed tag %q: expected key=value", t)
 		}
+		m[strings.TrimSpace(k)] = strings.TrimSpace(v)
 	}
-	return m
+	return m, nil
 }

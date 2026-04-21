@@ -33,6 +33,7 @@ const (
 	AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW AssessmentStatus = 4
 	AssessmentStatus_ASSESSMENT_STATUS_APPROVED       AssessmentStatus = 5
 	AssessmentStatus_ASSESSMENT_STATUS_REJECTED       AssessmentStatus = 6
+	AssessmentStatus_ASSESSMENT_STATUS_FAILED         AssessmentStatus = 7
 )
 
 // Enum value maps for AssessmentStatus.
@@ -45,6 +46,7 @@ var (
 		4: "ASSESSMENT_STATUS_PENDING_REVIEW",
 		5: "ASSESSMENT_STATUS_APPROVED",
 		6: "ASSESSMENT_STATUS_REJECTED",
+		7: "ASSESSMENT_STATUS_FAILED",
 	}
 	AssessmentStatus_value = map[string]int32{
 		"ASSESSMENT_STATUS_UNSPECIFIED":    0,
@@ -54,6 +56,7 @@ var (
 		"ASSESSMENT_STATUS_PENDING_REVIEW": 4,
 		"ASSESSMENT_STATUS_APPROVED":       5,
 		"ASSESSMENT_STATUS_REJECTED":       6,
+		"ASSESSMENT_STATUS_FAILED":         7,
 	}
 )
 
@@ -1107,7 +1110,7 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x15GetAssessmentResponse\x12G\n" +
 	"\n" +
 	"assessment\x18\x01 \x01(\v2'.agentcage.assessment.v1.AssessmentInfoR\n" +
-	"assessment*\x82\x02\n" +
+	"assessment*\xa0\x02\n" +
 	"\x10AssessmentStatus\x12!\n" +
 	"\x1dASSESSMENT_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bASSESSMENT_STATUS_DISCOVERY\x10\x01\x12\"\n" +
@@ -1115,7 +1118,8 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x1cASSESSMENT_STATUS_VALIDATION\x10\x03\x12$\n" +
 	" ASSESSMENT_STATUS_PENDING_REVIEW\x10\x04\x12\x1e\n" +
 	"\x1aASSESSMENT_STATUS_APPROVED\x10\x05\x12\x1e\n" +
-	"\x1aASSESSMENT_STATUS_REJECTED\x10\x062\xfc\x01\n" +
+	"\x1aASSESSMENT_STATUS_REJECTED\x10\x06\x12\x1c\n" +
+	"\x18ASSESSMENT_STATUS_FAILED\x10\a2\xfc\x01\n" +
 	"\x11AssessmentService\x12w\n" +
 	"\x10CreateAssessment\x120.agentcage.assessment.v1.CreateAssessmentRequest\x1a1.agentcage.assessment.v1.CreateAssessmentResponse\x12n\n" +
 	"\rGetAssessment\x12-.agentcage.assessment.v1.GetAssessmentRequest\x1a..agentcage.assessment.v1.GetAssessmentResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"

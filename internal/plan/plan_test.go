@@ -195,7 +195,7 @@ func TestValidate_InvalidDuration(t *testing.T) {
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
 		Target:     Target{Hosts: []string{"example.com"}},
-		Budget:     Budget{MaxDuration: "notaduration"},
+		Budget:     Budget{Tokens: 500000, MaxDuration: "notaduration"},
 	}
 	err := Validate(p)
 	require.Error(t, err)
@@ -207,6 +207,7 @@ func TestValidate_InvalidCageType(t *testing.T) {
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
 		Target:     Target{Hosts: []string{"example.com"}},
+		Budget:     Budget{Tokens: 500000},
 		CageTypes:  map[string]CageType{"recon": {VCPUs: 1}},
 	}
 	err := Validate(p)
@@ -219,6 +220,7 @@ func TestValidate_InvalidOutputFormat(t *testing.T) {
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
 		Target:     Target{Hosts: []string{"example.com"}},
+		Budget:     Budget{Tokens: 500000},
 		Output:     Output{Format: "xml"},
 	}
 	err := Validate(p)
@@ -231,10 +233,22 @@ func TestValidate_ValidMinimalPlan(t *testing.T) {
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
 		Target:     Target{Hosts: []string{"example.com"}},
+		Budget:     Budget{Tokens: 500000},
 	}
 	ApplyDefaults(p)
 	require.NoError(t, Validate(p))
 	assert.Equal(t, "text", p.Output.Format)
+}
+
+func TestValidate_ZeroTokensRejected(t *testing.T) {
+	p := &Plan{
+		CustomerID: "acme",
+		Agent:      "./agent.cage",
+		Target:     Target{Hosts: []string{"example.com"}},
+	}
+	err := Validate(p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "budget.tokens must be positive")
 }
 
 func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
@@ -250,7 +264,8 @@ func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
 		TokenBudget: 999999,
 	}
 
-	p := FlagsToOverride(explicit, f)
+	p, err := FlagsToOverride(explicit, f)
+	require.NoError(t, err)
 
 	assert.Equal(t, "./my-agent", p.Agent)
 	assert.Equal(t, []string{"a.com", "b.com"}, p.Target.Hosts)
@@ -259,11 +274,18 @@ func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
 }
 
 
-func TestParseTags(t *testing.T) {
-	tags := []string{"team=red", "env=staging", "novalue"}
-	m := ParseTags(tags)
+func TestParseTags_Valid(t *testing.T) {
+	tags := []string{"team=red", "env=staging"}
+	m, err := ParseTags(tags)
+	require.NoError(t, err)
 
 	assert.Equal(t, "red", m["team"])
 	assert.Equal(t, "staging", m["env"])
-	assert.NotContains(t, m, "novalue")
+}
+
+func TestParseTags_MalformedReturnsError(t *testing.T) {
+	tags := []string{"team=red", "novalue"}
+	_, err := ParseTags(tags)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "malformed tag")
 }
