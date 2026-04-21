@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/okedeji/agentcage/internal/cage"
@@ -77,11 +78,17 @@ func validateScope(scope cage.Scope) []error {
 		if ip == nil {
 			continue
 		}
-		if ip.IsLoopback() {
+		// Normalize IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) to
+		// IPv4 before the loopback/private checks.
+		check := ip
+		if v4 := ip.To4(); v4 != nil {
+			check = v4
+		}
+		if check.IsLoopback() {
 			errs = append(errs, fmt.Errorf("scope host %q is a loopback address", host))
 			continue
 		}
-		if isPrivateIP(ip) {
+		if isPrivateIP(check) {
 			errs = append(errs, fmt.Errorf("scope host %q is a private IP address (override via scope.deny in config.yaml)", host))
 		}
 	}
@@ -209,8 +216,8 @@ func validatePorts(ports []string) []error {
 			errs = append(errs, fmt.Errorf("scope port must not be empty"))
 			continue
 		}
-		var port int
-		if _, err := fmt.Sscanf(p, "%d", &port); err != nil {
+		port, err := strconv.Atoi(p)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("scope port %q must be numeric", p))
 			continue
 		}

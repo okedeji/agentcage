@@ -248,6 +248,9 @@ func (a *ActivityImpl) AssembleRootfs(ctx context.Context, cageID string, bundle
 	if err != nil {
 		return "", fmt.Errorf("cage %s: unpacking bundle: %w", cageID, err)
 	}
+	if err := cagefile.CheckContentPolicy(manifest); err != nil {
+		return "", fmt.Errorf("cage %s: bundle content policy: %w", cageID, err)
+	}
 
 	env.Entrypoint = manifest.Entrypoint
 

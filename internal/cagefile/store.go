@@ -38,11 +38,11 @@ func (s *BundleStore) Store(cagePath string) (string, error) {
 	}
 	defer func() { _ = src.Close() }()
 
-	tmp := dest + ".tmp"
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	out, err := os.CreateTemp(s.dir, ".store-*.tmp")
 	if err != nil {
-		return "", fmt.Errorf("creating temp file %s: %w", tmp, err)
+		return "", fmt.Errorf("creating temp file in %s: %w", s.dir, err)
 	}
+	tmp := out.Name()
 
 	if _, err := io.Copy(out, src); err != nil {
 		_ = out.Close()

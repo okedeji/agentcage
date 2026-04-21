@@ -73,7 +73,7 @@ func cageTypeFromProto(t pb.CageType) cage.Type {
 	case pb.CageType_CAGE_TYPE_ESCALATION:
 		return cage.TypeEscalation
 	default:
-		return cage.TypeDiscovery
+		return cage.TypeUnspecified
 	}
 }
 
@@ -352,7 +352,9 @@ func proofGapActionFromProto(a pb.ProofGapAction) intervention.ProofGapAction {
 	case pb.ProofGapAction_PROOF_GAP_ACTION_SKIP:
 		return intervention.ProofGapActionSkip
 	default:
-		return intervention.ProofGapActionSkip
+		// Fail closed: unknown action retries (requires proof) rather
+		// than skips (accepts unvalidated findings).
+		return intervention.ProofGapActionRetry
 	}
 }
 
@@ -369,7 +371,8 @@ func interventionActionFromProto(a pb.InterventionAction) intervention.Action {
 	case pb.InterventionAction_INTERVENTION_ACTION_BLOCK:
 		return intervention.ActionBlock
 	default:
-		return intervention.ActionResume
+		// Fail closed: unknown action blocks rather than resumes.
+		return intervention.ActionBlock
 	}
 }
 
@@ -382,7 +385,8 @@ func reviewDecisionFromProto(d pb.ReviewDecision) intervention.ReviewDecision {
 	case pb.ReviewDecision_REVIEW_DECISION_REJECT:
 		return intervention.ReviewReject
 	default:
-		return intervention.ReviewApprove
+		// Fail closed: unknown decision rejects rather than approves.
+		return intervention.ReviewReject
 	}
 }
 

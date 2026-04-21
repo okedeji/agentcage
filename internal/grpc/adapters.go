@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	pb "github.com/okedeji/agentcage/api/proto"
@@ -86,7 +87,31 @@ type assessmentAdapter struct {
 	server *assessment.Service
 }
 
+const (
+	maxTagCount    = 50
+	maxTagKeyLen   = 128
+	maxTagValueLen = 1024
+)
+
+func validateTags(tags map[string]string) error {
+	if len(tags) > maxTagCount {
+		return fmt.Errorf("tags has %d entries, max %d", len(tags), maxTagCount)
+	}
+	for k, v := range tags {
+		if len(k) > maxTagKeyLen {
+			return fmt.Errorf("tag key %q exceeds %d characters", k, maxTagKeyLen)
+		}
+		if len(v) > maxTagValueLen {
+			return fmt.Errorf("tag value for key %q exceeds %d characters", k, maxTagValueLen)
+		}
+	}
+	return nil
+}
+
 func (a *assessmentAdapter) CreateAssessment(ctx context.Context, req *pb.CreateAssessmentRequest) (*pb.CreateAssessmentResponse, error) {
+	if err := validateTags(req.GetConfig().GetTags()); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid tags: %v", err)
+	}
 	cfg := assessmentConfigFromProto(req.GetConfig())
 	cfg.BundleRef = req.GetBundleRef()
 	info, err := a.server.CreateAssessment(ctx, cfg)

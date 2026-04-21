@@ -49,7 +49,13 @@ func cmdRun(args []string) {
 	rf, fs := parseRunFlags(args)
 	explicit := explicitFlags(fs)
 
-	// Format is needed before plan merge so errors can be emitted as JSON.
+	// Validate format early so the error output mode is trustworthy.
+	switch rf.format {
+	case "text", "json", "":
+	default:
+		fmt.Fprintf(os.Stderr, "error: unknown --format %q (supported: text, json)\n", rf.format)
+		os.Exit(1)
+	}
 	jsonErrors := rf.format == "json"
 	exitErr := func(msg string, err error) {
 		if jsonErrors {
@@ -143,7 +149,7 @@ func cmdRun(args []string) {
 	defer createCancel()
 
 	client := pb.NewAssessmentServiceClient(conn)
-	resp, err := client.CreateAssessment(createCtx, req)
+	resp, err := client.CreateAssessment(createCtx, req, grpc.WaitForReady(true))
 	if err != nil {
 		exitErr("creating assessment", err)
 	}
@@ -161,7 +167,11 @@ func emitJSONError(msg string, err error) {
 		Error  string `json:"error"`
 		Detail string `json:"detail"`
 	}{Error: msg, Detail: err.Error()}
-	enc, _ := json.Marshal(payload)
+	enc, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		fmt.Fprintf(os.Stderr, "{\"error\":%q,\"detail\":\"marshal failed\"}\n", msg)
+		return
+	}
 	fmt.Fprintln(os.Stderr, string(enc))
 }
 
@@ -216,6 +226,10 @@ func prepareBundle(ctx context.Context, agentPath string) (string, error) {
 		_ = os.Remove(storedPath)
 		return "", err
 	}
+	if err := cagefile.CheckContentPolicy(manifest); err != nil {
+		_ = os.Remove(storedPath)
+		return "", fmt.Errorf("bundle content policy: %w", err)
+	}
 
 	return ref, nil
 }
@@ -254,6 +268,10 @@ func buildClientCredentials(cfg *config.Config) (credentials.TransportCredential
 	t := cfg.Server.TLS
 	if cfg.Server.Insecure || t == nil {
 		return grpcinsecure.NewCredentials(), nil
+	}
+
+	if t.CertFile != "" && t.CAFile == "" {
+		fmt.Fprintln(os.Stderr, "warning: server.tls has cert_file but no ca_file; the system CA pool will be used for server verification")
 	}
 
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
@@ -347,11 +365,11 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) (*pb.CreateAss
 		}
 	}
 
-	for _, p := range p.Payload.ExtraBlock {
-		cfg.ExtraBlock = append(cfg.ExtraBlock, &pb.PatternEntry{Pattern: p.Pattern, Reason: p.Reason})
+	for _, pat := range p.Payload.ExtraBlock {
+		cfg.ExtraBlock = append(cfg.ExtraBlock, &pb.PatternEntry{Pattern: pat.Pattern, Reason: pat.Reason})
 	}
-	for _, p := range p.Payload.ExtraFlag {
-		cfg.ExtraFlag = append(cfg.ExtraFlag, &pb.PatternEntry{Pattern: p.Pattern, Reason: p.Reason})
+	for _, pat := range p.Payload.ExtraFlag {
+		cfg.ExtraFlag = append(cfg.ExtraFlag, &pb.PatternEntry{Pattern: pat.Pattern, Reason: pat.Reason})
 	}
 
 	return &pb.CreateAssessmentRequest{
@@ -438,11 +456,12 @@ const (
 	followBaseBackoff          = 3 * time.Second
 	followMaxBackoff           = 30 * time.Second
 	followStaleTimeout         = 30 * time.Minute
+	followHardTimeout          = 5 * time.Hour
 )
 
 func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessmentID, format string) {
-	sigCtx, stop := signal.NotifyContext(parentCtx, os.Interrupt)
-	defer stop()
+	ctx, cancel := context.WithTimeout(parentCtx, followHardTimeout)
+	defer cancel()
 
 	client := pb.NewAssessmentServiceClient(conn)
 	jsonMode := format == "json"
@@ -456,11 +475,11 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 	fmt.Println("\nFollowing assessment progress... (Ctrl+C to detach, assessment continues)")
 
 	for {
-		pollCtx, cancel := context.WithTimeout(sigCtx, 5*time.Second)
+		pollCtx, pollCancel := context.WithTimeout(ctx, 5*time.Second)
 		resp, err := client.GetAssessment(pollCtx, &pb.GetAssessmentRequest{AssessmentId: assessmentID})
-		cancel()
+		pollCancel()
 
-		if sigCtx.Err() != nil {
+		if ctx.Err() != nil {
 			fmt.Printf("\nDetached. Assessment %s continues on the server.\n", assessmentID)
 			fmt.Printf("Run 'agentcage status --assessment %s' to check progress.\n", assessmentID)
 			return
@@ -600,7 +619,7 @@ func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	fs.IntVar(&rf.maxIterations, "max-iterations", 0, "max coordinator iterations (default 20)")
 	fs.StringVar(&rf.context, "context", "", "free-text context for the LLM coordinator")
 	fs.Var(&rf.focus, "focus", "vuln class to prioritize (repeatable)")
-	fs.Var(&rf.skip, "skip", "path to deprioritize (repeatable)")
+	fs.Var(&rf.skip, "deprioritize", "path to deprioritize (repeatable)")
 	fs.Var(&rf.endpoints, "endpoint", "endpoint to focus on (repeatable)")
 	fs.Var(&rf.apiSpecs, "api-spec", "OpenAPI/GraphQL spec URL (repeatable)")
 	fs.Var(&rf.knownWeaknesses, "known-weakness", "known weakness hint (repeatable)")
@@ -688,7 +707,7 @@ Budget & limits:
 Guidance:
   --context            free-text context for the LLM coordinator
   --focus              vuln class to prioritize (repeatable)
-  --skip               path to deprioritize (repeatable)
+  --deprioritize       path to deprioritize (repeatable)
   --endpoint           endpoint to focus on (repeatable)
   --api-spec           OpenAPI/GraphQL spec URL (repeatable)
   --known-weakness     known weakness hint (repeatable)

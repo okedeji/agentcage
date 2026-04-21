@@ -174,6 +174,11 @@ type UnpackOptions struct {
 	VerifyKey ed25519.PublicKey
 }
 
+// maxDecompressedSize bounds how much data Unpack writes to disk.
+// 4x the compressed limit is generous for agent bundles; anything
+// beyond that is a decompression bomb.
+const maxDecompressedSize = DefaultMaxBundleSize * 4
+
 func Unpack(r io.Reader, destDir string, opts *UnpackOptions) (*BundleManifest, error) {
 	gr, err := gzip.NewReader(r)
 	if err != nil {
@@ -181,7 +186,8 @@ func Unpack(r io.Reader, destDir string, opts *UnpackOptions) (*BundleManifest, 
 	}
 	defer func() { _ = gr.Close() }()
 
-	tr := tar.NewReader(gr)
+	lr := &io.LimitedReader{R: gr, N: maxDecompressedSize}
+	tr := tar.NewReader(lr)
 
 	var (
 		manifest          *BundleManifest
@@ -219,7 +225,13 @@ func Unpack(r io.Reader, destDir string, opts *UnpackOptions) (*BundleManifest, 
 				return nil, fmt.Errorf("creating parent for %s: %w", target, err)
 			}
 
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			// Mask permissions to prevent setuid/setgid/sticky bits and
+			// limit to 0755 for executables, 0644 for everything else.
+			mode := os.FileMode(header.Mode) & 0755
+			if mode&0111 == 0 {
+				mode = 0644
+			}
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 			if err != nil {
 				return nil, fmt.Errorf("creating file %s: %w", target, err)
 			}
@@ -318,6 +330,38 @@ func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
 	if bundleMajor != currentMajor {
 		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d): major version mismatch",
 			bundle.Version, bundleMajor, currentVersion, currentMajor)
+	}
+	return nil
+}
+
+// Packages that would give the agent capabilities beyond what the
+// cage's containment model expects. Blocked at pack-time so the
+// operator gets a clear error before any cage is provisioned.
+var deniedSystemDeps = map[string]string{
+	"docker":      "container runtime",
+	"docker.io":   "container runtime",
+	"containerd":  "container runtime",
+	"podman":      "container runtime",
+	"lxc":         "container runtime",
+	"iptables":    "firewall manipulation",
+	"nftables":    "firewall manipulation",
+	"tcpdump":     "raw packet capture",
+	"wireshark":   "raw packet capture",
+	"tshark":      "raw packet capture",
+	"socat":       "raw socket relay",
+	"openvpn":     "VPN tunnel",
+	"wireguard":   "VPN tunnel",
+	"kmod":        "kernel module tools",
+	"linux-headers": "kernel headers",
+}
+
+// CheckContentPolicy rejects bundles that declare system
+// dependencies known to break the cage containment model.
+func CheckContentPolicy(manifest *BundleManifest) error {
+	for _, dep := range manifest.SystemDeps {
+		if reason, denied := deniedSystemDeps[dep]; denied {
+			return fmt.Errorf("system dependency %q is denied (%s)", dep, reason)
+		}
 	}
 	return nil
 }

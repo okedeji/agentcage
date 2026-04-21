@@ -2,10 +2,13 @@ package plan
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,7 +29,7 @@ const (
 	maxPorts               = 100
 	maxPaths               = 500
 	maxExtraPatterns       = 100
-	maxPatternLen          = 4096
+	maxPatternLen          = 1024
 	maxVulnClasses         = 50
 	maxKnownWeaknesses     = 50
 	maxEndpoints           = 200
@@ -73,6 +76,57 @@ func isPrivateIP(host string) bool {
 		}
 	}
 	return ip.IsUnspecified() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+}
+
+func isPrivateOrLoopback(ip net.IP) bool {
+	for _, n := range privateNetworks {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return ip.IsUnspecified() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+}
+
+// checkHostResolvesToPrivate resolves a hostname and rejects it if
+// any A/AAAA record points at a private or loopback address. Bare
+// IPs that already passed isPrivateIP are skipped.
+func checkHostResolvesToPrivate(host string) error {
+	if net.ParseIP(host) != nil {
+		return nil
+	}
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		// Unresolvable hosts are not rejected here; the cage's
+		// egress layer will fail them at runtime.
+		return nil
+	}
+	for _, a := range addrs {
+		ip := net.ParseIP(a)
+		if ip == nil {
+			continue
+		}
+		if isPrivateOrLoopback(ip) {
+			return fmt.Errorf("resolves to private/loopback address %s", a)
+		}
+	}
+	return nil
+}
+
+// checkWebhookResolvesToPrivate extracts the host from a webhook URL
+// and rejects it if DNS resolves to a private or loopback address.
+func checkWebhookResolvesToPrivate(webhook string) error {
+	u, err := url.Parse(webhook)
+	if err != nil {
+		return nil
+	}
+	host := u.Hostname()
+	if host == "" {
+		return nil
+	}
+	if err := checkHostResolvesToPrivate(host); err != nil {
+		return fmt.Errorf("notifications.webhook %q: %w", webhook, err)
+	}
+	return nil
 }
 
 type Plan struct {
@@ -166,6 +220,10 @@ type Output struct {
 }
 
 func Load(path string) (*Plan, error) {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != ".yaml" && ext != ".yml" {
+		return nil, fmt.Errorf("plan file %s must have a .yaml or .yml extension", path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading plan file %s: %w", path, err)
@@ -180,6 +238,32 @@ func Load(path string) (*Plan, error) {
 // --require-poc=false can override a plan that has require_poc: true.
 func Merge(base, override *Plan) *Plan {
 	out := *base
+
+	// Deep-copy reference types from base so mutations to out
+	// don't corrupt the caller's base plan.
+	out.Target.Hosts = copyStrings(base.Target.Hosts)
+	out.Target.Ports = copyStrings(base.Target.Ports)
+	out.Target.Paths = copyStrings(base.Target.Paths)
+	out.Target.SkipPaths = copyStrings(base.Target.SkipPaths)
+	if base.CageTypes != nil {
+		out.CageTypes = make(map[string]CageType, len(base.CageTypes))
+		for k, v := range base.CageTypes {
+			out.CageTypes[k] = v
+		}
+	}
+	if base.Tags != nil {
+		out.Tags = make(map[string]string, len(base.Tags))
+		for k, v := range base.Tags {
+			out.Tags[k] = v
+		}
+	}
+	out.Payload.ExtraBlock = copyPatterns(base.Payload.ExtraBlock)
+	out.Payload.ExtraFlag = copyPatterns(base.Payload.ExtraFlag)
+	out.Guidance.AttackSurface.Endpoints = copyStrings(base.Guidance.AttackSurface.Endpoints)
+	out.Guidance.AttackSurface.APISpecs = copyStrings(base.Guidance.AttackSurface.APISpecs)
+	out.Guidance.Priorities.VulnClasses = copyStrings(base.Guidance.Priorities.VulnClasses)
+	out.Guidance.Priorities.SkipPaths = copyStrings(base.Guidance.Priorities.SkipPaths)
+	out.Guidance.Strategy.KnownWeaknesses = copyStrings(base.Guidance.Strategy.KnownWeaknesses)
 
 	if override.Name != "" {
 		out.Name = override.Name
@@ -341,10 +425,16 @@ func Validate(p *Plan) error {
 	if len(p.Target.Hosts) > maxHosts {
 		return fmt.Errorf("target.hosts has %d entries, max %d", len(p.Target.Hosts), maxHosts)
 	}
+	seenHosts := make(map[string]bool, len(p.Target.Hosts))
 	for _, h := range p.Target.Hosts {
 		if h == "" {
 			return fmt.Errorf("target host cannot be empty")
 		}
+		lower := strings.ToLower(h)
+		if seenHosts[lower] {
+			return fmt.Errorf("duplicate target host %q", h)
+		}
+		seenHosts[lower] = true
 		if err := validateTargetHost(h); err != nil {
 			return fmt.Errorf("target host %q: %w", h, err)
 		}
@@ -355,6 +445,13 @@ func Validate(p *Plan) error {
 	for _, port := range p.Target.Ports {
 		if port == "" {
 			return fmt.Errorf("target port cannot be empty")
+		}
+		portNum, err := strconv.Atoi(port)
+		if err != nil {
+			return fmt.Errorf("target port %q must be numeric", port)
+		}
+		if portNum < 0 || portNum > 65535 {
+			return fmt.Errorf("target port %d out of range (0-65535)", portNum)
 		}
 	}
 	if len(p.Target.Paths) > maxPaths {
@@ -373,8 +470,6 @@ func Validate(p *Plan) error {
 		}
 	}
 
-	// Zero is rejected alongside negative: the server would either
-	// treat it as "unlimited" (unsafe) or "none" (dead on arrival).
 	if p.Limits.MaxChainDepth < 0 {
 		return fmt.Errorf("max_chain_depth must not be negative")
 	}
@@ -388,6 +483,9 @@ func Validate(p *Plan) error {
 	if err := validateWebhook(p.Notifications.Webhook); err != nil {
 		return err
 	}
+	if p.Notifications.Webhook == "" && (BoolVal(p.Notifications.OnFinding) || BoolVal(p.Notifications.OnComplete)) {
+		return fmt.Errorf("notifications.on_finding or on_complete requires a webhook URL (--notify or notifications.webhook in plan file)")
+	}
 
 	for name, ct := range p.CageTypes {
 		switch name {
@@ -400,6 +498,9 @@ func Validate(p *Plan) error {
 		}
 		if ct.MemoryMB < 0 {
 			return fmt.Errorf("cage_types.%s.memory_mb must not be negative", name)
+		}
+		if ct.MaxConcurrent < 0 {
+			return fmt.Errorf("cage_types.%s.max_concurrent must not be negative", name)
 		}
 		if ct.MaxDuration != "" {
 			if _, err := time.ParseDuration(ct.MaxDuration); err != nil {
@@ -498,6 +599,13 @@ func validateTargetHost(h string) error {
 	if isPrivateIP(host) {
 		return fmt.Errorf("private/loopback IP address")
 	}
+	// Catch IPv4-mapped IPv6 like ::ffff:127.0.0.1 that bypasses
+	// the plain isPrivateIP check.
+	if ip := net.ParseIP(host); ip != nil {
+		if v4 := ip.To4(); v4 != nil && isPrivateOrLoopback(net.IP(v4)) {
+			return fmt.Errorf("private/loopback IP address (IPv4-mapped)")
+		}
+	}
 	return nil
 }
 
@@ -515,6 +623,10 @@ func validateWebhook(webhook string) error {
 	if u.Host == "" {
 		return fmt.Errorf("notifications.webhook must include a host")
 	}
+	// Reject URLs with userinfo (e.g. http://localhost@evil.com).
+	if u.User != nil {
+		return fmt.Errorf("notifications.webhook must not contain userinfo")
+	}
 	// Prevent the orchestrator from POSTing to internal services.
 	host := u.Hostname()
 	if denylistedHosts[strings.ToLower(host)] {
@@ -522,6 +634,12 @@ func validateWebhook(webhook string) error {
 	}
 	if isPrivateIP(host) {
 		return fmt.Errorf("notifications.webhook %q targets a private/loopback IP address", webhook)
+	}
+	// Catch IPv4-mapped IPv6 like [::ffff:127.0.0.1].
+	if ip := net.ParseIP(host); ip != nil {
+		if v4 := ip.To4(); v4 != nil && isPrivateOrLoopback(net.IP(v4)) {
+			return fmt.Errorf("notifications.webhook %q targets a private/loopback IP address (IPv4-mapped)", webhook)
+		}
 	}
 	return nil
 }
@@ -593,13 +711,25 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) (*Plan, error) {
 		p.Budget.MaxDuration = f.MaxDuration
 	}
 	if explicit["max-chain-depth"] {
-		p.Limits.MaxChainDepth = int32(f.MaxChainDepth)
+		v, err := safeInt32("max-chain-depth", f.MaxChainDepth)
+		if err != nil {
+			return nil, err
+		}
+		p.Limits.MaxChainDepth = v
 	}
 	if explicit["max-concurrent"] {
-		p.Limits.MaxConcurrentCages = int32(f.MaxConcurrent)
+		v, err := safeInt32("max-concurrent", f.MaxConcurrent)
+		if err != nil {
+			return nil, err
+		}
+		p.Limits.MaxConcurrentCages = v
 	}
 	if explicit["max-iterations"] {
-		p.Limits.MaxIterations = int32(f.MaxIterations)
+		v, err := safeInt32("max-iterations", f.MaxIterations)
+		if err != nil {
+			return nil, err
+		}
+		p.Limits.MaxIterations = v
 	}
 	if explicit["context"] {
 		p.Guidance.Strategy.Context = f.Context
@@ -607,7 +737,7 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) (*Plan, error) {
 	if explicit["focus"] {
 		p.Guidance.Priorities.VulnClasses = f.Focus
 	}
-	if explicit["skip"] {
+	if explicit["deprioritize"] {
 		p.Guidance.Priorities.SkipPaths = f.Skip
 	}
 	if explicit["endpoint"] {
@@ -665,6 +795,31 @@ func BoolVal(b *bool) bool {
 		return false
 	}
 	return *b
+}
+
+func safeInt32(flag string, v int) (int32, error) {
+	if v > math.MaxInt32 || v < math.MinInt32 {
+		return 0, fmt.Errorf("--%s value %d is out of range for a 32-bit integer", flag, v)
+	}
+	return int32(v), nil
+}
+
+func copyStrings(s []string) []string {
+	if s == nil {
+		return nil
+	}
+	out := make([]string, len(s))
+	copy(out, s)
+	return out
+}
+
+func copyPatterns(p []PlanPattern) []PlanPattern {
+	if p == nil {
+		return nil
+	}
+	out := make([]PlanPattern, len(p))
+	copy(out, p)
+	return out
 }
 
 func splitAndTrim(s, sep string) []string {

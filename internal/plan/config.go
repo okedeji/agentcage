@@ -2,6 +2,7 @@ package plan
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -19,6 +20,9 @@ func BasePlanFromConfig(cfg *config.Config) *Plan {
 	if cfg.Assessment.MaxDuration > 0 {
 		p.Budget.MaxDuration = cfg.Assessment.MaxDuration.String()
 	}
+	// Zero duration from the config serializes as "0s" which would
+	// create a cage that immediately times out. Drop it so the
+	// server uses its own default.
 
 	if len(cfg.Cages) > 0 {
 		p.CageTypes = make(map[string]CageType, len(cfg.Cages))
@@ -37,12 +41,15 @@ func BasePlanFromConfig(cfg *config.Config) *Plan {
 			if mem <= 0 {
 				mem = 512
 			}
-			p.CageTypes[name] = CageType{
+			ctPlan := CageType{
 				VCPUs:         vcpus,
 				MemoryMB:      mem,
 				MaxConcurrent: ct.MaxConcurrent,
-				MaxDuration:   ct.MaxDuration.String(),
 			}
+			if ct.MaxDuration > 0 {
+				ctPlan.MaxDuration = ct.MaxDuration.String()
+			}
+			p.CageTypes[name] = ctPlan
 		}
 	}
 
@@ -110,6 +117,48 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 			if d > cfgCt.MaxDuration {
 				return fmt.Errorf("cage_types.%s.max_duration %s exceeds operator limit %s", name, ct.MaxDuration, cfgCt.MaxDuration)
 			}
+		}
+	}
+
+	// A per-cage-type max_concurrent higher than the assessment-level
+	// max_concurrent_cages is not dangerous, but it will confuse
+	// operators who expect the per-type value to be reachable.
+	if p.Limits.MaxConcurrentCages > 0 {
+		for name, ct := range p.CageTypes {
+			if ct.MaxConcurrent > p.Limits.MaxConcurrentCages {
+				return fmt.Errorf("cage_types.%s.max_concurrent %d exceeds assessment max_concurrent_cages %d",
+					name, ct.MaxConcurrent, p.Limits.MaxConcurrentCages)
+			}
+		}
+	}
+
+	// Check target hosts against operator's scope deny list. Entries
+	// can be hostnames (string match), bare IPs (string match), or
+	// CIDRs (contains check).
+	for _, h := range p.Target.Hosts {
+		host := h
+		if hp, _, err := net.SplitHostPort(h); err == nil {
+			host = hp
+		}
+		lower := strings.ToLower(host)
+		ip := net.ParseIP(host)
+		for _, denied := range cfg.Scope.Deny {
+			_, cidr, cidrErr := net.ParseCIDR(denied)
+			if cidrErr == nil && ip != nil && cidr.Contains(ip) {
+				return fmt.Errorf("target host %q falls within denied CIDR %s", h, denied)
+			}
+			if cidrErr != nil && strings.ToLower(denied) == lower {
+				return fmt.Errorf("target host %q is denied by operator scope.deny", h)
+			}
+		}
+		if err := checkHostResolvesToPrivate(host); err != nil {
+			return fmt.Errorf("target host %q: %w", h, err)
+		}
+	}
+
+	if p.Notifications.Webhook != "" {
+		if err := checkWebhookResolvesToPrivate(p.Notifications.Webhook); err != nil {
+			return err
 		}
 	}
 
