@@ -30,7 +30,7 @@ func TestPackToFile_ProducesBundle(t *testing.T) {
 	agentDir := createTestAgent(t)
 	outPath := filepath.Join(t.TempDir(), "test.cage")
 
-	manifest, err := PackToFile(agentDir, "0.1.0", outPath, 0)
+	manifest, err := PackToFile(agentDir, "0.1.0", outPath, 0, nil)
 	require.NoError(t, err)
 	require.NotNil(t, manifest)
 
@@ -49,7 +49,7 @@ func TestPackAndUnpack_RoundTrip(t *testing.T) {
 	agentDir := createTestAgent(t)
 	bundlePath := filepath.Join(t.TempDir(), "test.cage")
 
-	_, err := PackToFile(agentDir, "0.1.0", bundlePath, 0)
+	_, err := PackToFile(agentDir, "0.1.0", bundlePath, 0, nil)
 	require.NoError(t, err)
 
 	extractDir := t.TempDir()
@@ -81,7 +81,7 @@ func TestPack_NoCagefile(t *testing.T) {
 	dir := t.TempDir()
 	outPath := filepath.Join(t.TempDir(), "fail.cage")
 
-	_, err := PackToFile(dir, "0.1.0", outPath, 0)
+	_, err := PackToFile(dir, "0.1.0", outPath, 0, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Cagefile")
 }
@@ -91,7 +91,7 @@ func TestPack_InvalidCagefile(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "Cagefile"), []byte("runtime ruby\nentrypoint ruby x.rb"), 0644))
 	outPath := filepath.Join(t.TempDir(), "fail.cage")
 
-	_, err := PackToFile(dir, "0.1.0", outPath, 0)
+	_, err := PackToFile(dir, "0.1.0", outPath, 0, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported runtime")
 }
@@ -103,7 +103,7 @@ func TestUnpack_MissingManifest(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "x"), []byte("bin"), 0755))
 
 	bundlePath := filepath.Join(t.TempDir(), "bad.cage")
-	_, err := PackToFile(dir, "0.1.0", bundlePath, 0)
+	_, err := PackToFile(dir, "0.1.0", bundlePath, 0, nil)
 	require.NoError(t, err)
 
 	// The pack always produces a manifest, so this tests the normal path.
@@ -120,7 +120,7 @@ func TestPack_StaticRuntime(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "scanner"), []byte("#!/bin/sh\necho scan"), 0755))
 
 	outPath := filepath.Join(t.TempDir(), "static.cage")
-	manifest, err := PackToFile(dir, "0.1.0", outPath, 0)
+	manifest, err := PackToFile(dir, "0.1.0", outPath, 0, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, "static", manifest.Runtime)
@@ -133,14 +133,14 @@ func TestPack_FilesHash_ChangesWithContent(t *testing.T) {
 	dir := createTestAgent(t)
 
 	out1 := filepath.Join(t.TempDir(), "v1.cage")
-	m1, err := PackToFile(dir, "0.1.0", out1, 0)
+	m1, err := PackToFile(dir, "0.1.0", out1, 0, nil)
 	require.NoError(t, err)
 
 	// Modify a file
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "solver.py"), []byte("print('changed')"), 0644))
 
 	out2 := filepath.Join(t.TempDir(), "v2.cage")
-	m2, err := PackToFile(dir, "0.1.0", out2, 0)
+	m2, err := PackToFile(dir, "0.1.0", out2, 0, nil)
 	require.NoError(t, err)
 
 	assert.NotEqual(t, m1.FilesHash, m2.FilesHash, "hash should change when file content changes")

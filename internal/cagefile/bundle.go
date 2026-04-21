@@ -3,6 +3,7 @@ package cagefile
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -31,14 +32,23 @@ type BundleManifest struct {
 
 // SHA256 of the raw manifest.json bytes so a tampered manifest
 // (e.g. injected pip dep) is rejected at unpack before any chroot
-// install runs.
+// install runs. Ed25519Sig and PublicKey are set when a signing key
+// is provided at pack time, giving a proper trust anchor instead of
+// a self-referencing hash.
 type bundleSignature struct {
 	ManifestHash string `json:"manifest_hash"`
+	Ed25519Sig   string `json:"ed25519_sig,omitempty"`
+	PublicKey    string `json:"public_key,omitempty"`
+}
+
+// PackOptions controls optional signing behavior. Nil means unsigned.
+type PackOptions struct {
+	SigningKey ed25519.PrivateKey
 }
 
 const bundleSignatureFile = "signature.json"
 
-func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
+func Pack(dir string, version string, w io.Writer, opts *PackOptions) (*BundleManifest, error) {
 	cagefilePath := filepath.Join(dir, "Cagefile")
 	f, err := os.Open(cagefilePath)
 	if err != nil {
@@ -88,9 +98,19 @@ func Pack(dir string, version string, w io.Writer) (*BundleManifest, error) {
 		return nil, fmt.Errorf("writing manifest to bundle: %w", err)
 	}
 
-	sigBytes, err := json.MarshalIndent(bundleSignature{
+	sig := bundleSignature{
 		ManifestHash: "sha256:" + sha256Hex(manifestBytes),
-	}, "", "  ")
+	}
+	if opts != nil && opts.SigningKey != nil {
+		sigData := ed25519.Sign(opts.SigningKey, manifestBytes)
+		sig.Ed25519Sig = hex.EncodeToString(sigData)
+		pubBytes, pubErr := ExportPublicKeyPEM(opts.SigningKey)
+		if pubErr != nil {
+			return nil, fmt.Errorf("exporting public key: %w", pubErr)
+		}
+		sig.PublicKey = string(pubBytes)
+	}
+	sigBytes, err := json.MarshalIndent(sig, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshaling bundle signature: %w", err)
 	}
@@ -112,7 +132,7 @@ func sha256Hex(b []byte) string {
 
 const DefaultMaxBundleSize int64 = 2 * 1024 * 1024 * 1024
 
-func PackToFile(dir, version, outPath string, maxSize int64) (*BundleManifest, error) {
+func PackToFile(dir, version, outPath string, maxSize int64, opts *PackOptions) (*BundleManifest, error) {
 	if maxSize <= 0 {
 		maxSize = DefaultMaxBundleSize
 	}
@@ -132,7 +152,7 @@ func PackToFile(dir, version, outPath string, maxSize int64) (*BundleManifest, e
 	}
 	defer func() { _ = f.Close() }()
 
-	return Pack(dir, version, f)
+	return Pack(dir, version, f, opts)
 }
 
 func DirSize(dir string) (int64, error) {
@@ -147,7 +167,14 @@ func DirSize(dir string) (int64, error) {
 	return total, err
 }
 
-func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
+// UnpackOptions controls optional signature verification. Nil means
+// accept bundles with or without Ed25519 signatures. When VerifyKey
+// is set, an Ed25519 signature is required and must match.
+type UnpackOptions struct {
+	VerifyKey ed25519.PublicKey
+}
+
+func Unpack(r io.Reader, destDir string, opts *UnpackOptions) (*BundleManifest, error) {
 	gr, err := gzip.NewReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("opening gzip: %w", err)
@@ -241,6 +268,41 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 		return nil, fmt.Errorf("bundle manifest hash mismatch, manifest may be tampered (expected %s, got %s)", signature.ManifestHash, expected)
 	}
 
+	requireSig := opts != nil && opts.VerifyKey != nil
+	if requireSig && signature.Ed25519Sig == "" {
+		return nil, fmt.Errorf("bundle is not signed with Ed25519 but verification key was provided")
+	}
+	if signature.Ed25519Sig != "" {
+		sigBytes, decErr := hex.DecodeString(signature.Ed25519Sig)
+		if decErr != nil {
+			return nil, fmt.Errorf("decoding Ed25519 signature: %w", decErr)
+		}
+		var verifyKey ed25519.PublicKey
+		if requireSig {
+			verifyKey = opts.VerifyKey
+		} else if signature.PublicKey != "" {
+			parsed, parseErr := ParsePublicKeyPEM([]byte(signature.PublicKey))
+			if parseErr != nil {
+				return nil, fmt.Errorf("parsing embedded public key: %w", parseErr)
+			}
+			verifyKey = parsed
+		}
+		if verifyKey != nil && !ed25519.Verify(verifyKey, manifestRawBytes, sigBytes) {
+			return nil, fmt.Errorf("Ed25519 signature verification failed, bundle may be tampered")
+		}
+	}
+
+	if manifest.FilesHash != "" {
+		filesDir := filepath.Join(destDir, "files")
+		actualHash, hashErr := hashDir(filesDir)
+		if hashErr != nil {
+			return nil, fmt.Errorf("verifying bundle files hash: %w", hashErr)
+		}
+		if "sha256:"+actualHash != manifest.FilesHash {
+			return nil, fmt.Errorf("bundle files hash mismatch: expected %s, got sha256:%s", manifest.FilesHash, actualHash)
+		}
+	}
+
 	return manifest, nil
 }
 
@@ -267,12 +329,16 @@ func majorVersion(v string) (int, error) {
 }
 
 func UnpackFile(bundlePath, destDir string) (*BundleManifest, error) {
+	return UnpackFileWithOpts(bundlePath, destDir, nil)
+}
+
+func UnpackFileWithOpts(bundlePath, destDir string, opts *UnpackOptions) (*BundleManifest, error) {
 	f, err := os.Open(bundlePath)
 	if err != nil {
 		return nil, fmt.Errorf("opening bundle %s: %w", bundlePath, err)
 	}
 	defer func() { _ = f.Close() }()
-	return Unpack(f, destDir)
+	return Unpack(f, destDir, opts)
 }
 
 func writeToTar(tw *tar.Writer, name string, data []byte) error {

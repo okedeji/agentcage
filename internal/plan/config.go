@@ -27,9 +27,15 @@ func BasePlanFromConfig(cfg *config.Config) *Plan {
 			if vcpus <= 0 {
 				vcpus = ct.MaxVCPUs
 			}
+			if vcpus <= 0 {
+				vcpus = 1
+			}
 			mem := ct.DefaultMemoryMB
 			if mem <= 0 {
 				mem = ct.MaxMemoryMB
+			}
+			if mem <= 0 {
+				mem = 512
 			}
 			p.CageTypes[name] = CageType{
 				VCPUs:         vcpus,
@@ -85,7 +91,7 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 	for name, ct := range p.CageTypes {
 		cfgCt, ok := cfg.Cages[name]
 		if !ok {
-			continue
+			return fmt.Errorf("cage_types.%s: no operator config for this cage type, cannot enforce ceilings", name)
 		}
 		if ct.VCPUs > cfgCt.MaxVCPUs && cfgCt.MaxVCPUs > 0 {
 			return fmt.Errorf("cage_types.%s.vcpus %d exceeds operator limit %d", name, ct.VCPUs, cfgCt.MaxVCPUs)

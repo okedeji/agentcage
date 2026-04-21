@@ -2,13 +2,78 @@ package plan
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+const (
+	maxNameLen             = 256
+	maxCustomerIDLen       = 256
+	maxContextLen          = 10000
+	maxWeaknessLen         = 2000
+	maxEndpointLen         = 2048
+	maxAPISpecLen          = 2048
+	maxTagKeyLen           = 128
+	maxTagValueLen         = 1024
+	maxTags                = 50
+	maxHosts               = 100
+	maxPorts               = 100
+	maxPaths               = 500
+	maxExtraPatterns       = 100
+	maxPatternLen          = 4096
+	maxVulnClasses         = 50
+	maxKnownWeaknesses     = 50
+	maxEndpoints           = 200
+	maxAPISpecs            = 50
+)
+
+// Hosts that the orchestrator or cloud metadata services listen on.
+// Cages must never target these regardless of posture.
+var denylistedHosts = map[string]bool{
+	"localhost":                       true,
+	"orchestrator.agentcage.internal": true,
+	"vault.agentcage.internal":        true,
+	"spire.agentcage.internal":        true,
+	"nats.agentcage.internal":         true,
+	"temporal.agentcage.internal":     true,
+	"postgres.agentcage.internal":     true,
+}
+
+var privateNetworks = []net.IPNet{
+	parseCIDR("10.0.0.0/8"),
+	parseCIDR("172.16.0.0/12"),
+	parseCIDR("192.168.0.0/16"),
+	parseCIDR("127.0.0.0/8"),
+	parseCIDR("169.254.0.0/16"),
+	parseCIDR("100.64.0.0/10"),
+}
+
+func parseCIDR(s string) net.IPNet {
+	_, n, err := net.ParseCIDR(s)
+	if err != nil {
+		panic("bad CIDR literal: " + s)
+	}
+	return *n
+}
+
+func isPrivateIP(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, n := range privateNetworks {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return ip.IsUnspecified() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+}
 
 type Plan struct {
 	Name          string              `yaml:"name"`
@@ -230,10 +295,10 @@ func Merge(base, override *Plan) *Plan {
 	}
 
 	if len(override.Payload.ExtraBlock) > 0 {
-		out.Payload.ExtraBlock = append(out.Payload.ExtraBlock, override.Payload.ExtraBlock...)
+		out.Payload.ExtraBlock = override.Payload.ExtraBlock
 	}
 	if len(override.Payload.ExtraFlag) > 0 {
-		out.Payload.ExtraFlag = append(out.Payload.ExtraFlag, override.Payload.ExtraFlag...)
+		out.Payload.ExtraFlag = override.Payload.ExtraFlag
 	}
 
 	if len(override.Tags) > 0 {
@@ -259,17 +324,46 @@ func Validate(p *Plan) error {
 	if p.CustomerID == "" {
 		return fmt.Errorf("customer_id is required (--customer-id or customer_id: in plan file)")
 	}
+	if len(p.CustomerID) > maxCustomerIDLen {
+		return fmt.Errorf("customer_id exceeds %d characters", maxCustomerIDLen)
+	}
 	if p.Agent == "" {
 		return fmt.Errorf("agent is required (--agent or agent: in plan file)")
 	}
+	if len(p.Name) > maxNameLen {
+		return fmt.Errorf("name exceeds %d characters", maxNameLen)
+	}
+
+	// Target hosts: present, non-empty, not pointing at infrastructure.
 	if len(p.Target.Hosts) == 0 {
 		return fmt.Errorf("at least one target host is required (--target or target.hosts: in plan file)")
+	}
+	if len(p.Target.Hosts) > maxHosts {
+		return fmt.Errorf("target.hosts has %d entries, max %d", len(p.Target.Hosts), maxHosts)
 	}
 	for _, h := range p.Target.Hosts {
 		if h == "" {
 			return fmt.Errorf("target host cannot be empty")
 		}
+		if err := validateTargetHost(h); err != nil {
+			return fmt.Errorf("target host %q: %w", h, err)
+		}
 	}
+	if len(p.Target.Ports) > maxPorts {
+		return fmt.Errorf("target.ports has %d entries, max %d", len(p.Target.Ports), maxPorts)
+	}
+	for _, port := range p.Target.Ports {
+		if port == "" {
+			return fmt.Errorf("target port cannot be empty")
+		}
+	}
+	if len(p.Target.Paths) > maxPaths {
+		return fmt.Errorf("target.paths has %d entries, max %d", len(p.Target.Paths), maxPaths)
+	}
+	if len(p.Target.SkipPaths) > maxPaths {
+		return fmt.Errorf("target.skip_paths has %d entries, max %d", len(p.Target.SkipPaths), maxPaths)
+	}
+
 	if p.Budget.Tokens <= 0 {
 		return fmt.Errorf("budget.tokens must be positive (discovery cages require LLM tokens)")
 	}
@@ -278,11 +372,9 @@ func Validate(p *Plan) error {
 			return fmt.Errorf("invalid max_duration %q: %w", p.Budget.MaxDuration, err)
 		}
 	}
-	for _, port := range p.Target.Ports {
-		if port == "" {
-			return fmt.Errorf("target port cannot be empty")
-		}
-	}
+
+	// Zero is rejected alongside negative: the server would either
+	// treat it as "unlimited" (unsafe) or "none" (dead on arrival).
 	if p.Limits.MaxChainDepth < 0 {
 		return fmt.Errorf("max_chain_depth must not be negative")
 	}
@@ -292,23 +384,22 @@ func Validate(p *Plan) error {
 	if p.Limits.MaxIterations < 0 {
 		return fmt.Errorf("max_iterations must not be negative")
 	}
-	if p.Notifications.Webhook != "" {
-		u, err := url.Parse(p.Notifications.Webhook)
-		if err != nil {
-			return fmt.Errorf("notifications.webhook: %w", err)
-		}
-		if u.Scheme != "https" && u.Scheme != "http" {
-			return fmt.Errorf("notifications.webhook must use http or https scheme, got %q", u.Scheme)
-		}
-		if u.Host == "" {
-			return fmt.Errorf("notifications.webhook must include a host")
-		}
+
+	if err := validateWebhook(p.Notifications.Webhook); err != nil {
+		return err
 	}
+
 	for name, ct := range p.CageTypes {
 		switch name {
 		case "discovery", "validator", "escalation":
 		default:
 			return fmt.Errorf("unknown cage type %q in cage_types (supported: discovery, validator, escalation)", name)
+		}
+		if ct.VCPUs < 0 {
+			return fmt.Errorf("cage_types.%s.vcpus must not be negative", name)
+		}
+		if ct.MemoryMB < 0 {
+			return fmt.Errorf("cage_types.%s.memory_mb must not be negative", name)
 		}
 		if ct.MaxDuration != "" {
 			if _, err := time.ParseDuration(ct.MaxDuration); err != nil {
@@ -319,10 +410,131 @@ func Validate(p *Plan) error {
 	if p.Target.Credentials != "" {
 		return fmt.Errorf("target.credentials is not yet supported, use Vault for target credential management")
 	}
+
+	// Guidance field limits.
+	if len(p.Guidance.Strategy.Context) > maxContextLen {
+		return fmt.Errorf("guidance.strategy.context exceeds %d characters", maxContextLen)
+	}
+	if len(p.Guidance.Strategy.KnownWeaknesses) > maxKnownWeaknesses {
+		return fmt.Errorf("guidance.strategy.known_weaknesses has %d entries, max %d", len(p.Guidance.Strategy.KnownWeaknesses), maxKnownWeaknesses)
+	}
+	for _, w := range p.Guidance.Strategy.KnownWeaknesses {
+		if len(w) > maxWeaknessLen {
+			return fmt.Errorf("guidance.strategy.known_weaknesses entry exceeds %d characters", maxWeaknessLen)
+		}
+	}
+	if len(p.Guidance.AttackSurface.Endpoints) > maxEndpoints {
+		return fmt.Errorf("guidance.attack_surface.endpoints has %d entries, max %d", len(p.Guidance.AttackSurface.Endpoints), maxEndpoints)
+	}
+	for _, e := range p.Guidance.AttackSurface.Endpoints {
+		if len(e) > maxEndpointLen {
+			return fmt.Errorf("guidance.attack_surface.endpoints entry exceeds %d characters", maxEndpointLen)
+		}
+	}
+	if len(p.Guidance.AttackSurface.APISpecs) > maxAPISpecs {
+		return fmt.Errorf("guidance.attack_surface.api_specs has %d entries, max %d", len(p.Guidance.AttackSurface.APISpecs), maxAPISpecs)
+	}
+	for _, s := range p.Guidance.AttackSurface.APISpecs {
+		if len(s) > maxAPISpecLen {
+			return fmt.Errorf("guidance.attack_surface.api_specs entry exceeds %d characters", maxAPISpecLen)
+		}
+	}
+	if len(p.Guidance.Priorities.VulnClasses) > maxVulnClasses {
+		return fmt.Errorf("guidance.priorities.vuln_classes has %d entries, max %d", len(p.Guidance.Priorities.VulnClasses), maxVulnClasses)
+	}
+
+	// Tags.
+	if len(p.Tags) > maxTags {
+		return fmt.Errorf("tags has %d entries, max %d", len(p.Tags), maxTags)
+	}
+	for k, v := range p.Tags {
+		if len(k) > maxTagKeyLen {
+			return fmt.Errorf("tag key %q exceeds %d characters", k, maxTagKeyLen)
+		}
+		if len(v) > maxTagValueLen {
+			return fmt.Errorf("tag value for key %q exceeds %d characters", k, maxTagValueLen)
+		}
+	}
+
+	// Payload patterns: must compile, bounded count.
+	if len(p.Payload.ExtraBlock) > maxExtraPatterns {
+		return fmt.Errorf("payload.extra_block has %d entries, max %d", len(p.Payload.ExtraBlock), maxExtraPatterns)
+	}
+	for i, pat := range p.Payload.ExtraBlock {
+		if err := validatePattern(pat, fmt.Sprintf("payload.extra_block[%d]", i)); err != nil {
+			return err
+		}
+	}
+	if len(p.Payload.ExtraFlag) > maxExtraPatterns {
+		return fmt.Errorf("payload.extra_flag has %d entries, max %d", len(p.Payload.ExtraFlag), maxExtraPatterns)
+	}
+	for i, pat := range p.Payload.ExtraFlag {
+		if err := validatePattern(pat, fmt.Sprintf("payload.extra_flag[%d]", i)); err != nil {
+			return err
+		}
+	}
+
 	switch p.Output.Format {
 	case "text", "json", "":
 	default:
 		return fmt.Errorf("unknown output.format %q (supported: text, json)", p.Output.Format)
+	}
+	return nil
+}
+
+func validateTargetHost(h string) error {
+	// Strip port if present so "example.com:443" checks "example.com".
+	host := h
+	if hp, _, err := net.SplitHostPort(h); err == nil {
+		host = hp
+	}
+	lower := strings.ToLower(host)
+	if denylistedHosts[lower] {
+		return fmt.Errorf("denylisted infrastructure host")
+	}
+	if strings.Contains(host, "*") {
+		return fmt.Errorf("wildcard targets are not allowed")
+	}
+	if isPrivateIP(host) {
+		return fmt.Errorf("private/loopback IP address")
+	}
+	return nil
+}
+
+func validateWebhook(webhook string) error {
+	if webhook == "" {
+		return nil
+	}
+	u, err := url.Parse(webhook)
+	if err != nil {
+		return fmt.Errorf("notifications.webhook: %w", err)
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("notifications.webhook must use http or https scheme, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("notifications.webhook must include a host")
+	}
+	// Prevent the orchestrator from POSTing to internal services.
+	host := u.Hostname()
+	if denylistedHosts[strings.ToLower(host)] {
+		return fmt.Errorf("notifications.webhook %q targets denylisted infrastructure host", webhook)
+	}
+	if isPrivateIP(host) {
+		return fmt.Errorf("notifications.webhook %q targets a private/loopback IP address", webhook)
+	}
+	return nil
+}
+
+func validatePattern(pat PlanPattern, location string) error {
+	if pat.Pattern == "" {
+		return fmt.Errorf("%s: pattern cannot be empty", location)
+	}
+	if len(pat.Pattern) > maxPatternLen {
+		return fmt.Errorf("%s: pattern exceeds %d characters", location, maxPatternLen)
+	}
+	if _, err := regexp.Compile(pat.Pattern); err != nil {
+		return fmt.Errorf("%s: invalid regex %q: %w", location, pat.Pattern, err)
 	}
 	return nil
 }
@@ -474,7 +686,11 @@ func ParseTags(tags []string) (map[string]string, error) {
 		if !ok {
 			return nil, fmt.Errorf("malformed tag %q: expected key=value", t)
 		}
-		m[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		k = strings.TrimSpace(k)
+		if k == "" {
+			return nil, fmt.Errorf("malformed tag %q: key cannot be empty", t)
+		}
+		m[k] = strings.TrimSpace(v)
 	}
 	return m, nil
 }

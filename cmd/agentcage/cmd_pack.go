@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/okedeji/agentcage/internal/cagefile"
+	"github.com/okedeji/agentcage/internal/config"
 )
 
 func cmdPack(args []string) {
@@ -43,7 +44,17 @@ func cmdPack(args []string) {
 		maxSize = *maxSizeMB * 1024 * 1024
 	}
 
-	manifest, err := cagefile.PackToFile(dir, version, outPath, maxSize)
+	keyPath := filepath.Join(config.HomeDir(), "signing-key.pem")
+	signingKey, keyErr := cagefile.LoadOrGenerateSigningKey(keyPath)
+	if keyErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: signing disabled: %v\n", keyErr)
+	}
+	var packOpts *cagefile.PackOptions
+	if signingKey != nil {
+		packOpts = &cagefile.PackOptions{SigningKey: signingKey}
+	}
+
+	manifest, err := cagefile.PackToFile(dir, version, outPath, maxSize, packOpts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

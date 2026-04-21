@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -16,7 +17,6 @@ import (
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/config"
-	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/plan"
 	"google.golang.org/grpc"
@@ -24,6 +24,8 @@ import (
 	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
+
+const defaultPingTimeout = 5 * time.Second
 
 const cmdRunTimeout = 10 * time.Minute
 
@@ -47,12 +49,22 @@ func cmdRun(args []string) {
 	rf, fs := parseRunFlags(args)
 	explicit := explicitFlags(fs)
 
+	// Format is needed before plan merge so errors can be emitted as JSON.
+	jsonErrors := rf.format == "json"
+	exitErr := func(msg string, err error) {
+		if jsonErrors {
+			emitJSONError(msg, err)
+		} else {
+			fmt.Fprintf(os.Stderr, "error: %s: %v\n", msg, err)
+		}
+		os.Exit(1)
+	}
+
 	cfg := config.Defaults()
 	if resolved := config.Resolve(""); resolved != "" {
 		override, loadErr := config.Load(resolved)
 		if loadErr != nil {
-			fmt.Fprintf(os.Stderr, "error loading operator config: %v\n", loadErr)
-			os.Exit(1)
+			exitErr("loading operator config", loadErr)
 		}
 		cfg = config.Merge(cfg, override)
 	}
@@ -61,8 +73,7 @@ func cmdRun(args []string) {
 	if rf.plan != "" {
 		loaded, err := plan.Load(rf.plan)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+			exitErr("loading plan", err)
 		}
 		p = plan.Merge(p, loaded)
 	}
@@ -96,43 +107,36 @@ func cmdRun(args []string) {
 		CustomerID:       rf.customerID,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		exitErr("parsing flags", err)
 	}
 	p = plan.Merge(p, override)
 
 	plan.ApplyDefaults(p)
 	if err := plan.Validate(p); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		exitErr("validating plan", err)
 	}
 	if err := plan.EnforceConfigCeilings(p, cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		exitErr("enforcing operator limits", err)
 	}
 
 	if setupCtx.Err() != nil {
-		fmt.Fprintf(os.Stderr, "interrupted\n")
-		os.Exit(1)
+		exitErr("setup", setupCtx.Err())
 	}
 
 	bundleRef, err := prepareBundle(setupCtx, p.Agent)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		exitErr("preparing bundle", err)
 	}
 
 	conn, err := dialOrchestrator(setupCtx, cfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		exitErr("connecting to orchestrator", err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	req, err := buildCreateAssessmentRequest(p, bundleRef)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		exitErr("building request", err)
 	}
 
 	createCtx, createCancel := context.WithTimeout(setupCtx, 30*time.Second)
@@ -141,16 +145,24 @@ func cmdRun(args []string) {
 	client := pb.NewAssessmentServiceClient(conn)
 	resp, err := client.CreateAssessment(createCtx, req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error creating assessment: %v\n", err)
-		os.Exit(1)
+		exitErr("creating assessment", err)
 	}
 
 	info := resp.GetAssessment()
 	printAssessmentSummary(info, p, bundleRef)
 
 	if plan.BoolVal(p.Output.Follow) {
-		followAssessment(conn, info.GetAssessmentId(), p.Output.Format)
+		followAssessment(sigCtx, conn, info.GetAssessmentId(), p.Output.Format)
 	}
+}
+
+func emitJSONError(msg string, err error) {
+	payload := struct {
+		Error  string `json:"error"`
+		Detail string `json:"detail"`
+	}{Error: msg, Detail: err.Error()}
+	enc, _ := json.Marshal(payload)
+	fmt.Fprintln(os.Stderr, string(enc))
 }
 
 func prepareBundle(ctx context.Context, agentPath string) (string, error) {
@@ -221,7 +233,11 @@ func dialOrchestrator(ctx context.Context, cfg *config.Config) (*grpc.ClientConn
 		return nil, fmt.Errorf("connecting to orchestrator at %s: %w", addr, err)
 	}
 
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	pingTimeout := defaultPingTimeout
+	if cfg.GRPC.ReadyProbeTimeoutOrDefault() > 0 {
+		pingTimeout = cfg.GRPC.ReadyProbeTimeoutOrDefault()
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
 
 	control := pb.NewControlServiceClient(conn)
@@ -240,7 +256,7 @@ func buildClientCredentials(cfg *config.Config) (credentials.TransportCredential
 		return grpcinsecure.NewCredentials(), nil
 	}
 
-	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, CipherSuites: agentgrpc.PreferredCipherSuites}
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
 
 	if t.CertFile != "" && t.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
@@ -424,8 +440,8 @@ const (
 	followStaleTimeout         = 30 * time.Minute
 )
 
-func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessmentID, format string) {
+	sigCtx, stop := signal.NotifyContext(parentCtx, os.Interrupt)
 	defer stop()
 
 	client := pb.NewAssessmentServiceClient(conn)
@@ -562,7 +578,7 @@ func cageTypeNameToProto(name string) (pb.CageType, error) {
 	case "escalation":
 		return pb.CageType_CAGE_TYPE_ESCALATION, nil
 	default:
-		return pb.CageType_CAGE_TYPE_UNSPECIFIED, fmt.Errorf("unknown cage type %q in proto conversion", name)
+		return -1, fmt.Errorf("unknown cage type %q in proto conversion", name)
 	}
 }
 
