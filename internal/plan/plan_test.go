@@ -166,15 +166,25 @@ func TestMerge_CageTypesOverridePerKey(t *testing.T) {
 	assert.Equal(t, int32(1), result.CageTypes["validator"].VCPUs)
 }
 
+func TestValidate_MissingCustomerID(t *testing.T) {
+	p := &Plan{
+		Agent:  "./agent.cage",
+		Target: Target{Hosts: []string{"example.com"}},
+	}
+	err := Validate(p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "customer_id is required")
+}
+
 func TestValidate_MissingAgent(t *testing.T) {
-	p := &Plan{Target: Target{Hosts: []string{"example.com"}}}
+	p := &Plan{CustomerID: "acme", Target: Target{Hosts: []string{"example.com"}}}
 	err := Validate(p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "agent is required")
 }
 
 func TestValidate_MissingTarget(t *testing.T) {
-	p := &Plan{Agent: "./agent.cage"}
+	p := &Plan{CustomerID: "acme", Agent: "./agent.cage"}
 	err := Validate(p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one target host")
@@ -182,9 +192,10 @@ func TestValidate_MissingTarget(t *testing.T) {
 
 func TestValidate_InvalidDuration(t *testing.T) {
 	p := &Plan{
-		Agent:  "./agent.cage",
-		Target: Target{Hosts: []string{"example.com"}},
-		Budget: Budget{MaxDuration: "notaduration"},
+		CustomerID: "acme",
+		Agent:      "./agent.cage",
+		Target:     Target{Hosts: []string{"example.com"}},
+		Budget:     Budget{MaxDuration: "notaduration"},
 	}
 	err := Validate(p)
 	require.Error(t, err)
@@ -193,9 +204,10 @@ func TestValidate_InvalidDuration(t *testing.T) {
 
 func TestValidate_InvalidCageType(t *testing.T) {
 	p := &Plan{
-		Agent:     "./agent.cage",
-		Target:    Target{Hosts: []string{"example.com"}},
-		CageTypes: map[string]CageType{"recon": {VCPUs: 1}},
+		CustomerID: "acme",
+		Agent:      "./agent.cage",
+		Target:     Target{Hosts: []string{"example.com"}},
+		CageTypes:  map[string]CageType{"recon": {VCPUs: 1}},
 	}
 	err := Validate(p)
 	require.Error(t, err)
@@ -204,9 +216,10 @@ func TestValidate_InvalidCageType(t *testing.T) {
 
 func TestValidate_InvalidOutputFormat(t *testing.T) {
 	p := &Plan{
-		Agent:  "./agent.cage",
-		Target: Target{Hosts: []string{"example.com"}},
-		Output: Output{Format: "xml"},
+		CustomerID: "acme",
+		Agent:      "./agent.cage",
+		Target:     Target{Hosts: []string{"example.com"}},
+		Output:     Output{Format: "xml"},
 	}
 	err := Validate(p)
 	require.Error(t, err)
@@ -215,8 +228,9 @@ func TestValidate_InvalidOutputFormat(t *testing.T) {
 
 func TestValidate_ValidMinimalPlan(t *testing.T) {
 	p := &Plan{
-		Agent:  "./agent.cage",
-		Target: Target{Hosts: []string{"example.com"}},
+		CustomerID: "acme",
+		Agent:      "./agent.cage",
+		Target:     Target{Hosts: []string{"example.com"}},
 	}
 	ApplyDefaults(p)
 	require.NoError(t, Validate(p))

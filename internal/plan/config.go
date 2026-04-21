@@ -58,6 +58,14 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 		return fmt.Errorf("max_chain_depth %d exceeds operator limit %d", p.Limits.MaxChainDepth, esc.MaxChainDepth)
 	}
 
+	if cfg.Assessment.MaxIterations > 0 && p.Limits.MaxIterations > cfg.Assessment.MaxIterations {
+		return fmt.Errorf("max_iterations %d exceeds operator limit %d", p.Limits.MaxIterations, cfg.Assessment.MaxIterations)
+	}
+
+	if cfg.Assessment.MaxConcurrent > 0 && p.Limits.MaxConcurrentCages > cfg.Assessment.MaxConcurrent {
+		return fmt.Errorf("max_concurrent_cages %d exceeds operator limit %d", p.Limits.MaxConcurrentCages, cfg.Assessment.MaxConcurrent)
+	}
+
 	for name, ct := range p.CageTypes {
 		cfgCt, ok := cfg.Cages[name]
 		if !ok {

@@ -2,6 +2,7 @@ package plan
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -212,14 +213,19 @@ func Merge(base, override *Plan) *Plan {
 	}
 
 	if len(override.Payload.ExtraBlock) > 0 {
-		out.Payload.ExtraBlock = override.Payload.ExtraBlock
+		out.Payload.ExtraBlock = append(out.Payload.ExtraBlock, override.Payload.ExtraBlock...)
 	}
 	if len(override.Payload.ExtraFlag) > 0 {
-		out.Payload.ExtraFlag = override.Payload.ExtraFlag
+		out.Payload.ExtraFlag = append(out.Payload.ExtraFlag, override.Payload.ExtraFlag...)
 	}
 
 	if len(override.Tags) > 0 {
-		out.Tags = override.Tags
+		if out.Tags == nil {
+			out.Tags = make(map[string]string, len(override.Tags))
+		}
+		for k, v := range override.Tags {
+			out.Tags[k] = v
+		}
 	}
 
 	return &out
@@ -233,6 +239,9 @@ func ApplyDefaults(p *Plan) {
 }
 
 func Validate(p *Plan) error {
+	if p.CustomerID == "" {
+		return fmt.Errorf("customer_id is required (--customer-id or customer_id: in plan file)")
+	}
 	if p.Agent == "" {
 		return fmt.Errorf("agent is required (--agent or agent: in plan file)")
 	}
@@ -263,8 +272,17 @@ func Validate(p *Plan) error {
 	if p.Limits.MaxConcurrentCages < 0 {
 		return fmt.Errorf("max_concurrent_cages must not be negative")
 	}
-	if p.Notifications.Webhook != "" && !strings.HasPrefix(p.Notifications.Webhook, "http") {
-		return fmt.Errorf("notifications.webhook must be an HTTP(S) URL")
+	if p.Notifications.Webhook != "" {
+		u, err := url.Parse(p.Notifications.Webhook)
+		if err != nil {
+			return fmt.Errorf("notifications.webhook: %w", err)
+		}
+		if u.Scheme != "https" && u.Scheme != "http" {
+			return fmt.Errorf("notifications.webhook must use http or https scheme, got %q", u.Scheme)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("notifications.webhook must include a host")
+		}
 	}
 	for name, ct := range p.CageTypes {
 		switch name {
@@ -277,6 +295,9 @@ func Validate(p *Plan) error {
 				return fmt.Errorf("cage_types.%s.max_duration %q: %w", name, ct.MaxDuration, err)
 			}
 		}
+	}
+	if p.Target.Credentials != "" {
+		return fmt.Errorf("target.credentials is not yet supported, use Vault for target credential management")
 	}
 	switch p.Output.Format {
 	case "text", "json", "":

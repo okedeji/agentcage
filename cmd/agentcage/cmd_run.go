@@ -111,7 +111,11 @@ func cmdRun(args []string) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	req := buildCreateAssessmentRequest(p, bundleRef)
+	req, err := buildCreateAssessmentRequest(p, bundleRef)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -141,6 +145,11 @@ func prepareBundle(agentPath string) (string, error) {
 	}
 	if !strings.HasSuffix(agentPath, ".cage") {
 		return "", fmt.Errorf("agent file %s does not have a .cage extension (run 'agentcage pack <dir>' to create one)", agentPath)
+	}
+
+	if fi.Size() > cagefile.DefaultMaxBundleSize {
+		return "", fmt.Errorf("bundle %s is %.1f MB, exceeds max bundle size %.1f MB",
+			agentPath, float64(fi.Size())/(1024*1024), float64(cagefile.DefaultMaxBundleSize)/(1024*1024))
 	}
 
 	fmt.Println("Verifying bundle...")
@@ -228,7 +237,7 @@ func buildClientCredentials(cfg *config.Config) (credentials.TransportCredential
 	return credentials.NewTLS(tlsCfg), nil
 }
 
-func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) *pb.CreateAssessmentRequest {
+func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) (*pb.CreateAssessmentRequest, error) {
 	cfg := &pb.AssessmentConfig{
 		Name:               p.Name,
 		CustomerId:         p.CustomerID,
@@ -250,7 +259,10 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) *pb.CreateAsse
 	}
 
 	if p.Budget.MaxDuration != "" {
-		d, _ := time.ParseDuration(p.Budget.MaxDuration)
+		d, err := time.ParseDuration(p.Budget.MaxDuration)
+		if err != nil {
+			return nil, fmt.Errorf("invalid max_duration %q: %w", p.Budget.MaxDuration, err)
+		}
 		cfg.MaxDuration = durationpb.New(d)
 	}
 
@@ -261,7 +273,10 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) *pb.CreateAsse
 			Defaults:      &pb.ResourceLimits{Vcpus: ct.VCPUs, MemoryMb: ct.MemoryMB},
 		}
 		if ct.MaxDuration != "" {
-			d, _ := time.ParseDuration(ct.MaxDuration)
+			d, err := time.ParseDuration(ct.MaxDuration)
+			if err != nil {
+				return nil, fmt.Errorf("cage_types.%s: invalid max_duration %q: %w", name, ct.MaxDuration, err)
+			}
 			ctPb.MaxDuration = durationpb.New(d)
 		}
 		cfg.CageTypeConfigs = append(cfg.CageTypeConfigs, ctPb)
@@ -287,7 +302,7 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) *pb.CreateAsse
 	return &pb.CreateAssessmentRequest{
 		Config:    cfg,
 		BundleRef: bundleRef,
-	}
+	}, nil
 }
 
 func buildGuidanceProto(p *plan.Plan) *pb.Guidance {
@@ -339,7 +354,11 @@ func printAssessmentSummary(info *pb.AssessmentInfo, p *plan.Plan, bundleRef str
 	if p.Name != "" {
 		fmt.Printf("  Name:       %s\n", p.Name)
 	}
-	fmt.Printf("  Agent:      %s (sha256:%s)\n", p.Agent, bundleRef[:12])
+	shortRef := bundleRef
+	if len(shortRef) > 12 {
+		shortRef = shortRef[:12]
+	}
+	fmt.Printf("  Agent:      %s (sha256:%s)\n", p.Agent, shortRef)
 	fmt.Printf("  Target:     %s\n", strings.Join(p.Target.Hosts, ", "))
 	if p.Budget.Tokens > 0 || p.Budget.MaxDuration != "" {
 		parts := []string{}
@@ -359,6 +378,13 @@ func printAssessmentSummary(info *pb.AssessmentInfo, p *plan.Plan, bundleRef str
 	}
 }
 
+const (
+	followMaxConsecutiveErrors = 20
+	followBaseBackoff          = 3 * time.Second
+	followMaxBackoff           = 30 * time.Second
+	followStaleTimeout         = 30 * time.Minute
+)
+
 func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -368,6 +394,8 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 	var lastStatus string
 	var lastFindings int32
 	var lastCages int32
+	var consecutiveErrors int
+	lastChange := time.Now()
 
 	fmt.Println("\nFollowing assessment progress... (Ctrl+C to detach, assessment continues)")
 
@@ -383,10 +411,18 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 		}
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  poll error: %v\n", err)
-			time.Sleep(3 * time.Second)
+			consecutiveErrors++
+			fmt.Fprintf(os.Stderr, "  poll error (%d/%d): %v\n", consecutiveErrors, followMaxConsecutiveErrors, err)
+			if consecutiveErrors >= followMaxConsecutiveErrors {
+				fmt.Fprintf(os.Stderr, "\nToo many consecutive poll errors. Detaching.\n")
+				fmt.Fprintf(os.Stderr, "Run 'agentcage status --assessment %s' to check progress.\n", assessmentID)
+				return
+			}
+			backoff := min(followBaseBackoff*time.Duration(1<<min(consecutiveErrors-1, 4)), followMaxBackoff)
+			time.Sleep(backoff)
 			continue
 		}
+		consecutiveErrors = 0
 
 		info := resp.GetAssessment()
 		status := info.GetStatus().String()
@@ -399,11 +435,13 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 				fmt.Printf("  Phase: %s\n", status)
 			}
 			lastStatus = status
+			lastChange = time.Now()
 		}
 
 		if stats != nil {
 			if stats.GetActiveCages() != lastCages {
 				lastCages = stats.GetActiveCages()
+				lastChange = time.Now()
 				if !jsonMode {
 					fmt.Printf("  Cages: %d active, %d total\n", lastCages, stats.GetTotalCages())
 				}
@@ -420,6 +458,7 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 						candidate, validated, stats.GetFindingsRejected())
 				}
 				lastFindings = validated
+				lastChange = time.Now()
 			}
 		}
 
@@ -443,6 +482,13 @@ func followAssessment(conn *grpc.ClientConn, assessmentID, format string) {
 				fmt.Printf("\nAssessment rejected.\n")
 				fmt.Printf("Run 'agentcage report --assessment %s' for details.\n", assessmentID)
 			}
+			return
+		}
+
+		if time.Since(lastChange) > followStaleTimeout {
+			fmt.Fprintf(os.Stderr, "\nNo status change for %s. Detaching.\n", followStaleTimeout)
+			fmt.Fprintf(os.Stderr, "Assessment %s may be stuck in %s. Check 'agentcage interventions' for pending decisions.\n", assessmentID, lastStatus)
+			fmt.Fprintf(os.Stderr, "Run 'agentcage status --assessment %s' to check progress.\n", assessmentID)
 			return
 		}
 
@@ -564,6 +610,7 @@ Budget & limits:
   --max-duration       assessment wall clock (e.g. 30m, 4h)
   --max-chain-depth    escalation chain depth limit
   --max-concurrent     max concurrent cages
+  --max-iterations     max coordinator iterations (default 20)
 
 Guidance:
   --context            free-text context for the LLM coordinator

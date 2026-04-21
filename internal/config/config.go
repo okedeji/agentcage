@@ -472,6 +472,7 @@ type AssessmentConfig struct {
 	MaxDuration       time.Duration `yaml:"max_duration"`
 	TokenBudget       int64         `yaml:"token_budget"`
 	MaxIterations     int32         `yaml:"max_iterations"`
+	MaxConcurrent     int32         `yaml:"max_concurrent"`
 	ReviewTimeout     time.Duration `yaml:"review_timeout"`
 	ProofsDir         string        `yaml:"proofs_dir"`
 	ProofsMode        ProofsMode    `yaml:"proofs_mode"`
@@ -718,6 +719,7 @@ func Defaults() *Config {
 			MaxDuration:       4 * time.Hour,
 			TokenBudget:       500000,
 			MaxIterations:     20,
+			MaxConcurrent:     10,
 			ReviewTimeout:     24 * time.Hour,
 			MaxScreenshotSize: 5 << 20, // 5MB
 		},
@@ -984,6 +986,9 @@ func Merge(base, override *Config) *Config {
 	}
 	if override.Assessment.MaxIterations > 0 {
 		result.Assessment.MaxIterations = override.Assessment.MaxIterations
+	}
+	if override.Assessment.MaxConcurrent > 0 {
+		result.Assessment.MaxConcurrent = override.Assessment.MaxConcurrent
 	}
 	if override.Assessment.ReviewTimeout > 0 {
 		result.Assessment.ReviewTimeout = override.Assessment.ReviewTimeout

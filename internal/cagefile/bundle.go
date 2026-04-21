@@ -233,13 +233,12 @@ func Unpack(r io.Reader, destDir string) (*BundleManifest, error) {
 		return nil, fmt.Errorf("bundle does not contain manifest.json")
 	}
 
-	// Bundles packed before signature.json existed are still accepted
-	// so old bundles don't break.
-	if signature != nil {
-		expected := "sha256:" + sha256Hex(manifestRawBytes)
-		if signature.ManifestHash != expected {
-			return nil, fmt.Errorf("bundle manifest hash mismatch, manifest may be tampered (expected %s, got %s)", signature.ManifestHash, expected)
-		}
+	if signature == nil {
+		return nil, fmt.Errorf("bundle is missing signature.json, repack with a current agentcage version")
+	}
+	expected := "sha256:" + sha256Hex(manifestRawBytes)
+	if signature.ManifestHash != expected {
+		return nil, fmt.Errorf("bundle manifest hash mismatch, manifest may be tampered (expected %s, got %s)", signature.ManifestHash, expected)
 	}
 
 	return manifest, nil
