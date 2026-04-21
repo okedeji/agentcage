@@ -54,8 +54,6 @@ func main() {
 		cmdPack(args)
 	case "run":
 		cmdRun(args)
-	case "test":
-		cmdTest(args)
 	case "status":
 		cmdStatus(args)
 	case "findings":
@@ -111,7 +109,6 @@ Platform:
 Agent:
   pack <dir>        Bundle agent directory into .cage file
   run               Start a full assessment (coordinator spawns many cages)
-  test              Boot a single cage for agent development/debugging
 
 Observe:
   status            Show running assessment status, active cages

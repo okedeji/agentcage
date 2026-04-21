@@ -9,31 +9,8 @@ import (
 // Commands below are placeholders until the shared gRPC CLI client
 // lands. Each parses its flags so --help works, then exits with a
 // pending message. On darwin these are unreachable for proxy commands
-// (run/test/status/interventions/resolve/fleet) because
+// (run/status/interventions/resolve/fleet) because
 // isProxyCommand routes them through internal/grpc.Proxy instead.
-
-func cmdTest(args []string) {
-	fs := flag.NewFlagSet("test", flag.ExitOnError)
-	agent := fs.String("agent", "", "path to .cage bundle or agent directory")
-	target := fs.String("target", "", "single target endpoint")
-	vulnClass := fs.String("vuln-class", "", "vulnerability class to test")
-	followLogs := fs.Bool("follow-logs", false, "stream cage logs to terminal")
-	_ = fs.Parse(args)
-
-	if *agent == "" || *target == "" {
-		fmt.Fprintln(os.Stderr, "usage: agentcage test --agent <path.cage> --target <endpoint> [--vuln-class sqli] [--follow-logs]")
-		os.Exit(1)
-	}
-
-	fmt.Printf("Testing agent in single cage...\n")
-	fmt.Printf("  Agent:     %s\n", *agent)
-	fmt.Printf("  Target:    %s\n", *target)
-	if *vulnClass != "" {
-		fmt.Printf("  VulnClass: %s\n", *vulnClass)
-	}
-	fmt.Printf("  Logs:      %v\n", *followLogs)
-	fmt.Println("\n(single cage creation via CageService.CreateCage pending)")
-}
 
 func cmdStatus(args []string) {
 	_ = args

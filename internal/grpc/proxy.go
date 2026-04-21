@@ -35,8 +35,6 @@ func Proxy(cmd string, args []string) {
 	}
 
 	switch cmd {
-	case "test":
-		proxyTest(conn, args)
 	case "status":
 		proxyStatus(conn, args)
 	case "report":
@@ -51,40 +49,6 @@ func Proxy(cmd string, args []string) {
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		os.Exit(1)
 	}
-}
-
-func proxyTest(conn *grpc.ClientConn, args []string) {
-	fs := flag.NewFlagSet("test", flag.ExitOnError)
-	_ = fs.String("agent", "", "path to .cage bundle")
-	target := fs.String("target", "", "single target endpoint")
-	_ = fs.String("vuln-class", "", "vulnerability class")
-	_ = fs.Parse(args)
-
-	if *target == "" {
-		fmt.Fprintln(os.Stderr, "usage: agentcage test --agent <path.cage> --target <endpoint> [--vuln-class sqli]")
-		os.Exit(1)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client := pb.NewCageServiceClient(conn)
-	resp, err := client.CreateCage(ctx, &pb.CreateCageRequest{
-		Config: &pb.CageConfig{
-			Type:  pb.CageType_CAGE_TYPE_VALIDATOR,
-			Scope: &pb.TargetScope{Hosts: []string{*target}},
-		},
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error creating test cage: %v\n", err)
-		os.Exit(1)
-	}
-
-	info := resp.GetCage()
-	fmt.Printf("Test cage started.\n")
-	fmt.Printf("  Cage ID: %s\n", info.GetCageId())
-	fmt.Printf("  Target:  %s\n", *target)
-	fmt.Println("\nUse 'agentcage logs --cage <id>' to stream logs.")
 }
 
 func proxyStatus(conn *grpc.ClientConn, args []string) {
