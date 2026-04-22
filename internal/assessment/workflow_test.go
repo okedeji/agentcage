@@ -68,6 +68,18 @@ func (assessmentActivityStub) NotifyFleetAssessmentComplete(_ context.Context, _
 func (assessmentActivityStub) NotifyAssessmentComplete(_ context.Context, _ string, _ NotificationConfig, _ Status, _ int32, _ string, _ map[string]string) error {
 	return nil
 }
+func (assessmentActivityStub) StartFindingsStream(_ context.Context, _ string) error {
+	return nil
+}
+func (assessmentActivityStub) StopFindingsStream(_ context.Context, _ string) error {
+	return nil
+}
+func (assessmentActivityStub) StoreReport(_ context.Context, _ string, _ []byte) error {
+	return nil
+}
+func (assessmentActivityStub) CountFindings(_ context.Context, _ string) (findings.StatusCounts, error) {
+	return findings.StatusCounts{}, nil
+}
 
 func testInput() AssessmentWorkflowInput {
 	return AssessmentWorkflowInput{

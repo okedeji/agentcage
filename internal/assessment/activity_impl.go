@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -48,6 +49,8 @@ type ActivityImpl struct {
 	proofs        *ProofLibrary
 	interventions ProofGapEmitter
 	log           logr.Logger
+	subsMu        sync.Mutex
+	subs          map[string]findings.Subscription
 }
 
 type ActivityImplConfig struct {
@@ -81,6 +84,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		proofs:        cfg.Proofs,
 		interventions: cfg.Interventions,
 		log:           cfg.Log.WithValues("component", "assessment-activities"),
+		subs:          make(map[string]findings.Subscription),
 	}
 }
 
@@ -109,6 +113,10 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("NotifyFinding", a.NotifyFinding)
 	pin("NotifyFleetAssessmentComplete", a.NotifyFleetAssessmentComplete)
 	pin("NotifyAssessmentComplete", a.NotifyAssessmentComplete)
+	pin("StartFindingsStream", a.StartFindingsStream)
+	pin("StopFindingsStream", a.StopFindingsStream)
+	pin("StoreReport", a.StoreReport)
+	pin("CountFindings", a.CountFindings)
 }
 
 // EmitProofGapIntervention creates a pending proof_gap intervention for a
@@ -350,5 +358,61 @@ func (a *ActivityImpl) NotifyAssessmentComplete(ctx context.Context, assessmentI
 	}
 	_ = resp.Body.Close()
 	a.log.Info("assessment completion webhook sent", "assessment_id", assessmentID, "status_code", resp.StatusCode)
+	return nil
+}
+
+func (a *ActivityImpl) CountFindings(ctx context.Context, assessmentID string) (findings.StatusCounts, error) {
+	return a.findings.CountByAssessment(ctx, assessmentID)
+}
+
+func (a *ActivityImpl) StoreReport(ctx context.Context, assessmentID string, reportData []byte) error {
+	if a.assessments == nil || a.assessments.db == nil {
+		return nil
+	}
+	_, err := a.assessments.db.ExecContext(ctx,
+		`UPDATE assessments SET report = $1, updated_at = NOW() WHERE id = $2`,
+		reportData, assessmentID,
+	)
+	if err != nil {
+		return fmt.Errorf("storing report for assessment %s: %w", assessmentID, err)
+	}
+	a.log.Info("report stored", "assessment_id", assessmentID)
+	return nil
+}
+
+func (a *ActivityImpl) StartFindingsStream(ctx context.Context, assessmentID string) error {
+	if a.bus == nil {
+		return nil
+	}
+	if err := a.bus.CreateStream(ctx, assessmentID); err != nil {
+		return fmt.Errorf("creating findings stream for assessment %s: %w", assessmentID, err)
+	}
+	sub, err := a.bus.Subscribe(ctx, assessmentID, a.coordinator.HandleMessage)
+	if err != nil {
+		return fmt.Errorf("subscribing to findings for assessment %s: %w", assessmentID, err)
+	}
+	a.subsMu.Lock()
+	a.subs[assessmentID] = sub
+	a.subsMu.Unlock()
+	a.log.Info("findings stream started", "assessment_id", assessmentID)
+	return nil
+}
+
+func (a *ActivityImpl) StopFindingsStream(ctx context.Context, assessmentID string) error {
+	a.subsMu.Lock()
+	sub, ok := a.subs[assessmentID]
+	if ok {
+		delete(a.subs, assessmentID)
+	}
+	a.subsMu.Unlock()
+	if ok {
+		sub.Stop()
+	}
+	if a.bus != nil {
+		if err := a.bus.DeleteStream(ctx, assessmentID); err != nil {
+			a.log.Error(err, "deleting findings stream", "assessment_id", assessmentID)
+		}
+	}
+	a.log.Info("findings stream stopped", "assessment_id", assessmentID)
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/intervention"
 	"google.golang.org/grpc"
@@ -22,6 +23,7 @@ type Services struct {
 	Assessments   *assessment.Service
 	Interventions *intervention.Service
 	Fleet         *fleet.Service
+	Findings      *findings.PGStore
 	Cancel        context.CancelFunc
 	Version       string
 }
@@ -33,6 +35,9 @@ func Register(srv *grpc.Server, svc Services) {
 	pb.RegisterAssessmentServiceServer(srv, &assessmentAdapter{server: svc.Assessments})
 	pb.RegisterInterventionServiceServer(srv, &interventionAdapter{server: svc.Interventions})
 	pb.RegisterFleetServiceServer(srv, &fleetAdapter{server: svc.Fleet})
+	if svc.Findings != nil {
+		pb.RegisterFindingsServiceServer(srv, &findingsAdapter{store: svc.Findings})
+	}
 }
 
 type controlAdapter struct {
@@ -247,11 +252,77 @@ func (a *fleetAdapter) GetCapacity(ctx context.Context, _ *pb.GetCapacityRequest
 	return &pb.GetCapacityResponse{Pools: pbPools, AvailableCageSlots: available}, nil
 }
 
+type findingsAdapter struct {
+	pb.UnimplementedFindingsServiceServer
+	store *findings.PGStore
+}
+
+func (a *findingsAdapter) ListFindings(ctx context.Context, req *pb.ListFindingsRequest) (*pb.ListFindingsResponse, error) {
+	if req.GetAssessmentId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "assessment_id is required")
+	}
+	filters := findings.ListFilters{
+		AssessmentID: req.GetAssessmentId(),
+		Limit:        int(req.GetLimit()),
+	}
+	if req.GetStatusFilter() != pb.FindingStatus_FINDING_STATUS_UNSPECIFIED {
+		s := findingStatusFromProto(req.GetStatusFilter())
+		filters.StatusFilter = &s
+	}
+	if req.GetSeverityFilter() != pb.FindingSeverity_FINDING_SEVERITY_UNSPECIFIED {
+		sev := findingSeverityFromProto(req.GetSeverityFilter())
+		filters.SeverityFilter = &sev
+	}
+
+	items, err := a.store.ListFindings(ctx, filters)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	pbItems := make([]*pb.FindingInfo, len(items))
+	for i := range items {
+		pbItems[i] = findingToProto(&items[i])
+	}
+	return &pb.ListFindingsResponse{Findings: pbItems}, nil
+}
+
+func (a *findingsAdapter) GetFinding(ctx context.Context, req *pb.GetFindingRequest) (*pb.GetFindingResponse, error) {
+	if req.GetFindingId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "finding_id is required")
+	}
+	f, err := a.store.GetByID(ctx, req.GetFindingId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.GetFindingResponse{Finding: findingToProto(&f)}, nil
+}
+
+func (a *findingsAdapter) DeleteFinding(ctx context.Context, req *pb.DeleteFindingRequest) (*pb.DeleteFindingResponse, error) {
+	if req.GetFindingId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "finding_id is required")
+	}
+	if err := a.store.DeleteFinding(ctx, req.GetFindingId()); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.DeleteFindingResponse{}, nil
+}
+
+func (a *findingsAdapter) DeleteByAssessment(ctx context.Context, req *pb.DeleteByAssessmentRequest) (*pb.DeleteByAssessmentResponse, error) {
+	if req.GetAssessmentId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "assessment_id is required")
+	}
+	n, err := a.store.DeleteByAssessment(ctx, req.GetAssessmentId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.DeleteByAssessmentResponse{Deleted: n}, nil
+}
+
 func toGRPCError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, cage.ErrCageNotFound) || errors.Is(err, assessment.ErrAssessmentNotFound) {
+	if errors.Is(err, cage.ErrCageNotFound) || errors.Is(err, assessment.ErrAssessmentNotFound) || errors.Is(err, findings.ErrFindingNotFound) {
 		return status.Error(codes.NotFound, err.Error())
 	}
 	if errors.Is(err, cage.ErrInvalidTransition) {

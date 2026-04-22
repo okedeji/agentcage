@@ -1,5 +1,5 @@
 -- +migrate Up
-CREATE TYPE assessment_status AS ENUM ('discovery', 'exploitation', 'validation', 'pending_review', 'approved', 'rejected');
+CREATE TYPE assessment_status AS ENUM ('discovery', 'exploitation', 'validation', 'pending_review', 'approved', 'rejected', 'failed');
 
 CREATE TABLE assessments (
     id              TEXT PRIMARY KEY,
@@ -12,6 +12,7 @@ CREATE TABLE assessments (
     findings_validated  INTEGER NOT NULL DEFAULT 0,
     findings_rejected   INTEGER NOT NULL DEFAULT 0,
     tokens_consumed BIGINT NOT NULL DEFAULT 0,
+    report          JSONB,
     started_at      TIMESTAMPTZ,
     completed_at    TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -1,0 +1,86 @@
+syntax = "proto3";
+package agentcage.findings.v1;
+option go_package = "github.com/okedeji/agentcage/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+service FindingsService {
+  rpc ListFindings(ListFindingsRequest) returns (ListFindingsResponse);
+  rpc GetFinding(GetFindingRequest) returns (GetFindingResponse);
+  rpc DeleteFinding(DeleteFindingRequest) returns (DeleteFindingResponse);
+  rpc DeleteByAssessment(DeleteByAssessmentRequest) returns (DeleteByAssessmentResponse);
+}
+
+enum FindingStatus {
+  FINDING_STATUS_UNSPECIFIED = 0;
+  FINDING_STATUS_CANDIDATE = 1;
+  FINDING_STATUS_VALIDATED = 2;
+  FINDING_STATUS_REJECTED = 3;
+}
+
+enum FindingSeverity {
+  FINDING_SEVERITY_UNSPECIFIED = 0;
+  FINDING_SEVERITY_INFO = 1;
+  FINDING_SEVERITY_LOW = 2;
+  FINDING_SEVERITY_MEDIUM = 3;
+  FINDING_SEVERITY_HIGH = 4;
+  FINDING_SEVERITY_CRITICAL = 5;
+}
+
+message FindingEvidence {
+  bytes request = 1;
+  bytes response = 2;
+  bytes screenshot = 3;
+  string poc = 4;
+  map<string, string> metadata = 5;
+}
+
+message FindingInfo {
+  string finding_id = 1;
+  string assessment_id = 2;
+  string cage_id = 3;
+  FindingStatus status = 4;
+  FindingSeverity severity = 5;
+  string title = 6;
+  string description = 7;
+  string vuln_class = 8;
+  string endpoint = 9;
+  FindingEvidence evidence = 10;
+  string parent_finding_id = 11;
+  int32 chain_depth = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp validated_at = 14;
+}
+
+message ListFindingsRequest {
+  string assessment_id = 1;
+  FindingStatus status_filter = 2;
+  FindingSeverity severity_filter = 3;
+  int32 limit = 4;
+}
+
+message ListFindingsResponse {
+  repeated FindingInfo findings = 1;
+}
+
+message GetFindingRequest {
+  string finding_id = 1;
+}
+
+message GetFindingResponse {
+  FindingInfo finding = 1;
+}
+
+message DeleteFindingRequest {
+  string finding_id = 1;
+}
+
+message DeleteFindingResponse {}
+
+message DeleteByAssessmentRequest {
+  string assessment_id = 1;
+}
+
+message DeleteByAssessmentResponse {
+  int64 deleted = 1;
+}

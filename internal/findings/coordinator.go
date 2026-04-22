@@ -12,7 +12,11 @@ type FindingStore interface {
 	FindingExists(ctx context.Context, findingID string) (bool, error)
 	GetByID(ctx context.Context, findingID string) (Finding, error)
 	GetByAssessment(ctx context.Context, assessmentID string, status Status) ([]Finding, error)
+	ListFindings(ctx context.Context, filters ListFilters) ([]Finding, error)
+	CountByAssessment(ctx context.Context, assessmentID string) (StatusCounts, error)
 	UpdateStatus(ctx context.Context, findingID string, status Status) error
+	DeleteFinding(ctx context.Context, findingID string) error
+	DeleteByAssessment(ctx context.Context, assessmentID string) (int64, error)
 }
 
 // ErrFindingNotFound is returned by GetByID when no finding matches the ID.
@@ -37,7 +41,8 @@ func (c *Coordinator) HandleMessage(ctx context.Context, msg Message) error {
 
 	SanitizeFinding(&msg.Finding, c.limits)
 
-	if c.bloom.MayContain(msg.Finding.ID) {
+	bloomKey := msg.Finding.AssessmentID + ":" + msg.Finding.ID
+	if c.bloom.MayContain(bloomKey) {
 		exists, err := c.store.FindingExists(ctx, msg.Finding.ID)
 		if err != nil {
 			return fmt.Errorf("checking finding %s existence: %w", msg.Finding.ID, err)
@@ -52,7 +57,7 @@ func (c *Coordinator) HandleMessage(ctx context.Context, msg Message) error {
 		return fmt.Errorf("saving finding %s: %w", msg.Finding.ID, err)
 	}
 
-	c.bloom.Add(msg.Finding.ID)
+	c.bloom.Add(bloomKey)
 
 	c.logger.Info("finding processed",
 		"finding_id", msg.Finding.ID,

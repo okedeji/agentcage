@@ -99,6 +99,16 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		ctx = childCtx
 	}
 
+	if err := startFindingsStream(ctx, input.AssessmentID); err != nil {
+		return failResult(result, "starting findings stream: %v", err), nil
+	}
+	defer func() {
+		_ = workflow.ExecuteActivity(
+			withActivityTimeout(ctx, TimeoutUpdateStatus),
+			"StopFindingsStream", input.AssessmentID,
+		).Get(ctx, nil)
+	}()
+
 	coverage := make(map[string][]string)
 	var cagesCompleted []CageSummary
 
@@ -310,9 +320,15 @@ func withActivityTimeout(ctx workflow.Context, timeout time.Duration) workflow.C
 }
 
 func syncStats(ctx workflow.Context, assessmentID string, result AssessmentWorkflowResult) {
+	var counts findings.StatusCounts
+	countCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+	_ = workflow.ExecuteActivity(countCtx, "CountFindings", assessmentID).Get(ctx, &counts)
+
 	stats := Stats{
 		TotalCages:        result.TotalCages,
-		FindingsValidated: result.Findings,
+		FindingsCandidate: counts.Candidate,
+		FindingsValidated: counts.Validated,
+		FindingsRejected:  counts.Rejected,
 	}
 	_ = workflow.ExecuteActivity(
 		withActivityTimeout(ctx, TimeoutUpdateStatus),
@@ -397,9 +413,19 @@ func getValidatedFindings(ctx workflow.Context, assessmentID string) ([]findings
 	return result, err
 }
 
+func startFindingsStream(ctx workflow.Context, assessmentID string) error {
+	actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
+	return workflow.ExecuteActivity(actCtx, "StartFindingsStream", assessmentID).Get(ctx, nil)
+}
+
 func generateReport(ctx workflow.Context, assessmentID, customerID string, validated []findings.Finding) error {
 	actCtx := withActivityTimeout(ctx, TimeoutGenerateReport)
-	return workflow.ExecuteActivity(actCtx, "GenerateReport", assessmentID, customerID, validated).Get(ctx, nil)
+	var reportData []byte
+	if err := workflow.ExecuteActivity(actCtx, "GenerateReport", assessmentID, customerID, validated).Get(ctx, &reportData); err != nil {
+		return err
+	}
+	storeCtx := withActivityTimeout(ctx, TimeoutUpdateStatus)
+	return workflow.ExecuteActivity(storeCtx, "StoreReport", assessmentID, reportData).Get(ctx, nil)
 }
 
 func maxConcurrentForType(cfg Config, cageType cage.Type) int32 {
@@ -711,11 +737,16 @@ func retestFindings(
 	maxWait := MinValidatorWait
 
 	for _, adj := range adjustments {
-		// Never spawn a retest against an empty Finding shell.
 		loadCtx := withActivityTimeout(ctx, TimeoutGetFindings)
 		var f findings.Finding
 		if err := workflow.ExecuteActivity(loadCtx, "GetFinding", adj.FindingID).Get(ctx, &f); err != nil {
 			return cages, fmt.Errorf("loading finding %s for retest: %w", adj.FindingID, err)
+		}
+
+		if adj.SeverityOverride != "" {
+			if sev := parseSeverityOverride(adj.SeverityOverride); sev != 0 {
+				f.Severity = sev
+			}
 		}
 
 		// Skip rather than spawning a no-op cage with no validation plan.
@@ -747,6 +778,23 @@ func retestFindings(
 	}
 
 	return cages, nil
+}
+
+func parseSeverityOverride(s string) findings.Severity {
+	switch s {
+	case "critical":
+		return findings.SeverityCritical
+	case "high":
+		return findings.SeverityHigh
+	case "medium":
+		return findings.SeverityMedium
+	case "low":
+		return findings.SeverityLow
+	case "info":
+		return findings.SeverityInfo
+	default:
+		return 0
+	}
 }
 
 func failResult(result AssessmentWorkflowResult, format string, args ...interface{}) AssessmentWorkflowResult {

@@ -21,6 +21,7 @@ CREATE TABLE findings (
 );
 
 CREATE INDEX idx_findings_assessment_id ON findings(assessment_id);
+CREATE INDEX idx_findings_assessment_status_created ON findings(assessment_id, status, created_at DESC);
 CREATE INDEX idx_findings_cage_id ON findings(cage_id);
 CREATE INDEX idx_findings_status ON findings(status);
 CREATE INDEX idx_findings_vuln_class ON findings(vuln_class);

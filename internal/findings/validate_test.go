@@ -42,6 +42,7 @@ func TestValidateFinding_MissingFields(t *testing.T) {
 		{"missing CageID", func(f *Finding) { f.CageID = "" }, "cage ID"},
 		{"missing Title", func(f *Finding) { f.Title = "" }, "title"},
 		{"missing VulnClass", func(f *Finding) { f.VulnClass = "" }, "vuln class"},
+		{"missing Endpoint", func(f *Finding) { f.Endpoint = "" }, "endpoint"},
 		{"zero Status", func(f *Finding) { f.Status = 0 }, "status"},
 		{"zero Severity", func(f *Finding) { f.Severity = 0 }, "severity"},
 	}

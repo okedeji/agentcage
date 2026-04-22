@@ -249,6 +249,7 @@ func runInit(configFile, logFormat string) error {
 		Assessments:   assessmentSvc,
 		Interventions: iSvc,
 		Fleet:         fleetSvc,
+		Findings:      findingStore,
 		Cancel:        cancel,
 		Version:       version,
 	}, log)

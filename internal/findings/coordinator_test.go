@@ -60,6 +60,68 @@ func (m *mockStore) GetByAssessment(_ context.Context, assessmentID string, stat
 	return result, nil
 }
 
+func (m *mockStore) CountByAssessment(_ context.Context, assessmentID string) (StatusCounts, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var counts StatusCounts
+	for _, f := range m.findings {
+		if f.AssessmentID != assessmentID {
+			continue
+		}
+		switch f.Status {
+		case StatusCandidate:
+			counts.Candidate++
+		case StatusValidated:
+			counts.Validated++
+		case StatusRejected:
+			counts.Rejected++
+		}
+	}
+	return counts, nil
+}
+
+func (m *mockStore) ListFindings(_ context.Context, filters ListFilters) ([]Finding, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []Finding
+	for _, f := range m.findings {
+		if filters.AssessmentID != "" && f.AssessmentID != filters.AssessmentID {
+			continue
+		}
+		if filters.StatusFilter != nil && f.Status != *filters.StatusFilter {
+			continue
+		}
+		if filters.SeverityFilter != nil && f.Severity != *filters.SeverityFilter {
+			continue
+		}
+		result = append(result, f)
+	}
+	return result, nil
+}
+
+func (m *mockStore) DeleteFinding(_ context.Context, findingID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.findings[findingID]; !ok {
+		return ErrFindingNotFound
+	}
+	delete(m.findings, findingID)
+	return nil
+}
+
+func (m *mockStore) DeleteByAssessment(_ context.Context, assessmentID string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var count int64
+	for id, f := range m.findings {
+		if f.AssessmentID == assessmentID {
+			delete(m.findings, id)
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (m *mockStore) UpdateStatus(_ context.Context, findingID string, status Status) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -193,5 +255,31 @@ func TestCoordinator_BloomUpdatedAfterSave(t *testing.T) {
 	msg := Message{SchemaVersion: CurrentSchemaVersion, Finding: newTestFinding()}
 	require.NoError(t, coord.HandleMessage(context.Background(), msg))
 
-	assert.True(t, bloom.MayContain("f-001"))
+	assert.True(t, bloom.MayContain("a-001:f-001"))
+}
+
+func TestCoordinator_CrossAssessmentBloomIsolation(t *testing.T) {
+	bloom := NewBloomFilter(1024, 3)
+
+	bloom.Add("a-001:f-001")
+
+	assert.True(t, bloom.MayContain("a-001:f-001"))
+	assert.False(t, bloom.MayContain("a-002:f-001"),
+		"bloom key scoped to assessment A should not match assessment B")
+}
+
+func TestCoordinator_EndpointRequired(t *testing.T) {
+	store := newMockStore()
+	bloom := NewBloomFilter(1024, 3)
+	coord := NewCoordinator(store, bloom, nil, logr.Discard())
+
+	f := newTestFinding()
+	f.Endpoint = ""
+	msg := Message{SchemaVersion: CurrentSchemaVersion, Finding: f}
+
+	err := coord.HandleMessage(context.Background(), msg)
+	require.NoError(t, err)
+
+	_, ok := store.get(f.ID)
+	assert.False(t, ok, "finding without endpoint should be dropped by validation")
 }

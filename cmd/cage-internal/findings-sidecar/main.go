@@ -78,9 +78,17 @@ func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID stri
 
 		finding.CageID = cageID
 		finding.AssessmentID = assessmentID
+		now := time.Now()
+		if finding.CreatedAt.IsZero() {
+			finding.CreatedAt = now
+		}
+		if finding.UpdatedAt.IsZero() {
+			finding.UpdatedAt = now
+		}
 
 		if err := findings.ValidateFinding(finding); err != nil {
 			logger.Error(err, "invalid finding from agent", "finding_id", finding.ID)
+			_, _ = fmt.Fprintf(conn, "error: invalid finding %s: %v\n", finding.ID, err)
 			continue
 		}
 

@@ -34,6 +34,9 @@ func ValidateFinding(f Finding) error {
 	if f.VulnClass == "" {
 		errs = append(errs, fmt.Errorf("vuln class is required"))
 	}
+	if f.Endpoint == "" {
+		errs = append(errs, fmt.Errorf("endpoint is required"))
+	}
 
 	switch f.Status {
 	case StatusCandidate, StatusValidated, StatusRejected:

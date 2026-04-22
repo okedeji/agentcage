@@ -4,6 +4,7 @@ import (
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/intervention"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -477,4 +478,94 @@ func poolToProto(p fleet.HostPool) pb.HostPool {
 	default:
 		return pb.HostPool_HOST_POOL_UNSPECIFIED
 	}
+}
+
+func findingStatusFromProto(s pb.FindingStatus) findings.Status {
+	switch s {
+	case pb.FindingStatus_FINDING_STATUS_CANDIDATE:
+		return findings.StatusCandidate
+	case pb.FindingStatus_FINDING_STATUS_VALIDATED:
+		return findings.StatusValidated
+	case pb.FindingStatus_FINDING_STATUS_REJECTED:
+		return findings.StatusRejected
+	default:
+		return findings.StatusCandidate
+	}
+}
+
+func findingSeverityFromProto(s pb.FindingSeverity) findings.Severity {
+	switch s {
+	case pb.FindingSeverity_FINDING_SEVERITY_INFO:
+		return findings.SeverityInfo
+	case pb.FindingSeverity_FINDING_SEVERITY_LOW:
+		return findings.SeverityLow
+	case pb.FindingSeverity_FINDING_SEVERITY_MEDIUM:
+		return findings.SeverityMedium
+	case pb.FindingSeverity_FINDING_SEVERITY_HIGH:
+		return findings.SeverityHigh
+	case pb.FindingSeverity_FINDING_SEVERITY_CRITICAL:
+		return findings.SeverityCritical
+	default:
+		return findings.SeverityInfo
+	}
+}
+
+func findingStatusToProto(s findings.Status) pb.FindingStatus {
+	switch s {
+	case findings.StatusCandidate:
+		return pb.FindingStatus_FINDING_STATUS_CANDIDATE
+	case findings.StatusValidated:
+		return pb.FindingStatus_FINDING_STATUS_VALIDATED
+	case findings.StatusRejected:
+		return pb.FindingStatus_FINDING_STATUS_REJECTED
+	default:
+		return pb.FindingStatus_FINDING_STATUS_UNSPECIFIED
+	}
+}
+
+func findingSeverityToProto(s findings.Severity) pb.FindingSeverity {
+	switch s {
+	case findings.SeverityInfo:
+		return pb.FindingSeverity_FINDING_SEVERITY_INFO
+	case findings.SeverityLow:
+		return pb.FindingSeverity_FINDING_SEVERITY_LOW
+	case findings.SeverityMedium:
+		return pb.FindingSeverity_FINDING_SEVERITY_MEDIUM
+	case findings.SeverityHigh:
+		return pb.FindingSeverity_FINDING_SEVERITY_HIGH
+	case findings.SeverityCritical:
+		return pb.FindingSeverity_FINDING_SEVERITY_CRITICAL
+	default:
+		return pb.FindingSeverity_FINDING_SEVERITY_UNSPECIFIED
+	}
+}
+
+func findingToProto(f *findings.Finding) *pb.FindingInfo {
+	info := &pb.FindingInfo{
+		FindingId:       f.ID,
+		AssessmentId:    f.AssessmentID,
+		CageId:          f.CageID,
+		Status:          findingStatusToProto(f.Status),
+		Severity:        findingSeverityToProto(f.Severity),
+		Title:           f.Title,
+		Description:     f.Description,
+		VulnClass:       f.VulnClass,
+		Endpoint:        f.Endpoint,
+		ParentFindingId: f.ParentFindingID,
+		ChainDepth:      f.ChainDepth,
+		CreatedAt:       timestamppb.New(f.CreatedAt),
+	}
+	if f.ValidatedAt != nil {
+		info.ValidatedAt = timestamppb.New(*f.ValidatedAt)
+	}
+	if f.Evidence.Request != nil || f.Evidence.Response != nil || f.Evidence.Screenshot != nil || f.Evidence.PoC != "" || len(f.Evidence.Metadata) > 0 {
+		info.Evidence = &pb.FindingEvidence{
+			Request:    f.Evidence.Request,
+			Response:   f.Evidence.Response,
+			Screenshot: f.Evidence.Screenshot,
+			Poc:        f.Evidence.PoC,
+			Metadata:   f.Evidence.Metadata,
+		}
+	}
+	return info
 }
