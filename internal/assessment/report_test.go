@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestGenerateReport_MixedSeverities(t *testing.T) {
 		{ID: "f-5", Title: "Server Banner", Severity: findings.SeverityInfo, VulnClass: "info", Endpoint: "/", Description: "Server version disclosed"},
 	}
 
-	report, err := GenerateReport("assess-1", "cust-1", validated)
+	report, err := GenerateReport(context.Background(), "assess-1", "cust-1", validated, "target.example.com", nil)
 	require.NoError(t, err)
 	require.NotNil(t, report)
 
@@ -35,7 +36,7 @@ func TestGenerateReport_MixedSeverities(t *testing.T) {
 }
 
 func TestGenerateReport_EmptyFindings(t *testing.T) {
-	report, err := GenerateReport("assess-1", "cust-1", nil)
+	report, err := GenerateReport(context.Background(), "assess-1", "cust-1", nil, "", nil)
 	require.NoError(t, err)
 	require.NotNil(t, report)
 
@@ -63,7 +64,7 @@ func TestGenerateReport_FindingFieldsMapping(t *testing.T) {
 		},
 	}
 
-	report, err := GenerateReport("assess-1", "cust-1", validated)
+	report, err := GenerateReport(context.Background(), "assess-1", "cust-1", validated, "target.example.com", nil)
 	require.NoError(t, err)
 
 	rf := report.Findings[0]
@@ -77,12 +78,12 @@ func TestGenerateReport_FindingFieldsMapping(t *testing.T) {
 }
 
 func TestGenerateReport_MissingAssessmentID(t *testing.T) {
-	_, err := GenerateReport("", "cust-1", nil)
+	_, err := GenerateReport(context.Background(), "", "cust-1", nil, "", nil)
 	assert.Error(t, err)
 }
 
 func TestGenerateReport_MissingCustomerID(t *testing.T) {
-	_, err := GenerateReport("assess-1", "", nil)
+	_, err := GenerateReport(context.Background(), "assess-1", "", nil, "", nil)
 	assert.Error(t, err)
 }
 

@@ -15,6 +15,10 @@ CREATE TABLE findings (
     evidence          JSONB,
     parent_finding_id TEXT REFERENCES findings(id),
     chain_depth       INTEGER NOT NULL DEFAULT 0,
+    cwe               TEXT,
+    cvss_score        DOUBLE PRECISION,
+    remediation       TEXT,
+    validation_proof  JSONB,
     validated_at      TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -12,20 +12,6 @@ import (
 // (interventions/resolve/fleet) because
 // isProxyCommand routes them through internal/grpc.Proxy instead.
 
-func cmdReport(args []string) {
-	fs := flag.NewFlagSet("report", flag.ExitOnError)
-	assessmentID := fs.String("assessment", "", "assessment ID")
-	format := fs.String("format", "text", "output format: text, json")
-	_ = fs.Parse(args)
-
-	fmt.Printf("Report (format=%s)", *format)
-	if *assessmentID != "" {
-		fmt.Printf(" for assessment %s", *assessmentID)
-	}
-	fmt.Println(":")
-	fmt.Println("  (requires connection to orchestrator gRPC — pending)")
-}
-
 func cmdInterventions(args []string) {
 	fs := flag.NewFlagSet("interventions", flag.ExitOnError)
 	status := fs.String("status", "pending", "filter by status: pending, resolved, timed_out")

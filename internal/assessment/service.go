@@ -219,6 +219,23 @@ func (s *Service) ListAssessments(ctx context.Context, filters ListFilters) ([]I
 	return results, nextToken, nil
 }
 
+func (s *Service) LoadReport(ctx context.Context, assessmentID string) ([]byte, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("assessment %s: report not available (no database)", assessmentID)
+	}
+	var report []byte
+	err := s.db.QueryRowContext(ctx,
+		`SELECT report FROM assessments WHERE id = $1`, assessmentID,
+	).Scan(&report)
+	if err != nil {
+		return nil, fmt.Errorf("loading report for assessment %s: %w", assessmentID, err)
+	}
+	if report == nil {
+		return nil, fmt.Errorf("assessment %s: no report generated yet", assessmentID)
+	}
+	return report, nil
+}
+
 func (s *Service) UpdateStatus(ctx context.Context, assessmentID string, status Status) error {
 	s.mu.Lock()
 	info, ok := s.assessments[assessmentID]

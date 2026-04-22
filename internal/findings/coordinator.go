@@ -15,6 +15,8 @@ type FindingStore interface {
 	ListFindings(ctx context.Context, filters ListFilters) ([]Finding, error)
 	CountByAssessment(ctx context.Context, assessmentID string) (StatusCounts, error)
 	UpdateStatus(ctx context.Context, findingID string, status Status) error
+	UpdateEnrichment(ctx context.Context, findingID, cwe string, cvssScore float64, remediation string) error
+	UpdateValidationProof(ctx context.Context, findingID string, proof *Proof) error
 	DeleteFinding(ctx context.Context, findingID string) error
 	DeleteByAssessment(ctx context.Context, assessmentID string) (int64, error)
 }

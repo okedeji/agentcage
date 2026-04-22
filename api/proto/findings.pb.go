@@ -208,6 +208,82 @@ func (x *FindingEvidence) GetMetadata() map[string]string {
 	return nil
 }
 
+type ValidationProof struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ReproductionSteps string                 `protobuf:"bytes,1,opt,name=reproduction_steps,json=reproductionSteps,proto3" json:"reproduction_steps,omitempty"`
+	Confirmed         bool                   `protobuf:"varint,2,opt,name=confirmed,proto3" json:"confirmed,omitempty"`
+	Deterministic     bool                   `protobuf:"varint,3,opt,name=deterministic,proto3" json:"deterministic,omitempty"`
+	ValidatorCageId   string                 `protobuf:"bytes,4,opt,name=validator_cage_id,json=validatorCageId,proto3" json:"validator_cage_id,omitempty"`
+	Evidence          string                 `protobuf:"bytes,5,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ValidationProof) Reset() {
+	*x = ValidationProof{}
+	mi := &file_api_proto_findings_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ValidationProof) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ValidationProof) ProtoMessage() {}
+
+func (x *ValidationProof) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_findings_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ValidationProof.ProtoReflect.Descriptor instead.
+func (*ValidationProof) Descriptor() ([]byte, []int) {
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ValidationProof) GetReproductionSteps() string {
+	if x != nil {
+		return x.ReproductionSteps
+	}
+	return ""
+}
+
+func (x *ValidationProof) GetConfirmed() bool {
+	if x != nil {
+		return x.Confirmed
+	}
+	return false
+}
+
+func (x *ValidationProof) GetDeterministic() bool {
+	if x != nil {
+		return x.Deterministic
+	}
+	return false
+}
+
+func (x *ValidationProof) GetValidatorCageId() string {
+	if x != nil {
+		return x.ValidatorCageId
+	}
+	return ""
+}
+
+func (x *ValidationProof) GetEvidence() string {
+	if x != nil {
+		return x.Evidence
+	}
+	return ""
+}
+
 type FindingInfo struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	FindingId       string                 `protobuf:"bytes,1,opt,name=finding_id,json=findingId,proto3" json:"finding_id,omitempty"`
@@ -224,13 +300,17 @@ type FindingInfo struct {
 	ChainDepth      int32                  `protobuf:"varint,12,opt,name=chain_depth,json=chainDepth,proto3" json:"chain_depth,omitempty"`
 	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	ValidatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=validated_at,json=validatedAt,proto3" json:"validated_at,omitempty"`
+	Cwe             string                 `protobuf:"bytes,15,opt,name=cwe,proto3" json:"cwe,omitempty"`
+	CvssScore       float64                `protobuf:"fixed64,16,opt,name=cvss_score,json=cvssScore,proto3" json:"cvss_score,omitempty"`
+	Remediation     string                 `protobuf:"bytes,17,opt,name=remediation,proto3" json:"remediation,omitempty"`
+	ValidationProof *ValidationProof       `protobuf:"bytes,18,opt,name=validation_proof,json=validationProof,proto3" json:"validation_proof,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *FindingInfo) Reset() {
 	*x = FindingInfo{}
-	mi := &file_api_proto_findings_proto_msgTypes[1]
+	mi := &file_api_proto_findings_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -242,7 +322,7 @@ func (x *FindingInfo) String() string {
 func (*FindingInfo) ProtoMessage() {}
 
 func (x *FindingInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[1]
+	mi := &file_api_proto_findings_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -255,7 +335,7 @@ func (x *FindingInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindingInfo.ProtoReflect.Descriptor instead.
 func (*FindingInfo) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{1}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *FindingInfo) GetFindingId() string {
@@ -356,6 +436,34 @@ func (x *FindingInfo) GetValidatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *FindingInfo) GetCwe() string {
+	if x != nil {
+		return x.Cwe
+	}
+	return ""
+}
+
+func (x *FindingInfo) GetCvssScore() float64 {
+	if x != nil {
+		return x.CvssScore
+	}
+	return 0
+}
+
+func (x *FindingInfo) GetRemediation() string {
+	if x != nil {
+		return x.Remediation
+	}
+	return ""
+}
+
+func (x *FindingInfo) GetValidationProof() *ValidationProof {
+	if x != nil {
+		return x.ValidationProof
+	}
+	return nil
+}
+
 type ListFindingsRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	AssessmentId   string                 `protobuf:"bytes,1,opt,name=assessment_id,json=assessmentId,proto3" json:"assessment_id,omitempty"`
@@ -368,7 +476,7 @@ type ListFindingsRequest struct {
 
 func (x *ListFindingsRequest) Reset() {
 	*x = ListFindingsRequest{}
-	mi := &file_api_proto_findings_proto_msgTypes[2]
+	mi := &file_api_proto_findings_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -380,7 +488,7 @@ func (x *ListFindingsRequest) String() string {
 func (*ListFindingsRequest) ProtoMessage() {}
 
 func (x *ListFindingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[2]
+	mi := &file_api_proto_findings_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -393,7 +501,7 @@ func (x *ListFindingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFindingsRequest.ProtoReflect.Descriptor instead.
 func (*ListFindingsRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{2}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListFindingsRequest) GetAssessmentId() string {
@@ -433,7 +541,7 @@ type ListFindingsResponse struct {
 
 func (x *ListFindingsResponse) Reset() {
 	*x = ListFindingsResponse{}
-	mi := &file_api_proto_findings_proto_msgTypes[3]
+	mi := &file_api_proto_findings_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -445,7 +553,7 @@ func (x *ListFindingsResponse) String() string {
 func (*ListFindingsResponse) ProtoMessage() {}
 
 func (x *ListFindingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[3]
+	mi := &file_api_proto_findings_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -458,7 +566,7 @@ func (x *ListFindingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFindingsResponse.ProtoReflect.Descriptor instead.
 func (*ListFindingsResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{3}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListFindingsResponse) GetFindings() []*FindingInfo {
@@ -477,7 +585,7 @@ type GetFindingRequest struct {
 
 func (x *GetFindingRequest) Reset() {
 	*x = GetFindingRequest{}
-	mi := &file_api_proto_findings_proto_msgTypes[4]
+	mi := &file_api_proto_findings_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -489,7 +597,7 @@ func (x *GetFindingRequest) String() string {
 func (*GetFindingRequest) ProtoMessage() {}
 
 func (x *GetFindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[4]
+	mi := &file_api_proto_findings_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -502,7 +610,7 @@ func (x *GetFindingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFindingRequest.ProtoReflect.Descriptor instead.
 func (*GetFindingRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{4}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetFindingRequest) GetFindingId() string {
@@ -521,7 +629,7 @@ type GetFindingResponse struct {
 
 func (x *GetFindingResponse) Reset() {
 	*x = GetFindingResponse{}
-	mi := &file_api_proto_findings_proto_msgTypes[5]
+	mi := &file_api_proto_findings_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -533,7 +641,7 @@ func (x *GetFindingResponse) String() string {
 func (*GetFindingResponse) ProtoMessage() {}
 
 func (x *GetFindingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[5]
+	mi := &file_api_proto_findings_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -546,7 +654,7 @@ func (x *GetFindingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFindingResponse.ProtoReflect.Descriptor instead.
 func (*GetFindingResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{5}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetFindingResponse) GetFinding() *FindingInfo {
@@ -565,7 +673,7 @@ type DeleteFindingRequest struct {
 
 func (x *DeleteFindingRequest) Reset() {
 	*x = DeleteFindingRequest{}
-	mi := &file_api_proto_findings_proto_msgTypes[6]
+	mi := &file_api_proto_findings_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -577,7 +685,7 @@ func (x *DeleteFindingRequest) String() string {
 func (*DeleteFindingRequest) ProtoMessage() {}
 
 func (x *DeleteFindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[6]
+	mi := &file_api_proto_findings_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -590,7 +698,7 @@ func (x *DeleteFindingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFindingRequest.ProtoReflect.Descriptor instead.
 func (*DeleteFindingRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{6}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DeleteFindingRequest) GetFindingId() string {
@@ -608,7 +716,7 @@ type DeleteFindingResponse struct {
 
 func (x *DeleteFindingResponse) Reset() {
 	*x = DeleteFindingResponse{}
-	mi := &file_api_proto_findings_proto_msgTypes[7]
+	mi := &file_api_proto_findings_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -620,7 +728,7 @@ func (x *DeleteFindingResponse) String() string {
 func (*DeleteFindingResponse) ProtoMessage() {}
 
 func (x *DeleteFindingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[7]
+	mi := &file_api_proto_findings_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -633,7 +741,7 @@ func (x *DeleteFindingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFindingResponse.ProtoReflect.Descriptor instead.
 func (*DeleteFindingResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{7}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{8}
 }
 
 type DeleteByAssessmentRequest struct {
@@ -645,7 +753,7 @@ type DeleteByAssessmentRequest struct {
 
 func (x *DeleteByAssessmentRequest) Reset() {
 	*x = DeleteByAssessmentRequest{}
-	mi := &file_api_proto_findings_proto_msgTypes[8]
+	mi := &file_api_proto_findings_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -657,7 +765,7 @@ func (x *DeleteByAssessmentRequest) String() string {
 func (*DeleteByAssessmentRequest) ProtoMessage() {}
 
 func (x *DeleteByAssessmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[8]
+	mi := &file_api_proto_findings_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -670,7 +778,7 @@ func (x *DeleteByAssessmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteByAssessmentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteByAssessmentRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{8}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteByAssessmentRequest) GetAssessmentId() string {
@@ -689,7 +797,7 @@ type DeleteByAssessmentResponse struct {
 
 func (x *DeleteByAssessmentResponse) Reset() {
 	*x = DeleteByAssessmentResponse{}
-	mi := &file_api_proto_findings_proto_msgTypes[9]
+	mi := &file_api_proto_findings_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -701,7 +809,7 @@ func (x *DeleteByAssessmentResponse) String() string {
 func (*DeleteByAssessmentResponse) ProtoMessage() {}
 
 func (x *DeleteByAssessmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_findings_proto_msgTypes[9]
+	mi := &file_api_proto_findings_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -714,7 +822,7 @@ func (x *DeleteByAssessmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteByAssessmentResponse.ProtoReflect.Descriptor instead.
 func (*DeleteByAssessmentResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_findings_proto_rawDescGZIP(), []int{9}
+	return file_api_proto_findings_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteByAssessmentResponse) GetDeleted() int64 {
@@ -739,7 +847,13 @@ const file_api_proto_findings_proto_rawDesc = "" +
 	"\bmetadata\x18\x05 \x03(\v24.agentcage.findings.v1.FindingEvidence.MetadataEntryR\bmetadata\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xea\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcc\x01\n" +
+	"\x0fValidationProof\x12-\n" +
+	"\x12reproduction_steps\x18\x01 \x01(\tR\x11reproductionSteps\x12\x1c\n" +
+	"\tconfirmed\x18\x02 \x01(\bR\tconfirmed\x12$\n" +
+	"\rdeterministic\x18\x03 \x01(\bR\rdeterministic\x12*\n" +
+	"\x11validator_cage_id\x18\x04 \x01(\tR\x0fvalidatorCageId\x12\x1a\n" +
+	"\bevidence\x18\x05 \x01(\tR\bevidence\"\x90\x06\n" +
 	"\vFindingInfo\x12\x1d\n" +
 	"\n" +
 	"finding_id\x18\x01 \x01(\tR\tfindingId\x12#\n" +
@@ -759,7 +873,12 @@ const file_api_proto_findings_proto_rawDesc = "" +
 	"chainDepth\x129\n" +
 	"\n" +
 	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12=\n" +
-	"\fvalidated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vvalidatedAt\"\xec\x01\n" +
+	"\fvalidated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vvalidatedAt\x12\x10\n" +
+	"\x03cwe\x18\x0f \x01(\tR\x03cwe\x12\x1d\n" +
+	"\n" +
+	"cvss_score\x18\x10 \x01(\x01R\tcvssScore\x12 \n" +
+	"\vremediation\x18\x11 \x01(\tR\vremediation\x12Q\n" +
+	"\x10validation_proof\x18\x12 \x01(\v2&.agentcage.findings.v1.ValidationProofR\x0fvalidationProof\"\xec\x01\n" +
 	"\x13ListFindingsRequest\x12#\n" +
 	"\rassessment_id\x18\x01 \x01(\tR\fassessmentId\x12I\n" +
 	"\rstatus_filter\x18\x02 \x01(\x0e2$.agentcage.findings.v1.FindingStatusR\fstatusFilter\x12O\n" +
@@ -812,47 +931,49 @@ func file_api_proto_findings_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_findings_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_api_proto_findings_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_api_proto_findings_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_api_proto_findings_proto_goTypes = []any{
 	(FindingStatus)(0),                 // 0: agentcage.findings.v1.FindingStatus
 	(FindingSeverity)(0),               // 1: agentcage.findings.v1.FindingSeverity
 	(*FindingEvidence)(nil),            // 2: agentcage.findings.v1.FindingEvidence
-	(*FindingInfo)(nil),                // 3: agentcage.findings.v1.FindingInfo
-	(*ListFindingsRequest)(nil),        // 4: agentcage.findings.v1.ListFindingsRequest
-	(*ListFindingsResponse)(nil),       // 5: agentcage.findings.v1.ListFindingsResponse
-	(*GetFindingRequest)(nil),          // 6: agentcage.findings.v1.GetFindingRequest
-	(*GetFindingResponse)(nil),         // 7: agentcage.findings.v1.GetFindingResponse
-	(*DeleteFindingRequest)(nil),       // 8: agentcage.findings.v1.DeleteFindingRequest
-	(*DeleteFindingResponse)(nil),      // 9: agentcage.findings.v1.DeleteFindingResponse
-	(*DeleteByAssessmentRequest)(nil),  // 10: agentcage.findings.v1.DeleteByAssessmentRequest
-	(*DeleteByAssessmentResponse)(nil), // 11: agentcage.findings.v1.DeleteByAssessmentResponse
-	nil,                                // 12: agentcage.findings.v1.FindingEvidence.MetadataEntry
-	(*timestamppb.Timestamp)(nil),      // 13: google.protobuf.Timestamp
+	(*ValidationProof)(nil),            // 3: agentcage.findings.v1.ValidationProof
+	(*FindingInfo)(nil),                // 4: agentcage.findings.v1.FindingInfo
+	(*ListFindingsRequest)(nil),        // 5: agentcage.findings.v1.ListFindingsRequest
+	(*ListFindingsResponse)(nil),       // 6: agentcage.findings.v1.ListFindingsResponse
+	(*GetFindingRequest)(nil),          // 7: agentcage.findings.v1.GetFindingRequest
+	(*GetFindingResponse)(nil),         // 8: agentcage.findings.v1.GetFindingResponse
+	(*DeleteFindingRequest)(nil),       // 9: agentcage.findings.v1.DeleteFindingRequest
+	(*DeleteFindingResponse)(nil),      // 10: agentcage.findings.v1.DeleteFindingResponse
+	(*DeleteByAssessmentRequest)(nil),  // 11: agentcage.findings.v1.DeleteByAssessmentRequest
+	(*DeleteByAssessmentResponse)(nil), // 12: agentcage.findings.v1.DeleteByAssessmentResponse
+	nil,                                // 13: agentcage.findings.v1.FindingEvidence.MetadataEntry
+	(*timestamppb.Timestamp)(nil),      // 14: google.protobuf.Timestamp
 }
 var file_api_proto_findings_proto_depIdxs = []int32{
-	12, // 0: agentcage.findings.v1.FindingEvidence.metadata:type_name -> agentcage.findings.v1.FindingEvidence.MetadataEntry
+	13, // 0: agentcage.findings.v1.FindingEvidence.metadata:type_name -> agentcage.findings.v1.FindingEvidence.MetadataEntry
 	0,  // 1: agentcage.findings.v1.FindingInfo.status:type_name -> agentcage.findings.v1.FindingStatus
 	1,  // 2: agentcage.findings.v1.FindingInfo.severity:type_name -> agentcage.findings.v1.FindingSeverity
 	2,  // 3: agentcage.findings.v1.FindingInfo.evidence:type_name -> agentcage.findings.v1.FindingEvidence
-	13, // 4: agentcage.findings.v1.FindingInfo.created_at:type_name -> google.protobuf.Timestamp
-	13, // 5: agentcage.findings.v1.FindingInfo.validated_at:type_name -> google.protobuf.Timestamp
-	0,  // 6: agentcage.findings.v1.ListFindingsRequest.status_filter:type_name -> agentcage.findings.v1.FindingStatus
-	1,  // 7: agentcage.findings.v1.ListFindingsRequest.severity_filter:type_name -> agentcage.findings.v1.FindingSeverity
-	3,  // 8: agentcage.findings.v1.ListFindingsResponse.findings:type_name -> agentcage.findings.v1.FindingInfo
-	3,  // 9: agentcage.findings.v1.GetFindingResponse.finding:type_name -> agentcage.findings.v1.FindingInfo
-	4,  // 10: agentcage.findings.v1.FindingsService.ListFindings:input_type -> agentcage.findings.v1.ListFindingsRequest
-	6,  // 11: agentcage.findings.v1.FindingsService.GetFinding:input_type -> agentcage.findings.v1.GetFindingRequest
-	8,  // 12: agentcage.findings.v1.FindingsService.DeleteFinding:input_type -> agentcage.findings.v1.DeleteFindingRequest
-	10, // 13: agentcage.findings.v1.FindingsService.DeleteByAssessment:input_type -> agentcage.findings.v1.DeleteByAssessmentRequest
-	5,  // 14: agentcage.findings.v1.FindingsService.ListFindings:output_type -> agentcage.findings.v1.ListFindingsResponse
-	7,  // 15: agentcage.findings.v1.FindingsService.GetFinding:output_type -> agentcage.findings.v1.GetFindingResponse
-	9,  // 16: agentcage.findings.v1.FindingsService.DeleteFinding:output_type -> agentcage.findings.v1.DeleteFindingResponse
-	11, // 17: agentcage.findings.v1.FindingsService.DeleteByAssessment:output_type -> agentcage.findings.v1.DeleteByAssessmentResponse
-	14, // [14:18] is the sub-list for method output_type
-	10, // [10:14] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	14, // 4: agentcage.findings.v1.FindingInfo.created_at:type_name -> google.protobuf.Timestamp
+	14, // 5: agentcage.findings.v1.FindingInfo.validated_at:type_name -> google.protobuf.Timestamp
+	3,  // 6: agentcage.findings.v1.FindingInfo.validation_proof:type_name -> agentcage.findings.v1.ValidationProof
+	0,  // 7: agentcage.findings.v1.ListFindingsRequest.status_filter:type_name -> agentcage.findings.v1.FindingStatus
+	1,  // 8: agentcage.findings.v1.ListFindingsRequest.severity_filter:type_name -> agentcage.findings.v1.FindingSeverity
+	4,  // 9: agentcage.findings.v1.ListFindingsResponse.findings:type_name -> agentcage.findings.v1.FindingInfo
+	4,  // 10: agentcage.findings.v1.GetFindingResponse.finding:type_name -> agentcage.findings.v1.FindingInfo
+	5,  // 11: agentcage.findings.v1.FindingsService.ListFindings:input_type -> agentcage.findings.v1.ListFindingsRequest
+	7,  // 12: agentcage.findings.v1.FindingsService.GetFinding:input_type -> agentcage.findings.v1.GetFindingRequest
+	9,  // 13: agentcage.findings.v1.FindingsService.DeleteFinding:input_type -> agentcage.findings.v1.DeleteFindingRequest
+	11, // 14: agentcage.findings.v1.FindingsService.DeleteByAssessment:input_type -> agentcage.findings.v1.DeleteByAssessmentRequest
+	6,  // 15: agentcage.findings.v1.FindingsService.ListFindings:output_type -> agentcage.findings.v1.ListFindingsResponse
+	8,  // 16: agentcage.findings.v1.FindingsService.GetFinding:output_type -> agentcage.findings.v1.GetFindingResponse
+	10, // 17: agentcage.findings.v1.FindingsService.DeleteFinding:output_type -> agentcage.findings.v1.DeleteFindingResponse
+	12, // 18: agentcage.findings.v1.FindingsService.DeleteByAssessment:output_type -> agentcage.findings.v1.DeleteByAssessmentResponse
+	15, // [15:19] is the sub-list for method output_type
+	11, // [11:15] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_findings_proto_init() }
@@ -866,7 +987,7 @@ func file_api_proto_findings_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_findings_proto_rawDesc), len(file_api_proto_findings_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

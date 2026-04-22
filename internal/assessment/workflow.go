@@ -3,6 +3,7 @@ package assessment
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -236,7 +237,14 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	}
 	result.Findings = int32(len(validated))
 
-	if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, validated); err != nil {
+	enrichFindings(ctx, input.AssessmentID, validated)
+
+	validated, err = getValidatedFindings(ctx, input.AssessmentID)
+	if err != nil {
+		return failResult(result, "fetching enriched findings for report: %v", err), nil
+	}
+
+	if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, strings.Join(cfg.Target.Hosts, ", "), validated); err != nil {
 		return failResult(result, "generating draft report: %v", err), nil
 	}
 
@@ -275,7 +283,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 		result.Findings = int32(len(validated))
 
-		if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, validated); err != nil {
+		if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, strings.Join(cfg.Target.Hosts, ", "), validated); err != nil {
 			return failResult(result, "generating final report after retest: %v", err), nil
 		}
 		if err := updateStatus(ctx, input.AssessmentID, StatusApproved); err != nil {
@@ -413,15 +421,22 @@ func getValidatedFindings(ctx workflow.Context, assessmentID string) ([]findings
 	return result, err
 }
 
+func enrichFindings(ctx workflow.Context, assessmentID string, validated []findings.Finding) {
+	for _, f := range validated {
+		actCtx := withActivityTimeout(ctx, TimeoutGenerateReport)
+		_ = workflow.ExecuteActivity(actCtx, "EnrichFinding", assessmentID, f).Get(ctx, nil)
+	}
+}
+
 func startFindingsStream(ctx workflow.Context, assessmentID string) error {
 	actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 	return workflow.ExecuteActivity(actCtx, "StartFindingsStream", assessmentID).Get(ctx, nil)
 }
 
-func generateReport(ctx workflow.Context, assessmentID, customerID string, validated []findings.Finding) error {
+func generateReport(ctx workflow.Context, assessmentID, customerID, target string, validated []findings.Finding) error {
 	actCtx := withActivityTimeout(ctx, TimeoutGenerateReport)
 	var reportData []byte
-	if err := workflow.ExecuteActivity(actCtx, "GenerateReport", assessmentID, customerID, validated).Get(ctx, &reportData); err != nil {
+	if err := workflow.ExecuteActivity(actCtx, "GenerateReport", assessmentID, customerID, target, validated).Get(ctx, &reportData); err != nil {
 		return err
 	}
 	storeCtx := withActivityTimeout(ctx, TimeoutUpdateStatus)
@@ -577,6 +592,15 @@ func validateFindings(
 			for _, u := range updated {
 				if u.ID == f.ID && u.Status == findings.StatusValidated {
 					validatedCount++
+					validationProof := findings.Proof{
+						Confirmed:       true,
+						Deterministic:   true,
+						ValidatorCageID: cageID,
+					}
+					_ = workflow.ExecuteActivity(
+						withActivityTimeout(ctx, TimeoutUpdateStatus),
+						"StoreValidationProof", f.ID, validationProof,
+					).Get(ctx, nil)
 					_ = workflow.ExecuteActivity(
 						withActivityTimeout(ctx, TimeoutUpdateStatus),
 						"NotifyFinding", assessmentID, cfg.Notifications, u,

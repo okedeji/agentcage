@@ -35,6 +35,14 @@ message FindingEvidence {
   map<string, string> metadata = 5;
 }
 
+message ValidationProof {
+  string reproduction_steps = 1;
+  bool confirmed = 2;
+  bool deterministic = 3;
+  string validator_cage_id = 4;
+  string evidence = 5;
+}
+
 message FindingInfo {
   string finding_id = 1;
   string assessment_id = 2;
@@ -50,6 +58,10 @@ message FindingInfo {
   int32 chain_depth = 12;
   google.protobuf.Timestamp created_at = 13;
   google.protobuf.Timestamp validated_at = 14;
+  string cwe = 15;
+  double cvss_score = 16;
+  string remediation = 17;
+  ValidationProof validation_proof = 18;
 }
 
 message ListFindingsRequest {

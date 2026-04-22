@@ -22,6 +22,7 @@ const (
 	AssessmentService_CreateAssessment_FullMethodName = "/agentcage.assessment.v1.AssessmentService/CreateAssessment"
 	AssessmentService_GetAssessment_FullMethodName    = "/agentcage.assessment.v1.AssessmentService/GetAssessment"
 	AssessmentService_ListAssessments_FullMethodName  = "/agentcage.assessment.v1.AssessmentService/ListAssessments"
+	AssessmentService_GetReport_FullMethodName        = "/agentcage.assessment.v1.AssessmentService/GetReport"
 )
 
 // AssessmentServiceClient is the client API for AssessmentService service.
@@ -31,6 +32,7 @@ type AssessmentServiceClient interface {
 	CreateAssessment(ctx context.Context, in *CreateAssessmentRequest, opts ...grpc.CallOption) (*CreateAssessmentResponse, error)
 	GetAssessment(ctx context.Context, in *GetAssessmentRequest, opts ...grpc.CallOption) (*GetAssessmentResponse, error)
 	ListAssessments(ctx context.Context, in *ListAssessmentsRequest, opts ...grpc.CallOption) (*ListAssessmentsResponse, error)
+	GetReport(ctx context.Context, in *GetReportRequest, opts ...grpc.CallOption) (*GetReportResponse, error)
 }
 
 type assessmentServiceClient struct {
@@ -71,6 +73,16 @@ func (c *assessmentServiceClient) ListAssessments(ctx context.Context, in *ListA
 	return out, nil
 }
 
+func (c *assessmentServiceClient) GetReport(ctx context.Context, in *GetReportRequest, opts ...grpc.CallOption) (*GetReportResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetReportResponse)
+	err := c.cc.Invoke(ctx, AssessmentService_GetReport_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AssessmentServiceServer is the server API for AssessmentService service.
 // All implementations must embed UnimplementedAssessmentServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type AssessmentServiceServer interface {
 	CreateAssessment(context.Context, *CreateAssessmentRequest) (*CreateAssessmentResponse, error)
 	GetAssessment(context.Context, *GetAssessmentRequest) (*GetAssessmentResponse, error)
 	ListAssessments(context.Context, *ListAssessmentsRequest) (*ListAssessmentsResponse, error)
+	GetReport(context.Context, *GetReportRequest) (*GetReportResponse, error)
 	mustEmbedUnimplementedAssessmentServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedAssessmentServiceServer) GetAssessment(context.Context, *GetA
 }
 func (UnimplementedAssessmentServiceServer) ListAssessments(context.Context, *ListAssessmentsRequest) (*ListAssessmentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAssessments not implemented")
+}
+func (UnimplementedAssessmentServiceServer) GetReport(context.Context, *GetReportRequest) (*GetReportResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetReport not implemented")
 }
 func (UnimplementedAssessmentServiceServer) mustEmbedUnimplementedAssessmentServiceServer() {}
 func (UnimplementedAssessmentServiceServer) testEmbeddedByValue()                           {}
@@ -172,6 +188,24 @@ func _AssessmentService_ListAssessments_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AssessmentService_GetReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AssessmentServiceServer).GetReport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AssessmentService_GetReport_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AssessmentServiceServer).GetReport(ctx, req.(*GetReportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AssessmentService_ServiceDesc is the grpc.ServiceDesc for AssessmentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var AssessmentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAssessments",
 			Handler:    _AssessmentService_ListAssessments_Handler,
+		},
+		{
+			MethodName: "GetReport",
+			Handler:    _AssessmentService_GetReport_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

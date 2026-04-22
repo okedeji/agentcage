@@ -122,6 +122,28 @@ func (m *mockStore) DeleteByAssessment(_ context.Context, assessmentID string) (
 	return count, nil
 }
 
+func (m *mockStore) UpdateEnrichment(_ context.Context, findingID, cwe string, cvssScore float64, remediation string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if f, ok := m.findings[findingID]; ok {
+		f.CWE = cwe
+		f.CVSSScore = cvssScore
+		f.Remediation = remediation
+		m.findings[findingID] = f
+	}
+	return nil
+}
+
+func (m *mockStore) UpdateValidationProof(_ context.Context, findingID string, proof *Proof) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if f, ok := m.findings[findingID]; ok {
+		f.ValidationProof = proof
+		m.findings[findingID] = f
+	}
+	return nil
+}
+
 func (m *mockStore) UpdateStatus(_ context.Context, findingID string, status Status) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

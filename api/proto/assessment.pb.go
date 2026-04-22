@@ -1127,6 +1127,94 @@ func (x *ListAssessmentsResponse) GetNextPageToken() string {
 	return ""
 }
 
+type GetReportRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AssessmentId  string                 `protobuf:"bytes,1,opt,name=assessment_id,json=assessmentId,proto3" json:"assessment_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReportRequest) Reset() {
+	*x = GetReportRequest{}
+	mi := &file_api_proto_assessment_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReportRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReportRequest) ProtoMessage() {}
+
+func (x *GetReportRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_assessment_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReportRequest.ProtoReflect.Descriptor instead.
+func (*GetReportRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetReportRequest) GetAssessmentId() string {
+	if x != nil {
+		return x.AssessmentId
+	}
+	return ""
+}
+
+type GetReportResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReportJson    []byte                 `protobuf:"bytes,1,opt,name=report_json,json=reportJson,proto3" json:"report_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReportResponse) Reset() {
+	*x = GetReportResponse{}
+	mi := &file_api_proto_assessment_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReportResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReportResponse) ProtoMessage() {}
+
+func (x *GetReportResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_assessment_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReportResponse.ProtoReflect.Descriptor instead.
+func (*GetReportResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_assessment_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetReportResponse) GetReportJson() []byte {
+	if x != nil {
+		return x.ReportJson
+	}
+	return nil
+}
+
 var File_api_proto_assessment_proto protoreflect.FileDescriptor
 
 const file_api_proto_assessment_proto_rawDesc = "" +
@@ -1230,7 +1318,12 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8c\x01\n" +
 	"\x17ListAssessmentsResponse\x12I\n" +
 	"\vassessments\x18\x01 \x03(\v2'.agentcage.assessment.v1.AssessmentInfoR\vassessments\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\xa0\x02\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"7\n" +
+	"\x10GetReportRequest\x12#\n" +
+	"\rassessment_id\x18\x01 \x01(\tR\fassessmentId\"4\n" +
+	"\x11GetReportResponse\x12\x1f\n" +
+	"\vreport_json\x18\x01 \x01(\fR\n" +
+	"reportJson*\xa0\x02\n" +
 	"\x10AssessmentStatus\x12!\n" +
 	"\x1dASSESSMENT_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bASSESSMENT_STATUS_DISCOVERY\x10\x01\x12\"\n" +
@@ -1239,11 +1332,12 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	" ASSESSMENT_STATUS_PENDING_REVIEW\x10\x04\x12\x1e\n" +
 	"\x1aASSESSMENT_STATUS_APPROVED\x10\x05\x12\x1e\n" +
 	"\x1aASSESSMENT_STATUS_REJECTED\x10\x06\x12\x1c\n" +
-	"\x18ASSESSMENT_STATUS_FAILED\x10\a2\xf2\x02\n" +
+	"\x18ASSESSMENT_STATUS_FAILED\x10\a2\xd6\x03\n" +
 	"\x11AssessmentService\x12w\n" +
 	"\x10CreateAssessment\x120.agentcage.assessment.v1.CreateAssessmentRequest\x1a1.agentcage.assessment.v1.CreateAssessmentResponse\x12n\n" +
 	"\rGetAssessment\x12-.agentcage.assessment.v1.GetAssessmentRequest\x1a..agentcage.assessment.v1.GetAssessmentResponse\x12t\n" +
-	"\x0fListAssessments\x12/.agentcage.assessment.v1.ListAssessmentsRequest\x1a0.agentcage.assessment.v1.ListAssessmentsResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
+	"\x0fListAssessments\x12/.agentcage.assessment.v1.ListAssessmentsRequest\x1a0.agentcage.assessment.v1.ListAssessmentsResponse\x12b\n" +
+	"\tGetReport\x12).agentcage.assessment.v1.GetReportRequest\x1a*.agentcage.assessment.v1.GetReportResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
 
 var (
 	file_api_proto_assessment_proto_rawDescOnce sync.Once
@@ -1258,7 +1352,7 @@ func file_api_proto_assessment_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_assessment_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_proto_assessment_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_api_proto_assessment_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_api_proto_assessment_proto_goTypes = []any{
 	(AssessmentStatus)(0),            // 0: agentcage.assessment.v1.AssessmentStatus
 	(*CageTypeConfig)(nil),           // 1: agentcage.assessment.v1.CageTypeConfig
@@ -1277,26 +1371,28 @@ var file_api_proto_assessment_proto_goTypes = []any{
 	(*GetAssessmentResponse)(nil),    // 14: agentcage.assessment.v1.GetAssessmentResponse
 	(*ListAssessmentsRequest)(nil),   // 15: agentcage.assessment.v1.ListAssessmentsRequest
 	(*ListAssessmentsResponse)(nil),  // 16: agentcage.assessment.v1.ListAssessmentsResponse
-	nil,                              // 17: agentcage.assessment.v1.AssessmentConfig.TagsEntry
-	(CageType)(0),                    // 18: agentcage.cage.v1.CageType
-	(*ResourceLimits)(nil),           // 19: agentcage.cage.v1.ResourceLimits
-	(*durationpb.Duration)(nil),      // 20: google.protobuf.Duration
-	(*TargetScope)(nil),              // 21: agentcage.cage.v1.TargetScope
-	(*PatternEntry)(nil),             // 22: agentcage.cage.v1.PatternEntry
-	(*timestamppb.Timestamp)(nil),    // 23: google.protobuf.Timestamp
+	(*GetReportRequest)(nil),         // 17: agentcage.assessment.v1.GetReportRequest
+	(*GetReportResponse)(nil),        // 18: agentcage.assessment.v1.GetReportResponse
+	nil,                              // 19: agentcage.assessment.v1.AssessmentConfig.TagsEntry
+	(CageType)(0),                    // 20: agentcage.cage.v1.CageType
+	(*ResourceLimits)(nil),           // 21: agentcage.cage.v1.ResourceLimits
+	(*durationpb.Duration)(nil),      // 22: google.protobuf.Duration
+	(*TargetScope)(nil),              // 23: agentcage.cage.v1.TargetScope
+	(*PatternEntry)(nil),             // 24: agentcage.cage.v1.PatternEntry
+	(*timestamppb.Timestamp)(nil),    // 25: google.protobuf.Timestamp
 }
 var file_api_proto_assessment_proto_depIdxs = []int32{
-	18, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
-	19, // 1: agentcage.assessment.v1.CageTypeConfig.defaults:type_name -> agentcage.cage.v1.ResourceLimits
-	20, // 2: agentcage.assessment.v1.CageTypeConfig.max_duration:type_name -> google.protobuf.Duration
-	21, // 3: agentcage.assessment.v1.AssessmentConfig.scope:type_name -> agentcage.cage.v1.TargetScope
+	20, // 0: agentcage.assessment.v1.CageTypeConfig.type:type_name -> agentcage.cage.v1.CageType
+	21, // 1: agentcage.assessment.v1.CageTypeConfig.defaults:type_name -> agentcage.cage.v1.ResourceLimits
+	22, // 2: agentcage.assessment.v1.CageTypeConfig.max_duration:type_name -> google.protobuf.Duration
+	23, // 3: agentcage.assessment.v1.AssessmentConfig.scope:type_name -> agentcage.cage.v1.TargetScope
 	1,  // 4: agentcage.assessment.v1.AssessmentConfig.cage_type_configs:type_name -> agentcage.assessment.v1.CageTypeConfig
-	20, // 5: agentcage.assessment.v1.AssessmentConfig.max_duration:type_name -> google.protobuf.Duration
+	22, // 5: agentcage.assessment.v1.AssessmentConfig.max_duration:type_name -> google.protobuf.Duration
 	4,  // 6: agentcage.assessment.v1.AssessmentConfig.guidance:type_name -> agentcage.assessment.v1.Guidance
-	17, // 7: agentcage.assessment.v1.AssessmentConfig.tags:type_name -> agentcage.assessment.v1.AssessmentConfig.TagsEntry
+	19, // 7: agentcage.assessment.v1.AssessmentConfig.tags:type_name -> agentcage.assessment.v1.AssessmentConfig.TagsEntry
 	3,  // 8: agentcage.assessment.v1.AssessmentConfig.notifications:type_name -> agentcage.assessment.v1.NotificationConfig
-	22, // 9: agentcage.assessment.v1.AssessmentConfig.extra_block:type_name -> agentcage.cage.v1.PatternEntry
-	22, // 10: agentcage.assessment.v1.AssessmentConfig.extra_flag:type_name -> agentcage.cage.v1.PatternEntry
+	24, // 9: agentcage.assessment.v1.AssessmentConfig.extra_block:type_name -> agentcage.cage.v1.PatternEntry
+	24, // 10: agentcage.assessment.v1.AssessmentConfig.extra_flag:type_name -> agentcage.cage.v1.PatternEntry
 	5,  // 11: agentcage.assessment.v1.Guidance.attack_surface:type_name -> agentcage.assessment.v1.AttackSurfaceGuidance
 	6,  // 12: agentcage.assessment.v1.Guidance.priorities:type_name -> agentcage.assessment.v1.PrioritiesGuidance
 	7,  // 13: agentcage.assessment.v1.Guidance.attack_strategy:type_name -> agentcage.assessment.v1.AttackStrategyGuidance
@@ -1304,8 +1400,8 @@ var file_api_proto_assessment_proto_depIdxs = []int32{
 	0,  // 15: agentcage.assessment.v1.AssessmentInfo.status:type_name -> agentcage.assessment.v1.AssessmentStatus
 	2,  // 16: agentcage.assessment.v1.AssessmentInfo.config:type_name -> agentcage.assessment.v1.AssessmentConfig
 	9,  // 17: agentcage.assessment.v1.AssessmentInfo.stats:type_name -> agentcage.assessment.v1.AssessmentStats
-	23, // 18: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
-	23, // 19: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
+	25, // 18: agentcage.assessment.v1.AssessmentInfo.created_at:type_name -> google.protobuf.Timestamp
+	25, // 19: agentcage.assessment.v1.AssessmentInfo.updated_at:type_name -> google.protobuf.Timestamp
 	2,  // 20: agentcage.assessment.v1.CreateAssessmentRequest.config:type_name -> agentcage.assessment.v1.AssessmentConfig
 	10, // 21: agentcage.assessment.v1.CreateAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
 	10, // 22: agentcage.assessment.v1.GetAssessmentResponse.assessment:type_name -> agentcage.assessment.v1.AssessmentInfo
@@ -1314,11 +1410,13 @@ var file_api_proto_assessment_proto_depIdxs = []int32{
 	11, // 25: agentcage.assessment.v1.AssessmentService.CreateAssessment:input_type -> agentcage.assessment.v1.CreateAssessmentRequest
 	13, // 26: agentcage.assessment.v1.AssessmentService.GetAssessment:input_type -> agentcage.assessment.v1.GetAssessmentRequest
 	15, // 27: agentcage.assessment.v1.AssessmentService.ListAssessments:input_type -> agentcage.assessment.v1.ListAssessmentsRequest
-	12, // 28: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
-	14, // 29: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
-	16, // 30: agentcage.assessment.v1.AssessmentService.ListAssessments:output_type -> agentcage.assessment.v1.ListAssessmentsResponse
-	28, // [28:31] is the sub-list for method output_type
-	25, // [25:28] is the sub-list for method input_type
+	17, // 28: agentcage.assessment.v1.AssessmentService.GetReport:input_type -> agentcage.assessment.v1.GetReportRequest
+	12, // 29: agentcage.assessment.v1.AssessmentService.CreateAssessment:output_type -> agentcage.assessment.v1.CreateAssessmentResponse
+	14, // 30: agentcage.assessment.v1.AssessmentService.GetAssessment:output_type -> agentcage.assessment.v1.GetAssessmentResponse
+	16, // 31: agentcage.assessment.v1.AssessmentService.ListAssessments:output_type -> agentcage.assessment.v1.ListAssessmentsResponse
+	18, // 32: agentcage.assessment.v1.AssessmentService.GetReport:output_type -> agentcage.assessment.v1.GetReportResponse
+	29, // [29:33] is the sub-list for method output_type
+	25, // [25:29] is the sub-list for method input_type
 	25, // [25:25] is the sub-list for extension type_name
 	25, // [25:25] is the sub-list for extension extendee
 	0,  // [0:25] is the sub-list for field type_name
@@ -1336,7 +1434,7 @@ func file_api_proto_assessment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_assessment_proto_rawDesc), len(file_api_proto_assessment_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -11,6 +11,7 @@ service AssessmentService {
   rpc CreateAssessment(CreateAssessmentRequest) returns (CreateAssessmentResponse);
   rpc GetAssessment(GetAssessmentRequest) returns (GetAssessmentResponse);
   rpc ListAssessments(ListAssessmentsRequest) returns (ListAssessmentsResponse);
+  rpc GetReport(GetReportRequest) returns (GetReportResponse);
 }
 
 enum AssessmentStatus {
@@ -128,4 +129,12 @@ message ListAssessmentsRequest {
 message ListAssessmentsResponse {
   repeated AssessmentInfo assessments = 1;
   string next_page_token = 2;
+}
+
+message GetReportRequest {
+  string assessment_id = 1;
+}
+
+message GetReportResponse {
+  bytes report_json = 1;
 }

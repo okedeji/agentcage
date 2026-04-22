@@ -156,6 +156,17 @@ func (a *assessmentAdapter) ListAssessments(ctx context.Context, req *pb.ListAss
 	return &pb.ListAssessmentsResponse{Assessments: pbItems, NextPageToken: nextToken}, nil
 }
 
+func (a *assessmentAdapter) GetReport(ctx context.Context, req *pb.GetReportRequest) (*pb.GetReportResponse, error) {
+	if req.GetAssessmentId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "assessment_id is required")
+	}
+	data, err := a.server.LoadReport(ctx, req.GetAssessmentId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.GetReportResponse{ReportJson: data}, nil
+}
+
 type interventionAdapter struct {
 	pb.UnimplementedInterventionServiceServer
 	server *intervention.Service

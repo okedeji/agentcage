@@ -117,6 +117,8 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("StopFindingsStream", a.StopFindingsStream)
 	pin("StoreReport", a.StoreReport)
 	pin("CountFindings", a.CountFindings)
+	pin("EnrichFinding", a.EnrichFinding)
+	pin("StoreValidationProof", a.StoreValidationProof)
 }
 
 // EmitProofGapIntervention creates a pending proof_gap intervention for a
@@ -236,8 +238,12 @@ func (a *ActivityImpl) UpdateAssessmentStatus(ctx context.Context, assessmentID 
 	return nil
 }
 
-func (a *ActivityImpl) GenerateReport(ctx context.Context, assessmentID, customerID string, validated []findings.Finding) ([]byte, error) {
-	report, err := GenerateReport(assessmentID, customerID, validated)
+func (a *ActivityImpl) GenerateReport(ctx context.Context, assessmentID, customerID, target string, validated []findings.Finding) ([]byte, error) {
+	var llm *gateway.Client
+	if a.planner != nil {
+		llm = a.planner.client
+	}
+	report, err := GenerateReport(ctx, assessmentID, customerID, validated, target, llm)
 	if err != nil {
 		return nil, fmt.Errorf("generating report for assessment %s: %w", assessmentID, err)
 	}
@@ -358,6 +364,84 @@ func (a *ActivityImpl) NotifyAssessmentComplete(ctx context.Context, assessmentI
 	}
 	_ = resp.Body.Close()
 	a.log.Info("assessment completion webhook sent", "assessment_id", assessmentID, "status_code", resp.StatusCode)
+	return nil
+}
+
+const enrichmentSystemPrompt = `You are a vulnerability analyst. Given a vulnerability finding from an automated penetration test, provide enrichment data.
+
+Respond with a JSON object:
+{
+  "cwe": "CWE-89",
+  "cvss_score": 8.6,
+  "remediation": "Specific remediation steps for this vulnerability."
+}
+
+Rules:
+- cwe must be a valid CWE identifier (e.g. CWE-89, CWE-79, CWE-78)
+- cvss_score must be a float between 0.0 and 10.0 (CVSS v3.1 base score)
+- remediation must be specific to the finding, not generic advice
+- Be concise: 2-3 sentences for remediation`
+
+type enrichmentResult struct {
+	CWE         string  `json:"cwe"`
+	CVSSScore   float64 `json:"cvss_score"`
+	Remediation string  `json:"remediation"`
+}
+
+func (a *ActivityImpl) EnrichFinding(ctx context.Context, assessmentID string, f findings.Finding) error {
+	if a.planner == nil || a.planner.client == nil {
+		return nil
+	}
+
+	findingJSON, err := json.Marshal(map[string]string{
+		"title":       f.Title,
+		"vuln_class":  f.VulnClass,
+		"endpoint":    f.Endpoint,
+		"description": f.Description,
+		"severity":    f.Severity.String(),
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling finding for enrichment: %w", err)
+	}
+
+	resp, err := a.planner.client.ChatCompletion(ctx, "enrichment", assessmentID, 0, gateway.LLMRequest{
+		Messages: []gateway.LLMMessage{
+			{Role: "system", Content: enrichmentSystemPrompt},
+			{Role: "user", Content: string(findingJSON)},
+		},
+	})
+	if err != nil {
+		a.log.Error(err, "enrichment LLM call failed, skipping", "finding_id", f.ID)
+		return nil
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil
+	}
+
+	var result enrichmentResult
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &result); err != nil {
+		a.log.Error(err, "parsing enrichment response, skipping", "finding_id", f.ID)
+		return nil
+	}
+
+	if result.CVSSScore < 0 || result.CVSSScore > 10 {
+		result.CVSSScore = 0
+	}
+
+	if err := a.findings.UpdateEnrichment(ctx, f.ID, result.CWE, result.CVSSScore, result.Remediation); err != nil {
+		return fmt.Errorf("storing enrichment for finding %s: %w", f.ID, err)
+	}
+
+	a.log.Info("finding enriched", "finding_id", f.ID, "cwe", result.CWE, "cvss", result.CVSSScore)
+	return nil
+}
+
+func (a *ActivityImpl) StoreValidationProof(ctx context.Context, findingID string, proof findings.Proof) error {
+	if err := a.findings.UpdateValidationProof(ctx, findingID, &proof); err != nil {
+		return fmt.Errorf("storing validation proof for finding %s: %w", findingID, err)
+	}
+	a.log.Info("validation proof stored", "finding_id", findingID, "confirmed", proof.Confirmed)
 	return nil
 }
 

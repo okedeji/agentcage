@@ -32,9 +32,17 @@ func (s *PGStore) SaveFinding(ctx context.Context, finding Finding) error {
 		parentID = &finding.ParentFindingID
 	}
 
+	var validationProof []byte
+	if finding.ValidationProof != nil {
+		validationProof, err = json.Marshal(finding.ValidationProof)
+		if err != nil {
+			return fmt.Errorf("marshaling validation proof for finding %s: %w", finding.ID, err)
+		}
+	}
+
 	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO findings (id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, validated_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		`INSERT INTO findings (id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		 ON CONFLICT (id) DO NOTHING`,
 		finding.ID,
 		finding.AssessmentID,
@@ -48,6 +56,10 @@ func (s *PGStore) SaveFinding(ctx context.Context, finding Finding) error {
 		evidence,
 		parentID,
 		finding.ChainDepth,
+		finding.CWE,
+		finding.CVSSScore,
+		finding.Remediation,
+		validationProof,
 		finding.ValidatedAt,
 		finding.CreatedAt,
 		finding.UpdatedAt,
@@ -75,20 +87,24 @@ func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error
 		f                       Finding
 		statusStr, severityStr  string
 		description, endpoint   *string
+		cwe, remediation        *string
+		cvssScore               *float64
 		evidence                []byte
+		validationProofJSON     []byte
 		parentID                *string
 		validatedAt             *time.Time
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, validated_at, created_at, updated_at
+		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at
 		 FROM findings WHERE id = $1`,
 		findingID,
 	).Scan(
 		&f.ID, &f.AssessmentID, &f.CageID,
 		&statusStr, &severityStr,
 		&f.Title, &description, &f.VulnClass, &endpoint,
-		&evidence, &parentID, &f.ChainDepth, &validatedAt,
-		&f.CreatedAt, &f.UpdatedAt,
+		&evidence, &parentID, &f.ChainDepth,
+		&cwe, &cvssScore, &remediation, &validationProofJSON,
+		&validatedAt, &f.CreatedAt, &f.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Finding{}, fmt.Errorf("%w: %s", ErrFindingNotFound, findingID)
@@ -105,6 +121,15 @@ func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error
 	if endpoint != nil {
 		f.Endpoint = *endpoint
 	}
+	if cwe != nil {
+		f.CWE = *cwe
+	}
+	if cvssScore != nil {
+		f.CVSSScore = *cvssScore
+	}
+	if remediation != nil {
+		f.Remediation = *remediation
+	}
 	if parentID != nil {
 		f.ParentFindingID = *parentID
 	}
@@ -113,12 +138,19 @@ func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error
 			return Finding{}, fmt.Errorf("unmarshaling evidence for finding %s: %w", findingID, err)
 		}
 	}
+	if validationProofJSON != nil {
+		var proof Proof
+		if err := json.Unmarshal(validationProofJSON, &proof); err != nil {
+			return Finding{}, fmt.Errorf("unmarshaling validation proof for finding %s: %w", findingID, err)
+		}
+		f.ValidationProof = &proof
+	}
 	return f, nil
 }
 
 func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, status Status) ([]Finding, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, validated_at, created_at, updated_at
+		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at
 		 FROM findings
 		 WHERE assessment_id = $1 AND status = $2
 		 ORDER BY created_at`,
@@ -134,7 +166,10 @@ func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, stat
 		var f Finding
 		var statusStr, severityStr string
 		var description, endpoint *string
+		var cwe, remediation *string
+		var cvssScore *float64
 		var evidence []byte
+		var validationProofJSON []byte
 		var parentID *string
 		var validatedAt *time.Time
 
@@ -142,8 +177,9 @@ func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, stat
 			&f.ID, &f.AssessmentID, &f.CageID,
 			&statusStr, &severityStr,
 			&f.Title, &description, &f.VulnClass, &endpoint,
-			&evidence, &parentID, &f.ChainDepth, &validatedAt,
-			&f.CreatedAt, &f.UpdatedAt,
+			&evidence, &parentID, &f.ChainDepth,
+			&cwe, &cvssScore, &remediation, &validationProofJSON,
+			&validatedAt, &f.CreatedAt, &f.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning finding row: %w", err)
 		}
@@ -157,6 +193,15 @@ func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, stat
 		if endpoint != nil {
 			f.Endpoint = *endpoint
 		}
+		if cwe != nil {
+			f.CWE = *cwe
+		}
+		if cvssScore != nil {
+			f.CVSSScore = *cvssScore
+		}
+		if remediation != nil {
+			f.Remediation = *remediation
+		}
 		if parentID != nil {
 			f.ParentFindingID = *parentID
 		}
@@ -164,6 +209,13 @@ func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, stat
 			if err := json.Unmarshal(evidence, &f.Evidence); err != nil {
 				return nil, fmt.Errorf("unmarshaling evidence for finding %s: %w", f.ID, err)
 			}
+		}
+		if validationProofJSON != nil {
+			var proof Proof
+			if err := json.Unmarshal(validationProofJSON, &proof); err != nil {
+				return nil, fmt.Errorf("unmarshaling validation proof for finding %s: %w", f.ID, err)
+			}
+			f.ValidationProof = &proof
 		}
 		results = append(results, f)
 	}
@@ -186,7 +238,7 @@ func (s *PGStore) ListFindings(ctx context.Context, filters ListFilters) ([]Find
 		limit = 100
 	}
 
-	query := `SELECT id, assessment_id, cage_id, status, severity, title, vuln_class, endpoint, parent_finding_id, chain_depth, validated_at, created_at
+	query := `SELECT id, assessment_id, cage_id, status, severity, title, vuln_class, endpoint, parent_finding_id, chain_depth, cwe, cvss_score, validated_at, created_at
 		 FROM findings`
 	var whereClauses []string
 	var args []any
@@ -227,6 +279,8 @@ func (s *PGStore) ListFindings(ctx context.Context, filters ListFilters) ([]Find
 		var f Finding
 		var statusStr, severityStr string
 		var endpoint *string
+		var cwe *string
+		var cvssScore *float64
 		var parentID *string
 		var validatedAt *time.Time
 
@@ -234,8 +288,9 @@ func (s *PGStore) ListFindings(ctx context.Context, filters ListFilters) ([]Find
 			&f.ID, &f.AssessmentID, &f.CageID,
 			&statusStr, &severityStr,
 			&f.Title, &f.VulnClass, &endpoint,
-			&parentID, &f.ChainDepth, &validatedAt,
-			&f.CreatedAt,
+			&parentID, &f.ChainDepth,
+			&cwe, &cvssScore,
+			&validatedAt, &f.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning finding row: %w", err)
 		}
@@ -245,6 +300,12 @@ func (s *PGStore) ListFindings(ctx context.Context, filters ListFilters) ([]Find
 		f.ValidatedAt = validatedAt
 		if endpoint != nil {
 			f.Endpoint = *endpoint
+		}
+		if cwe != nil {
+			f.CWE = *cwe
+		}
+		if cvssScore != nil {
+			f.CVSSScore = *cvssScore
 		}
 		if parentID != nil {
 			f.ParentFindingID = *parentID
@@ -291,6 +352,32 @@ func (s *PGStore) CountByAssessment(ctx context.Context, assessmentID string) (S
 	return counts, rows.Err()
 }
 
+func (s *PGStore) UpdateEnrichment(ctx context.Context, findingID, cwe string, cvssScore float64, remediation string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE findings SET cwe = $1, cvss_score = $2, remediation = $3, updated_at = NOW() WHERE id = $4`,
+		cwe, cvssScore, remediation, findingID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating enrichment for finding %s: %w", findingID, err)
+	}
+	return nil
+}
+
+func (s *PGStore) UpdateValidationProof(ctx context.Context, findingID string, proof *Proof) error {
+	proofJSON, err := json.Marshal(proof)
+	if err != nil {
+		return fmt.Errorf("marshaling validation proof for finding %s: %w", findingID, err)
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE findings SET validation_proof = $1, updated_at = NOW() WHERE id = $2`,
+		proofJSON, findingID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating validation proof for finding %s: %w", findingID, err)
+	}
+	return nil
+}
+
 func (s *PGStore) DeleteFinding(ctx context.Context, findingID string) error {
 	result, err := s.db.ExecContext(ctx, `DELETE FROM findings WHERE id = $1`, findingID)
 	if err != nil {
@@ -330,31 +417,15 @@ func (s *PGStore) UpdateStatus(ctx context.Context, findingID string, status Sta
 }
 
 func parseStatus(s string) Status {
-	switch s {
-	case "candidate":
-		return StatusCandidate
-	case "validated":
-		return StatusValidated
-	case "rejected":
-		return StatusRejected
-	default:
-		return StatusCandidate
+	if v := ParseStatus(s); v != 0 {
+		return v
 	}
+	return StatusCandidate
 }
 
 func parseSeverity(s string) Severity {
-	switch s {
-	case "info":
-		return SeverityInfo
-	case "low":
-		return SeverityLow
-	case "medium":
-		return SeverityMedium
-	case "high":
-		return SeverityHigh
-	case "critical":
-		return SeverityCritical
-	default:
-		return SeverityInfo
+	if v := ParseSeverity(s); v != 0 {
+		return v
 	}
+	return SeverityInfo
 }

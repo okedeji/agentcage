@@ -553,6 +553,9 @@ func findingToProto(f *findings.Finding) *pb.FindingInfo {
 		Endpoint:        f.Endpoint,
 		ParentFindingId: f.ParentFindingID,
 		ChainDepth:      f.ChainDepth,
+		Cwe:             f.CWE,
+		CvssScore:       f.CVSSScore,
+		Remediation:     f.Remediation,
 		CreatedAt:       timestamppb.New(f.CreatedAt),
 	}
 	if f.ValidatedAt != nil {
@@ -565,6 +568,15 @@ func findingToProto(f *findings.Finding) *pb.FindingInfo {
 			Screenshot: f.Evidence.Screenshot,
 			Poc:        f.Evidence.PoC,
 			Metadata:   f.Evidence.Metadata,
+		}
+	}
+	if f.ValidationProof != nil {
+		info.ValidationProof = &pb.ValidationProof{
+			ReproductionSteps: f.ValidationProof.ReproductionSteps,
+			Confirmed:         f.ValidationProof.Confirmed,
+			Deterministic:     f.ValidationProof.Deterministic,
+			ValidatorCageId:   f.ValidationProof.ValidatorCageID,
+			Evidence:          f.ValidationProof.Evidence,
 		}
 	}
 	return info

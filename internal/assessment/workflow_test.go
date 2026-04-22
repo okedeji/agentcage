@@ -38,7 +38,7 @@ func (assessmentActivityStub) UpdateFindingStatus(_ context.Context, _ string, _
 func (assessmentActivityStub) UpdateAssessmentStatus(_ context.Context, _ string, _ Status) error {
 	return nil
 }
-func (assessmentActivityStub) GenerateReport(_ context.Context, _, _ string, _ []findings.Finding) ([]byte, error) {
+func (assessmentActivityStub) GenerateReport(_ context.Context, _, _, _ string, _ []findings.Finding) ([]byte, error) {
 	return nil, nil
 }
 func (assessmentActivityStub) PlanNextActions(_ context.Context, _ CoordinatorState) (CoordinatorDecision, error) {
@@ -79,6 +79,12 @@ func (assessmentActivityStub) StoreReport(_ context.Context, _ string, _ []byte)
 }
 func (assessmentActivityStub) CountFindings(_ context.Context, _ string) (findings.StatusCounts, error) {
 	return findings.StatusCounts{}, nil
+}
+func (assessmentActivityStub) EnrichFinding(_ context.Context, _ string, _ findings.Finding) error {
+	return nil
+}
+func (assessmentActivityStub) StoreValidationProof(_ context.Context, _ string, _ findings.Proof) error {
+	return nil
 }
 
 func testInput() AssessmentWorkflowInput {
@@ -141,7 +147,7 @@ func registerAssessmentHappyPathMocks(env *testsuite.TestWorkflowEnvironment) {
 	}
 	env.OnActivity("GetValidatedFindings", mock.Anything, mock.Anything).Return(validatedFindings, nil)
 	env.OnActivity("CreateEscalationCage", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("cage-e-1", nil)
-	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]byte("report"), nil)
+	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]byte("report"), nil)
 }
 
 func TestAssessmentWorkflow_HappyPath(t *testing.T) {
@@ -199,7 +205,7 @@ func TestAssessmentWorkflow_CoordinatorSpawnsCages(t *testing.T) {
 
 	env.OnActivity("GetCandidateFindings", mock.Anything, mock.Anything).Return([]findings.Finding{}, nil)
 	env.OnActivity("GetValidatedFindings", mock.Anything, mock.Anything).Return([]findings.Finding{}, nil)
-	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]byte("report"), nil)
+	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]byte("report"), nil)
 
 	env.RegisterDelayedCallback(func() {
 		env.SignalWorkflow(intervention.SignalReportReview, intervention.ReportReviewSignal{
@@ -230,7 +236,7 @@ func TestAssessmentWorkflow_NoFindings(t *testing.T) {
 	)
 	env.OnActivity("GetCandidateFindings", mock.Anything, mock.Anything).Return([]findings.Finding{}, nil)
 	env.OnActivity("GetValidatedFindings", mock.Anything, mock.Anything).Return([]findings.Finding{}, nil)
-	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]byte("empty report"), nil)
+	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]byte("empty report"), nil)
 
 	env.RegisterDelayedCallback(func() {
 		env.SignalWorkflow(intervention.SignalReportReview, intervention.ReportReviewSignal{
@@ -304,7 +310,7 @@ func TestAssessmentWorkflow_ChainDepthEnforced(t *testing.T) {
 		ChainDepth: 3,
 	}
 	env.OnActivity("GetValidatedFindings", mock.Anything, mock.Anything).Return([]findings.Finding{atMaxDepth}, nil)
-	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]byte("report"), nil)
+	env.OnActivity("GenerateReport", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]byte("report"), nil)
 
 	env.RegisterDelayedCallback(func() {
 		env.SignalWorkflow(intervention.SignalReportReview, intervention.ReportReviewSignal{

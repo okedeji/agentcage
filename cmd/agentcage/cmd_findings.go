@@ -146,6 +146,12 @@ func showFinding(ctx context.Context, client pb.FindingsServiceClient, id string
 		}
 		fmt.Println()
 	}
+	if f.GetCwe() != "" {
+		fmt.Printf("  CWE:        %s\n", f.GetCwe())
+	}
+	if f.GetCvssScore() > 0 {
+		fmt.Printf("  CVSS:       %.1f\n", f.GetCvssScore())
+	}
 	if f.GetCreatedAt() != nil {
 		fmt.Printf("  Created:    %s\n", f.GetCreatedAt().AsTime().Format(time.RFC3339))
 	}
@@ -155,8 +161,19 @@ func showFinding(ctx context.Context, client pb.FindingsServiceClient, id string
 	if f.GetDescription() != "" {
 		fmt.Printf("\n  %s\n", f.GetDescription())
 	}
+	if f.GetRemediation() != "" {
+		fmt.Printf("\n  Remediation:\n  %s\n", f.GetRemediation())
+	}
 	if ev := f.GetEvidence(); ev != nil && ev.GetPoc() != "" {
 		fmt.Printf("\n  PoC:\n  %s\n", ev.GetPoc())
+	}
+	if vp := f.GetValidationProof(); vp != nil && vp.GetConfirmed() {
+		fmt.Printf("\n  Validation Proof:\n")
+		fmt.Printf("    Confirmed by cage %s\n", vp.GetValidatorCageId())
+		if vp.GetReproductionSteps() != "" {
+			fmt.Printf("    Steps: %s\n", vp.GetReproductionSteps())
+		}
+		fmt.Printf("    Deterministic: %v\n", vp.GetDeterministic())
 	}
 }
 

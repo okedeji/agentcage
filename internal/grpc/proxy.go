@@ -35,8 +35,6 @@ func Proxy(cmd string, args []string) {
 	}
 
 	switch cmd {
-	case "report":
-		proxyReport(conn, args)
 	case "interventions":
 		proxyInterventions(conn, args)
 	case "resolve":
@@ -47,11 +45,6 @@ func Proxy(cmd string, args []string) {
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		os.Exit(1)
 	}
-}
-
-func proxyReport(_ *grpc.ClientConn, _ []string) {
-	fmt.Fprintln(os.Stderr, "report generation requires ReportService (not yet wired)")
-	os.Exit(1)
 }
 
 func proxyInterventions(conn *grpc.ClientConn, args []string) {
