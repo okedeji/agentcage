@@ -129,6 +129,28 @@ func (a *assessmentAdapter) GetAssessment(ctx context.Context, req *pb.GetAssess
 	return &pb.GetAssessmentResponse{Assessment: assessmentInfoToProto(info)}, nil
 }
 
+func (a *assessmentAdapter) ListAssessments(ctx context.Context, req *pb.ListAssessmentsRequest) (*pb.ListAssessmentsResponse, error) {
+	filters := assessment.ListFilters{
+		Limit:     int(req.GetLimit()),
+		PageToken: req.GetPageToken(),
+	}
+	if req.GetStatusFilter() != pb.AssessmentStatus_ASSESSMENT_STATUS_UNSPECIFIED {
+		s := assessmentStatusFromProto(req.GetStatusFilter())
+		filters.StatusFilter = &s
+	}
+
+	items, nextToken, err := a.server.ListAssessments(ctx, filters)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	pbItems := make([]*pb.AssessmentInfo, len(items))
+	for i := range items {
+		pbItems[i] = assessmentInfoToProto(&items[i])
+	}
+	return &pb.ListAssessmentsResponse{Assessments: pbItems, NextPageToken: nextToken}, nil
+}
+
 type interventionAdapter struct {
 	pb.UnimplementedInterventionServiceServer
 	server *intervention.Service

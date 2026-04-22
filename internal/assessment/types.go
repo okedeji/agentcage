@@ -18,6 +18,7 @@ const (
 	StatusPendingReview
 	StatusApproved
 	StatusRejected
+	StatusFailed
 )
 
 func (s Status) String() string {
@@ -34,6 +35,8 @@ func (s Status) String() string {
 		return "approved"
 	case StatusRejected:
 		return "rejected"
+	case StatusFailed:
+		return "failed"
 	default:
 		return "unspecified"
 	}
@@ -53,6 +56,8 @@ func StatusFromString(s string) Status {
 		return StatusApproved
 	case "rejected":
 		return StatusRejected
+	case "failed":
+		return StatusFailed
 	default:
 		return StatusUnspecified
 	}
@@ -140,10 +145,10 @@ type Stats struct {
 }
 
 var validTransitions = map[Status][]Status{
-	StatusDiscovery:     {StatusExploitation, StatusRejected},
-	StatusExploitation:  {StatusValidation, StatusRejected},
-	StatusValidation:    {StatusPendingReview, StatusRejected},
-	StatusPendingReview: {StatusApproved, StatusRejected},
+	StatusDiscovery:     {StatusExploitation, StatusRejected, StatusFailed},
+	StatusExploitation:  {StatusValidation, StatusRejected, StatusFailed},
+	StatusValidation:    {StatusPendingReview, StatusRejected, StatusFailed},
+	StatusPendingReview: {StatusApproved, StatusRejected, StatusFailed},
 }
 
 var ErrInvalidTransition = errors.New("invalid assessment state transition")

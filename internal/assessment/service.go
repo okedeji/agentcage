@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -106,6 +108,115 @@ func (s *Service) GetAssessment(ctx context.Context, assessmentID string) (*Info
 	s.assessments[assessmentID] = info
 	s.mu.Unlock()
 	return info, nil
+}
+
+type ListFilters struct {
+	StatusFilter *Status
+	Limit        int
+	PageToken    string
+}
+
+func (s *Service) ListAssessments(ctx context.Context, filters ListFilters) ([]Info, string, error) {
+	limit := filters.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	if s.db == nil {
+		s.mu.RLock()
+		var results []Info
+		for _, info := range s.assessments {
+			if filters.StatusFilter != nil && info.Status != *filters.StatusFilter {
+				continue
+			}
+			results = append(results, *info)
+		}
+		s.mu.RUnlock()
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].CreatedAt.After(results[j].CreatedAt)
+		})
+		if len(results) > limit {
+			results = results[:limit]
+		}
+		return results, "", nil
+	}
+
+	query := `SELECT id, customer_id, status, config, created_at, updated_at FROM assessments`
+	var whereClauses []string
+	var args []any
+	argIdx := 1
+
+	if filters.StatusFilter != nil {
+		whereClauses = append(whereClauses, fmt.Sprintf(`status = $%d`, argIdx))
+		args = append(args, filters.StatusFilter.String())
+		argIdx++
+	}
+
+	if filters.PageToken != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf(`created_at < (SELECT created_at FROM assessments WHERE id = $%d)`, argIdx))
+		args = append(args, filters.PageToken)
+		argIdx++
+	}
+
+	if len(whereClauses) > 0 {
+		query += ` WHERE ` + strings.Join(whereClauses, ` AND `)
+	}
+
+	query += ` ORDER BY created_at DESC`
+	query += fmt.Sprintf(` LIMIT $%d`, argIdx)
+	args = append(args, limit+1)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("listing assessments: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []Info
+	for rows.Next() {
+		var info Info
+		var statusStr string
+		var cfgJSON []byte
+		if err := rows.Scan(&info.ID, &info.CustomerID, &statusStr, &cfgJSON, &info.CreatedAt, &info.UpdatedAt); err != nil {
+			return nil, "", fmt.Errorf("scanning assessment row: %w", err)
+		}
+		info.Status = StatusFromString(statusStr)
+		_ = json.Unmarshal(cfgJSON, &info.Config)
+		results = append(results, info)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", fmt.Errorf("iterating assessment rows: %w", err)
+	}
+
+	s.mu.RLock()
+	for i := range results {
+		if cached, ok := s.assessments[results[i].ID]; ok {
+			results[i].Stats = cached.Stats
+			results[i].Status = cached.Status
+		}
+	}
+	s.mu.RUnlock()
+
+	// The DB filtered by persisted status, but the cache overlay may
+	// have updated a row's status since the last write. Drop rows that
+	// no longer match the requested filter.
+	if filters.StatusFilter != nil {
+		filtered := results[:0]
+		for _, r := range results {
+			if r.Status == *filters.StatusFilter {
+				filtered = append(filtered, r)
+			}
+		}
+		results = filtered
+	}
+
+	var nextToken string
+	if len(results) > limit {
+		results = results[:limit]
+		nextToken = results[limit-1].ID
+	}
+
+	return results, nextToken, nil
 }
 
 func (s *Service) UpdateStatus(ctx context.Context, assessmentID string, status Status) error {

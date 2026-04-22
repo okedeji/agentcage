@@ -10,6 +10,7 @@ import "api/proto/cage.proto";
 service AssessmentService {
   rpc CreateAssessment(CreateAssessmentRequest) returns (CreateAssessmentResponse);
   rpc GetAssessment(GetAssessmentRequest) returns (GetAssessmentResponse);
+  rpc ListAssessments(ListAssessmentsRequest) returns (ListAssessmentsResponse);
 }
 
 enum AssessmentStatus {
@@ -116,4 +117,15 @@ message GetAssessmentRequest {
 
 message GetAssessmentResponse {
   AssessmentInfo assessment = 1;
+}
+
+message ListAssessmentsRequest {
+  AssessmentStatus status_filter = 1;
+  int32 limit = 2;
+  string page_token = 3;
+}
+
+message ListAssessmentsResponse {
+  repeated AssessmentInfo assessments = 1;
+  string next_page_token = 2;
 }

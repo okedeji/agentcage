@@ -9,14 +9,8 @@ import (
 // Commands below are placeholders until the shared gRPC CLI client
 // lands. Each parses its flags so --help works, then exits with a
 // pending message. On darwin these are unreachable for proxy commands
-// (run/status/interventions/resolve/fleet) because
+// (run/interventions/resolve/fleet) because
 // isProxyCommand routes them through internal/grpc.Proxy instead.
-
-func cmdStatus(args []string) {
-	_ = args
-	fmt.Println("Assessment status:")
-	fmt.Println("  (requires connection to orchestrator gRPC — pending)")
-}
 
 func cmdFindings(args []string) {
 	fs := flag.NewFlagSet("findings", flag.ExitOnError)

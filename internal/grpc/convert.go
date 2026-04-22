@@ -218,8 +218,31 @@ func assessmentStatusToProto(s assessment.Status) pb.AssessmentStatus {
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_APPROVED
 	case assessment.StatusRejected:
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_REJECTED
+	case assessment.StatusFailed:
+		return pb.AssessmentStatus_ASSESSMENT_STATUS_FAILED
 	default:
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_UNSPECIFIED
+	}
+}
+
+func assessmentStatusFromProto(s pb.AssessmentStatus) assessment.Status {
+	switch s {
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_DISCOVERY:
+		return assessment.StatusDiscovery
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_EXPLOITATION:
+		return assessment.StatusExploitation
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_VALIDATION:
+		return assessment.StatusValidation
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW:
+		return assessment.StatusPendingReview
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_APPROVED:
+		return assessment.StatusApproved
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_REJECTED:
+		return assessment.StatusRejected
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_FAILED:
+		return assessment.StatusFailed
+	default:
+		return assessment.StatusUnspecified
 	}
 }
 

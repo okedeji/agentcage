@@ -447,7 +447,7 @@ func printAssessmentSummary(info *pb.AssessmentInfo, p *plan.Plan, bundleRef str
 		fmt.Printf("  Cages:      up to %d concurrent\n", p.Limits.MaxConcurrentCages)
 	}
 	if !plan.BoolVal(p.Output.Follow) {
-		fmt.Printf("\nUse 'agentcage status --assessment %s' to monitor.\n", info.GetAssessmentId())
+		fmt.Printf("\nUse 'agentcage assessments --id %s' to monitor.\n", info.GetAssessmentId())
 	}
 }
 
@@ -481,7 +481,7 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 
 		if ctx.Err() != nil {
 			fmt.Printf("\nDetached. Assessment %s continues on the server.\n", assessmentID)
-			fmt.Printf("Run 'agentcage status --assessment %s' to check progress.\n", assessmentID)
+			fmt.Printf("Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
 			return
 		}
 
@@ -490,7 +490,7 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 			fmt.Fprintf(os.Stderr, "  poll error (%d/%d): %v\n", consecutiveErrors, followMaxConsecutiveErrors, err)
 			if consecutiveErrors >= followMaxConsecutiveErrors {
 				fmt.Fprintf(os.Stderr, "\nToo many consecutive poll errors. Detaching.\n")
-				fmt.Fprintf(os.Stderr, "Run 'agentcage status --assessment %s' to check progress.\n", assessmentID)
+				fmt.Fprintf(os.Stderr, "Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
 				return
 			}
 			backoff := min(followBaseBackoff*time.Duration(1<<min(consecutiveErrors-1, 4)), followMaxBackoff)
@@ -572,7 +572,7 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 				fmt.Printf("{\"result\":\"error\",\"detail\":\"server returned unspecified status\"}\n")
 			} else {
 				fmt.Fprintf(os.Stderr, "\nServer returned unspecified status for assessment %s.\n", assessmentID)
-				fmt.Fprintf(os.Stderr, "Run 'agentcage status --assessment %s' to check progress.\n", assessmentID)
+				fmt.Fprintf(os.Stderr, "Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
 			}
 			return
 		}
@@ -580,7 +580,7 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 		if time.Since(lastChange) > followStaleTimeout {
 			fmt.Fprintf(os.Stderr, "\nNo status change for %s. Detaching.\n", followStaleTimeout)
 			fmt.Fprintf(os.Stderr, "Assessment %s may be stuck in %s. Check 'agentcage interventions' for pending decisions.\n", assessmentID, lastStatus)
-			fmt.Fprintf(os.Stderr, "Run 'agentcage status --assessment %s' to check progress.\n", assessmentID)
+			fmt.Fprintf(os.Stderr, "Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
 			return
 		}
 

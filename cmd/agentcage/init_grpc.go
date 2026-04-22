@@ -106,7 +106,7 @@ func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (ne
 			if _, p, splitErr := net.SplitHostPort(grpcAddr); splitErr == nil {
 				port = p
 			}
-			return nil, false, fmt.Errorf("listening on %s: address already in use. Run `lsof -i :%s` to find the process; if it is another agentcage, `agentcage status` will confirm", grpcAddr, port)
+			return nil, false, fmt.Errorf("listening on %s: address already in use. Run `lsof -i :%s` to find the process; if it is another agentcage, `agentcage assessments` will confirm", grpcAddr, port)
 		}
 		return nil, false, fmt.Errorf("listening on %s: %w", grpcAddr, err)
 	}

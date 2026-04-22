@@ -54,8 +54,8 @@ func main() {
 		cmdPack(args)
 	case "run":
 		cmdRun(args)
-	case "status":
-		cmdStatus(args)
+	case "assessments":
+		cmdAssessments(args)
 	case "findings":
 		cmdFindings(args)
 	case "report":
@@ -111,7 +111,7 @@ Agent:
   run               Start a full assessment (coordinator spawns many cages)
 
 Observe:
-  status            Show running assessment status, active cages
+  assessments       List assessments or show details for one
   findings          List findings from current/specified assessment
   report            Show/export assessment report
   logs              Stream cage logs

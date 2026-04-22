@@ -35,8 +35,6 @@ func Proxy(cmd string, args []string) {
 	}
 
 	switch cmd {
-	case "status":
-		proxyStatus(conn, args)
 	case "report":
 		proxyReport(conn, args)
 	case "interventions":
@@ -48,47 +46,6 @@ func Proxy(cmd string, args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		os.Exit(1)
-	}
-}
-
-func proxyStatus(conn *grpc.ClientConn, args []string) {
-	fs := flag.NewFlagSet("status", flag.ExitOnError)
-	assessmentID := fs.String("assessment", "", "assessment ID")
-	_ = fs.Parse(args)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if *assessmentID != "" {
-		client := pb.NewAssessmentServiceClient(conn)
-		resp, err := client.GetAssessment(ctx, &pb.GetAssessmentRequest{AssessmentId: *assessmentID})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		info := resp.GetAssessment()
-		fmt.Printf("Assessment %s\n", info.GetAssessmentId())
-		fmt.Printf("  Status:   %s\n", info.GetStatus())
-		fmt.Printf("  Customer: %s\n", info.GetCustomerId())
-		if stats := info.GetStats(); stats != nil {
-			fmt.Printf("  Cages:    %d total, %d active\n", stats.GetTotalCages(), stats.GetActiveCages())
-			fmt.Printf("  Findings: %d candidate, %d validated, %d rejected\n",
-				stats.GetFindingsCandidate(), stats.GetFindingsValidated(), stats.GetFindingsRejected())
-			fmt.Printf("  Tokens:   %d consumed\n", stats.GetTokensConsumed())
-		}
-		return
-	}
-
-	fleet := pb.NewFleetServiceClient(conn)
-	resp, err := fleet.GetFleetStatus(ctx, &pb.GetFleetStatusRequest{})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	s := resp.GetStatus()
-	fmt.Printf("Fleet: %d hosts, %.0f%% utilization\n", s.GetTotalHosts(), s.GetCapacityUtilizationRatio()*100)
-	for _, p := range s.GetPools() {
-		fmt.Printf("  %s: %d hosts, %d/%d cage slots\n", p.GetPool(), p.GetHostCount(), p.GetCageSlotsUsed(), p.GetCageSlotsTotal())
 	}
 }
 

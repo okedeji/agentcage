@@ -294,7 +294,7 @@ func stopViaPID(pidFile string) {
 
 func isProxyCommand(cmd string) bool {
 	switch cmd {
-	case "status", "findings", "report",
+	case "findings", "report",
 		"interventions", "resolve", "fleet":
 		return true
 	}
