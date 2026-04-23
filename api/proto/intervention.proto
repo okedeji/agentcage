@@ -7,6 +7,7 @@ import "google/protobuf/timestamp.proto";
 
 service InterventionService {
   rpc ListInterventions(ListInterventionsRequest) returns (ListInterventionsResponse);
+  rpc GetIntervention(GetInterventionRequest) returns (GetInterventionResponse);
   rpc ResolveCageIntervention(ResolveCageInterventionRequest) returns (ResolveCageInterventionResponse);
   rpc ResolveAssessmentReview(ResolveAssessmentReviewRequest) returns (ResolveAssessmentReviewResponse);
   rpc ResolveProofGap(ResolveProofGapRequest) returns (ResolveProofGapResponse);
@@ -17,7 +18,9 @@ enum InterventionType {
   INTERVENTION_TYPE_TRIPWIRE_ESCALATION = 1;
   INTERVENTION_TYPE_PAYLOAD_REVIEW = 2;
   INTERVENTION_TYPE_REPORT_REVIEW = 3;
-  INTERVENTION_TYPE_PROOF_GAP = 4;
+  INTERVENTION_TYPE_POLICY_VIOLATION = 4;
+  INTERVENTION_TYPE_PROOF_GAP = 5;
+  INTERVENTION_TYPE_AGENT_HOLD = 6;
 }
 
 enum ProofGapAction {
@@ -102,6 +105,14 @@ message ResolveProofGapRequest {
 }
 
 message ResolveProofGapResponse {}
+
+message GetInterventionRequest {
+  string intervention_id = 1;
+}
+
+message GetInterventionResponse {
+  InterventionInfo intervention = 1;
+}
 
 message ListInterventionsRequest {
   InterventionStatus status_filter = 1;

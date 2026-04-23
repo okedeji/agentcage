@@ -60,12 +60,23 @@ func (q *Queue) Enqueue(ctx context.Context, reqType Type, priority Priority, ca
 	return &req, nil
 }
 
-func (q *Queue) List(ctx context.Context, filters ListFilters) ([]Request, error) {
-	items, _, err := q.store.ListInterventions(ctx, filters)
+func (q *Queue) Get(ctx context.Context, id string) (*Request, error) {
+	req, err := q.store.GetIntervention(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("listing interventions: %w", err)
+		return nil, fmt.Errorf("getting intervention %s: %w", id, err)
 	}
-	return items, nil
+	if req == nil {
+		return nil, fmt.Errorf("intervention %s not found", id)
+	}
+	return req, nil
+}
+
+func (q *Queue) List(ctx context.Context, filters ListFilters) ([]Request, string, error) {
+	items, nextToken, err := q.store.ListInterventions(ctx, filters)
+	if err != nil {
+		return nil, "", fmt.Errorf("listing interventions: %w", err)
+	}
+	return items, nextToken, nil
 }
 
 func (q *Queue) GetPending(_ context.Context) ([]*Request, error) {
@@ -91,6 +102,9 @@ func (q *Queue) Resolve(ctx context.Context, interventionID string, decision Dec
 	req, err := q.store.GetIntervention(ctx, interventionID)
 	if err != nil {
 		return fmt.Errorf("getting intervention %s: %w", interventionID, err)
+	}
+	if req == nil {
+		return fmt.Errorf("intervention %s not found", interventionID)
 	}
 
 	if req.Status != StatusPending {
@@ -121,6 +135,9 @@ func (q *Queue) ResolveReview(ctx context.Context, interventionID string, result
 	if err != nil {
 		return fmt.Errorf("getting intervention %s for review: %w", interventionID, err)
 	}
+	if req == nil {
+		return fmt.Errorf("intervention %s not found", interventionID)
+	}
 
 	if req.Status != StatusPending {
 		return fmt.Errorf("intervention %s: %w", interventionID, ErrNotPending)
@@ -149,6 +166,9 @@ func (q *Queue) TimeOut(ctx context.Context, interventionID string) error {
 	req, err := q.store.GetIntervention(ctx, interventionID)
 	if err != nil {
 		return fmt.Errorf("getting intervention %s for timeout: %w", interventionID, err)
+	}
+	if req == nil {
+		return fmt.Errorf("intervention %s not found", interventionID)
 	}
 
 	now := time.Now()

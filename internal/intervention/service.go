@@ -83,6 +83,9 @@ func (s *Service) ResolveProofGap(ctx context.Context, interventionID string, ac
 	if err != nil {
 		return fmt.Errorf("getting intervention %s: %w", interventionID, err)
 	}
+	if req == nil {
+		return fmt.Errorf("intervention %s not found", interventionID)
+	}
 	if req.Type != TypeProofGap {
 		return fmt.Errorf("intervention %s is type %s, not proof_gap", interventionID, req.Type)
 	}
@@ -129,18 +132,25 @@ func (s *Service) ResolveProofGap(ctx context.Context, interventionID string, ac
 	return nil
 }
 
-func (s *Service) ListInterventions(ctx context.Context, filters ListFilters) ([]Request, error) {
-	items, err := s.queue.List(ctx, filters)
+func (s *Service) GetIntervention(ctx context.Context, id string) (*Request, error) {
+	return s.queue.Get(ctx, id)
+}
+
+func (s *Service) ListInterventions(ctx context.Context, filters ListFilters) ([]Request, string, error) {
+	items, nextToken, err := s.queue.List(ctx, filters)
 	if err != nil {
-		return nil, fmt.Errorf("listing interventions: %w", err)
+		return nil, "", fmt.Errorf("listing interventions: %w", err)
 	}
-	return items, nil
+	return items, nextToken, nil
 }
 
 func (s *Service) ResolveCageIntervention(ctx context.Context, interventionID string, action Action, rationale string, adjustments map[string]string, operatorID string) error {
 	req, err := s.queue.store.GetIntervention(ctx, interventionID)
 	if err != nil {
 		return fmt.Errorf("getting intervention %s: %w", interventionID, err)
+	}
+	if req == nil {
+		return fmt.Errorf("intervention %s not found", interventionID)
 	}
 
 	decision := Decision{
@@ -203,6 +213,9 @@ func (s *Service) ResolveAssessmentReview(ctx context.Context, interventionID st
 	req, err := s.queue.store.GetIntervention(ctx, interventionID)
 	if err != nil {
 		return fmt.Errorf("getting intervention %s for review: %w", interventionID, err)
+	}
+	if req == nil {
+		return fmt.Errorf("intervention %s not found", interventionID)
 	}
 
 	result := ReviewResult{

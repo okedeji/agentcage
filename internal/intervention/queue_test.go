@@ -274,7 +274,7 @@ func TestListWithFilters(t *testing.T) {
 
 	t.Run("filter by type", func(t *testing.T) {
 		typ := TypeTripwireEscalation
-		items, err := q.List(ctx, ListFilters{TypeFilter: &typ})
+		items, _, err := q.List(ctx, ListFilters{TypeFilter: &typ})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		assert.Equal(t, TypeTripwireEscalation, items[0].Type)
@@ -282,13 +282,13 @@ func TestListWithFilters(t *testing.T) {
 
 	t.Run("filter by status", func(t *testing.T) {
 		status := StatusPending
-		items, err := q.List(ctx, ListFilters{StatusFilter: &status})
+		items, _, err := q.List(ctx, ListFilters{StatusFilter: &status})
 		require.NoError(t, err)
 		assert.Len(t, items, 2)
 	})
 
 	t.Run("filter by assessment", func(t *testing.T) {
-		items, err := q.List(ctx, ListFilters{AssessmentID: "a-2"})
+		items, _, err := q.List(ctx, ListFilters{AssessmentID: "a-2"})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		assert.Equal(t, "a-2", items[0].AssessmentID)

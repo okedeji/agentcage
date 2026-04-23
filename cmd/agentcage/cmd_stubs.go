@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 )
@@ -9,36 +8,8 @@ import (
 // Commands below are placeholders until the shared gRPC CLI client
 // lands. Each parses its flags so --help works, then exits with a
 // pending message. On darwin these are unreachable for proxy commands
-// (interventions/resolve/fleet) because
-// isProxyCommand routes them through internal/grpc.Proxy instead.
-
-func cmdInterventions(args []string) {
-	fs := flag.NewFlagSet("interventions", flag.ExitOnError)
-	status := fs.String("status", "pending", "filter by status: pending, resolved, timed_out")
-	_ = fs.Parse(args)
-
-	fmt.Printf("Interventions (status=%s):\n", *status)
-	fmt.Println("  (requires connection to orchestrator gRPC — pending)")
-}
-
-func cmdResolve(args []string) {
-	fs := flag.NewFlagSet("resolve", flag.ExitOnError)
-	interventionID := fs.String("id", "", "intervention ID")
-	action := fs.String("action", "", "action: resume, kill, allow, block")
-	rationale := fs.String("rationale", "", "reason for the decision")
-	_ = fs.Parse(args)
-
-	if *interventionID == "" || *action == "" {
-		fmt.Fprintln(os.Stderr, "usage: agentcage resolve --id <intervention-id> --action <resume|kill|allow|block> [--rationale reason]")
-		os.Exit(1)
-	}
-
-	fmt.Printf("Resolving intervention %s with action=%s\n", *interventionID, *action)
-	if *rationale != "" {
-		fmt.Printf("  Rationale: %s\n", *rationale)
-	}
-	fmt.Println("  (requires connection to orchestrator gRPC — pending)")
-}
+// (fleet) because isProxyCommand routes them through
+// internal/grpc.Proxy instead.
 
 func cmdFleet(args []string) {
 	_ = args

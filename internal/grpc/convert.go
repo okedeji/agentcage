@@ -362,8 +362,12 @@ func interventionTypeFromProto(t pb.InterventionType) intervention.Type {
 		return intervention.TypePayloadReview
 	case pb.InterventionType_INTERVENTION_TYPE_REPORT_REVIEW:
 		return intervention.TypeReportReview
+	case pb.InterventionType_INTERVENTION_TYPE_POLICY_VIOLATION:
+		return intervention.TypePolicyViolation
 	case pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP:
 		return intervention.TypeProofGap
+	case pb.InterventionType_INTERVENTION_TYPE_AGENT_HOLD:
+		return intervention.TypeAgentHold
 	default:
 		return intervention.TypeTripwireEscalation
 	}
@@ -418,6 +422,8 @@ func interventionToProto(r *intervention.Request) *pb.InterventionInfo {
 	info := &pb.InterventionInfo{
 		InterventionId: r.ID,
 		Type:           interventionTypeToProto(r.Type),
+		Status:         interventionStatusToProto(r.Status),
+		Priority:       interventionPriorityToProto(r.Priority),
 		CageId:         r.CageID,
 		AssessmentId:   r.AssessmentID,
 		Description:    r.Description,
@@ -426,7 +432,38 @@ func interventionToProto(r *intervention.Request) *pb.InterventionInfo {
 	if r.Timeout > 0 {
 		info.Timeout = durationpb.New(r.Timeout)
 	}
+	if r.ResolvedAt != nil {
+		info.ResolvedAt = timestamppb.New(*r.ResolvedAt)
+	}
 	return info
+}
+
+func interventionStatusToProto(s intervention.Status) pb.InterventionStatus {
+	switch s {
+	case intervention.StatusPending:
+		return pb.InterventionStatus_INTERVENTION_STATUS_PENDING
+	case intervention.StatusResolved:
+		return pb.InterventionStatus_INTERVENTION_STATUS_RESOLVED
+	case intervention.StatusTimedOut:
+		return pb.InterventionStatus_INTERVENTION_STATUS_TIMED_OUT
+	default:
+		return pb.InterventionStatus_INTERVENTION_STATUS_UNSPECIFIED
+	}
+}
+
+func interventionPriorityToProto(p intervention.Priority) pb.InterventionPriority {
+	switch p {
+	case intervention.PriorityLow:
+		return pb.InterventionPriority_INTERVENTION_PRIORITY_LOW
+	case intervention.PriorityMedium:
+		return pb.InterventionPriority_INTERVENTION_PRIORITY_MEDIUM
+	case intervention.PriorityHigh:
+		return pb.InterventionPriority_INTERVENTION_PRIORITY_HIGH
+	case intervention.PriorityCritical:
+		return pb.InterventionPriority_INTERVENTION_PRIORITY_CRITICAL
+	default:
+		return pb.InterventionPriority_INTERVENTION_PRIORITY_UNSPECIFIED
+	}
 }
 
 func interventionTypeToProto(t intervention.Type) pb.InterventionType {
@@ -437,8 +474,12 @@ func interventionTypeToProto(t intervention.Type) pb.InterventionType {
 		return pb.InterventionType_INTERVENTION_TYPE_PAYLOAD_REVIEW
 	case intervention.TypeReportReview:
 		return pb.InterventionType_INTERVENTION_TYPE_REPORT_REVIEW
+	case intervention.TypePolicyViolation:
+		return pb.InterventionType_INTERVENTION_TYPE_POLICY_VIOLATION
 	case intervention.TypeProofGap:
 		return pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP
+	case intervention.TypeAgentHold:
+		return pb.InterventionType_INTERVENTION_TYPE_AGENT_HOLD
 	default:
 		return pb.InterventionType_INTERVENTION_TYPE_UNSPECIFIED
 	}

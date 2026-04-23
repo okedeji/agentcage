@@ -1,5 +1,5 @@
 -- +migrate Up
-CREATE TYPE intervention_type AS ENUM ('tripwire_escalation', 'payload_review', 'report_review');
+CREATE TYPE intervention_type AS ENUM ('tripwire_escalation', 'payload_review', 'report_review', 'policy_violation', 'proof_gap', 'agent_hold');
 CREATE TYPE intervention_status AS ENUM ('pending', 'resolved', 'timed_out');
 CREATE TYPE intervention_priority AS ENUM ('low', 'medium', 'high', 'critical');
 

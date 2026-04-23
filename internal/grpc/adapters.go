@@ -172,6 +172,17 @@ type interventionAdapter struct {
 	server *intervention.Service
 }
 
+func (a *interventionAdapter) GetIntervention(ctx context.Context, req *pb.GetInterventionRequest) (*pb.GetInterventionResponse, error) {
+	if req.GetInterventionId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "intervention_id is required")
+	}
+	r, err := a.server.GetIntervention(ctx, req.GetInterventionId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.GetInterventionResponse{Intervention: interventionToProto(r)}, nil
+}
+
 func (a *interventionAdapter) ListInterventions(ctx context.Context, req *pb.ListInterventionsRequest) (*pb.ListInterventionsResponse, error) {
 	filters := intervention.ListFilters{
 		AssessmentID: req.GetAssessmentIdFilter(),
@@ -187,7 +198,7 @@ func (a *interventionAdapter) ListInterventions(ctx context.Context, req *pb.Lis
 		filters.TypeFilter = &t
 	}
 
-	items, err := a.server.ListInterventions(ctx, filters)
+	items, nextToken, err := a.server.ListInterventions(ctx, filters)
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -196,7 +207,7 @@ func (a *interventionAdapter) ListInterventions(ctx context.Context, req *pb.Lis
 	for i, item := range items {
 		pbItems[i] = interventionToProto(&item)
 	}
-	return &pb.ListInterventionsResponse{Interventions: pbItems}, nil
+	return &pb.ListInterventionsResponse{Interventions: pbItems, NextPageToken: nextToken}, nil
 }
 
 func (a *interventionAdapter) ResolveCageIntervention(ctx context.Context, req *pb.ResolveCageInterventionRequest) (*pb.ResolveCageInterventionResponse, error) {
@@ -336,7 +347,7 @@ func toGRPCError(err error) error {
 	if errors.Is(err, cage.ErrCageNotFound) || errors.Is(err, assessment.ErrAssessmentNotFound) || errors.Is(err, findings.ErrFindingNotFound) {
 		return status.Error(codes.NotFound, err.Error())
 	}
-	if errors.Is(err, cage.ErrInvalidTransition) {
+	if errors.Is(err, cage.ErrInvalidTransition) || errors.Is(err, intervention.ErrNotPending) {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 	msg := err.Error()

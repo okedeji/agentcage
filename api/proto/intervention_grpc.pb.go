@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	InterventionService_ListInterventions_FullMethodName       = "/agentcage.intervention.v1.InterventionService/ListInterventions"
+	InterventionService_GetIntervention_FullMethodName         = "/agentcage.intervention.v1.InterventionService/GetIntervention"
 	InterventionService_ResolveCageIntervention_FullMethodName = "/agentcage.intervention.v1.InterventionService/ResolveCageIntervention"
 	InterventionService_ResolveAssessmentReview_FullMethodName = "/agentcage.intervention.v1.InterventionService/ResolveAssessmentReview"
 	InterventionService_ResolveProofGap_FullMethodName         = "/agentcage.intervention.v1.InterventionService/ResolveProofGap"
@@ -30,6 +31,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type InterventionServiceClient interface {
 	ListInterventions(ctx context.Context, in *ListInterventionsRequest, opts ...grpc.CallOption) (*ListInterventionsResponse, error)
+	GetIntervention(ctx context.Context, in *GetInterventionRequest, opts ...grpc.CallOption) (*GetInterventionResponse, error)
 	ResolveCageIntervention(ctx context.Context, in *ResolveCageInterventionRequest, opts ...grpc.CallOption) (*ResolveCageInterventionResponse, error)
 	ResolveAssessmentReview(ctx context.Context, in *ResolveAssessmentReviewRequest, opts ...grpc.CallOption) (*ResolveAssessmentReviewResponse, error)
 	ResolveProofGap(ctx context.Context, in *ResolveProofGapRequest, opts ...grpc.CallOption) (*ResolveProofGapResponse, error)
@@ -47,6 +49,16 @@ func (c *interventionServiceClient) ListInterventions(ctx context.Context, in *L
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListInterventionsResponse)
 	err := c.cc.Invoke(ctx, InterventionService_ListInterventions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *interventionServiceClient) GetIntervention(ctx context.Context, in *GetInterventionRequest, opts ...grpc.CallOption) (*GetInterventionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetInterventionResponse)
+	err := c.cc.Invoke(ctx, InterventionService_GetIntervention_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +100,7 @@ func (c *interventionServiceClient) ResolveProofGap(ctx context.Context, in *Res
 // for forward compatibility.
 type InterventionServiceServer interface {
 	ListInterventions(context.Context, *ListInterventionsRequest) (*ListInterventionsResponse, error)
+	GetIntervention(context.Context, *GetInterventionRequest) (*GetInterventionResponse, error)
 	ResolveCageIntervention(context.Context, *ResolveCageInterventionRequest) (*ResolveCageInterventionResponse, error)
 	ResolveAssessmentReview(context.Context, *ResolveAssessmentReviewRequest) (*ResolveAssessmentReviewResponse, error)
 	ResolveProofGap(context.Context, *ResolveProofGapRequest) (*ResolveProofGapResponse, error)
@@ -103,6 +116,9 @@ type UnimplementedInterventionServiceServer struct{}
 
 func (UnimplementedInterventionServiceServer) ListInterventions(context.Context, *ListInterventionsRequest) (*ListInterventionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListInterventions not implemented")
+}
+func (UnimplementedInterventionServiceServer) GetIntervention(context.Context, *GetInterventionRequest) (*GetInterventionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetIntervention not implemented")
 }
 func (UnimplementedInterventionServiceServer) ResolveCageIntervention(context.Context, *ResolveCageInterventionRequest) (*ResolveCageInterventionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResolveCageIntervention not implemented")
@@ -148,6 +164,24 @@ func _InterventionService_ListInterventions_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(InterventionServiceServer).ListInterventions(ctx, req.(*ListInterventionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InterventionService_GetIntervention_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInterventionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InterventionServiceServer).GetIntervention(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InterventionService_GetIntervention_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InterventionServiceServer).GetIntervention(ctx, req.(*GetInterventionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -216,6 +250,10 @@ var InterventionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListInterventions",
 			Handler:    _InterventionService_ListInterventions_Handler,
+		},
+		{
+			MethodName: "GetIntervention",
+			Handler:    _InterventionService_GetIntervention_Handler,
 		},
 		{
 			MethodName: "ResolveCageIntervention",

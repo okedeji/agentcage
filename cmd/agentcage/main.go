@@ -62,8 +62,6 @@ func main() {
 		cmdReport(args)
 	case "interventions":
 		cmdInterventions(args)
-	case "resolve":
-		cmdResolve(args)
 	case "fleet":
 		cmdFleet(args)
 	case "db":
@@ -117,8 +115,7 @@ Observe:
   logs              Stream cage logs
 
 Operate:
-  interventions     List pending interventions
-  resolve           Resolve an intervention (resume/kill/allow/block)
+  interventions     List, inspect, or resolve interventions
   proof             Manage validation rules (add, list, validate)
   fleet             Show fleet status (hosts, pools, capacity)
   db                Open psql shell or show connection string

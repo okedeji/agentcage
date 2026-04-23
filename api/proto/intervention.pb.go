@@ -30,7 +30,9 @@ const (
 	InterventionType_INTERVENTION_TYPE_TRIPWIRE_ESCALATION InterventionType = 1
 	InterventionType_INTERVENTION_TYPE_PAYLOAD_REVIEW      InterventionType = 2
 	InterventionType_INTERVENTION_TYPE_REPORT_REVIEW       InterventionType = 3
-	InterventionType_INTERVENTION_TYPE_PROOF_GAP           InterventionType = 4
+	InterventionType_INTERVENTION_TYPE_POLICY_VIOLATION    InterventionType = 4
+	InterventionType_INTERVENTION_TYPE_PROOF_GAP           InterventionType = 5
+	InterventionType_INTERVENTION_TYPE_AGENT_HOLD          InterventionType = 6
 )
 
 // Enum value maps for InterventionType.
@@ -40,14 +42,18 @@ var (
 		1: "INTERVENTION_TYPE_TRIPWIRE_ESCALATION",
 		2: "INTERVENTION_TYPE_PAYLOAD_REVIEW",
 		3: "INTERVENTION_TYPE_REPORT_REVIEW",
-		4: "INTERVENTION_TYPE_PROOF_GAP",
+		4: "INTERVENTION_TYPE_POLICY_VIOLATION",
+		5: "INTERVENTION_TYPE_PROOF_GAP",
+		6: "INTERVENTION_TYPE_AGENT_HOLD",
 	}
 	InterventionType_value = map[string]int32{
 		"INTERVENTION_TYPE_UNSPECIFIED":         0,
 		"INTERVENTION_TYPE_TRIPWIRE_ESCALATION": 1,
 		"INTERVENTION_TYPE_PAYLOAD_REVIEW":      2,
 		"INTERVENTION_TYPE_REPORT_REVIEW":       3,
-		"INTERVENTION_TYPE_PROOF_GAP":           4,
+		"INTERVENTION_TYPE_POLICY_VIOLATION":    4,
+		"INTERVENTION_TYPE_PROOF_GAP":           5,
+		"INTERVENTION_TYPE_AGENT_HOLD":          6,
 	}
 )
 
@@ -832,6 +838,94 @@ func (*ResolveProofGapResponse) Descriptor() ([]byte, []int) {
 	return file_api_proto_intervention_proto_rawDescGZIP(), []int{7}
 }
 
+type GetInterventionRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	InterventionId string                 `protobuf:"bytes,1,opt,name=intervention_id,json=interventionId,proto3" json:"intervention_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GetInterventionRequest) Reset() {
+	*x = GetInterventionRequest{}
+	mi := &file_api_proto_intervention_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInterventionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInterventionRequest) ProtoMessage() {}
+
+func (x *GetInterventionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_intervention_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInterventionRequest.ProtoReflect.Descriptor instead.
+func (*GetInterventionRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_intervention_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetInterventionRequest) GetInterventionId() string {
+	if x != nil {
+		return x.InterventionId
+	}
+	return ""
+}
+
+type GetInterventionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Intervention  *InterventionInfo      `protobuf:"bytes,1,opt,name=intervention,proto3" json:"intervention,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInterventionResponse) Reset() {
+	*x = GetInterventionResponse{}
+	mi := &file_api_proto_intervention_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInterventionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInterventionResponse) ProtoMessage() {}
+
+func (x *GetInterventionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_intervention_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInterventionResponse.ProtoReflect.Descriptor instead.
+func (*GetInterventionResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_intervention_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetInterventionResponse) GetIntervention() *InterventionInfo {
+	if x != nil {
+		return x.Intervention
+	}
+	return nil
+}
+
 type ListInterventionsRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	StatusFilter       InterventionStatus     `protobuf:"varint,1,opt,name=status_filter,json=statusFilter,proto3,enum=agentcage.intervention.v1.InterventionStatus" json:"status_filter,omitempty"`
@@ -845,7 +939,7 @@ type ListInterventionsRequest struct {
 
 func (x *ListInterventionsRequest) Reset() {
 	*x = ListInterventionsRequest{}
-	mi := &file_api_proto_intervention_proto_msgTypes[8]
+	mi := &file_api_proto_intervention_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -857,7 +951,7 @@ func (x *ListInterventionsRequest) String() string {
 func (*ListInterventionsRequest) ProtoMessage() {}
 
 func (x *ListInterventionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_intervention_proto_msgTypes[8]
+	mi := &file_api_proto_intervention_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -870,7 +964,7 @@ func (x *ListInterventionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInterventionsRequest.ProtoReflect.Descriptor instead.
 func (*ListInterventionsRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_intervention_proto_rawDescGZIP(), []int{8}
+	return file_api_proto_intervention_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListInterventionsRequest) GetStatusFilter() InterventionStatus {
@@ -918,7 +1012,7 @@ type ListInterventionsResponse struct {
 
 func (x *ListInterventionsResponse) Reset() {
 	*x = ListInterventionsResponse{}
-	mi := &file_api_proto_intervention_proto_msgTypes[9]
+	mi := &file_api_proto_intervention_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -930,7 +1024,7 @@ func (x *ListInterventionsResponse) String() string {
 func (*ListInterventionsResponse) ProtoMessage() {}
 
 func (x *ListInterventionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_intervention_proto_msgTypes[9]
+	mi := &file_api_proto_intervention_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -943,7 +1037,7 @@ func (x *ListInterventionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInterventionsResponse.ProtoReflect.Descriptor instead.
 func (*ListInterventionsResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_intervention_proto_rawDescGZIP(), []int{9}
+	return file_api_proto_intervention_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListInterventionsResponse) GetInterventions() []*InterventionInfo {
@@ -1004,7 +1098,11 @@ const file_api_proto_intervention_proto_rawDesc = "" +
 	"\x0fintervention_id\x18\x01 \x01(\tR\x0einterventionId\x12A\n" +
 	"\x06action\x18\x02 \x01(\x0e2).agentcage.intervention.v1.ProofGapActionR\x06action\x12\x1c\n" +
 	"\trationale\x18\x03 \x01(\tR\trationale\"\x19\n" +
-	"\x17ResolveProofGapResponse\"\xaa\x02\n" +
+	"\x17ResolveProofGapResponse\"A\n" +
+	"\x16GetInterventionRequest\x12'\n" +
+	"\x0fintervention_id\x18\x01 \x01(\tR\x0einterventionId\"j\n" +
+	"\x17GetInterventionResponse\x12O\n" +
+	"\fintervention\x18\x01 \x01(\v2+.agentcage.intervention.v1.InterventionInfoR\fintervention\"\xaa\x02\n" +
 	"\x18ListInterventionsRequest\x12R\n" +
 	"\rstatus_filter\x18\x01 \x01(\x0e2-.agentcage.intervention.v1.InterventionStatusR\fstatusFilter\x12L\n" +
 	"\vtype_filter\x18\x02 \x01(\x0e2+.agentcage.intervention.v1.InterventionTypeR\n" +
@@ -1015,13 +1113,15 @@ const file_api_proto_intervention_proto_rawDesc = "" +
 	"page_token\x18\x05 \x01(\tR\tpageToken\"\x96\x01\n" +
 	"\x19ListInterventionsResponse\x12Q\n" +
 	"\rinterventions\x18\x01 \x03(\v2+.agentcage.intervention.v1.InterventionInfoR\rinterventions\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\xcc\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\x96\x02\n" +
 	"\x10InterventionType\x12!\n" +
 	"\x1dINTERVENTION_TYPE_UNSPECIFIED\x10\x00\x12)\n" +
 	"%INTERVENTION_TYPE_TRIPWIRE_ESCALATION\x10\x01\x12$\n" +
 	" INTERVENTION_TYPE_PAYLOAD_REVIEW\x10\x02\x12#\n" +
-	"\x1fINTERVENTION_TYPE_REPORT_REVIEW\x10\x03\x12\x1f\n" +
-	"\x1bINTERVENTION_TYPE_PROOF_GAP\x10\x04*i\n" +
+	"\x1fINTERVENTION_TYPE_REPORT_REVIEW\x10\x03\x12&\n" +
+	"\"INTERVENTION_TYPE_POLICY_VIOLATION\x10\x04\x12\x1f\n" +
+	"\x1bINTERVENTION_TYPE_PROOF_GAP\x10\x05\x12 \n" +
+	"\x1cINTERVENTION_TYPE_AGENT_HOLD\x10\x06*i\n" +
 	"\x0eProofGapAction\x12 \n" +
 	"\x1cPROOF_GAP_ACTION_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16PROOF_GAP_ACTION_RETRY\x10\x01\x12\x19\n" +
@@ -1048,9 +1148,10 @@ const file_api_proto_intervention_proto_rawDesc = "" +
 	"\x1bREVIEW_DECISION_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17REVIEW_DECISION_APPROVE\x10\x01\x12\"\n" +
 	"\x1eREVIEW_DECISION_REQUEST_RETEST\x10\x02\x12\x1a\n" +
-	"\x16REVIEW_DECISION_REJECT\x10\x032\xb5\x04\n" +
+	"\x16REVIEW_DECISION_REJECT\x10\x032\xaf\x05\n" +
 	"\x13InterventionService\x12~\n" +
-	"\x11ListInterventions\x123.agentcage.intervention.v1.ListInterventionsRequest\x1a4.agentcage.intervention.v1.ListInterventionsResponse\x12\x90\x01\n" +
+	"\x11ListInterventions\x123.agentcage.intervention.v1.ListInterventionsRequest\x1a4.agentcage.intervention.v1.ListInterventionsResponse\x12x\n" +
+	"\x0fGetIntervention\x121.agentcage.intervention.v1.GetInterventionRequest\x1a2.agentcage.intervention.v1.GetInterventionResponse\x12\x90\x01\n" +
 	"\x17ResolveCageIntervention\x129.agentcage.intervention.v1.ResolveCageInterventionRequest\x1a:.agentcage.intervention.v1.ResolveCageInterventionResponse\x12\x90\x01\n" +
 	"\x17ResolveAssessmentReview\x129.agentcage.intervention.v1.ResolveAssessmentReviewRequest\x1a:.agentcage.intervention.v1.ResolveAssessmentReviewResponse\x12x\n" +
 	"\x0fResolveProofGap\x121.agentcage.intervention.v1.ResolveProofGapRequest\x1a2.agentcage.intervention.v1.ResolveProofGapResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
@@ -1068,7 +1169,7 @@ func file_api_proto_intervention_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_intervention_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_api_proto_intervention_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_api_proto_intervention_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_api_proto_intervention_proto_goTypes = []any{
 	(InterventionType)(0),                   // 0: agentcage.intervention.v1.InterventionType
 	(ProofGapAction)(0),                     // 1: agentcage.intervention.v1.ProofGapAction
@@ -1084,40 +1185,45 @@ var file_api_proto_intervention_proto_goTypes = []any{
 	(*ResolveAssessmentReviewResponse)(nil), // 11: agentcage.intervention.v1.ResolveAssessmentReviewResponse
 	(*ResolveProofGapRequest)(nil),          // 12: agentcage.intervention.v1.ResolveProofGapRequest
 	(*ResolveProofGapResponse)(nil),         // 13: agentcage.intervention.v1.ResolveProofGapResponse
-	(*ListInterventionsRequest)(nil),        // 14: agentcage.intervention.v1.ListInterventionsRequest
-	(*ListInterventionsResponse)(nil),       // 15: agentcage.intervention.v1.ListInterventionsResponse
-	nil,                                     // 16: agentcage.intervention.v1.ResolveCageInterventionRequest.AdjustmentsEntry
-	(*timestamppb.Timestamp)(nil),           // 17: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),             // 18: google.protobuf.Duration
+	(*GetInterventionRequest)(nil),          // 14: agentcage.intervention.v1.GetInterventionRequest
+	(*GetInterventionResponse)(nil),         // 15: agentcage.intervention.v1.GetInterventionResponse
+	(*ListInterventionsRequest)(nil),        // 16: agentcage.intervention.v1.ListInterventionsRequest
+	(*ListInterventionsResponse)(nil),       // 17: agentcage.intervention.v1.ListInterventionsResponse
+	nil,                                     // 18: agentcage.intervention.v1.ResolveCageInterventionRequest.AdjustmentsEntry
+	(*timestamppb.Timestamp)(nil),           // 19: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),             // 20: google.protobuf.Duration
 }
 var file_api_proto_intervention_proto_depIdxs = []int32{
 	0,  // 0: agentcage.intervention.v1.InterventionInfo.type:type_name -> agentcage.intervention.v1.InterventionType
 	3,  // 1: agentcage.intervention.v1.InterventionInfo.status:type_name -> agentcage.intervention.v1.InterventionStatus
 	4,  // 2: agentcage.intervention.v1.InterventionInfo.priority:type_name -> agentcage.intervention.v1.InterventionPriority
-	17, // 3: agentcage.intervention.v1.InterventionInfo.created_at:type_name -> google.protobuf.Timestamp
-	17, // 4: agentcage.intervention.v1.InterventionInfo.resolved_at:type_name -> google.protobuf.Timestamp
-	18, // 5: agentcage.intervention.v1.InterventionInfo.timeout:type_name -> google.protobuf.Duration
+	19, // 3: agentcage.intervention.v1.InterventionInfo.created_at:type_name -> google.protobuf.Timestamp
+	19, // 4: agentcage.intervention.v1.InterventionInfo.resolved_at:type_name -> google.protobuf.Timestamp
+	20, // 5: agentcage.intervention.v1.InterventionInfo.timeout:type_name -> google.protobuf.Duration
 	2,  // 6: agentcage.intervention.v1.ResolveCageInterventionRequest.action:type_name -> agentcage.intervention.v1.InterventionAction
-	16, // 7: agentcage.intervention.v1.ResolveCageInterventionRequest.adjustments:type_name -> agentcage.intervention.v1.ResolveCageInterventionRequest.AdjustmentsEntry
+	18, // 7: agentcage.intervention.v1.ResolveCageInterventionRequest.adjustments:type_name -> agentcage.intervention.v1.ResolveCageInterventionRequest.AdjustmentsEntry
 	5,  // 8: agentcage.intervention.v1.ResolveAssessmentReviewRequest.decision:type_name -> agentcage.intervention.v1.ReviewDecision
 	7,  // 9: agentcage.intervention.v1.ResolveAssessmentReviewRequest.adjustments:type_name -> agentcage.intervention.v1.FindingAdjustment
 	1,  // 10: agentcage.intervention.v1.ResolveProofGapRequest.action:type_name -> agentcage.intervention.v1.ProofGapAction
-	3,  // 11: agentcage.intervention.v1.ListInterventionsRequest.status_filter:type_name -> agentcage.intervention.v1.InterventionStatus
-	0,  // 12: agentcage.intervention.v1.ListInterventionsRequest.type_filter:type_name -> agentcage.intervention.v1.InterventionType
-	6,  // 13: agentcage.intervention.v1.ListInterventionsResponse.interventions:type_name -> agentcage.intervention.v1.InterventionInfo
-	14, // 14: agentcage.intervention.v1.InterventionService.ListInterventions:input_type -> agentcage.intervention.v1.ListInterventionsRequest
-	8,  // 15: agentcage.intervention.v1.InterventionService.ResolveCageIntervention:input_type -> agentcage.intervention.v1.ResolveCageInterventionRequest
-	10, // 16: agentcage.intervention.v1.InterventionService.ResolveAssessmentReview:input_type -> agentcage.intervention.v1.ResolveAssessmentReviewRequest
-	12, // 17: agentcage.intervention.v1.InterventionService.ResolveProofGap:input_type -> agentcage.intervention.v1.ResolveProofGapRequest
-	15, // 18: agentcage.intervention.v1.InterventionService.ListInterventions:output_type -> agentcage.intervention.v1.ListInterventionsResponse
-	9,  // 19: agentcage.intervention.v1.InterventionService.ResolveCageIntervention:output_type -> agentcage.intervention.v1.ResolveCageInterventionResponse
-	11, // 20: agentcage.intervention.v1.InterventionService.ResolveAssessmentReview:output_type -> agentcage.intervention.v1.ResolveAssessmentReviewResponse
-	13, // 21: agentcage.intervention.v1.InterventionService.ResolveProofGap:output_type -> agentcage.intervention.v1.ResolveProofGapResponse
-	18, // [18:22] is the sub-list for method output_type
-	14, // [14:18] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	6,  // 11: agentcage.intervention.v1.GetInterventionResponse.intervention:type_name -> agentcage.intervention.v1.InterventionInfo
+	3,  // 12: agentcage.intervention.v1.ListInterventionsRequest.status_filter:type_name -> agentcage.intervention.v1.InterventionStatus
+	0,  // 13: agentcage.intervention.v1.ListInterventionsRequest.type_filter:type_name -> agentcage.intervention.v1.InterventionType
+	6,  // 14: agentcage.intervention.v1.ListInterventionsResponse.interventions:type_name -> agentcage.intervention.v1.InterventionInfo
+	16, // 15: agentcage.intervention.v1.InterventionService.ListInterventions:input_type -> agentcage.intervention.v1.ListInterventionsRequest
+	14, // 16: agentcage.intervention.v1.InterventionService.GetIntervention:input_type -> agentcage.intervention.v1.GetInterventionRequest
+	8,  // 17: agentcage.intervention.v1.InterventionService.ResolveCageIntervention:input_type -> agentcage.intervention.v1.ResolveCageInterventionRequest
+	10, // 18: agentcage.intervention.v1.InterventionService.ResolveAssessmentReview:input_type -> agentcage.intervention.v1.ResolveAssessmentReviewRequest
+	12, // 19: agentcage.intervention.v1.InterventionService.ResolveProofGap:input_type -> agentcage.intervention.v1.ResolveProofGapRequest
+	17, // 20: agentcage.intervention.v1.InterventionService.ListInterventions:output_type -> agentcage.intervention.v1.ListInterventionsResponse
+	15, // 21: agentcage.intervention.v1.InterventionService.GetIntervention:output_type -> agentcage.intervention.v1.GetInterventionResponse
+	9,  // 22: agentcage.intervention.v1.InterventionService.ResolveCageIntervention:output_type -> agentcage.intervention.v1.ResolveCageInterventionResponse
+	11, // 23: agentcage.intervention.v1.InterventionService.ResolveAssessmentReview:output_type -> agentcage.intervention.v1.ResolveAssessmentReviewResponse
+	13, // 24: agentcage.intervention.v1.InterventionService.ResolveProofGap:output_type -> agentcage.intervention.v1.ResolveProofGapResponse
+	20, // [20:25] is the sub-list for method output_type
+	15, // [15:20] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_intervention_proto_init() }
@@ -1131,7 +1237,7 @@ func file_api_proto_intervention_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_intervention_proto_rawDesc), len(file_api_proto_intervention_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

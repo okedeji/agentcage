@@ -127,21 +127,21 @@ func TestListInterventionsFiltered(t *testing.T) {
 
 	t.Run("filter by type", func(t *testing.T) {
 		typ := TypeTripwireEscalation
-		items, err := srv.ListInterventions(ctx, ListFilters{TypeFilter: &typ})
+		items, _, err := srv.ListInterventions(ctx, ListFilters{TypeFilter: &typ})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		assert.Equal(t, TypeTripwireEscalation, items[0].Type)
 	})
 
 	t.Run("filter by assessment", func(t *testing.T) {
-		items, err := srv.ListInterventions(ctx, ListFilters{AssessmentID: "a-2"})
+		items, _, err := srv.ListInterventions(ctx, ListFilters{AssessmentID: "a-2"})
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		assert.Equal(t, "a-2", items[0].AssessmentID)
 	})
 
 	t.Run("no filter returns all", func(t *testing.T) {
-		items, err := srv.ListInterventions(ctx, ListFilters{})
+		items, _, err := srv.ListInterventions(ctx, ListFilters{})
 		require.NoError(t, err)
 		assert.Len(t, items, 3)
 	})

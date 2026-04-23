@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -35,143 +34,12 @@ func Proxy(cmd string, args []string) {
 	}
 
 	switch cmd {
-	case "interventions":
-		proxyInterventions(conn, args)
-	case "resolve":
-		proxyResolve(conn, args)
 	case "fleet":
 		proxyFleet(conn, args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		os.Exit(1)
 	}
-}
-
-func proxyInterventions(conn *grpc.ClientConn, args []string) {
-	fs := flag.NewFlagSet("interventions", flag.ExitOnError)
-	statusFlag := fs.String("status", "pending", "filter by status: pending, resolved, timed_out")
-	_ = fs.Parse(args)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var statusFilter pb.InterventionStatus
-	switch *statusFlag {
-	case "pending":
-		statusFilter = pb.InterventionStatus_INTERVENTION_STATUS_PENDING
-	case "resolved":
-		statusFilter = pb.InterventionStatus_INTERVENTION_STATUS_RESOLVED
-	case "timed_out":
-		statusFilter = pb.InterventionStatus_INTERVENTION_STATUS_TIMED_OUT
-	}
-
-	client := pb.NewInterventionServiceClient(conn)
-	resp, err := client.ListInterventions(ctx, &pb.ListInterventionsRequest{
-		StatusFilter: statusFilter,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	items := resp.GetInterventions()
-	if len(items) == 0 {
-		fmt.Printf("No %s interventions.\n", *statusFlag)
-		return
-	}
-	for _, item := range items {
-		scope := "cage=" + item.GetCageId()
-		if item.GetType() == pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP {
-			scope = "assessment=" + item.GetAssessmentId()
-		}
-		fmt.Printf("  %s  %s  type=%s  %s  %s\n",
-			item.GetInterventionId(),
-			scope,
-			interventionTypeLabel(item.GetType()),
-			item.GetDescription(),
-			item.GetCreatedAt().AsTime().Format(time.RFC3339),
-		)
-	}
-}
-
-func interventionTypeLabel(t pb.InterventionType) string {
-	switch t {
-	case pb.InterventionType_INTERVENTION_TYPE_TRIPWIRE_ESCALATION:
-		return "tripwire"
-	case pb.InterventionType_INTERVENTION_TYPE_PAYLOAD_REVIEW:
-		return "payload_review"
-	case pb.InterventionType_INTERVENTION_TYPE_REPORT_REVIEW:
-		return "report_review"
-	case pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP:
-		return "proof_gap"
-	default:
-		return "unknown"
-	}
-}
-
-func proxyResolve(conn *grpc.ClientConn, args []string) {
-	fs := flag.NewFlagSet("resolve", flag.ExitOnError)
-	interventionID := fs.String("id", "", "intervention ID")
-	action := fs.String("action", "", "action: resume, kill, allow, block, retry, skip")
-	rationale := fs.String("rationale", "", "reason for the decision")
-	_ = fs.Parse(args)
-
-	if *interventionID == "" || *action == "" {
-		fmt.Fprintln(os.Stderr, "usage: agentcage resolve --id <intervention-id> --action <resume|kill|allow|block|retry|skip> [--rationale reason]")
-		fmt.Fprintln(os.Stderr, "  retry/skip apply to proof_gap interventions")
-		os.Exit(1)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	client := pb.NewInterventionServiceClient(conn)
-
-	// proof_gap actions take a different RPC path.
-	switch *action {
-	case "retry", "skip":
-		var pgAction pb.ProofGapAction
-		if *action == "retry" {
-			pgAction = pb.ProofGapAction_PROOF_GAP_ACTION_RETRY
-		} else {
-			pgAction = pb.ProofGapAction_PROOF_GAP_ACTION_SKIP
-		}
-		if _, err := client.ResolveProofGap(ctx, &pb.ResolveProofGapRequest{
-			InterventionId: *interventionID,
-			Action:         pgAction,
-			Rationale:      *rationale,
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "error resolving proof_gap intervention: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Proof gap intervention %s resolved with action=%s\n", *interventionID, *action)
-		return
-	}
-
-	var pbAction pb.InterventionAction
-	switch *action {
-	case "resume":
-		pbAction = pb.InterventionAction_INTERVENTION_ACTION_RESUME
-	case "kill":
-		pbAction = pb.InterventionAction_INTERVENTION_ACTION_KILL
-	case "allow":
-		pbAction = pb.InterventionAction_INTERVENTION_ACTION_ALLOW
-	case "block":
-		pbAction = pb.InterventionAction_INTERVENTION_ACTION_BLOCK
-	default:
-		fmt.Fprintf(os.Stderr, "unknown action: %s\n", *action)
-		os.Exit(1)
-	}
-
-	if _, err := client.ResolveCageIntervention(ctx, &pb.ResolveCageInterventionRequest{
-		InterventionId: *interventionID,
-		Action:         pbAction,
-		Rationale:      *rationale,
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "error resolving intervention: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Intervention %s resolved with action=%s\n", *interventionID, *action)
 }
 
 func proxyFleet(conn *grpc.ClientConn, _ []string) {
