@@ -80,6 +80,17 @@ func (a *cageAdapter) GetCage(ctx context.Context, req *pb.GetCageRequest) (*pb.
 	return &pb.GetCageResponse{Cage: cageInfoToProto(info)}, nil
 }
 
+func (a *cageAdapter) ListCagesByAssessment(ctx context.Context, req *pb.ListCagesByAssessmentRequest) (*pb.ListCagesByAssessmentResponse, error) {
+	if req.GetAssessmentId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "assessment_id is required")
+	}
+	ids, err := a.server.ListByAssessment(ctx, req.GetAssessmentId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.ListCagesByAssessmentResponse{CageIds: ids}, nil
+}
+
 func (a *cageAdapter) DestroyCage(ctx context.Context, req *pb.DestroyCageRequest) (*pb.DestroyCageResponse, error) {
 	if err := a.server.DestroyCage(ctx, req.GetCageId(), req.GetReason()); err != nil {
 		return nil, toGRPCError(err)

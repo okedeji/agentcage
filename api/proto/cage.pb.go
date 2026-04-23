@@ -955,6 +955,94 @@ func (x *GetCageResponse) GetCage() *CageInfo {
 	return nil
 }
 
+type ListCagesByAssessmentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AssessmentId  string                 `protobuf:"bytes,1,opt,name=assessment_id,json=assessmentId,proto3" json:"assessment_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCagesByAssessmentRequest) Reset() {
+	*x = ListCagesByAssessmentRequest{}
+	mi := &file_api_proto_cage_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCagesByAssessmentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCagesByAssessmentRequest) ProtoMessage() {}
+
+func (x *ListCagesByAssessmentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_cage_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCagesByAssessmentRequest.ProtoReflect.Descriptor instead.
+func (*ListCagesByAssessmentRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListCagesByAssessmentRequest) GetAssessmentId() string {
+	if x != nil {
+		return x.AssessmentId
+	}
+	return ""
+}
+
+type ListCagesByAssessmentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CageIds       []string               `protobuf:"bytes,1,rep,name=cage_ids,json=cageIds,proto3" json:"cage_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCagesByAssessmentResponse) Reset() {
+	*x = ListCagesByAssessmentResponse{}
+	mi := &file_api_proto_cage_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCagesByAssessmentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCagesByAssessmentResponse) ProtoMessage() {}
+
+func (x *ListCagesByAssessmentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_cage_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCagesByAssessmentResponse.ProtoReflect.Descriptor instead.
+func (*ListCagesByAssessmentResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListCagesByAssessmentResponse) GetCageIds() []string {
+	if x != nil {
+		return x.CageIds
+	}
+	return nil
+}
+
 type DestroyCageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CageId        string                 `protobuf:"bytes,1,opt,name=cage_id,json=cageId,proto3" json:"cage_id,omitempty"`
@@ -965,7 +1053,7 @@ type DestroyCageRequest struct {
 
 func (x *DestroyCageRequest) Reset() {
 	*x = DestroyCageRequest{}
-	mi := &file_api_proto_cage_proto_msgTypes[13]
+	mi := &file_api_proto_cage_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +1065,7 @@ func (x *DestroyCageRequest) String() string {
 func (*DestroyCageRequest) ProtoMessage() {}
 
 func (x *DestroyCageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[13]
+	mi := &file_api_proto_cage_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +1078,7 @@ func (x *DestroyCageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyCageRequest.ProtoReflect.Descriptor instead.
 func (*DestroyCageRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{13}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DestroyCageRequest) GetCageId() string {
@@ -1015,7 +1103,7 @@ type DestroyCageResponse struct {
 
 func (x *DestroyCageResponse) Reset() {
 	*x = DestroyCageResponse{}
-	mi := &file_api_proto_cage_proto_msgTypes[14]
+	mi := &file_api_proto_cage_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1027,7 +1115,7 @@ func (x *DestroyCageResponse) String() string {
 func (*DestroyCageResponse) ProtoMessage() {}
 
 func (x *DestroyCageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_cage_proto_msgTypes[14]
+	mi := &file_api_proto_cage_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1040,7 +1128,7 @@ func (x *DestroyCageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyCageResponse.ProtoReflect.Descriptor instead.
 func (*DestroyCageResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_cage_proto_rawDescGZIP(), []int{14}
+	return file_api_proto_cage_proto_rawDescGZIP(), []int{16}
 }
 
 var File_api_proto_cage_proto protoreflect.FileDescriptor
@@ -1108,7 +1196,11 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\x0eGetCageRequest\x12\x17\n" +
 	"\acage_id\x18\x01 \x01(\tR\x06cageId\"B\n" +
 	"\x0fGetCageResponse\x12/\n" +
-	"\x04cage\x18\x01 \x01(\v2\x1b.agentcage.cage.v1.CageInfoR\x04cage\"E\n" +
+	"\x04cage\x18\x01 \x01(\v2\x1b.agentcage.cage.v1.CageInfoR\x04cage\"C\n" +
+	"\x1cListCagesByAssessmentRequest\x12#\n" +
+	"\rassessment_id\x18\x01 \x01(\tR\fassessmentId\":\n" +
+	"\x1dListCagesByAssessmentResponse\x12\x19\n" +
+	"\bcage_ids\x18\x01 \x03(\tR\acageIds\"E\n" +
 	"\x12DestroyCageRequest\x12\x17\n" +
 	"\acage_id\x18\x01 \x01(\tR\x06cageId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x15\n" +
@@ -1131,11 +1223,12 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\x1cROUTING_STRATEGY_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fROUTING_STRATEGY_COST_OPTIMIZED\x10\x01\x12\"\n" +
 	"\x1eROUTING_STRATEGY_QUALITY_FIRST\x10\x02\x12\"\n" +
-	"\x1eROUTING_STRATEGY_LATENCY_FIRST\x10\x032\x98\x02\n" +
+	"\x1eROUTING_STRATEGY_LATENCY_FIRST\x10\x032\x94\x03\n" +
 	"\vCageService\x12Y\n" +
 	"\n" +
 	"CreateCage\x12$.agentcage.cage.v1.CreateCageRequest\x1a%.agentcage.cage.v1.CreateCageResponse\x12P\n" +
-	"\aGetCage\x12!.agentcage.cage.v1.GetCageRequest\x1a\".agentcage.cage.v1.GetCageResponse\x12\\\n" +
+	"\aGetCage\x12!.agentcage.cage.v1.GetCageRequest\x1a\".agentcage.cage.v1.GetCageResponse\x12z\n" +
+	"\x15ListCagesByAssessment\x12/.agentcage.cage.v1.ListCagesByAssessmentRequest\x1a0.agentcage.cage.v1.ListCagesByAssessmentResponse\x12\\\n" +
 	"\vDestroyCage\x12%.agentcage.cage.v1.DestroyCageRequest\x1a&.agentcage.cage.v1.DestroyCageResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
 
 var (
@@ -1151,31 +1244,33 @@ func file_api_proto_cage_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_cage_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_api_proto_cage_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_api_proto_cage_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_api_proto_cage_proto_goTypes = []any{
-	(CageType)(0),                 // 0: agentcage.cage.v1.CageType
-	(CageState)(0),                // 1: agentcage.cage.v1.CageState
-	(RoutingStrategy)(0),          // 2: agentcage.cage.v1.RoutingStrategy
-	(*PatternEntry)(nil),          // 3: agentcage.cage.v1.PatternEntry
-	(*TargetScope)(nil),           // 4: agentcage.cage.v1.TargetScope
-	(*ResourceLimits)(nil),        // 5: agentcage.cage.v1.ResourceLimits
-	(*TimeLimits)(nil),            // 6: agentcage.cage.v1.TimeLimits
-	(*RateLimits)(nil),            // 7: agentcage.cage.v1.RateLimits
-	(*LLMGatewayConfig)(nil),      // 8: agentcage.cage.v1.LLMGatewayConfig
-	(*PayloadProxyConfig)(nil),    // 9: agentcage.cage.v1.PayloadProxyConfig
-	(*CageConfig)(nil),            // 10: agentcage.cage.v1.CageConfig
-	(*CageInfo)(nil),              // 11: agentcage.cage.v1.CageInfo
-	(*CreateCageRequest)(nil),     // 12: agentcage.cage.v1.CreateCageRequest
-	(*CreateCageResponse)(nil),    // 13: agentcage.cage.v1.CreateCageResponse
-	(*GetCageRequest)(nil),        // 14: agentcage.cage.v1.GetCageRequest
-	(*GetCageResponse)(nil),       // 15: agentcage.cage.v1.GetCageResponse
-	(*DestroyCageRequest)(nil),    // 16: agentcage.cage.v1.DestroyCageRequest
-	(*DestroyCageResponse)(nil),   // 17: agentcage.cage.v1.DestroyCageResponse
-	(*durationpb.Duration)(nil),   // 18: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil), // 19: google.protobuf.Timestamp
+	(CageType)(0),                         // 0: agentcage.cage.v1.CageType
+	(CageState)(0),                        // 1: agentcage.cage.v1.CageState
+	(RoutingStrategy)(0),                  // 2: agentcage.cage.v1.RoutingStrategy
+	(*PatternEntry)(nil),                  // 3: agentcage.cage.v1.PatternEntry
+	(*TargetScope)(nil),                   // 4: agentcage.cage.v1.TargetScope
+	(*ResourceLimits)(nil),                // 5: agentcage.cage.v1.ResourceLimits
+	(*TimeLimits)(nil),                    // 6: agentcage.cage.v1.TimeLimits
+	(*RateLimits)(nil),                    // 7: agentcage.cage.v1.RateLimits
+	(*LLMGatewayConfig)(nil),              // 8: agentcage.cage.v1.LLMGatewayConfig
+	(*PayloadProxyConfig)(nil),            // 9: agentcage.cage.v1.PayloadProxyConfig
+	(*CageConfig)(nil),                    // 10: agentcage.cage.v1.CageConfig
+	(*CageInfo)(nil),                      // 11: agentcage.cage.v1.CageInfo
+	(*CreateCageRequest)(nil),             // 12: agentcage.cage.v1.CreateCageRequest
+	(*CreateCageResponse)(nil),            // 13: agentcage.cage.v1.CreateCageResponse
+	(*GetCageRequest)(nil),                // 14: agentcage.cage.v1.GetCageRequest
+	(*GetCageResponse)(nil),               // 15: agentcage.cage.v1.GetCageResponse
+	(*ListCagesByAssessmentRequest)(nil),  // 16: agentcage.cage.v1.ListCagesByAssessmentRequest
+	(*ListCagesByAssessmentResponse)(nil), // 17: agentcage.cage.v1.ListCagesByAssessmentResponse
+	(*DestroyCageRequest)(nil),            // 18: agentcage.cage.v1.DestroyCageRequest
+	(*DestroyCageResponse)(nil),           // 19: agentcage.cage.v1.DestroyCageResponse
+	(*durationpb.Duration)(nil),           // 20: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),         // 21: google.protobuf.Timestamp
 }
 var file_api_proto_cage_proto_depIdxs = []int32{
-	18, // 0: agentcage.cage.v1.TimeLimits.max_duration:type_name -> google.protobuf.Duration
+	20, // 0: agentcage.cage.v1.TimeLimits.max_duration:type_name -> google.protobuf.Duration
 	2,  // 1: agentcage.cage.v1.LLMGatewayConfig.routing_strategy:type_name -> agentcage.cage.v1.RoutingStrategy
 	3,  // 2: agentcage.cage.v1.PayloadProxyConfig.extra_block:type_name -> agentcage.cage.v1.PatternEntry
 	3,  // 3: agentcage.cage.v1.PayloadProxyConfig.extra_flag:type_name -> agentcage.cage.v1.PatternEntry
@@ -1189,19 +1284,21 @@ var file_api_proto_cage_proto_depIdxs = []int32{
 	0,  // 11: agentcage.cage.v1.CageInfo.type:type_name -> agentcage.cage.v1.CageType
 	1,  // 12: agentcage.cage.v1.CageInfo.state:type_name -> agentcage.cage.v1.CageState
 	10, // 13: agentcage.cage.v1.CageInfo.config:type_name -> agentcage.cage.v1.CageConfig
-	19, // 14: agentcage.cage.v1.CageInfo.created_at:type_name -> google.protobuf.Timestamp
-	19, // 15: agentcage.cage.v1.CageInfo.updated_at:type_name -> google.protobuf.Timestamp
+	21, // 14: agentcage.cage.v1.CageInfo.created_at:type_name -> google.protobuf.Timestamp
+	21, // 15: agentcage.cage.v1.CageInfo.updated_at:type_name -> google.protobuf.Timestamp
 	10, // 16: agentcage.cage.v1.CreateCageRequest.config:type_name -> agentcage.cage.v1.CageConfig
 	11, // 17: agentcage.cage.v1.CreateCageResponse.cage:type_name -> agentcage.cage.v1.CageInfo
 	11, // 18: agentcage.cage.v1.GetCageResponse.cage:type_name -> agentcage.cage.v1.CageInfo
 	12, // 19: agentcage.cage.v1.CageService.CreateCage:input_type -> agentcage.cage.v1.CreateCageRequest
 	14, // 20: agentcage.cage.v1.CageService.GetCage:input_type -> agentcage.cage.v1.GetCageRequest
-	16, // 21: agentcage.cage.v1.CageService.DestroyCage:input_type -> agentcage.cage.v1.DestroyCageRequest
-	13, // 22: agentcage.cage.v1.CageService.CreateCage:output_type -> agentcage.cage.v1.CreateCageResponse
-	15, // 23: agentcage.cage.v1.CageService.GetCage:output_type -> agentcage.cage.v1.GetCageResponse
-	17, // 24: agentcage.cage.v1.CageService.DestroyCage:output_type -> agentcage.cage.v1.DestroyCageResponse
-	22, // [22:25] is the sub-list for method output_type
-	19, // [19:22] is the sub-list for method input_type
+	16, // 21: agentcage.cage.v1.CageService.ListCagesByAssessment:input_type -> agentcage.cage.v1.ListCagesByAssessmentRequest
+	18, // 22: agentcage.cage.v1.CageService.DestroyCage:input_type -> agentcage.cage.v1.DestroyCageRequest
+	13, // 23: agentcage.cage.v1.CageService.CreateCage:output_type -> agentcage.cage.v1.CreateCageResponse
+	15, // 24: agentcage.cage.v1.CageService.GetCage:output_type -> agentcage.cage.v1.GetCageResponse
+	17, // 25: agentcage.cage.v1.CageService.ListCagesByAssessment:output_type -> agentcage.cage.v1.ListCagesByAssessmentResponse
+	19, // 26: agentcage.cage.v1.CageService.DestroyCage:output_type -> agentcage.cage.v1.DestroyCageResponse
+	23, // [23:27] is the sub-list for method output_type
+	19, // [19:23] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
 	19, // [19:19] is the sub-list for extension extendee
 	0,  // [0:19] is the sub-list for field type_name
@@ -1219,7 +1316,7 @@ func file_api_proto_cage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_cage_proto_rawDesc), len(file_api_proto_cage_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

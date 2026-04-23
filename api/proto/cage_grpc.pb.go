@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CageService_CreateCage_FullMethodName  = "/agentcage.cage.v1.CageService/CreateCage"
-	CageService_GetCage_FullMethodName     = "/agentcage.cage.v1.CageService/GetCage"
-	CageService_DestroyCage_FullMethodName = "/agentcage.cage.v1.CageService/DestroyCage"
+	CageService_CreateCage_FullMethodName            = "/agentcage.cage.v1.CageService/CreateCage"
+	CageService_GetCage_FullMethodName               = "/agentcage.cage.v1.CageService/GetCage"
+	CageService_ListCagesByAssessment_FullMethodName = "/agentcage.cage.v1.CageService/ListCagesByAssessment"
+	CageService_DestroyCage_FullMethodName           = "/agentcage.cage.v1.CageService/DestroyCage"
 )
 
 // CageServiceClient is the client API for CageService service.
@@ -30,6 +31,7 @@ const (
 type CageServiceClient interface {
 	CreateCage(ctx context.Context, in *CreateCageRequest, opts ...grpc.CallOption) (*CreateCageResponse, error)
 	GetCage(ctx context.Context, in *GetCageRequest, opts ...grpc.CallOption) (*GetCageResponse, error)
+	ListCagesByAssessment(ctx context.Context, in *ListCagesByAssessmentRequest, opts ...grpc.CallOption) (*ListCagesByAssessmentResponse, error)
 	DestroyCage(ctx context.Context, in *DestroyCageRequest, opts ...grpc.CallOption) (*DestroyCageResponse, error)
 }
 
@@ -61,6 +63,16 @@ func (c *cageServiceClient) GetCage(ctx context.Context, in *GetCageRequest, opt
 	return out, nil
 }
 
+func (c *cageServiceClient) ListCagesByAssessment(ctx context.Context, in *ListCagesByAssessmentRequest, opts ...grpc.CallOption) (*ListCagesByAssessmentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCagesByAssessmentResponse)
+	err := c.cc.Invoke(ctx, CageService_ListCagesByAssessment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *cageServiceClient) DestroyCage(ctx context.Context, in *DestroyCageRequest, opts ...grpc.CallOption) (*DestroyCageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DestroyCageResponse)
@@ -77,6 +89,7 @@ func (c *cageServiceClient) DestroyCage(ctx context.Context, in *DestroyCageRequ
 type CageServiceServer interface {
 	CreateCage(context.Context, *CreateCageRequest) (*CreateCageResponse, error)
 	GetCage(context.Context, *GetCageRequest) (*GetCageResponse, error)
+	ListCagesByAssessment(context.Context, *ListCagesByAssessmentRequest) (*ListCagesByAssessmentResponse, error)
 	DestroyCage(context.Context, *DestroyCageRequest) (*DestroyCageResponse, error)
 	mustEmbedUnimplementedCageServiceServer()
 }
@@ -93,6 +106,9 @@ func (UnimplementedCageServiceServer) CreateCage(context.Context, *CreateCageReq
 }
 func (UnimplementedCageServiceServer) GetCage(context.Context, *GetCageRequest) (*GetCageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetCage not implemented")
+}
+func (UnimplementedCageServiceServer) ListCagesByAssessment(context.Context, *ListCagesByAssessmentRequest) (*ListCagesByAssessmentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCagesByAssessment not implemented")
 }
 func (UnimplementedCageServiceServer) DestroyCage(context.Context, *DestroyCageRequest) (*DestroyCageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DestroyCage not implemented")
@@ -154,6 +170,24 @@ func _CageService_GetCage_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CageService_ListCagesByAssessment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCagesByAssessmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CageServiceServer).ListCagesByAssessment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CageService_ListCagesByAssessment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CageServiceServer).ListCagesByAssessment(ctx, req.(*ListCagesByAssessmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CageService_DestroyCage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DestroyCageRequest)
 	if err := dec(in); err != nil {
@@ -186,6 +220,10 @@ var CageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetCage",
 			Handler:    _CageService_GetCage_Handler,
+		},
+		{
+			MethodName: "ListCagesByAssessment",
+			Handler:    _CageService_ListCagesByAssessment_Handler,
 		},
 		{
 			MethodName: "DestroyCage",

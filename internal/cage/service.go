@@ -116,6 +116,34 @@ func (s *Service) GetCage(ctx context.Context, cageID string) (*Info, error) {
 	return info, nil
 }
 
+func (s *Service) ListByAssessment(ctx context.Context, assessmentID string) ([]string, error) {
+	if s.db == nil {
+		s.mu.RLock()
+		var ids []string
+		for _, info := range s.cages {
+			if info.AssessmentID == assessmentID {
+				ids = append(ids, info.ID)
+			}
+		}
+		s.mu.RUnlock()
+		return ids, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM cages WHERE assessment_id = $1`, assessmentID)
+	if err != nil {
+		return nil, fmt.Errorf("listing cages for assessment %s: %w", assessmentID, err)
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scanning cage id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *Service) DestroyCage(ctx context.Context, cageID string, reason string) error {
 	info, err := s.GetCage(ctx, cageID)
 	if err != nil {

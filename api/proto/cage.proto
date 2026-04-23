@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 service CageService {
   rpc CreateCage(CreateCageRequest) returns (CreateCageResponse);
   rpc GetCage(GetCageRequest) returns (GetCageResponse);
+  rpc ListCagesByAssessment(ListCagesByAssessmentRequest) returns (ListCagesByAssessmentResponse);
   rpc DestroyCage(DestroyCageRequest) returns (DestroyCageResponse);
 }
 
@@ -110,6 +111,14 @@ message GetCageRequest {
 
 message GetCageResponse {
   CageInfo cage = 1;
+}
+
+message ListCagesByAssessmentRequest {
+  string assessment_id = 1;
+}
+
+message ListCagesByAssessmentResponse {
+  repeated string cage_ids = 1;
 }
 
 message DestroyCageRequest {
