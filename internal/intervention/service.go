@@ -94,7 +94,11 @@ func (s *Service) ResolveProofGap(ctx context.Context, interventionID string, ac
 	// new YAML files the operator added via `agentcage proof add`.
 	if action == ProofGapActionRetry && s.proofLibrary != nil {
 		if err := s.proofLibrary.Reload(); err != nil {
-			return fmt.Errorf("reloading proof library before retry: %w", err)
+			s.logger.Error(err, "reloading proof library before retry, continuing with existing proofs",
+				"intervention_id", interventionID)
+		} else {
+			s.logger.Info("proof library reloaded for retry",
+				"intervention_id", interventionID)
 		}
 	}
 

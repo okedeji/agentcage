@@ -147,6 +147,17 @@ func (l *ProofLibrary) Reload() error {
 	return nil
 }
 
+// Count returns the total number of loaded proofs.
+func (l *ProofLibrary) Count() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	count := 0
+	for _, byType := range l.proofs {
+		count += len(byType)
+	}
+	return count
+}
+
 func loadProof(path string) (*Proof, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -192,11 +203,22 @@ func validateProof(pb *Proof) error {
 			}
 		}
 	}
-	if pb.Confirmation.Type == "response_time_delta" && pb.Confirmation.ExpectedDeltaMS <= 0 {
-		return fmt.Errorf("response_time_delta requires positive expected_delta_ms: %w", ErrProofInvalid)
+	if pb.Payload.URL == "" && (pb.Payload.Method != "" || pb.Payload.Parameter != "" || pb.Payload.Value != "") {
+		return fmt.Errorf("payload_template.url is required when other payload fields are set: %w", ErrProofInvalid)
+	}
+	if pb.Confirmation.Type == "response_time_delta" {
+		if pb.Confirmation.ExpectedDeltaMS <= 0 {
+			return fmt.Errorf("response_time_delta requires positive expected_delta_ms: %w", ErrProofInvalid)
+		}
+		if pb.Confirmation.ToleranceMS < 0 {
+			return fmt.Errorf("tolerance_ms cannot be negative: %w", ErrProofInvalid)
+		}
 	}
 	if pb.Confirmation.Type == "response_contains" && strings.TrimSpace(pb.Confirmation.ExpectedPattern) == "" {
 		return fmt.Errorf("response_contains requires expected_pattern: %w", ErrProofInvalid)
+	}
+	if pb.Confirmation.Type == "oob_callback" && pb.Confirmation.TimeoutSeconds <= 0 {
+		return fmt.Errorf("oob_callback requires positive timeout_seconds: %w", ErrProofInvalid)
 	}
 	return nil
 }

@@ -159,6 +159,16 @@ func (a *ActivityImpl) CreateDiscoveryCage(ctx context.Context, assessmentID str
 }
 
 func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID string, finding findings.Finding, proof *Proof, bundleRef string) (string, error) {
+	if proof != nil && proof.Safety.Destructive {
+		a.log.Info("skipping destructive proof",
+			"assessment_id", assessmentID,
+			"finding_id", finding.ID,
+			"vuln_class", finding.VulnClass,
+			"rationale", proof.Safety.Rationale,
+		)
+		return "", fmt.Errorf("proof for %s is marked destructive, skipping validation", finding.VulnClass)
+	}
+
 	config := cage.Config{
 		AssessmentID:    assessmentID,
 		Type:            cage.TypeValidator,

@@ -9,7 +9,7 @@ payload_template:
   parameter: "{{ candidate.parameter }}"
   value: "https://callback.agentcage.internal/{{ cage_id }}/confirm"
 confirmation:
-  type: http_callback_received
+  type: oob_callback
   timeout_seconds: 10
 max_requests: 3
 max_duration_seconds: 30

@@ -63,6 +63,13 @@ func cmdProofAdd(args []string) {
 			fmt.Fprintf(os.Stderr, "error writing %s: %v\n", dest, err)
 			os.Exit(1)
 		}
+
+		if _, err := assessment.LoadProofs(dir); err != nil {
+			_ = os.Remove(dest)
+			fmt.Fprintf(os.Stderr, "error: adding %s would break proof library: %v\n", src, err)
+			os.Exit(1)
+		}
+
 		fmt.Printf("  added: %s\n", dest)
 	}
 }

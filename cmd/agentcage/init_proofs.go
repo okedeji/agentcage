@@ -36,6 +36,11 @@ func loadProofLibrary(cfg *config.Config, log logr.Logger) (*assessment.ProofLib
 	if err != nil {
 		return nil, fmt.Errorf("loading proofs from %s: %w", dir, err)
 	}
-	log.Info("proofs loaded", "dir", dir, "count", len(lib.List()))
+	count := len(lib.List())
+	if count == 0 {
+		fmt.Fprintln(os.Stderr, "warning: no validation proofs loaded. Findings will remain as candidates without validation.")
+		fmt.Fprintln(os.Stderr, "  Add proofs with: agentcage proof add <file.yaml>")
+	}
+	log.Info("proofs loaded", "dir", dir, "count", count)
 	return lib, nil
 }
