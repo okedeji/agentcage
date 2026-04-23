@@ -42,8 +42,7 @@ func cmdDB(args []string) {
 		return
 	}
 
-	// Open interactive psql
-	fmt.Printf("Connecting to %s\n", dbURL)
+	fmt.Println("Connecting to embedded Postgres...")
 	psql := exec.Command("psql", dbURL)
 	psql.Stdin = os.Stdin
 	psql.Stdout = os.Stdout
