@@ -17,6 +17,9 @@ func (dl *DemandLedger) AddDemand(assessmentID string, expectedPeak int32) {
 	dl.mu.Lock()
 	defer dl.mu.Unlock()
 
+	if _, exists := dl.demands[assessmentID]; exists {
+		return
+	}
 	dl.demands[assessmentID] = expectedPeak
 }
 

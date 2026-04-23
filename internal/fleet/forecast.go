@@ -119,7 +119,6 @@ func (f *ForecastIntegration) applyForecast(ctx context.Context) {
 			f.logger.Error(err, "provisioning host from forecast")
 			continue
 		}
-		host.Pool = PoolWarm
 		if err := f.autoscaler.pool.AddHost(*host); err != nil {
 			f.logger.Error(err, "adding forecast-provisioned host to pool", "host_id", host.ID)
 		}

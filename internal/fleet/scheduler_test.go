@@ -85,6 +85,6 @@ func TestNomadScheduler_Status_Unknown(t *testing.T) {
 	ctx := context.Background()
 
 	status, err := s.Status(ctx, "nonexistent")
-	require.NoError(t, err)
+	assert.ErrorIs(t, err, ErrAllocationNotFound)
 	assert.Equal(t, cage.VMStatusStopped, status)
 }

@@ -97,5 +97,5 @@ func (s *NomadScheduler) Status(ctx context.Context, vmID string) (cage.VMStatus
 	if _, ok := s.allocs[vmID]; ok {
 		return cage.VMStatusRunning, nil
 	}
-	return cage.VMStatusStopped, nil
+	return cage.VMStatusStopped, fmt.Errorf("VM %s: %w", vmID, ErrAllocationNotFound)
 }

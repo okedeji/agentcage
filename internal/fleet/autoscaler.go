@@ -39,6 +39,7 @@ type Autoscaler struct {
 	config            AutoscalerConfig
 	logger            logr.Logger
 	provisionFailures int
+	backoffSince      time.Time
 }
 
 func NewAutoscaler(pool *PoolManager, demand *DemandLedger, provisioner HostProvisioner, alerter AlertNotifier, config AutoscalerConfig, logger logr.Logger) *Autoscaler {
@@ -170,16 +171,24 @@ func (a *Autoscaler) averageSlotsPerHost() int32 {
 	return CalculateSlots(fallback, a.config.DefaultCageResources)
 }
 
-const maxProvisionBackoffCycles = 5
+const (
+	maxProvisionBackoffCycles = 5
+	backoffResetInterval      = 5 * time.Minute
+)
 
 func (a *Autoscaler) provisionHosts(ctx context.Context, count int32) {
 	if a.provisionFailures >= maxProvisionBackoffCycles {
-		a.logger.Info("provisioner in backoff, skipping", "consecutive_failures", a.provisionFailures)
-		a.provisionFailures++
-		if a.provisionFailures > maxProvisionBackoffCycles*2 {
-			a.provisionFailures = maxProvisionBackoffCycles
+		if !a.backoffSince.IsZero() && time.Since(a.backoffSince) > backoffResetInterval {
+			a.logger.Info("backoff period expired, retrying provisioner", "backoff_duration", time.Since(a.backoffSince))
+			a.provisionFailures = 0
+			a.backoffSince = time.Time{}
+		} else {
+			if a.backoffSince.IsZero() {
+				a.backoffSince = time.Now()
+			}
+			a.logger.Info("provisioner in backoff, skipping", "consecutive_failures", a.provisionFailures, "backoff_since", a.backoffSince)
+			return
 		}
-		return
 	}
 	for range count {
 		if ctx.Err() != nil {

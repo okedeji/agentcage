@@ -22,13 +22,13 @@ func TestDemandLedger_CurrentDemand_Multiple(t *testing.T) {
 	assert.Equal(t, int32(40), dl.CurrentDemand())
 }
 
-func TestDemandLedger_Update(t *testing.T) {
+func TestDemandLedger_AddIdempotent(t *testing.T) {
 	dl := NewDemandLedger()
 	dl.AddDemand("assess-1", 10)
 	dl.AddDemand("assess-1", 20)
 
-	assert.Equal(t, int32(20), dl.GetDemand("assess-1"))
-	assert.Equal(t, int32(20), dl.CurrentDemand())
+	assert.Equal(t, int32(10), dl.GetDemand("assess-1"))
+	assert.Equal(t, int32(10), dl.CurrentDemand())
 }
 
 func TestDemandLedger_Remove(t *testing.T) {

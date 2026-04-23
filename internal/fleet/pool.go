@@ -211,7 +211,9 @@ func (pm *PoolManager) TotalCageSlots() int32 {
 	defer pm.mu.RUnlock()
 	var total int32
 	for _, h := range pm.hosts {
-		total += h.CageSlotsTotal
+		if h.Pool == PoolActive || h.Pool == PoolWarm {
+			total += h.CageSlotsTotal
+		}
 	}
 	return total
 }
@@ -221,14 +223,16 @@ func (pm *PoolManager) GetFleetStatus() FleetStatus {
 	defer pm.mu.RUnlock()
 
 	var totalHosts int32
-	var totalSlots int32
-	var usedSlots int32
+	var activeSlots int32
+	var activeUsed int32
 	poolMap := make(map[HostPool]*PoolStatus)
 
 	for _, h := range pm.hosts {
 		totalHosts++
-		totalSlots += h.CageSlotsTotal
-		usedSlots += h.CageSlotsUsed
+		if h.Pool == PoolActive || h.Pool == PoolWarm {
+			activeSlots += h.CageSlotsTotal
+			activeUsed += h.CageSlotsUsed
+		}
 
 		ps, ok := poolMap[h.Pool]
 		if !ok {
@@ -246,8 +250,8 @@ func (pm *PoolManager) GetFleetStatus() FleetStatus {
 	}
 
 	var utilization float64
-	if totalSlots > 0 {
-		utilization = float64(usedSlots) / float64(totalSlots)
+	if activeSlots > 0 {
+		utilization = float64(activeUsed) / float64(activeSlots)
 	}
 
 	return FleetStatus{
