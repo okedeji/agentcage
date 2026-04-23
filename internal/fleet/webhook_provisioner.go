@@ -85,6 +85,15 @@ func (p *WebhookProvisioner) Provision(ctx context.Context) (*Host, error) {
 	if result.HostID == "" {
 		return nil, fmt.Errorf("provision webhook returned empty host_id")
 	}
+	if result.VCPUs <= 0 {
+		return nil, fmt.Errorf("provision webhook returned invalid vcpus: %d", result.VCPUs)
+	}
+	if result.MemoryMB <= 0 {
+		return nil, fmt.Errorf("provision webhook returned invalid memory_mb: %d", result.MemoryMB)
+	}
+	if result.CageSlots <= 0 {
+		return nil, fmt.Errorf("provision webhook returned invalid cage_slots: %d", result.CageSlots)
+	}
 
 	host := &Host{
 		ID:             result.HostID,
@@ -140,15 +149,36 @@ func (p *WebhookProvisioner) Terminate(ctx context.Context, hostID string) error
 }
 
 func (p *WebhookProvisioner) doRequest(ctx context.Context, path string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint+path, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("building request for %s: %w", path, err)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * time.Second):
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint+path, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("building request for %s: %w", path, err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if p.apiKey != "" {
+			req.Header.Set("Authorization", "Bearer "+p.apiKey)
+		}
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("%s attempt %d: %w", path, attempt+1, err)
+			continue
+		}
+		if resp.StatusCode >= 500 {
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("%s attempt %d: HTTP %d", path, attempt+1, resp.StatusCode)
+			continue
+		}
+		return resp, nil
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if p.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+p.apiKey)
-	}
-	return p.httpClient.Do(req)
+	return nil, fmt.Errorf("webhook %s failed after 3 attempts: %w", path, lastErr)
 }
 
 // CheckReady polls the webhook for a host's readiness. Returns true when

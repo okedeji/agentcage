@@ -53,6 +53,17 @@ func (s *Service) DrainHost(ctx context.Context, hostID string, reason string, f
 	return nil
 }
 
+func (s *Service) ListHosts(_ context.Context, pool *HostPool) ([]Host, error) {
+	if pool != nil {
+		return s.pool.GetHostsByPool(*pool), nil
+	}
+	var all []Host
+	for _, p := range []HostPool{PoolActive, PoolWarm, PoolProvisioning, PoolDraining} {
+		all = append(all, s.pool.GetHostsByPool(p)...)
+	}
+	return all, nil
+}
+
 func (s *Service) GetCapacity(_ context.Context) ([]PoolStatus, int32, error) {
 	statuses := s.pool.GetPoolStatus()
 	var available int32

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/okedeji/agentcage/internal/config"
-	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 )
 
 const version = "0.1.0"
@@ -35,14 +34,6 @@ func main() {
 	if cmd == "" {
 		printUsage()
 		os.Exit(1)
-	}
-
-	// On darwin the orchestrator runs inside a VM, so commands that
-	// need the gRPC server get proxied through. On linux this is a
-	// no-op and we fall through to the local handler.
-	if isProxyCommand(cmd) {
-		agentgrpc.Proxy(cmd, args)
-		return
 	}
 
 	switch cmd {

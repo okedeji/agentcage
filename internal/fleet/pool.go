@@ -13,6 +13,26 @@ var (
 	ErrInvalidPoolMove = errors.New("invalid pool transition")
 )
 
+var validPoolTransitions = map[HostPool][]HostPool{
+	PoolProvisioning: {PoolWarm},
+	PoolWarm:         {PoolActive, PoolDraining},
+	PoolActive:       {PoolDraining},
+	PoolDraining:     {},
+}
+
+func validPoolTransition(from, to HostPool) bool {
+	allowed, ok := validPoolTransitions[from]
+	if !ok {
+		return false
+	}
+	for _, p := range allowed {
+		if p == to {
+			return true
+		}
+	}
+	return false
+}
+
 type PoolManager struct {
 	mu    sync.RWMutex
 	hosts map[string]*Host
@@ -24,12 +44,16 @@ func NewPoolManager() *PoolManager {
 	}
 }
 
-func (pm *PoolManager) AddHost(host Host) {
+func (pm *PoolManager) AddHost(host Host) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	if _, exists := pm.hosts[host.ID]; exists {
+		return fmt.Errorf("adding host %s: host already exists", host.ID)
+	}
 	host.UpdatedAt = time.Now()
 	pm.hosts[host.ID] = &host
+	return nil
 }
 
 func (pm *PoolManager) RemoveHost(hostID string) error {
@@ -51,7 +75,18 @@ func (pm *PoolManager) MoveHost(hostID string, toPool HostPool) error {
 	if !ok {
 		return fmt.Errorf("moving host %s to pool %s: %w", hostID, toPool, ErrHostNotFound)
 	}
+	if !validPoolTransition(h.Pool, toPool) {
+		return fmt.Errorf("moving host %s from %s to %s: %w", hostID, h.Pool, toPool, ErrInvalidPoolMove)
+	}
 	h.Pool = toPool
+	switch toPool {
+	case PoolDraining:
+		h.State = HostDraining
+	case PoolWarm:
+		h.State = HostReady
+	case PoolActive:
+		h.State = HostReady
+	}
 	h.UpdatedAt = time.Now()
 	return nil
 }
@@ -68,6 +103,9 @@ func (pm *PoolManager) AllocateCageSlot(hostID string) error {
 		return fmt.Errorf("allocating cage slot on host %s: %w", hostID, ErrNoCapacity)
 	}
 	h.CageSlotsUsed++
+	if h.CageSlotsUsed >= h.CageSlotsTotal {
+		h.State = HostBusy
+	}
 	h.UpdatedAt = time.Now()
 	return nil
 }
@@ -81,9 +119,12 @@ func (pm *PoolManager) ReleaseCageSlot(hostID string) error {
 		return fmt.Errorf("releasing cage slot on host %s: %w", hostID, ErrHostNotFound)
 	}
 	if h.CageSlotsUsed <= 0 {
-		return nil
+		return fmt.Errorf("releasing cage slot on host %s: slot count already zero", hostID)
 	}
 	h.CageSlotsUsed--
+	if h.State == HostBusy && h.CageSlotsUsed < h.CageSlotsTotal {
+		h.State = HostReady
+	}
 	h.UpdatedAt = time.Now()
 	return nil
 }

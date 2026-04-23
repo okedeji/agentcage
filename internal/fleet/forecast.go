@@ -78,6 +78,9 @@ func (f *ForecastIntegration) applyForecast(ctx context.Context) {
 		f.logger.Error(err, "fetching forecast")
 		return
 	}
+	if fc == nil || len(fc.Predictions) == 0 {
+		return
+	}
 
 	prediction := nearestPrediction(fc.Predictions, time.Now().Add(10*time.Minute))
 	if prediction == nil {
@@ -117,7 +120,9 @@ func (f *ForecastIntegration) applyForecast(ctx context.Context) {
 			continue
 		}
 		host.Pool = PoolWarm
-		f.autoscaler.pool.AddHost(*host)
+		if err := f.autoscaler.pool.AddHost(*host); err != nil {
+			f.logger.Error(err, "adding forecast-provisioned host to pool", "host_id", host.ID)
+		}
 	}
 }
 
@@ -130,7 +135,11 @@ func (f *ForecastIntegration) applySignals(ctx context.Context) {
 
 	for _, sig := range signals {
 		peak := estimateSignalDemand(sig.AssessmentSize)
-		f.autoscaler.demand.AddDemand("signal:"+sig.CustomerID+":"+sig.ScheduledAt.Format(time.RFC3339), peak)
+		demandKey := fmt.Sprintf("signal:%s:%d", sig.CustomerID, sig.ScheduledAt.Unix())
+		if f.autoscaler.demand.GetDemand(demandKey) > 0 {
+			continue
+		}
+		f.autoscaler.demand.AddDemand(demandKey, peak)
 		f.logger.V(1).Info("webhook signal applied to demand ledger", "customer_id", sig.CustomerID, "size", sig.AssessmentSize, "peak", peak)
 
 		if err := f.signals.AcknowledgeSignal(ctx, sig); err != nil {

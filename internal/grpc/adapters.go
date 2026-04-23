@@ -255,6 +255,23 @@ func (a *fleetAdapter) GetFleetStatus(ctx context.Context, _ *pb.GetFleetStatusR
 	return &pb.GetFleetStatusResponse{Status: fleetStatusToProto(fs)}, nil
 }
 
+func (a *fleetAdapter) ListHosts(ctx context.Context, req *pb.ListHostsRequest) (*pb.ListHostsResponse, error) {
+	var poolFilter *fleet.HostPool
+	if req.GetPoolFilter() != pb.HostPool_HOST_POOL_UNSPECIFIED {
+		p := poolFromProto(req.GetPoolFilter())
+		poolFilter = &p
+	}
+	hosts, err := a.server.ListHosts(ctx, poolFilter)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	pbHosts := make([]*pb.HostInfo, len(hosts))
+	for i, h := range hosts {
+		pbHosts[i] = hostToProto(h)
+	}
+	return &pb.ListHostsResponse{Hosts: pbHosts}, nil
+}
+
 func (a *fleetAdapter) DrainHost(ctx context.Context, req *pb.DrainHostRequest) (*pb.DrainHostResponse, error) {
 	if err := a.server.DrainHost(ctx, req.GetHostId(), req.GetReason(), req.GetForce()); err != nil {
 		return nil, toGRPCError(err)

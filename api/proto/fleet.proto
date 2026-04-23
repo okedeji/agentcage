@@ -4,6 +4,7 @@ option go_package = "github.com/okedeji/agentcage/api/proto";
 
 service FleetService {
   rpc GetFleetStatus(GetFleetStatusRequest) returns (GetFleetStatusResponse);
+  rpc ListHosts(ListHostsRequest) returns (ListHostsResponse);
   rpc DrainHost(DrainHostRequest) returns (DrainHostResponse);
   rpc GetCapacity(GetCapacityRequest) returns (GetCapacityResponse);
 }
@@ -63,6 +64,14 @@ message DrainHostRequest {
 }
 
 message DrainHostResponse {}
+
+message ListHostsRequest {
+  HostPool pool_filter = 1;
+}
+
+message ListHostsResponse {
+  repeated HostInfo hosts = 1;
+}
 
 message GetCapacityRequest {}
 

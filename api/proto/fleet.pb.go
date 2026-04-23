@@ -546,6 +546,94 @@ func (*DrainHostResponse) Descriptor() ([]byte, []int) {
 	return file_api_proto_fleet_proto_rawDescGZIP(), []int{6}
 }
 
+type ListHostsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PoolFilter    HostPool               `protobuf:"varint,1,opt,name=pool_filter,json=poolFilter,proto3,enum=agentcage.fleet.v1.HostPool" json:"pool_filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListHostsRequest) Reset() {
+	*x = ListHostsRequest{}
+	mi := &file_api_proto_fleet_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListHostsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListHostsRequest) ProtoMessage() {}
+
+func (x *ListHostsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_fleet_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListHostsRequest.ProtoReflect.Descriptor instead.
+func (*ListHostsRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_fleet_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListHostsRequest) GetPoolFilter() HostPool {
+	if x != nil {
+		return x.PoolFilter
+	}
+	return HostPool_HOST_POOL_UNSPECIFIED
+}
+
+type ListHostsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hosts         []*HostInfo            `protobuf:"bytes,1,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListHostsResponse) Reset() {
+	*x = ListHostsResponse{}
+	mi := &file_api_proto_fleet_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListHostsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListHostsResponse) ProtoMessage() {}
+
+func (x *ListHostsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_fleet_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListHostsResponse.ProtoReflect.Descriptor instead.
+func (*ListHostsResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_fleet_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ListHostsResponse) GetHosts() []*HostInfo {
+	if x != nil {
+		return x.Hosts
+	}
+	return nil
+}
+
 type GetCapacityRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -554,7 +642,7 @@ type GetCapacityRequest struct {
 
 func (x *GetCapacityRequest) Reset() {
 	*x = GetCapacityRequest{}
-	mi := &file_api_proto_fleet_proto_msgTypes[7]
+	mi := &file_api_proto_fleet_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -566,7 +654,7 @@ func (x *GetCapacityRequest) String() string {
 func (*GetCapacityRequest) ProtoMessage() {}
 
 func (x *GetCapacityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_fleet_proto_msgTypes[7]
+	mi := &file_api_proto_fleet_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -579,7 +667,7 @@ func (x *GetCapacityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCapacityRequest.ProtoReflect.Descriptor instead.
 func (*GetCapacityRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_fleet_proto_rawDescGZIP(), []int{7}
+	return file_api_proto_fleet_proto_rawDescGZIP(), []int{9}
 }
 
 type GetCapacityResponse struct {
@@ -592,7 +680,7 @@ type GetCapacityResponse struct {
 
 func (x *GetCapacityResponse) Reset() {
 	*x = GetCapacityResponse{}
-	mi := &file_api_proto_fleet_proto_msgTypes[8]
+	mi := &file_api_proto_fleet_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -604,7 +692,7 @@ func (x *GetCapacityResponse) String() string {
 func (*GetCapacityResponse) ProtoMessage() {}
 
 func (x *GetCapacityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_fleet_proto_msgTypes[8]
+	mi := &file_api_proto_fleet_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -617,7 +705,7 @@ func (x *GetCapacityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCapacityResponse.ProtoReflect.Descriptor instead.
 func (*GetCapacityResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_fleet_proto_rawDescGZIP(), []int{8}
+	return file_api_proto_fleet_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetCapacityResponse) GetPools() []*PoolStatus {
@@ -670,7 +758,12 @@ const file_api_proto_fleet_proto_rawDesc = "" +
 	"\ahost_id\x18\x01 \x01(\tR\x06hostId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x14\n" +
 	"\x05force\x18\x03 \x01(\bR\x05force\"\x13\n" +
-	"\x11DrainHostResponse\"\x14\n" +
+	"\x11DrainHostResponse\"Q\n" +
+	"\x10ListHostsRequest\x12=\n" +
+	"\vpool_filter\x18\x01 \x01(\x0e2\x1c.agentcage.fleet.v1.HostPoolR\n" +
+	"poolFilter\"G\n" +
+	"\x11ListHostsResponse\x122\n" +
+	"\x05hosts\x18\x01 \x03(\v2\x1c.agentcage.fleet.v1.HostInfoR\x05hosts\"\x14\n" +
 	"\x12GetCapacityRequest\"}\n" +
 	"\x13GetCapacityResponse\x124\n" +
 	"\x05pools\x18\x01 \x03(\v2\x1e.agentcage.fleet.v1.PoolStatusR\x05pools\x120\n" +
@@ -687,9 +780,10 @@ const file_api_proto_fleet_proto_rawDesc = "" +
 	"\x10HOST_STATE_READY\x10\x02\x12\x13\n" +
 	"\x0fHOST_STATE_BUSY\x10\x03\x12\x17\n" +
 	"\x13HOST_STATE_DRAINING\x10\x04\x12\x16\n" +
-	"\x12HOST_STATE_OFFLINE\x10\x052\xb1\x02\n" +
+	"\x12HOST_STATE_OFFLINE\x10\x052\x8b\x03\n" +
 	"\fFleetService\x12g\n" +
 	"\x0eGetFleetStatus\x12).agentcage.fleet.v1.GetFleetStatusRequest\x1a*.agentcage.fleet.v1.GetFleetStatusResponse\x12X\n" +
+	"\tListHosts\x12$.agentcage.fleet.v1.ListHostsRequest\x1a%.agentcage.fleet.v1.ListHostsResponse\x12X\n" +
 	"\tDrainHost\x12$.agentcage.fleet.v1.DrainHostRequest\x1a%.agentcage.fleet.v1.DrainHostResponse\x12^\n" +
 	"\vGetCapacity\x12&.agentcage.fleet.v1.GetCapacityRequest\x1a'.agentcage.fleet.v1.GetCapacityResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
 
@@ -706,7 +800,7 @@ func file_api_proto_fleet_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_fleet_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_api_proto_fleet_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_api_proto_fleet_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_api_proto_fleet_proto_goTypes = []any{
 	(HostPool)(0),                  // 0: agentcage.fleet.v1.HostPool
 	(HostState)(0),                 // 1: agentcage.fleet.v1.HostState
@@ -717,8 +811,10 @@ var file_api_proto_fleet_proto_goTypes = []any{
 	(*GetFleetStatusResponse)(nil), // 6: agentcage.fleet.v1.GetFleetStatusResponse
 	(*DrainHostRequest)(nil),       // 7: agentcage.fleet.v1.DrainHostRequest
 	(*DrainHostResponse)(nil),      // 8: agentcage.fleet.v1.DrainHostResponse
-	(*GetCapacityRequest)(nil),     // 9: agentcage.fleet.v1.GetCapacityRequest
-	(*GetCapacityResponse)(nil),    // 10: agentcage.fleet.v1.GetCapacityResponse
+	(*ListHostsRequest)(nil),       // 9: agentcage.fleet.v1.ListHostsRequest
+	(*ListHostsResponse)(nil),      // 10: agentcage.fleet.v1.ListHostsResponse
+	(*GetCapacityRequest)(nil),     // 11: agentcage.fleet.v1.GetCapacityRequest
+	(*GetCapacityResponse)(nil),    // 12: agentcage.fleet.v1.GetCapacityResponse
 }
 var file_api_proto_fleet_proto_depIdxs = []int32{
 	0,  // 0: agentcage.fleet.v1.PoolStatus.pool:type_name -> agentcage.fleet.v1.HostPool
@@ -726,18 +822,22 @@ var file_api_proto_fleet_proto_depIdxs = []int32{
 	1,  // 2: agentcage.fleet.v1.HostInfo.state:type_name -> agentcage.fleet.v1.HostState
 	2,  // 3: agentcage.fleet.v1.FleetStatus.pools:type_name -> agentcage.fleet.v1.PoolStatus
 	4,  // 4: agentcage.fleet.v1.GetFleetStatusResponse.status:type_name -> agentcage.fleet.v1.FleetStatus
-	2,  // 5: agentcage.fleet.v1.GetCapacityResponse.pools:type_name -> agentcage.fleet.v1.PoolStatus
-	5,  // 6: agentcage.fleet.v1.FleetService.GetFleetStatus:input_type -> agentcage.fleet.v1.GetFleetStatusRequest
-	7,  // 7: agentcage.fleet.v1.FleetService.DrainHost:input_type -> agentcage.fleet.v1.DrainHostRequest
-	9,  // 8: agentcage.fleet.v1.FleetService.GetCapacity:input_type -> agentcage.fleet.v1.GetCapacityRequest
-	6,  // 9: agentcage.fleet.v1.FleetService.GetFleetStatus:output_type -> agentcage.fleet.v1.GetFleetStatusResponse
-	8,  // 10: agentcage.fleet.v1.FleetService.DrainHost:output_type -> agentcage.fleet.v1.DrainHostResponse
-	10, // 11: agentcage.fleet.v1.FleetService.GetCapacity:output_type -> agentcage.fleet.v1.GetCapacityResponse
-	9,  // [9:12] is the sub-list for method output_type
-	6,  // [6:9] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	0,  // 5: agentcage.fleet.v1.ListHostsRequest.pool_filter:type_name -> agentcage.fleet.v1.HostPool
+	3,  // 6: agentcage.fleet.v1.ListHostsResponse.hosts:type_name -> agentcage.fleet.v1.HostInfo
+	2,  // 7: agentcage.fleet.v1.GetCapacityResponse.pools:type_name -> agentcage.fleet.v1.PoolStatus
+	5,  // 8: agentcage.fleet.v1.FleetService.GetFleetStatus:input_type -> agentcage.fleet.v1.GetFleetStatusRequest
+	9,  // 9: agentcage.fleet.v1.FleetService.ListHosts:input_type -> agentcage.fleet.v1.ListHostsRequest
+	7,  // 10: agentcage.fleet.v1.FleetService.DrainHost:input_type -> agentcage.fleet.v1.DrainHostRequest
+	11, // 11: agentcage.fleet.v1.FleetService.GetCapacity:input_type -> agentcage.fleet.v1.GetCapacityRequest
+	6,  // 12: agentcage.fleet.v1.FleetService.GetFleetStatus:output_type -> agentcage.fleet.v1.GetFleetStatusResponse
+	10, // 13: agentcage.fleet.v1.FleetService.ListHosts:output_type -> agentcage.fleet.v1.ListHostsResponse
+	8,  // 14: agentcage.fleet.v1.FleetService.DrainHost:output_type -> agentcage.fleet.v1.DrainHostResponse
+	12, // 15: agentcage.fleet.v1.FleetService.GetCapacity:output_type -> agentcage.fleet.v1.GetCapacityResponse
+	12, // [12:16] is the sub-list for method output_type
+	8,  // [8:12] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_fleet_proto_init() }
@@ -751,7 +851,7 @@ func file_api_proto_fleet_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_fleet_proto_rawDesc), len(file_api_proto_fleet_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

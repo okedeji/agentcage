@@ -33,7 +33,9 @@ func InitPool(pool *PoolManager, hosts []config.HostConfig, validatorRes, discov
 			if h.CageSlotsTotal <= 0 {
 				return fmt.Errorf("host %s has zero cage slots (vcpus=%d, mem=%dMB)", h.ID, h.VCPUsTotal, h.MemoryMBTotal)
 			}
-			pool.AddHost(h)
+			if err := pool.AddHost(h); err != nil {
+				return fmt.Errorf("adding host %s: %w", h.ID, err)
+			}
 		}
 		return nil
 	}
@@ -67,8 +69,7 @@ func InitPool(pool *PoolManager, hosts []config.HostConfig, validatorRes, discov
 	if h.CageSlotsTotal <= 0 {
 		h.CageSlotsTotal = 1
 	}
-	pool.AddHost(h)
-	return nil
+	return pool.AddHost(h)
 }
 
 func hostIDFromAddress(addr string) string {

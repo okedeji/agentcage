@@ -105,7 +105,7 @@ func TestReconcile_WarmAboveTargetNoDemand(t *testing.T) {
 	a := newTestAutoscaler(pool, demand, prov, 2, 5)
 
 	for i := 0; i < 10; i++ {
-		pool.AddHost(Host{
+		_ = pool.AddHost(Host{
 			ID:             fmt.Sprintf("warm-%d", i),
 			Pool:           PoolWarm,
 			State:          HostReady,
@@ -132,7 +132,7 @@ func TestReconcile_WarmAboveTargetWithDemand(t *testing.T) {
 	a := newTestAutoscaler(pool, demand, prov, 2, 5)
 
 	for i := 0; i < 10; i++ {
-		pool.AddHost(Host{
+		_ = pool.AddHost(Host{
 			ID:             fmt.Sprintf("warm-%d", i),
 			Pool:           PoolWarm,
 			State:          HostReady,
@@ -159,7 +159,7 @@ func TestReconcile_WarmAtTarget(t *testing.T) {
 	a := newTestAutoscaler(pool, demand, prov, 3, 5)
 
 	for i := 0; i < 3; i++ {
-		pool.AddHost(Host{
+		_ = pool.AddHost(Host{
 			ID:             fmt.Sprintf("warm-%d", i),
 			Pool:           PoolWarm,
 			State:          HostReady,

@@ -30,6 +30,7 @@ type NomadScheduler struct {
 	pool   *PoolManager
 	mu     sync.Mutex
 	allocs map[string]*allocation
+	ipSeq  uint32
 }
 
 func NewNomadScheduler(pool *PoolManager) *NomadScheduler {
@@ -59,13 +60,18 @@ func (s *NomadScheduler) Schedule(ctx context.Context, config cage.VMConfig) (*c
 		config: config,
 	}
 
+	s.ipSeq++
+	octet3 := (s.ipSeq / 254) % 256
+	octet4 := (s.ipSeq % 254) + 1
 	return &cage.VMHandle{
 		ID:        vmID,
 		CageID:    config.CageID,
-		IPAddress: fmt.Sprintf("10.0.0.%d", len(s.allocs)+1),
+		IPAddress: fmt.Sprintf("10.0.%d.%d", octet3, octet4),
 		StartedAt: time.Now(),
 	}, nil
 }
+
+var ErrAllocationNotFound = fmt.Errorf("VM allocation not found")
 
 func (s *NomadScheduler) Deallocate(ctx context.Context, vmID string) error {
 	s.mu.Lock()
@@ -73,7 +79,7 @@ func (s *NomadScheduler) Deallocate(ctx context.Context, vmID string) error {
 
 	alloc, ok := s.allocs[vmID]
 	if !ok {
-		return fmt.Errorf("deallocating VM %s: %w", vmID, ErrHostNotFound)
+		return fmt.Errorf("deallocating VM %s: %w", vmID, ErrAllocationNotFound)
 	}
 
 	if err := s.pool.ReleaseCageSlot(alloc.hostID); err != nil {

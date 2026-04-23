@@ -12,7 +12,7 @@ import (
 func newTestScheduler(hosts ...Host) *NomadScheduler {
 	pm := NewPoolManager()
 	for _, h := range hosts {
-		pm.AddHost(h)
+		_ = pm.AddHost(h)
 	}
 	return NewNomadScheduler(pm)
 }
@@ -65,7 +65,7 @@ func TestNomadScheduler_Deallocate_Unknown(t *testing.T) {
 	ctx := context.Background()
 
 	err := s.Deallocate(ctx, "nonexistent")
-	assert.ErrorIs(t, err, ErrHostNotFound)
+	assert.ErrorIs(t, err, ErrAllocationNotFound)
 }
 
 func TestNomadScheduler_Status_Running(t *testing.T) {

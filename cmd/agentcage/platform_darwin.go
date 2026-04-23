@@ -292,14 +292,6 @@ func stopViaPID(pidFile string) {
 	fmt.Println("agentcage killed.")
 }
 
-func isProxyCommand(cmd string) bool {
-	switch cmd {
-	case "fleet":
-		return true
-	}
-	return false
-}
-
 func tcpProxyFromListener(ctx context.Context, ln net.Listener, targetAddr string) error {
 	go func() {
 		<-ctx.Done()

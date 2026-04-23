@@ -70,6 +70,6 @@ func TestCalculateMixedSlots(t *testing.T) {
 	// validator: 96 slots * 0.60 = 57.6
 	// discovery: 48 slots * 0.25 = 12.0
 	// escalation: 48 slots * 0.15 = 7.2
-	// total = 76.8 → 76
-	assert.Equal(t, int32(76), got)
+	// total = 76.8 → 77 (rounded)
+	assert.Equal(t, int32(77), got)
 }

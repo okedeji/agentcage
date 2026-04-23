@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	FleetService_GetFleetStatus_FullMethodName = "/agentcage.fleet.v1.FleetService/GetFleetStatus"
+	FleetService_ListHosts_FullMethodName      = "/agentcage.fleet.v1.FleetService/ListHosts"
 	FleetService_DrainHost_FullMethodName      = "/agentcage.fleet.v1.FleetService/DrainHost"
 	FleetService_GetCapacity_FullMethodName    = "/agentcage.fleet.v1.FleetService/GetCapacity"
 )
@@ -29,6 +30,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FleetServiceClient interface {
 	GetFleetStatus(ctx context.Context, in *GetFleetStatusRequest, opts ...grpc.CallOption) (*GetFleetStatusResponse, error)
+	ListHosts(ctx context.Context, in *ListHostsRequest, opts ...grpc.CallOption) (*ListHostsResponse, error)
 	DrainHost(ctx context.Context, in *DrainHostRequest, opts ...grpc.CallOption) (*DrainHostResponse, error)
 	GetCapacity(ctx context.Context, in *GetCapacityRequest, opts ...grpc.CallOption) (*GetCapacityResponse, error)
 }
@@ -45,6 +47,16 @@ func (c *fleetServiceClient) GetFleetStatus(ctx context.Context, in *GetFleetSta
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetFleetStatusResponse)
 	err := c.cc.Invoke(ctx, FleetService_GetFleetStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetServiceClient) ListHosts(ctx context.Context, in *ListHostsRequest, opts ...grpc.CallOption) (*ListHostsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListHostsResponse)
+	err := c.cc.Invoke(ctx, FleetService_ListHosts_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +88,7 @@ func (c *fleetServiceClient) GetCapacity(ctx context.Context, in *GetCapacityReq
 // for forward compatibility.
 type FleetServiceServer interface {
 	GetFleetStatus(context.Context, *GetFleetStatusRequest) (*GetFleetStatusResponse, error)
+	ListHosts(context.Context, *ListHostsRequest) (*ListHostsResponse, error)
 	DrainHost(context.Context, *DrainHostRequest) (*DrainHostResponse, error)
 	GetCapacity(context.Context, *GetCapacityRequest) (*GetCapacityResponse, error)
 	mustEmbedUnimplementedFleetServiceServer()
@@ -90,6 +103,9 @@ type UnimplementedFleetServiceServer struct{}
 
 func (UnimplementedFleetServiceServer) GetFleetStatus(context.Context, *GetFleetStatusRequest) (*GetFleetStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetFleetStatus not implemented")
+}
+func (UnimplementedFleetServiceServer) ListHosts(context.Context, *ListHostsRequest) (*ListHostsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListHosts not implemented")
 }
 func (UnimplementedFleetServiceServer) DrainHost(context.Context, *DrainHostRequest) (*DrainHostResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DrainHost not implemented")
@@ -132,6 +148,24 @@ func _FleetService_GetFleetStatus_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(FleetServiceServer).GetFleetStatus(ctx, req.(*GetFleetStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetService_ListHosts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListHostsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetServiceServer).ListHosts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetService_ListHosts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetServiceServer).ListHosts(ctx, req.(*ListHostsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -182,6 +216,10 @@ var FleetService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetFleetStatus",
 			Handler:    _FleetService_GetFleetStatus_Handler,
+		},
+		{
+			MethodName: "ListHosts",
+			Handler:    _FleetService_ListHosts_Handler,
 		},
 		{
 			MethodName: "DrainHost",

@@ -21,7 +21,7 @@ func testHost(id string, pool HostPool, slotsTotal, slotsUsed int32) Host {
 
 func TestPoolManager_AddAndGetHost(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("host-1", PoolActive, 48, 0))
+	_ = pm.AddHost(testHost("host-1", PoolActive, 48, 0))
 
 	h, err := pm.GetHost("host-1")
 	require.NoError(t, err)
@@ -39,7 +39,7 @@ func TestPoolManager_GetHost_NotFound(t *testing.T) {
 
 func TestPoolManager_AllocateCageSlot(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("host-1", PoolActive, 2, 0))
+	_ = pm.AddHost(testHost("host-1", PoolActive, 2, 0))
 
 	require.NoError(t, pm.AllocateCageSlot("host-1"))
 
@@ -50,7 +50,7 @@ func TestPoolManager_AllocateCageSlot(t *testing.T) {
 
 func TestPoolManager_AllocateCageSlot_AtCapacity(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("host-1", PoolActive, 2, 2))
+	_ = pm.AddHost(testHost("host-1", PoolActive, 2, 2))
 
 	err := pm.AllocateCageSlot("host-1")
 	assert.ErrorIs(t, err, ErrNoCapacity)
@@ -65,7 +65,7 @@ func TestPoolManager_AllocateCageSlot_NotFound(t *testing.T) {
 
 func TestPoolManager_ReleaseCageSlot(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("host-1", PoolActive, 10, 5))
+	_ = pm.AddHost(testHost("host-1", PoolActive, 10, 5))
 
 	require.NoError(t, pm.ReleaseCageSlot("host-1"))
 
@@ -76,19 +76,17 @@ func TestPoolManager_ReleaseCageSlot(t *testing.T) {
 
 func TestPoolManager_ReleaseCageSlot_AtZero(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("host-1", PoolActive, 10, 0))
+	_ = pm.AddHost(testHost("host-1", PoolActive, 10, 0))
 
 	err := pm.ReleaseCageSlot("host-1")
-	assert.NoError(t, err)
-
-	h, _ := pm.GetHost("host-1")
-	assert.Equal(t, int32(0), h.CageSlotsUsed)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "slot count already zero")
 }
 
 func TestPoolManager_GetAvailableHost_PrefersActive(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("warm-1", PoolWarm, 10, 0))
-	pm.AddHost(testHost("active-1", PoolActive, 10, 0))
+	_ = pm.AddHost(testHost("warm-1", PoolWarm, 10, 0))
+	_ = pm.AddHost(testHost("active-1", PoolActive, 10, 0))
 
 	h, err := pm.GetAvailableHost()
 	require.NoError(t, err)
@@ -97,8 +95,8 @@ func TestPoolManager_GetAvailableHost_PrefersActive(t *testing.T) {
 
 func TestPoolManager_GetAvailableHost_FallsBackToWarm(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("active-1", PoolActive, 10, 10))
-	pm.AddHost(testHost("warm-1", PoolWarm, 10, 0))
+	_ = pm.AddHost(testHost("active-1", PoolActive, 10, 10))
+	_ = pm.AddHost(testHost("warm-1", PoolWarm, 10, 0))
 
 	h, err := pm.GetAvailableHost()
 	require.NoError(t, err)
@@ -107,8 +105,8 @@ func TestPoolManager_GetAvailableHost_FallsBackToWarm(t *testing.T) {
 
 func TestPoolManager_GetAvailableHost_NoCapacity(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("host-1", PoolActive, 2, 2))
-	pm.AddHost(testHost("host-2", PoolDraining, 10, 0))
+	_ = pm.AddHost(testHost("host-1", PoolActive, 2, 2))
+	_ = pm.AddHost(testHost("host-2", PoolDraining, 10, 0))
 
 	_, err := pm.GetAvailableHost()
 	assert.ErrorIs(t, err, ErrNoCapacity)
@@ -123,7 +121,7 @@ func TestPoolManager_GetAvailableHost_Empty(t *testing.T) {
 
 func TestPoolManager_MoveHost(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("host-1", PoolActive, 10, 0))
+	_ = pm.AddHost(testHost("host-1", PoolActive, 10, 0))
 
 	require.NoError(t, pm.MoveHost("host-1", PoolDraining))
 
@@ -141,7 +139,7 @@ func TestPoolManager_MoveHost_NotFound(t *testing.T) {
 
 func TestPoolManager_RemoveHost(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("host-1", PoolActive, 10, 0))
+	_ = pm.AddHost(testHost("host-1", PoolActive, 10, 0))
 
 	require.NoError(t, pm.RemoveHost("host-1"))
 
@@ -158,9 +156,9 @@ func TestPoolManager_RemoveHost_NotFound(t *testing.T) {
 
 func TestPoolManager_GetFleetStatus(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("a-1", PoolActive, 10, 3))
-	pm.AddHost(testHost("a-2", PoolActive, 10, 7))
-	pm.AddHost(testHost("w-1", PoolWarm, 10, 0))
+	_ = pm.AddHost(testHost("a-1", PoolActive, 10, 3))
+	_ = pm.AddHost(testHost("a-2", PoolActive, 10, 7))
+	_ = pm.AddHost(testHost("w-1", PoolWarm, 10, 0))
 
 	status := pm.GetFleetStatus()
 	assert.Equal(t, int32(3), status.TotalHosts)
@@ -184,8 +182,8 @@ func TestPoolManager_GetFleetStatus_Empty(t *testing.T) {
 
 func TestPoolManager_GetPoolStatus(t *testing.T) {
 	pm := NewPoolManager()
-	pm.AddHost(testHost("a-1", PoolActive, 10, 3))
-	pm.AddHost(testHost("a-2", PoolActive, 10, 7))
+	_ = pm.AddHost(testHost("a-1", PoolActive, 10, 3))
+	_ = pm.AddHost(testHost("a-2", PoolActive, 10, 7))
 
 	statuses := pm.GetPoolStatus()
 	require.Len(t, statuses, 1)

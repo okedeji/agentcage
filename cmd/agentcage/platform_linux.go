@@ -9,7 +9,3 @@ func platformInit(args []string) {
 func platformStop(args []string) {
 	cmdStop(args)
 }
-
-func isProxyCommand(_ string) bool {
-	return false
-}

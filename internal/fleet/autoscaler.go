@@ -32,12 +32,13 @@ type AlertNotifier interface {
 }
 
 type Autoscaler struct {
-	pool        *PoolManager
-	demand      *DemandLedger
-	provisioner HostProvisioner
-	alerter     AlertNotifier
-	config      AutoscalerConfig
-	logger      logr.Logger
+	pool              *PoolManager
+	demand            *DemandLedger
+	provisioner       HostProvisioner
+	alerter           AlertNotifier
+	config            AutoscalerConfig
+	logger            logr.Logger
+	provisionFailures int
 }
 
 func NewAutoscaler(pool *PoolManager, demand *DemandLedger, provisioner HostProvisioner, alerter AlertNotifier, config AutoscalerConfig, logger logr.Logger) *Autoscaler {
@@ -144,7 +145,8 @@ func (a *Autoscaler) hostsForDemand() int32 {
 	}
 	slotsPerHost := a.averageSlotsPerHost()
 	if slotsPerHost <= 0 {
-		return 0
+		a.logger.Error(fmt.Errorf("slots per host is zero with demand %d", demand), "provisioning 1 host as bootstrap")
+		return 1
 	}
 	return (demand + slotsPerHost - 1) / slotsPerHost
 }
@@ -168,20 +170,34 @@ func (a *Autoscaler) averageSlotsPerHost() int32 {
 	return CalculateSlots(fallback, a.config.DefaultCageResources)
 }
 
+const maxProvisionBackoffCycles = 5
+
 func (a *Autoscaler) provisionHosts(ctx context.Context, count int32) {
+	if a.provisionFailures >= maxProvisionBackoffCycles {
+		a.logger.Info("provisioner in backoff, skipping", "consecutive_failures", a.provisionFailures)
+		a.provisionFailures++
+		if a.provisionFailures > maxProvisionBackoffCycles*2 {
+			a.provisionFailures = maxProvisionBackoffCycles
+		}
+		return
+	}
 	for range count {
 		if ctx.Err() != nil {
 			return
 		}
 		host, err := a.provisioner.Provision(ctx)
 		if err != nil {
-			a.logger.Error(err, "provisioning host")
+			a.provisionFailures++
+			a.logger.Error(err, "provisioning host", "consecutive_failures", a.provisionFailures)
 			if a.alerter != nil {
-				a.alerter.Notify(ctx, "behavioral", "fleet_provision_failed", fmt.Sprintf("failed to provision host: %v", err), "", "", 3, map[string]any{"error": err.Error()})
+				a.alerter.Notify(ctx, "behavioral", "fleet_provision_failed", fmt.Sprintf("failed to provision host: %v", err), "", "", 3, map[string]any{"error": err.Error(), "consecutive_failures": a.provisionFailures})
 			}
 			continue
 		}
-		a.pool.AddHost(*host)
+		a.provisionFailures = 0
+		if err := a.pool.AddHost(*host); err != nil {
+			a.logger.Error(err, "adding provisioned host to pool", "host_id", host.ID)
+		}
 		a.logger.V(1).Info("host provisioning started", "host_id", host.ID)
 	}
 }
@@ -270,13 +286,21 @@ func (a *Autoscaler) OnNewAssessment(assessmentID string, surfaceSize int) {
 	gap := hostsNeeded - availableHosts
 	if gap > 0 {
 		a.logger.Info("pre-provisioning for assessment", "assessment_id", assessmentID, "surface_size", surfaceSize, "peak_cages", peakCages, "hosts_needed", hostsNeeded, "gap", gap)
+		provCtx, provCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer provCancel()
 		for range gap {
-			host, err := a.provisioner.Provision(context.Background())
+			if provCtx.Err() != nil {
+				a.logger.Error(provCtx.Err(), "pre-provisioning timed out", "assessment_id", assessmentID)
+				break
+			}
+			host, err := a.provisioner.Provision(provCtx)
 			if err != nil {
 				a.logger.Error(err, "pre-provisioning host for assessment", "assessment_id", assessmentID)
 				continue
 			}
-			a.pool.AddHost(*host)
+			if err := a.pool.AddHost(*host); err != nil {
+				a.logger.Error(err, "adding provisioned host to pool", "host_id", host.ID)
+			}
 		}
 	}
 

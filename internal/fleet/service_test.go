@@ -12,14 +12,14 @@ import (
 
 func TestServer_GetFleetStatus(t *testing.T) {
 	pool := NewPoolManager()
-	pool.AddHost(Host{
+	_ = pool.AddHost(Host{
 		ID:             "h-1",
 		Pool:           PoolActive,
 		State:          HostReady,
 		CageSlotsTotal: 16,
 		CageSlotsUsed:  4,
 	})
-	pool.AddHost(Host{
+	_ = pool.AddHost(Host{
 		ID:             "h-2",
 		Pool:           PoolWarm,
 		State:          HostReady,
@@ -37,7 +37,7 @@ func TestServer_GetFleetStatus(t *testing.T) {
 
 func TestServer_DrainHost(t *testing.T) {
 	pool := NewPoolManager()
-	pool.AddHost(Host{
+	_ = pool.AddHost(Host{
 		ID:             "h-1",
 		Pool:           PoolActive,
 		State:          HostReady,
@@ -64,21 +64,21 @@ func TestServer_DrainHost_Unknown(t *testing.T) {
 
 func TestServer_GetCapacity(t *testing.T) {
 	pool := NewPoolManager()
-	pool.AddHost(Host{
+	_ = pool.AddHost(Host{
 		ID:             "h-1",
 		Pool:           PoolActive,
 		State:          HostReady,
 		CageSlotsTotal: 16,
 		CageSlotsUsed:  6,
 	})
-	pool.AddHost(Host{
+	_ = pool.AddHost(Host{
 		ID:             "h-2",
 		Pool:           PoolWarm,
 		State:          HostReady,
 		CageSlotsTotal: 16,
 		CageSlotsUsed:  0,
 	})
-	pool.AddHost(Host{
+	_ = pool.AddHost(Host{
 		ID:             "h-3",
 		Pool:           PoolDraining,
 		State:          HostDraining,

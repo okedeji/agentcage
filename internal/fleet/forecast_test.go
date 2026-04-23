@@ -104,7 +104,7 @@ func TestForecastIntegration_LowDemand_NoProvisioning(t *testing.T) {
 		host, _ := prov.Provision(context.Background())
 		host.Pool = PoolWarm
 		host.CageSlotsTotal = 16
-		autoscaler.pool.AddHost(*host)
+		_ = autoscaler.pool.AddHost(*host)
 	}
 	prov.provisioned = 0
 

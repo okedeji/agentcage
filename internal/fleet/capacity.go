@@ -1,5 +1,7 @@
 package fleet
 
+import "math"
+
 type CageResources struct {
 	VCPUs    int32
 	MemoryMB int32
@@ -25,5 +27,5 @@ func CalculateMixedSlots(host Host, validatorRes, discoveryRes, escalationRes Ca
 	validatorSlots := CalculateSlots(host, validatorRes)
 	discoverySlots := CalculateSlots(host, discoveryRes)
 	escalationSlots := CalculateSlots(host, escalationRes)
-	return int32(float64(validatorSlots)*0.60 + float64(discoverySlots)*0.25 + float64(escalationSlots)*0.15)
+	return int32(math.Round(float64(validatorSlots)*0.60 + float64(discoverySlots)*0.25 + float64(escalationSlots)*0.15))
 }

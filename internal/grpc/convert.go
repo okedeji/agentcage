@@ -521,6 +521,52 @@ func poolToProto(p fleet.HostPool) pb.HostPool {
 	}
 }
 
+func poolFromProto(p pb.HostPool) fleet.HostPool {
+	switch p {
+	case pb.HostPool_HOST_POOL_ACTIVE:
+		return fleet.PoolActive
+	case pb.HostPool_HOST_POOL_WARM:
+		return fleet.PoolWarm
+	case pb.HostPool_HOST_POOL_PROVISIONING:
+		return fleet.PoolProvisioning
+	case pb.HostPool_HOST_POOL_DRAINING:
+		return fleet.PoolDraining
+	default:
+		return 0
+	}
+}
+
+func hostStateToProto(s fleet.HostState) pb.HostState {
+	switch s {
+	case fleet.HostInitializing:
+		return pb.HostState_HOST_STATE_INITIALIZING
+	case fleet.HostReady:
+		return pb.HostState_HOST_STATE_READY
+	case fleet.HostBusy:
+		return pb.HostState_HOST_STATE_BUSY
+	case fleet.HostDraining:
+		return pb.HostState_HOST_STATE_DRAINING
+	case fleet.HostOffline:
+		return pb.HostState_HOST_STATE_OFFLINE
+	default:
+		return pb.HostState_HOST_STATE_UNSPECIFIED
+	}
+}
+
+func hostToProto(h fleet.Host) *pb.HostInfo {
+	return &pb.HostInfo{
+		HostId:        h.ID,
+		Pool:          poolToProto(h.Pool),
+		State:         hostStateToProto(h.State),
+		CageSlotsTotal: h.CageSlotsTotal,
+		CageSlotsUsed:  h.CageSlotsUsed,
+		VcpusTotal:    h.VCPUsTotal,
+		VcpusUsed:     h.VCPUsUsed,
+		MemoryMbTotal: h.MemoryMBTotal,
+		MemoryMbUsed:  h.MemoryMBUsed,
+	}
+}
+
 func findingStatusFromProto(s pb.FindingStatus) findings.Status {
 	switch s {
 	case pb.FindingStatus_FINDING_STATUS_CANDIDATE:
