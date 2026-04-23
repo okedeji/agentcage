@@ -125,18 +125,18 @@ func NewFileSink(dir string) (*FileSink, error) {
 
 func (s *FileSink) Write(cageID, source string, line []byte) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	f, ok := s.files[cageID]
 	if !ok {
 		var err error
 		path := fmt.Sprintf("%s/%s.log", s.dir, cageID)
 		f, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			s.mu.Unlock()
 			return fmt.Errorf("opening cage log %s: %w", path, err)
 		}
 		s.files[cageID] = f
 	}
-	s.mu.Unlock()
 
 	entry := fmt.Sprintf("[%s] %s\n", source, line)
 	_, err := f.WriteString(entry)
@@ -155,10 +155,47 @@ func (s *FileSink) Close() {
 	}
 }
 
-// OTelSink forwards cage logs to an OpenTelemetry collector.
-// Implementation requires the OTel logs SDK, wired in Phase 13.
-type OTelSink struct{}
+// MultiSink fans out writes to multiple sinks. If one fails, the
+// rest still execute and the first error is returned.
+type MultiSink struct {
+	sinks []LogSink
+}
 
-func (s *OTelSink) Write(cageID, source string, line []byte) error {
-	return nil
+func NewMultiSink(sinks ...LogSink) *MultiSink {
+	return &MultiSink{sinks: sinks}
+}
+
+func (m *MultiSink) Write(cageID, source string, line []byte) error {
+	var firstErr error
+	for _, s := range m.sinks {
+		if err := s.Write(cageID, source, line); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// NATSLogSink publishes cage log lines to NATS for live streaming.
+// Subject pattern: cage.<cage-id>.logs
+type NATSLogSink struct {
+	pub NATSPublisher
+}
+
+// NATSPublisher is the subset of nats.Conn used by NATSLogSink.
+type NATSPublisher interface {
+	Publish(subject string, data []byte) error
+}
+
+func NewNATSLogSink(pub NATSPublisher) *NATSLogSink {
+	return &NATSLogSink{pub: pub}
+}
+
+func (s *NATSLogSink) Write(cageID, source string, line []byte) error {
+	subject := "cage." + cageID + ".logs"
+	entry := fmt.Sprintf("[%s] %s", source, line)
+	return s.pub.Publish(subject, []byte(entry))
+}
+
+func LogSubject(cageID string) string {
+	return "cage." + cageID + ".logs"
 }

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	pb "github.com/okedeji/agentcage/api/proto"
@@ -24,6 +27,7 @@ type Services struct {
 	Interventions *intervention.Service
 	Fleet         *fleet.Service
 	Findings      *findings.PGStore
+	CageLogDir    string
 	Cancel        context.CancelFunc
 	Version       string
 }
@@ -31,7 +35,7 @@ type Services struct {
 // Register wires all gRPC service adapters onto the server.
 func Register(srv *grpc.Server, svc Services) {
 	pb.RegisterControlServiceServer(srv, &controlAdapter{cancelFunc: svc.Cancel, version: svc.Version})
-	pb.RegisterCageServiceServer(srv, &cageAdapter{server: svc.Cages})
+	pb.RegisterCageServiceServer(srv, &cageAdapter{server: svc.Cages, logDir: svc.CageLogDir})
 	pb.RegisterAssessmentServiceServer(srv, &assessmentAdapter{server: svc.Assessments})
 	pb.RegisterInterventionServiceServer(srv, &interventionAdapter{server: svc.Interventions})
 	pb.RegisterFleetServiceServer(srv, &fleetAdapter{server: svc.Fleet})
@@ -62,6 +66,7 @@ func (a *controlAdapter) Health(_ context.Context, _ *pb.HealthRequest) (*pb.Hea
 type cageAdapter struct {
 	pb.UnimplementedCageServiceServer
 	server *cage.Service
+	logDir string
 }
 
 func (a *cageAdapter) CreateCage(ctx context.Context, req *pb.CreateCageRequest) (*pb.CreateCageResponse, error) {
@@ -89,6 +94,92 @@ func (a *cageAdapter) ListCagesByAssessment(ctx context.Context, req *pb.ListCag
 		return nil, toGRPCError(err)
 	}
 	return &pb.ListCagesByAssessmentResponse{CageIds: ids}, nil
+}
+
+const maxLogLines = 10000
+
+func (a *cageAdapter) GetCageLogs(ctx context.Context, req *pb.GetCageLogsRequest) (*pb.GetCageLogsResponse, error) {
+	if req.GetCageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "cage_id is required")
+	}
+	if strings.Contains(req.GetCageId(), "/") || strings.Contains(req.GetCageId(), "\\") || strings.Contains(req.GetCageId(), "..") {
+		return nil, status.Error(codes.InvalidArgument, "invalid cage_id")
+	}
+
+	info, err := a.server.GetCage(ctx, req.GetCageId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	isRunning := info.State == cage.StateRunning || info.State == cage.StatePending || info.State == cage.StateProvisioning
+
+	tailLines := int(req.GetTailLines())
+	if tailLines <= 0 || tailLines > maxLogLines {
+		tailLines = maxLogLines
+	}
+
+	logFile := filepath.Join(a.logDir, req.GetCageId()+".log")
+	lines, err := readLogFile(logFile, tailLines)
+	if err != nil {
+		return &pb.GetCageLogsResponse{IsRunning: isRunning}, nil
+	}
+
+	return &pb.GetCageLogsResponse{Lines: lines, IsRunning: isRunning}, nil
+}
+
+func readLogFile(path string, tailLines int) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	if tailLines <= 0 {
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return nil, err
+		}
+		return strings.Split(strings.TrimRight(string(data), "\n"), "\n"), nil
+	}
+
+	// Read from the end for tail to avoid loading the entire file.
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	const chunkSize = 64 * 1024
+	size := stat.Size()
+	var buf []byte
+
+	for offset := size; offset > 0; {
+		readSize := int64(chunkSize)
+		if readSize > offset {
+			readSize = offset
+		}
+		offset -= readSize
+
+		chunk := make([]byte, readSize)
+		if _, err := f.ReadAt(chunk, offset); err != nil && err != io.EOF {
+			return nil, err
+		}
+		buf = append(chunk, buf...)
+
+		count := 0
+		for _, b := range buf {
+			if b == '\n' {
+				count++
+			}
+		}
+		if count > tailLines {
+			break
+		}
+	}
+
+	allLines := strings.Split(strings.TrimRight(string(buf), "\n"), "\n")
+	if len(allLines) > tailLines {
+		allLines = allLines[len(allLines)-tailLines:]
+	}
+	return allLines, nil
 }
 
 func (a *cageAdapter) DestroyCage(ctx context.Context, req *pb.DestroyCageRequest) (*pb.DestroyCageResponse, error) {

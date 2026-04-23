@@ -10,6 +10,7 @@ service CageService {
   rpc GetCage(GetCageRequest) returns (GetCageResponse);
   rpc ListCagesByAssessment(ListCagesByAssessmentRequest) returns (ListCagesByAssessmentResponse);
   rpc DestroyCage(DestroyCageRequest) returns (DestroyCageResponse);
+  rpc GetCageLogs(GetCageLogsRequest) returns (GetCageLogsResponse);
 }
 
 enum CageType {
@@ -119,6 +120,16 @@ message ListCagesByAssessmentRequest {
 
 message ListCagesByAssessmentResponse {
   repeated string cage_ids = 1;
+}
+
+message GetCageLogsRequest {
+  string cage_id = 1;
+  int32 tail_lines = 2;
+}
+
+message GetCageLogsResponse {
+  repeated string lines = 1;
+  bool is_running = 2;
 }
 
 message DestroyCageRequest {

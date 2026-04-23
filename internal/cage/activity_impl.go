@@ -105,6 +105,7 @@ type ActivityImpl struct {
 	targetCreds       TargetCredentialReader
 	directiveWriter   *DirectiveWriter
 	logCollector      *VsockCollector
+	logDir            string
 	log               logr.Logger
 	allocMu           sync.Mutex
 	allocs            map[string]string // vmID -> hostID
@@ -128,6 +129,7 @@ type ActivityImplConfig struct {
 	AgentHolds        *AgentHoldListener
 	TargetCreds       TargetCredentialReader
 	LogCollector      *VsockCollector
+	LogDir            string
 	BundleStoreDir    string
 	Log               logr.Logger
 }
@@ -162,6 +164,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("EmitRCA", a.EmitRCA)
 	pin("RecordRunMetrics", a.RecordRunMetrics)
 	pin("RecordCostMetrics", a.RecordCostMetrics)
+	pin("CollectCageLogs", a.CollectCageLogs)
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
@@ -184,6 +187,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		targetCreds:       cfg.TargetCreds,
 		directiveWriter:   NewDirectiveWriter(),
 		logCollector:      cfg.LogCollector,
+		logDir:            cfg.LogDir,
 		log:               cfg.Log.WithValues("component", "cage-activities"),
 		allocs:            make(map[string]string),
 		vsockPaths:        make(map[string]string),
@@ -684,6 +688,23 @@ func (a *ActivityImpl) VerifyCleanup(ctx context.Context, cageID, vmID string) e
 	}
 
 	a.log.Info("cleanup verified", "cage_id", cageID)
+	return nil
+}
+
+// CollectCageLogs ensures the cage's log file is available on the
+// orchestrator's local disk. In single-machine mode the file is already
+// local (written by the vsock collector). In fleet mode this activity
+// would fetch the file from the remote host via the host control channel.
+func (a *ActivityImpl) CollectCageLogs(ctx context.Context, cageID string) error {
+	if a.logDir == "" {
+		return nil
+	}
+	logFile := filepath.Join(a.logDir, cageID+".log")
+	if _, err := os.Stat(logFile); err == nil {
+		a.log.V(1).Info("cage log file already local", "cage_id", cageID, "path", logFile)
+		return nil
+	}
+	a.log.Info("cage log file not found locally, skipping collection", "cage_id", cageID)
 	return nil
 }
 

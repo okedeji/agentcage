@@ -172,6 +172,9 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		teardownErrs = append(teardownErrs, fmt.Errorf("verifying cleanup: %w", tErr))
 	}
 
+	// Best-effort: collect log file to orchestrator for later retrieval.
+	_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "CollectCageLogs", input.CageID)
+
 	if stopReason.RequiresRCA() || result.Error != "" {
 		reason := stopReason.String()
 		if result.Error != "" {

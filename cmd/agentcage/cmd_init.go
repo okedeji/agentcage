@@ -17,6 +17,7 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/enforcement"
+	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/identity"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
@@ -203,11 +204,17 @@ func runInit(configFile, logFormat string) error {
 	iSvc.SetAgentHoldResolver(agentHoldListener)
 
 	cageLogDir := filepath.Join(embedded.DataDir(), "cage-logs")
-	logSink, err := cage.NewFileSink(cageLogDir)
+	fileSink, err := cage.NewFileSink(cageLogDir)
 	if err != nil {
 		return fmt.Errorf("creating cage log sink: %w", err)
 	}
-	defer logSink.Close()
+	defer fileSink.Close()
+
+	var logSink cage.LogSink = fileSink
+	if nb, ok := findingsBus.(*findings.NATSBus); ok {
+		natsSink := cage.NewNATSLogSink(nb.Conn())
+		logSink = cage.NewMultiSink(fileSink, natsSink)
+	}
 	logCollector := cage.NewVsockCollector(log.WithValues("component", "vsock-collector"), logSink)
 
 	cageActivityImpl := cage.NewActivityImpl(cage.ActivityImplConfig{
@@ -227,6 +234,7 @@ func runInit(configFile, logFormat string) error {
 		PayloadHolds:      payloadHoldHandler,
 		AgentHolds:        agentHoldListener,
 		LogCollector:      logCollector,
+		LogDir:            cageLogDir,
 		Log:               log,
 	})
 
@@ -250,6 +258,7 @@ func runInit(configFile, logFormat string) error {
 		Interventions: iSvc,
 		Fleet:         fleetSvc,
 		Findings:      findingStore,
+		CageLogDir:    cageLogDir,
 		Cancel:        cancel,
 		Version:       version,
 	}, log)

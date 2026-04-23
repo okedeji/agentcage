@@ -23,6 +23,7 @@ const (
 	CageService_GetCage_FullMethodName               = "/agentcage.cage.v1.CageService/GetCage"
 	CageService_ListCagesByAssessment_FullMethodName = "/agentcage.cage.v1.CageService/ListCagesByAssessment"
 	CageService_DestroyCage_FullMethodName           = "/agentcage.cage.v1.CageService/DestroyCage"
+	CageService_GetCageLogs_FullMethodName           = "/agentcage.cage.v1.CageService/GetCageLogs"
 )
 
 // CageServiceClient is the client API for CageService service.
@@ -33,6 +34,7 @@ type CageServiceClient interface {
 	GetCage(ctx context.Context, in *GetCageRequest, opts ...grpc.CallOption) (*GetCageResponse, error)
 	ListCagesByAssessment(ctx context.Context, in *ListCagesByAssessmentRequest, opts ...grpc.CallOption) (*ListCagesByAssessmentResponse, error)
 	DestroyCage(ctx context.Context, in *DestroyCageRequest, opts ...grpc.CallOption) (*DestroyCageResponse, error)
+	GetCageLogs(ctx context.Context, in *GetCageLogsRequest, opts ...grpc.CallOption) (*GetCageLogsResponse, error)
 }
 
 type cageServiceClient struct {
@@ -83,6 +85,16 @@ func (c *cageServiceClient) DestroyCage(ctx context.Context, in *DestroyCageRequ
 	return out, nil
 }
 
+func (c *cageServiceClient) GetCageLogs(ctx context.Context, in *GetCageLogsRequest, opts ...grpc.CallOption) (*GetCageLogsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCageLogsResponse)
+	err := c.cc.Invoke(ctx, CageService_GetCageLogs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CageServiceServer is the server API for CageService service.
 // All implementations must embed UnimplementedCageServiceServer
 // for forward compatibility.
@@ -91,6 +103,7 @@ type CageServiceServer interface {
 	GetCage(context.Context, *GetCageRequest) (*GetCageResponse, error)
 	ListCagesByAssessment(context.Context, *ListCagesByAssessmentRequest) (*ListCagesByAssessmentResponse, error)
 	DestroyCage(context.Context, *DestroyCageRequest) (*DestroyCageResponse, error)
+	GetCageLogs(context.Context, *GetCageLogsRequest) (*GetCageLogsResponse, error)
 	mustEmbedUnimplementedCageServiceServer()
 }
 
@@ -112,6 +125,9 @@ func (UnimplementedCageServiceServer) ListCagesByAssessment(context.Context, *Li
 }
 func (UnimplementedCageServiceServer) DestroyCage(context.Context, *DestroyCageRequest) (*DestroyCageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DestroyCage not implemented")
+}
+func (UnimplementedCageServiceServer) GetCageLogs(context.Context, *GetCageLogsRequest) (*GetCageLogsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCageLogs not implemented")
 }
 func (UnimplementedCageServiceServer) mustEmbedUnimplementedCageServiceServer() {}
 func (UnimplementedCageServiceServer) testEmbeddedByValue()                     {}
@@ -206,6 +222,24 @@ func _CageService_DestroyCage_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CageService_GetCageLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCageLogsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CageServiceServer).GetCageLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CageService_GetCageLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CageServiceServer).GetCageLogs(ctx, req.(*GetCageLogsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CageService_ServiceDesc is the grpc.ServiceDesc for CageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +262,10 @@ var CageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DestroyCage",
 			Handler:    _CageService_DestroyCage_Handler,
+		},
+		{
+			MethodName: "GetCageLogs",
+			Handler:    _CageService_GetCageLogs_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

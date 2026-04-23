@@ -114,6 +114,10 @@ func (b *NATSBus) Subscribe(ctx context.Context, assessmentID string, handler Me
 	return &natsSub{cctx: cctx}, nil
 }
 
+func (b *NATSBus) Conn() *nats.Conn {
+	return b.conn
+}
+
 func (b *NATSBus) Close() {
 	b.conn.Close()
 }
