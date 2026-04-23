@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -32,6 +33,7 @@ func buildGRPCServer(
 	log logr.Logger,
 ) (*grpc.Server, *agentgrpc.ReloadableCert, error) {
 	opts := []grpc.ServerOption{
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainUnaryInterceptor(
 			agentgrpc.RecoveryUnaryInterceptor(log.WithValues("component", "grpc")),
 			agentgrpc.LoggingUnaryInterceptor(log.WithValues("component", "grpc")),

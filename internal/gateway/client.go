@@ -9,6 +9,12 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
+	agentmetrics "github.com/okedeji/agentcage/internal/metrics"
 )
 
 const (
@@ -48,17 +54,17 @@ func NewClient(endpoint, apiKey string, timeout time.Duration, meter *TokenMeter
 	// Tuned for high-concurrency single-endpoint workload: thousands of cages
 	// all talking to one gateway. Default MaxIdleConnsPerHost=2 would force
 	// most requests to redo TCP+TLS handshakes.
-	transport := &http.Transport{
+	transport := otelhttp.NewTransport(&http.Transport{
 		MaxIdleConns:        500,
 		MaxIdleConnsPerHost: 100,
 		IdleConnTimeout:     90 * time.Second,
-	}
+	})
 	return &Client{
 		endpoint: endpoint,
 		apiKey:   apiKey,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   timeout + 5*time.Second, // belt-and-suspenders: hard cap above ctx timeout
+			Timeout:   timeout + 5*time.Second,
 		},
 		meter:   meter,
 		budget:  budget,
@@ -77,7 +83,11 @@ func (c *Client) ChatCompletion(ctx context.Context, cageID, assessmentID string
 		return nil, fmt.Errorf("marshaling LLM request: %w", err)
 	}
 
+	start := time.Now()
 	respBody, err := c.doWithRetry(ctx, body)
+	if agentmetrics.GatewayRequestDuration != nil {
+		agentmetrics.GatewayRequestDuration.Record(ctx, time.Since(start).Seconds())
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -92,6 +102,11 @@ func (c *Client) ChatCompletion(ctx context.Context, cageID, assessmentID string
 	}
 
 	c.meter.Record(cageID, assessmentID, resp.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
+	if agentmetrics.GatewayTokensConsumed != nil {
+		agentmetrics.GatewayTokensConsumed.Add(ctx, resp.Usage.TotalTokens,
+			metric.WithAttributes(attribute.String("model", resp.Model)),
+		)
+	}
 
 	return &resp, nil
 }

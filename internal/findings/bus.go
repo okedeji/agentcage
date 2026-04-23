@@ -7,7 +7,12 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var natsTracer = otel.Tracer("agentcage/nats")
 
 type MessageHandler func(ctx context.Context, msg Message) error
 
@@ -72,12 +77,19 @@ func (b *NATSBus) DeleteStream(ctx context.Context, assessmentID string) error {
 }
 
 func (b *NATSBus) Publish(ctx context.Context, assessmentID string, msg Message) error {
+	ctx, span := natsTracer.Start(ctx, "nats.publish",
+		trace.WithAttributes(attribute.String("nats.subject", Subject(assessmentID))),
+	)
+	defer span.End()
+
 	data, err := json.Marshal(msg)
 	if err != nil {
+		span.RecordError(err)
 		return fmt.Errorf("marshaling finding message for assessment %s: %w", assessmentID, err)
 	}
 	_, err = b.js.Publish(ctx, Subject(assessmentID), data)
 	if err != nil {
+		span.RecordError(err)
 		return fmt.Errorf("publishing finding to assessment %s: %w", assessmentID, err)
 	}
 	return nil

@@ -374,7 +374,8 @@ type OTelConfig struct {
 	// Insecure disables TLS for the OTLP exporters. Posture default: never
 	// (strict refuses to start if explicitly set). Pointer so unset is
 	// distinct from explicit false.
-	Insecure *bool `yaml:"insecure,omitempty"`
+	Insecure *bool            `yaml:"insecure,omitempty"`
+	TLS      *ClientTLSConfig `yaml:"tls,omitempty"`
 }
 
 // LLMConfig configures the LLM gateway connection. Model selection
@@ -932,7 +933,31 @@ func Merge(base, override *Config) *Config {
 		result.Infrastructure.Nomad = override.Infrastructure.Nomad
 	}
 	if override.Infrastructure.OTel != nil {
-		result.Infrastructure.OTel = override.Infrastructure.OTel
+		if result.Infrastructure.OTel == nil {
+			result.Infrastructure.OTel = override.Infrastructure.OTel
+		} else {
+			if override.Infrastructure.OTel.Endpoint != "" {
+				result.Infrastructure.OTel.Endpoint = override.Infrastructure.OTel.Endpoint
+			}
+			if override.Infrastructure.OTel.Insecure != nil {
+				result.Infrastructure.OTel.Insecure = override.Infrastructure.OTel.Insecure
+			}
+			if override.Infrastructure.OTel.TLS != nil {
+				if result.Infrastructure.OTel.TLS == nil {
+					result.Infrastructure.OTel.TLS = override.Infrastructure.OTel.TLS
+				} else {
+					if override.Infrastructure.OTel.TLS.CertFile != "" {
+						result.Infrastructure.OTel.TLS.CertFile = override.Infrastructure.OTel.TLS.CertFile
+					}
+					if override.Infrastructure.OTel.TLS.KeyFile != "" {
+						result.Infrastructure.OTel.TLS.KeyFile = override.Infrastructure.OTel.TLS.KeyFile
+					}
+					if override.Infrastructure.OTel.TLS.CAFile != "" {
+						result.Infrastructure.OTel.TLS.CAFile = override.Infrastructure.OTel.TLS.CAFile
+					}
+				}
+			}
+		}
 	}
 
 	// LLM

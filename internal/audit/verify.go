@@ -1,11 +1,18 @@
 package audit
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"errors"
 	"fmt"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var auditTracer = otel.Tracer("agentcage/audit")
 
 var (
 	ErrChainBroken       = errors.New("audit chain integrity violation")
@@ -15,6 +22,14 @@ var (
 )
 
 func VerifyChain(entries []Entry, resolve KeyResolver) error {
+	return VerifyChainCtx(context.Background(), entries, resolve)
+}
+
+func VerifyChainCtx(ctx context.Context, entries []Entry, resolve KeyResolver) error {
+	_, span := auditTracer.Start(ctx, "audit.verifyChain",
+		trace.WithAttributes(attribute.Int("chain.length", len(entries))),
+	)
+	defer span.End()
 	if len(entries) == 0 {
 		return ErrEmptyChain
 	}

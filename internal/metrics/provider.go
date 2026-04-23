@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 // Setup initializes the OpenTelemetry SDK with the given exporters and sets the
@@ -33,7 +36,24 @@ func Setup(ctx context.Context, metricExporter sdkmetric.Exporter, spanExporter 
 		return nil
 	}
 
+	res, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName("agentcage"),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating otel resource: %w", err)
+	}
+
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
 	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(
 			sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(15*time.Second)),
 		),
@@ -42,6 +62,7 @@ func Setup(ctx context.Context, metricExporter sdkmetric.Exporter, spanExporter 
 	otel.SetMeterProvider(meterProvider)
 
 	traceProvider := sdktrace.NewTracerProvider(
+		sdktrace.WithResource(res),
 		sdktrace.WithBatcher(spanExporter),
 	)
 	shutdownFuncs = append(shutdownFuncs, traceProvider.Shutdown)

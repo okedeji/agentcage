@@ -16,6 +16,7 @@ import (
 	"github.com/okedeji/agentcage/internal/audit"
 	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/identity"
+	agentmetrics "github.com/okedeji/agentcage/internal/metrics"
 	"github.com/okedeji/agentcage/internal/rca"
 )
 
@@ -277,6 +278,13 @@ const (
 )
 
 func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error) {
+	provisionStart := time.Now()
+	defer func() {
+		if agentmetrics.CageStartupDuration != nil {
+			agentmetrics.CageStartupDuration.Record(ctx, time.Since(provisionStart).Seconds())
+		}
+	}()
+
 	if a.provisioner == nil {
 		return nil, fmt.Errorf("cage %s: no VM provisioner configured", vmConfig.CageID)
 	}
@@ -346,6 +354,9 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 		a.agentHolds.StartForVM(ctx, handle.ID, vmConfig.CageID, vmConfig.AssessmentID, handle.VsockPath)
 	}
 
+	if agentmetrics.CageActiveCount != nil {
+		agentmetrics.CageActiveCount.Add(ctx, 1)
+	}
 	a.log.Info("VM provisioned", "cage_id", vmConfig.CageID, "vm_id", handle.ID, "ip", handle.IPAddress, "host_id", hostID)
 	return handle, nil
 }
@@ -600,6 +611,16 @@ func (a *ActivityImpl) ExportAuditLog(_ context.Context, cageID string) error {
 }
 
 func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
+	teardownStart := time.Now()
+	defer func() {
+		if agentmetrics.CageTeardownDuration != nil {
+			agentmetrics.CageTeardownDuration.Record(ctx, time.Since(teardownStart).Seconds())
+		}
+		if agentmetrics.CageActiveCount != nil {
+			agentmetrics.CageActiveCount.Add(ctx, -1)
+		}
+	}()
+
 	if a.provisioner != nil {
 		if err := a.provisioner.Terminate(ctx, vmID); err != nil {
 			return fmt.Errorf("terminating VM %s: %w", vmID, err)

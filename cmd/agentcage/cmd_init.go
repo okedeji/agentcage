@@ -210,10 +210,16 @@ func runInit(configFile, logFormat string) error {
 	}
 	defer fileSink.Close()
 
-	var logSink cage.LogSink = fileSink
+	sinks := []cage.LogSink{fileSink}
 	if nb, ok := findingsBus.(*findings.NATSBus); ok {
-		natsSink := cage.NewNATSLogSink(nb.Conn())
-		logSink = cage.NewMultiSink(fileSink, natsSink)
+		sinks = append(sinks, cage.NewNATSLogSink(nb.Conn()))
+	}
+	if cfg.Infrastructure.IsExternalOTel() {
+		sinks = append(sinks, cage.NewOTelLogSink())
+	}
+	var logSink cage.LogSink = fileSink
+	if len(sinks) > 1 {
+		logSink = cage.NewMultiSink(sinks...)
 	}
 	logCollector := cage.NewVsockCollector(log.WithValues("component", "vsock-collector"), logSink)
 

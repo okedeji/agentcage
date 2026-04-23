@@ -11,7 +11,12 @@ import (
 	"sync"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var cageLogTracer = otel.Tracer("agentcage/cage-logs")
 
 // LogSink is where collected log lines are sent. Implementations include
 // OTel log exporters, stdout writers, or test buffers.
@@ -35,6 +40,11 @@ func NewVsockCollector(logger logr.Logger, sink LogSink) *VsockCollector {
 }
 
 func (c *VsockCollector) CollectFromCage(ctx context.Context, cageID string, reader io.Reader) error {
+	ctx, span := cageLogTracer.Start(ctx, "cage.collectLogs",
+		trace.WithAttributes(attribute.String("cage.id", cageID)),
+	)
+	defer span.End()
+
 	scanner := bufio.NewScanner(reader)
 
 	// 64KB max line size. Structured JSON logs from cage processes
@@ -198,4 +208,25 @@ func (s *NATSLogSink) Write(cageID, source string, line []byte) error {
 
 func LogSubject(cageID string) string {
 	return "cage." + cageID + ".logs"
+}
+
+// OTelLogSink exports cage log lines as short-lived OTel spans.
+// Each write creates and immediately ends a span, so backends see
+// individual log events without long-lived span lifetime issues.
+type OTelLogSink struct{}
+
+func NewOTelLogSink() *OTelLogSink {
+	return &OTelLogSink{}
+}
+
+func (s *OTelLogSink) Write(cageID, source string, line []byte) error {
+	_, span := cageLogTracer.Start(context.Background(), "cage.log",
+		trace.WithAttributes(
+			attribute.String("cage.id", cageID),
+			attribute.String("source", source),
+			attribute.String("message", string(line)),
+		),
+	)
+	span.End()
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // WebhookProvisioner implements HostProvisioner by calling an external
@@ -55,7 +56,8 @@ func NewWebhookProvisioner(endpoint, apiKey string, timeout time.Duration, log l
 		endpoint: endpoint,
 		apiKey:   apiKey,
 		httpClient: &http.Client{
-			Timeout: timeout,
+			Transport: otelhttp.NewTransport(http.DefaultTransport),
+			Timeout:   timeout,
 		},
 		log: log.WithValues("component", "webhook-provisioner"),
 	}

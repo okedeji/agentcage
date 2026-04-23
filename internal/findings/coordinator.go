@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+
+	agentmetrics "github.com/okedeji/agentcage/internal/metrics"
 )
 
 type FindingStore interface {
@@ -60,6 +62,9 @@ func (c *Coordinator) HandleMessage(ctx context.Context, msg Message) error {
 	}
 
 	c.bloom.Add(bloomKey)
+	if agentmetrics.FindingsProcessedTotal != nil {
+		agentmetrics.FindingsProcessedTotal.Add(ctx, 1)
+	}
 
 	c.logger.Info("finding processed",
 		"finding_id", msg.Finding.ID,

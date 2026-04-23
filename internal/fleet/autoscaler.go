@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+
+	agentmetrics "github.com/okedeji/agentcage/internal/metrics"
 )
 
 type HostProvisioner interface {
@@ -71,6 +73,11 @@ func (a *Autoscaler) reconcile(ctx context.Context) {
 	a.promoteReadyHosts(ctx)
 	a.cleanupDrainedHosts(ctx)
 
+	status := a.pool.GetFleetStatus()
+	if agentmetrics.FleetCapacityUtilization != nil {
+		agentmetrics.FleetCapacityUtilization.Record(ctx, status.CapacityUtilizationRatio)
+	}
+
 	warmHosts := a.pool.GetHostsByPool(PoolWarm)
 	provisioningHosts := a.pool.GetHostsByPool(PoolProvisioning)
 	warmCount := int32(len(warmHosts))
@@ -91,7 +98,7 @@ func (a *Autoscaler) reconcile(ctx context.Context) {
 
 	// Emergency: if fleet utilization is above 90%, provision regardless
 	// of warm count to prevent cage creation failures.
-	status := a.pool.GetFleetStatus()
+	status = a.pool.GetFleetStatus()
 	if status.CapacityUtilizationRatio > 0.9 && status.TotalHosts > 0 {
 		count := a.config.EmergencyProvisionCount
 		if count <= 0 {
