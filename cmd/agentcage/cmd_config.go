@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/okedeji/agentcage/internal/config"
 )
@@ -46,6 +47,9 @@ func cmdConfigShow(_ []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading config: %v\n", err)
 		os.Exit(1)
+	}
+	if strings.Contains(string(data), "api_key") {
+		fmt.Fprintln(os.Stderr, "warning: config contains credentials (use 'config export' for a redacted view)")
 	}
 	fmt.Printf("# %s\n", path)
 	fmt.Print(string(data))
@@ -104,6 +108,9 @@ func cmdConfigImport(args []string) {
 	}
 
 	dest := config.DefaultPath()
+	if _, statErr := os.Stat(dest); statErr == nil {
+		fmt.Fprintf(os.Stderr, "warning: overwriting existing config at %s\n", dest)
+	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "error creating config directory: %v\n", err)
 		os.Exit(1)

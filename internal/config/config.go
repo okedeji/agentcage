@@ -101,6 +101,15 @@ func (s ServerConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c)
 }
 
+func (s ServerConfig) MarshalYAML() (interface{}, error) {
+	type redacted ServerConfig
+	c := redacted(s)
+	if c.APIKey != "" {
+		c.APIKey = "REDACTED"
+	}
+	return c, nil
+}
+
 // ClientTLSConfig holds paths for client-side TLS credentials.
 type ClientTLSConfig struct {
 	CertFile string `yaml:"cert_file,omitempty"`
