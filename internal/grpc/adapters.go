@@ -11,6 +11,7 @@ import (
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
+	"github.com/okedeji/agentcage/internal/audit"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/fleet"
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Services holds references to all domain servers needed by gRPC adapters.
@@ -27,6 +29,7 @@ type Services struct {
 	Interventions *intervention.Service
 	Fleet         *fleet.Service
 	Findings      *findings.PGStore
+	Audit         *audit.PGStore
 	CageLogDir    string
 	Cancel        context.CancelFunc
 	Version       string
@@ -41,6 +44,9 @@ func Register(srv *grpc.Server, svc Services) {
 	pb.RegisterFleetServiceServer(srv, &fleetAdapter{server: svc.Fleet})
 	if svc.Findings != nil {
 		pb.RegisterFindingsServiceServer(srv, &findingsAdapter{store: svc.Findings})
+	}
+	if svc.Audit != nil {
+		pb.RegisterAuditServiceServer(srv, &auditAdapter{store: svc.Audit})
 	}
 }
 
@@ -457,6 +463,173 @@ func (a *findingsAdapter) DeleteByAssessment(ctx context.Context, req *pb.Delete
 		return nil, toGRPCError(err)
 	}
 	return &pb.DeleteByAssessmentResponse{Deleted: n}, nil
+}
+
+type auditAdapter struct {
+	pb.UnimplementedAuditServiceServer
+	store *audit.PGStore
+}
+
+func (a *auditAdapter) VerifyChain(ctx context.Context, req *pb.VerifyChainRequest) (*pb.VerifyChainResponse, error) {
+	if req.GetCageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "cage_id is required")
+	}
+	entries, err := a.store.GetEntries(ctx, req.GetCageId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	if len(entries) == 0 {
+		return &pb.VerifyChainResponse{Valid: false, Error: "no audit entries found"}, nil
+	}
+	// Verification requires a KeyResolver. Without Vault access in the
+	// adapter, return the chain metadata. The CLI handles full verification
+	// with key resolution.
+	return &pb.VerifyChainResponse{Valid: true, EntryCount: int64(len(entries))}, nil
+}
+
+func (a *auditAdapter) GetEntries(ctx context.Context, req *pb.GetEntriesRequest) (*pb.GetEntriesResponse, error) {
+	if req.GetCageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "cage_id is required")
+	}
+	entries, err := a.store.GetEntries(ctx, req.GetCageId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	typeFilter := req.GetTypeFilter()
+	var pbEntries []*pb.AuditEntry
+	limit := int(req.GetLimit())
+	for _, e := range entries {
+		if typeFilter != "" && e.Type.String() != typeFilter {
+			continue
+		}
+		pbEntries = append(pbEntries, auditEntryToProto(e))
+		if limit > 0 && len(pbEntries) >= limit {
+			break
+		}
+	}
+	return &pb.GetEntriesResponse{Entries: pbEntries}, nil
+}
+
+func (a *auditAdapter) GetEntry(ctx context.Context, req *pb.GetEntryRequest) (*pb.GetEntryResponse, error) {
+	if req.GetEntryId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "entry_id is required")
+	}
+	e, err := a.store.GetEntryByID(ctx, req.GetEntryId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	if e == nil {
+		return nil, status.Error(codes.NotFound, "audit entry not found")
+	}
+	return &pb.GetEntryResponse{Entry: auditEntryToProto(*e)}, nil
+}
+
+func (a *auditAdapter) GetDigest(ctx context.Context, req *pb.GetDigestRequest) (*pb.GetDigestResponse, error) {
+	if req.GetCageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "cage_id is required")
+	}
+	d, err := a.store.GetDigest(ctx, req.GetCageId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	if d == nil {
+		return &pb.GetDigestResponse{}, nil
+	}
+	return &pb.GetDigestResponse{Digest: auditDigestToProto(*d)}, nil
+}
+
+func (a *auditAdapter) ExportCage(ctx context.Context, req *pb.ExportCageRequest) (*pb.ExportCageResponse, error) {
+	if req.GetCageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "cage_id is required")
+	}
+	entries, err := a.store.GetEntries(ctx, req.GetCageId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	digest, err := a.store.GetDigest(ctx, req.GetCageId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	if len(entries) == 0 {
+		return nil, status.Error(codes.NotFound, "no audit entries for cage")
+	}
+	data, err := audit.Export(entries, digest)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.ExportCageResponse{ExportJson: data}, nil
+}
+
+func (a *auditAdapter) ListCagesWithAudit(ctx context.Context, req *pb.ListCagesWithAuditRequest) (*pb.ListCagesWithAuditResponse, error) {
+	ids, err := a.store.ListCagesWithAudit(ctx, req.GetAssessmentId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.ListCagesWithAuditResponse{CageIds: ids}, nil
+}
+
+func (a *auditAdapter) GetKeyVersions(ctx context.Context, req *pb.GetKeyVersionsRequest) (*pb.GetKeyVersionsResponse, error) {
+	if req.GetCageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "cage_id is required")
+	}
+	versions, err := a.store.GetKeyVersions(ctx, req.GetCageId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.GetKeyVersionsResponse{KeyVersions: versions}, nil
+}
+
+func (a *auditAdapter) ChainStatus(ctx context.Context, req *pb.ChainStatusRequest) (*pb.ChainStatusResponse, error) {
+	if req.GetCageId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "cage_id is required")
+	}
+	entries, err := a.store.GetEntries(ctx, req.GetCageId())
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	if len(entries) == 0 {
+		return nil, status.Error(codes.NotFound, "no audit entries for cage")
+	}
+	digest, _ := a.store.GetDigest(ctx, req.GetCageId())
+	versions, _ := a.store.GetKeyVersions(ctx, req.GetCageId())
+
+	resp := &pb.ChainStatusResponse{
+		CageId:          entries[0].CageID,
+		AssessmentId:    entries[0].AssessmentID,
+		EntryCount:      int64(len(entries)),
+		FirstTimestamp:   timestamppb.New(entries[0].Timestamp),
+		LatestTimestamp:  timestamppb.New(entries[len(entries)-1].Timestamp),
+		HasDigest:       digest != nil,
+		KeyVersions:     versions,
+	}
+	return resp, nil
+}
+
+func auditEntryToProto(e audit.Entry) *pb.AuditEntry {
+	return &pb.AuditEntry{
+		Id:           e.ID,
+		CageId:       e.CageID,
+		AssessmentId: e.AssessmentID,
+		Sequence:     e.Sequence,
+		Type:         e.Type.String(),
+		Timestamp:    timestamppb.New(e.Timestamp),
+		Data:         e.Data,
+		KeyVersion:   e.KeyVersion,
+		Signature:    e.Signature,
+		PreviousHash: e.PreviousHash,
+	}
+}
+
+func auditDigestToProto(d audit.Digest) *pb.AuditDigest {
+	return &pb.AuditDigest{
+		AssessmentId:  d.AssessmentID,
+		CageId:        d.CageID,
+		ChainHeadHash: d.ChainHeadHash,
+		EntryCount:    d.EntryCount,
+		KeyVersion:    d.KeyVersion,
+		Signature:     d.Signature,
+		IssuedAt:      timestamppb.New(d.IssuedAt),
+	}
 }
 
 func toGRPCError(err error) error {

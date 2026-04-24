@@ -605,8 +605,34 @@ func (a *ActivityImpl) FetchTargetCredentials(ctx context.Context, credentialsKe
 	return data, nil
 }
 
-func (a *ActivityImpl) ExportAuditLog(_ context.Context, cageID string) error {
-	a.log.Info("exporting audit log", "cage_id", cageID)
+func (a *ActivityImpl) ExportAuditLog(ctx context.Context, cageID string) error {
+	if a.auditStore == nil {
+		a.log.V(1).Info("no audit store, skipping export", "cage_id", cageID)
+		return nil
+	}
+
+	entries, err := a.auditStore.GetEntries(ctx, cageID)
+	if err != nil {
+		return fmt.Errorf("fetching audit entries for cage %s: %w", cageID, err)
+	}
+	if len(entries) == 0 {
+		a.log.Info("no audit entries to export", "cage_id", cageID)
+		return nil
+	}
+
+	digest, _ := a.auditStore.GetDigest(ctx, cageID)
+
+	data, err := audit.Export(entries, digest)
+	if err != nil {
+		return fmt.Errorf("exporting audit log for cage %s: %w", cageID, err)
+	}
+
+	exportPath := filepath.Join(a.logDir, cageID+".audit.json")
+	if err := os.WriteFile(exportPath, data, 0644); err != nil {
+		return fmt.Errorf("writing audit export for cage %s: %w", cageID, err)
+	}
+
+	a.log.Info("audit log exported", "cage_id", cageID, "entries", len(entries), "path", exportPath)
 	return nil
 }
 

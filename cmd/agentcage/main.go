@@ -110,7 +110,7 @@ Operate:
   proof             Manage validation rules (add, list, validate)
   fleet             Show fleet status (hosts, pools, capacity)
   db                Open psql shell or show connection string
-  audit             Manage audit chain (verify)
+  audit             Verify, inspect, and export tamper-evident audit logs
   falco             Manage Falco rules (export-rules)
   config            Manage operator config (show, export, import, get)
   vault             Manage secrets (put, get, list, delete, rotate, import, migrate)

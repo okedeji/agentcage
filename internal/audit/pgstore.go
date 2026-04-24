@@ -153,6 +153,101 @@ func (s *PGStore) GetLatestDigest(ctx context.Context, assessmentID string) (*Di
 	return &d, nil
 }
 
+func (s *PGStore) GetEntryByID(ctx context.Context, entryID string) (*Entry, error) {
+	var e Entry
+	var typeName string
+	var data []byte
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, cage_id, assessment_id, sequence, type, timestamp, data, key_version, signature, previous_hash
+		 FROM audit_entries WHERE id = $1`,
+		entryID,
+	).Scan(&e.ID, &e.CageID, &e.AssessmentID, &e.Sequence, &typeName, &e.Timestamp, &data, &e.KeyVersion, &e.Signature, &e.PreviousHash)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying audit entry %s: %w", entryID, err)
+	}
+	e.Type = entryTypeFromString(typeName)
+	e.Data = data
+	return &e, nil
+}
+
+func (s *PGStore) GetEntriesByAssessment(ctx context.Context, assessmentID string) ([]Entry, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, cage_id, assessment_id, sequence, type, timestamp, data, key_version, signature, previous_hash
+		 FROM audit_entries
+		 WHERE assessment_id = $1
+		 ORDER BY cage_id, sequence ASC`,
+		assessmentID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying audit entries for assessment %s: %w", assessmentID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var entries []Entry
+	for rows.Next() {
+		var e Entry
+		var typeName string
+		var data []byte
+		if err := rows.Scan(&e.ID, &e.CageID, &e.AssessmentID, &e.Sequence, &typeName, &e.Timestamp, &data, &e.KeyVersion, &e.Signature, &e.PreviousHash); err != nil {
+			return nil, fmt.Errorf("scanning audit entry for assessment %s: %w", assessmentID, err)
+		}
+		e.Type = entryTypeFromString(typeName)
+		e.Data = data
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
+func (s *PGStore) ListCagesWithAudit(ctx context.Context, assessmentID string) ([]string, error) {
+	query := `SELECT DISTINCT cage_id FROM audit_entries`
+	var args []any
+	if assessmentID != "" {
+		query += ` WHERE assessment_id = $1`
+		args = append(args, assessmentID)
+	}
+	query += ` ORDER BY cage_id`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing cages with audit entries: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scanning cage id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (s *PGStore) GetKeyVersions(ctx context.Context, cageID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT key_version FROM audit_entries WHERE cage_id = $1 ORDER BY key_version`,
+		cageID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying key versions for cage %s: %w", cageID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var versions []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, fmt.Errorf("scanning key version: %w", err)
+		}
+		versions = append(versions, v)
+	}
+	return versions, rows.Err()
+}
+
 func entryTypeFromString(s string) EntryType {
 	for et, name := range entryTypeNames {
 		if name == s {

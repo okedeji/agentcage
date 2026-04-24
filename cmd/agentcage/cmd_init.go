@@ -264,6 +264,7 @@ func runInit(configFile, logFormat string) error {
 		Interventions: iSvc,
 		Fleet:         fleetSvc,
 		Findings:      findingStore,
+		Audit:         cageRuntime.auditStore,
 		CageLogDir:    cageLogDir,
 		Cancel:        cancel,
 		Version:       version,
