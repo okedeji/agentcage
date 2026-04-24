@@ -44,7 +44,7 @@ func cmdConnect(args []string) {
 		os.Exit(1)
 	}
 
-	conn, err := connectOrchestrator(addr, *certFile, *keyFile, *caFile, *insecureFlag)
+	conn, err := connectOrchestrator(addr, *certFile, *keyFile, *caFile, *apiKey, *insecureFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -95,10 +95,10 @@ func cmdConnect(args []string) {
 	fmt.Printf("Config saved to %s\n", config.DefaultPath())
 }
 
-func connectOrchestrator(addr, certFile, keyFile, caFile string, insecure bool) (*grpc.ClientConn, error) {
-	var creds grpc.DialOption
+func connectOrchestrator(addr, certFile, keyFile, caFile, apiKey string, insecure bool) (*grpc.ClientConn, error) {
+	var dialOpts []grpc.DialOption
 	if insecure {
-		creds = grpc.WithTransportCredentials(grpcinsecure.NewCredentials())
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(grpcinsecure.NewCredentials()))
 	} else {
 		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
 		if certFile != "" && keyFile != "" {
@@ -119,10 +119,14 @@ func connectOrchestrator(addr, certFile, keyFile, caFile string, insecure bool) 
 			}
 			tlsCfg.RootCAs = pool
 		}
-		creds = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
 	}
 
-	conn, err := grpc.NewClient(addr, creds)
+	if apiKey != "" {
+		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(apiKeyCredentials{key: apiKey, insecure: insecure}))
+	}
+
+	conn, err := grpc.NewClient(addr, dialOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %s: %w", addr, err)
 	}
@@ -192,5 +196,6 @@ func writeConnectConfig(server config.ServerConfig, remoteConfigYAML []byte) err
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	// 0600: config may contain API key and connection credentials.
+	return os.WriteFile(path, data, 0600)
 }

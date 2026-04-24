@@ -22,6 +22,7 @@ func cmdDB(args []string) {
 	}
 
 	if *showURL {
+		fmt.Fprintln(os.Stderr, "warning: URL contains embedded credentials")
 		fmt.Println(dbURL)
 		return
 	}

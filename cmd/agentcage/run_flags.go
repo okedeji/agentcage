@@ -57,7 +57,7 @@ func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	fs.StringVar(&rf.maxDuration, "max-duration", "", "assessment wall clock (e.g. 30m, 4h)")
 	fs.IntVar(&rf.maxChainDepth, "max-chain-depth", 0, "escalation chain depth limit")
 	fs.IntVar(&rf.maxConcurrent, "max-concurrent", 0, "max concurrent cages")
-	fs.IntVar(&rf.maxIterations, "max-iterations", 0, "max coordinator iterations (default 20)")
+	fs.IntVar(&rf.maxIterations, "max-iterations", 0, "max coordinator iterations (server default if unset)")
 	fs.StringVar(&rf.context, "context", "", "free-text context for the LLM coordinator")
 	fs.Var(&rf.focus, "focus", "vuln class to prioritize (repeatable)")
 	fs.Var(&rf.skip, "deprioritize", "path to deprioritize (repeatable)")
@@ -99,6 +99,7 @@ Examples:
 Required (unless in plan file):
   --agent              .cage bundle (run 'agentcage pack <dir>' first)
   --target             target host(s), comma-separated
+  --customer-id        customer identifier
 
 Plan file:
   --plan               path to assessment YAML plan file
@@ -113,7 +114,7 @@ Budget & limits:
   --max-duration       assessment wall clock (e.g. 30m, 4h)
   --max-chain-depth    escalation chain depth limit
   --max-concurrent     max concurrent cages
-  --max-iterations     max coordinator iterations (default 20)
+  --max-iterations     max coordinator iterations (server default if unset)
 
 Guidance:
   --context            free-text context for the LLM coordinator
@@ -135,6 +136,5 @@ Output:
   --format             output format: text, json
   --name               human name for this assessment
   --tag                key=value metadata (repeatable)
-  --customer-id        customer identifier
 `)
 }

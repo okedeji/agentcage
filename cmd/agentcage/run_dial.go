@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
-	"time"
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/config"
@@ -14,8 +13,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 )
-
-const defaultPingTimeout = 5 * time.Second
 
 func dialOrchestrator(ctx context.Context, cfg *config.Config) (*grpc.ClientConn, error) {
 	addr := cfg.ServerAddress()
@@ -35,11 +32,7 @@ func dialOrchestrator(ctx context.Context, cfg *config.Config) (*grpc.ClientConn
 		return nil, fmt.Errorf("connecting to orchestrator at %s: %w", addr, err)
 	}
 
-	pingTimeout := defaultPingTimeout
-	if cfg.GRPC.ReadyProbeTimeoutOrDefault() > 0 {
-		pingTimeout = cfg.GRPC.ReadyProbeTimeoutOrDefault()
-	}
-	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+	pingCtx, cancel := context.WithTimeout(ctx, cfg.GRPC.ReadyProbeTimeoutOrDefault())
 	defer cancel()
 
 	control := pb.NewControlServiceClient(conn)

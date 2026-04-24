@@ -86,7 +86,11 @@ func cmdAccessListKeys(_ []string) {
 
 	fmt.Println("API keys:")
 	for _, k := range cfg.Access.APIKeys {
-		fmt.Printf("  %-20s %s\n", k.Name, k.KeyHash[:20]+"...")
+		hash := k.KeyHash
+		if len(hash) > 20 {
+			hash = hash[:20] + "..."
+		}
+		fmt.Printf("  %-20s %s\n", k.Name, hash)
 	}
 }
 
@@ -150,7 +154,8 @@ func saveConfig(cfg *config.Config, path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	// 0600: config may contain API key hashes.
+	return os.WriteFile(path, data, 0600)
 }
 
 func printAccessUsage() {

@@ -32,12 +32,6 @@ func cmdRun(args []string) {
 	rf, fs := parseRunFlags(args)
 	explicit := explicitFlags(fs)
 
-	switch rf.format {
-	case "text", "json", "":
-	default:
-		fmt.Fprintf(os.Stderr, "error: unknown --format %q (supported: text, json)\n", rf.format)
-		os.Exit(1)
-	}
 	jsonErrors := rf.format == "json"
 	exitErr := func(msg string, err error) {
 		if jsonErrors {

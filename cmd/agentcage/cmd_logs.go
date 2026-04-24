@@ -176,7 +176,7 @@ func handleCageLogs(cageID string, follow bool, tailLines int) {
 			}
 			fmt.Println(string(msg.Data))
 		case <-pollTicker.C:
-			pollCtx, pollCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			pollCtx, pollCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			checkResp, checkErr := client.GetCageLogs(pollCtx, &pb.GetCageLogsRequest{CageId: cageID, TailLines: 0})
 			pollCancel()
 			if checkErr == nil && !checkResp.GetIsRunning() {

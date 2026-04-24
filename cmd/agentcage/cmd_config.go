@@ -73,7 +73,7 @@ func cmdConfigExport(args []string) {
 	}
 
 	if *outFile != "" {
-		if err := os.WriteFile(*outFile, yaml, 0644); err != nil {
+		if err := os.WriteFile(*outFile, yaml, 0600); err != nil {
 			fmt.Fprintf(os.Stderr, "error writing config to %s: %v\n", *outFile, err)
 			os.Exit(1)
 		}
@@ -108,7 +108,7 @@ func cmdConfigImport(args []string) {
 		fmt.Fprintf(os.Stderr, "error creating config directory: %v\n", err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(dest, data, 0644); err != nil {
+	if err := os.WriteFile(dest, data, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "error writing config: %v\n", err)
 		os.Exit(1)
 	}

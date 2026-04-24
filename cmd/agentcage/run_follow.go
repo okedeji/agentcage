@@ -14,6 +14,7 @@ const (
 	followMaxConsecutiveErrors = 20
 	followBaseBackoff          = 3 * time.Second
 	followMaxBackoff           = 30 * time.Second
+	followPollInterval         = 3 * time.Second
 	followStaleTimeout         = 30 * time.Minute
 	followHardTimeout          = 5 * time.Hour
 )
@@ -25,9 +26,9 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 	client := pb.NewAssessmentServiceClient(conn)
 	jsonMode := format == "json"
 	var lastStatus string
-	var lastValidated int32
-	var lastCandidate int32
-	var lastCages int32
+	var lastValidated int32 = -1
+	var lastCandidate int32 = -1
+	var lastCages int32 = -1
 	var consecutiveErrors int
 	lastChange := time.Now()
 
@@ -39,8 +40,7 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 		pollCancel()
 
 		if ctx.Err() != nil {
-			fmt.Printf("\nDetached. Assessment %s continues on the server.\n", assessmentID)
-			fmt.Printf("Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
+			printDetachMessage(assessmentID)
 			return
 		}
 
@@ -53,7 +53,10 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 				return
 			}
 			backoff := min(followBaseBackoff*time.Duration(1<<min(consecutiveErrors-1, 4)), followMaxBackoff)
-			time.Sleep(backoff)
+			if !sleepCtx(ctx, backoff) {
+				printDetachMessage(assessmentID)
+				return
+			}
 			continue
 		}
 		consecutiveErrors = 0
@@ -126,6 +129,14 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 				fmt.Printf("Run 'agentcage logs --assessment %s' for details.\n", assessmentID)
 			}
 			return
+		case pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW:
+			if jsonMode {
+				fmt.Printf("{\"result\":\"pending_review\",\"assessment_id\":%q}\n", assessmentID)
+			} else {
+				fmt.Printf("\nAssessment awaiting human review.\n")
+				fmt.Printf("Run 'agentcage interventions' to see pending decisions.\n")
+			}
+			return
 		case pb.AssessmentStatus_ASSESSMENT_STATUS_UNSPECIFIED:
 			if jsonMode {
 				fmt.Printf("{\"result\":\"error\",\"detail\":\"server returned unspecified status\"}\n")
@@ -143,6 +154,26 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 			return
 		}
 
-		time.Sleep(3 * time.Second)
+		if !sleepCtx(ctx, followPollInterval) {
+			printDetachMessage(assessmentID)
+			return
+		}
+	}
+}
+
+func printDetachMessage(assessmentID string) {
+	fmt.Printf("\nDetached. Assessment %s continues on the server.\n", assessmentID)
+	fmt.Printf("Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
+}
+
+// Returns false if the context was cancelled during the sleep.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
 	}
 }

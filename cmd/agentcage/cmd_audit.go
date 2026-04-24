@@ -54,14 +54,18 @@ func auditClient() (pb.AuditServiceClient, func(), context.Context) {
 		cfg = config.Merge(cfg, override)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
-	conn, err := dialOrchestrator(ctx, cfg)
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	conn, err := dialOrchestrator(dialCtx, cfg)
+	dialCancel()
 	if err != nil {
-		cancel()
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Separate timeout for operations. Audit commands like export
+	// and verify with --assessment make N+1 RPCs, so 30s is too
+	// tight when shared with dial.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 
 	cleanup := func() {
 		_ = conn.Close()
@@ -264,7 +268,7 @@ func cmdAuditExport(args []string) {
 	}
 
 	if *output != "" {
-		if err := os.WriteFile(*output, out, 0644); err != nil {
+		if err := os.WriteFile(*output, out, 0600); err != nil {
 			fmt.Fprintf(os.Stderr, "error writing %s: %v\n", *output, err)
 			os.Exit(1)
 		}

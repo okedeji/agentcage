@@ -80,7 +80,7 @@ func cmdReport(args []string) {
 	}
 
 	if *output != "" {
-		if err := os.WriteFile(*output, out, 0644); err != nil {
+		if err := os.WriteFile(*output, out, 0600); err != nil {
 			fmt.Fprintf(os.Stderr, "error: writing to %s: %v\n", *output, err)
 			os.Exit(1)
 		}

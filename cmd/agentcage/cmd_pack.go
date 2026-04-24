@@ -85,5 +85,5 @@ func cmdPack(args []string) {
 		fmt.Printf("  Go:         %s\n", strings.Join(manifest.GoDeps, ", "))
 	}
 	fmt.Printf("  Hash:       %s\n", manifest.FilesHash)
-	fmt.Println("\nReady. Use 'agentcage run --agent", outPath, "--target <host>' to start an assessment.")
+	fmt.Printf("\nReady. Use 'agentcage run --agent %s --target <host>' to start an assessment.\n", outPath)
 }

@@ -703,6 +703,17 @@ func validateConfigKeys(cfg *Config) error {
 			return fmt.Errorf("unknown cage type %q in monitoring config (valid: discovery, validator, escalation)", key)
 		}
 	}
+	for i, k := range cfg.Access.APIKeys {
+		if k.Name == "" {
+			return fmt.Errorf("access.api_keys[%d]: name is required", i)
+		}
+		if k.KeyHash == "" {
+			return fmt.Errorf("access.api_keys[%d] (%s): key_hash is required", i, k.Name)
+		}
+		if !strings.HasPrefix(k.KeyHash, "sha256:") {
+			return fmt.Errorf("access.api_keys[%d] (%s): key_hash must start with \"sha256:\"", i, k.Name)
+		}
+	}
 	return nil
 }
 
@@ -947,6 +958,61 @@ func defaultPayload() map[string]PayloadConfig {
 func Merge(base, override *Config) *Config {
 	result := *base
 
+	// Server: CLI-side connection config.
+	if override.Server.Address != "" {
+		result.Server.Address = override.Server.Address
+	}
+	if override.Server.TLS != nil {
+		result.Server.TLS = override.Server.TLS
+	}
+	if override.Server.Insecure {
+		result.Server.Insecure = true
+	}
+	if override.Server.APIKey != "" {
+		result.Server.APIKey = override.Server.APIKey
+	}
+
+	// GRPC: orchestrator bind settings.
+	if override.GRPC.Address != "" {
+		result.GRPC.Address = override.GRPC.Address
+	}
+	if override.GRPC.TLS != nil {
+		result.GRPC.TLS = override.GRPC.TLS
+	}
+	if override.GRPC.Reflection != nil {
+		result.GRPC.Reflection = override.GRPC.Reflection
+	}
+	if override.GRPC.ReadyProbeTimeout > 0 {
+		result.GRPC.ReadyProbeTimeout = override.GRPC.ReadyProbeTimeout
+	}
+
+	// Access: key list replaces entirely.
+	if len(override.Access.APIKeys) > 0 {
+		result.Access.APIKeys = override.Access.APIKeys
+	}
+
+	if override.Posture != 0 {
+		result.Posture = override.Posture
+	}
+
+	if len(override.Notifications.Webhooks) > 0 {
+		result.Notifications.Webhooks = override.Notifications.Webhooks
+	}
+
+	// Intervention: runtime tuning.
+	if override.Intervention.PollInterval > 0 {
+		result.Intervention.PollInterval = override.Intervention.PollInterval
+	}
+	if override.Intervention.Timeout > 0 {
+		result.Intervention.Timeout = override.Intervention.Timeout
+	}
+	if override.Intervention.WarningThreshold > 0 {
+		result.Intervention.WarningThreshold = override.Intervention.WarningThreshold
+	}
+	if override.Intervention.HoldControlAddr != "" {
+		result.Intervention.HoldControlAddr = override.Intervention.HoldControlAddr
+	}
+
 	// Infrastructure: override individual service configs if provided
 	if override.Infrastructure.Postgres != nil {
 		result.Infrastructure.Postgres = override.Infrastructure.Postgres
@@ -1042,12 +1108,11 @@ func Merge(base, override *Config) *Config {
 				if v.MaxChainDepth > 0 {
 					existing.MaxChainDepth = v.MaxChainDepth
 				}
-				if v.RequiresLLM {
-					existing.RequiresLLM = true
-				}
-				if v.RequiresParentFinding {
-					existing.RequiresParentFinding = true
-				}
+				// Bool fields: always take override value when the cage
+				// type key is present. Unlike int fields, false is a
+				// valid intent ("this cage type doesn't need LLM").
+				existing.RequiresLLM = v.RequiresLLM
+				existing.RequiresParentFinding = v.RequiresParentFinding
 				result.Cages[k] = existing
 			} else {
 				result.Cages[k] = v

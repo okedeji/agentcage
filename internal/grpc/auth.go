@@ -90,15 +90,12 @@ func AuthUnaryInterceptor(accessCfg config.AccessConfig, requireMTLS bool, log l
 			}
 		}
 
-		// No valid credential found.
+		// No valid credential found. At least one of requireMTLS or
+		// keyHashes is set (otherwise noAuth returned early above).
 		if requireMTLS {
 			return nil, status.Error(codes.Unauthenticated, "client certificate required")
 		}
-		if len(keyHashes) > 0 {
-			return nil, status.Error(codes.Unauthenticated, "authentication required (mTLS or API key)")
-		}
-
-		return handler(ctx, req)
+		return nil, status.Error(codes.Unauthenticated, "authentication required (mTLS or API key)")
 	}
 }
 

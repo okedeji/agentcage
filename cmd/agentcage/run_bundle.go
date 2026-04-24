@@ -43,6 +43,9 @@ func prepareBundle(ctx context.Context, agentPath string) (string, error) {
 	if storeErr != nil {
 		return "", fmt.Errorf("storing bundle: %w", storeErr)
 	}
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 
 	fmt.Println("Verifying bundle...")
 	tmpDir, tmpErr := os.MkdirTemp("", "agentcage-verify-*")

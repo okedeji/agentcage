@@ -319,17 +319,23 @@ func Unpack(r io.Reader, destDir string, opts *UnpackOptions) (*BundleManifest, 
 }
 
 func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
-	bundleMajor, err := majorVersion(bundle.Version)
+	bundleMajor, bundleMinor, err := majorMinorVersion(bundle.Version)
 	if err != nil {
 		return fmt.Errorf("invalid bundle version %q: %w", bundle.Version, err)
 	}
-	currentMajor, err := majorVersion(currentVersion)
+	currentMajor, currentMinor, err := majorMinorVersion(currentVersion)
 	if err != nil {
 		return fmt.Errorf("invalid current version %q: %w", currentVersion, err)
 	}
 	if bundleMajor != currentMajor {
 		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d): major version mismatch",
 			bundle.Version, bundleMajor, currentVersion, currentMajor)
+	}
+	// Pre-1.0: minor bumps are breaking per semver. Patch differences
+	// within the same minor are compatible (0.1.0 works with 0.1.5).
+	if bundleMajor == 0 && bundleMinor != currentMinor {
+		return fmt.Errorf("bundle was packed with agentcage v%s but this is v%s: minor version mismatch (pre-1.0 minors are breaking)",
+			bundle.Version, currentVersion)
 	}
 	return nil
 }
@@ -366,10 +372,21 @@ func CheckContentPolicy(manifest *BundleManifest) error {
 	return nil
 }
 
-func majorVersion(v string) (int, error) {
+func majorMinorVersion(v string) (int, int, error) {
 	v = strings.TrimPrefix(v, "v")
-	parts := strings.SplitN(v, ".", 2)
-	return strconv.Atoi(parts[0])
+	parts := strings.SplitN(v, ".", 3)
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(parts) < 2 {
+		return major, 0, nil
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, err
+	}
+	return major, minor, nil
 }
 
 func UnpackFile(bundlePath, destDir string) (*BundleManifest, error) {

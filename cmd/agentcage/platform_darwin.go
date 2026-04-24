@@ -73,7 +73,7 @@ func platformInit(args []string) {
 			os.Exit(1)
 		}
 		dest := home + "/config.yaml"
-		if err := os.WriteFile(dest, data, 0644); err != nil {
+		if err := os.WriteFile(dest, data, 0600); err != nil {
 			fmt.Fprintf(os.Stderr, "agentcage init: writing config to shared dir: %v\n", err)
 			os.Exit(1)
 		}

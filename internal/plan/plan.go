@@ -46,6 +46,7 @@ var denylistedHosts = map[string]bool{
 	"nats.agentcage.internal":         true,
 	"temporal.agentcage.internal":     true,
 	"postgres.agentcage.internal":     true,
+	"metadata.google.internal":        true,
 }
 
 var privateNetworks = []net.IPNet{
@@ -379,10 +380,10 @@ func Merge(base, override *Plan) *Plan {
 	}
 
 	if len(override.Payload.ExtraBlock) > 0 {
-		out.Payload.ExtraBlock = override.Payload.ExtraBlock
+		out.Payload.ExtraBlock = copyPatterns(override.Payload.ExtraBlock)
 	}
 	if len(override.Payload.ExtraFlag) > 0 {
-		out.Payload.ExtraFlag = override.Payload.ExtraFlag
+		out.Payload.ExtraFlag = copyPatterns(override.Payload.ExtraFlag)
 	}
 
 	if len(override.Tags) > 0 {
@@ -605,6 +606,12 @@ func validateTargetHost(h string) error {
 		if v4 := ip.To4(); v4 != nil && isPrivateOrLoopback(net.IP(v4)) {
 			return fmt.Errorf("private/loopback IP address (IPv4-mapped)")
 		}
+	}
+	// Hostnames like 127.0.0.1.nip.io pass isPrivateIP (not a bare IP)
+	// but resolve to loopback. EnforceConfigCeilings also checks this,
+	// but catching it here too is defense in depth.
+	if err := checkHostResolvesToPrivate(host); err != nil {
+		return err
 	}
 	return nil
 }
