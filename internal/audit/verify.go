@@ -21,6 +21,31 @@ var (
 	ErrEmptyChain        = errors.New("empty chain")
 )
 
+// VerifyChainLinkage checks sequence continuity and hash chain integrity
+// without verifying HMAC signatures. This catches deleted, reordered, or
+// hash-tampered entries but cannot detect data-only tampering (which
+// requires the signing keys via VerifyChain).
+func VerifyChainLinkage(entries []Entry) error {
+	if len(entries) == 0 {
+		return ErrEmptyChain
+	}
+
+	previousHash := make([]byte, sha256.Size)
+	for i, entry := range entries {
+		expectedSeq := int64(i + 1)
+		if entry.Sequence != expectedSeq {
+			return fmt.Errorf("%w: expected sequence %d, got %d at position %d",
+				ErrSequenceGap, expectedSeq, entry.Sequence, i)
+		}
+		if !hmac.Equal(entry.PreviousHash, previousHash) {
+			return fmt.Errorf("%w: entry %d (cage %s) previous hash does not match",
+				ErrChainBroken, entry.Sequence, entry.CageID)
+		}
+		previousHash = hashEntry(entry)
+	}
+	return nil
+}
+
 func VerifyChain(entries []Entry, resolve KeyResolver) error {
 	return VerifyChainCtx(context.Background(), entries, resolve)
 }

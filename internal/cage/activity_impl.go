@@ -610,6 +610,13 @@ func (a *ActivityImpl) ExportAuditLog(ctx context.Context, cageID string) error 
 		a.log.V(1).Info("no audit store, skipping export", "cage_id", cageID)
 		return nil
 	}
+	if a.logDir == "" {
+		a.log.V(1).Info("no logDir configured, skipping audit export", "cage_id", cageID)
+		return nil
+	}
+	if err := os.MkdirAll(a.logDir, 0755); err != nil {
+		return fmt.Errorf("creating audit export directory %s: %w", a.logDir, err)
+	}
 
 	entries, err := a.auditStore.GetEntries(ctx, cageID)
 	if err != nil {

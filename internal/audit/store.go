@@ -8,6 +8,11 @@ import "context"
 type Store interface {
 	AppendEntry(ctx context.Context, entry Entry) error
 	GetEntries(ctx context.Context, cageID string) ([]Entry, error)
+	GetEntriesFiltered(ctx context.Context, cageID, typeFilter string, limit int) ([]Entry, error)
+	GetEntryByID(ctx context.Context, entryID string) (*Entry, error)
+	GetEntriesByAssessment(ctx context.Context, assessmentID string) ([]Entry, error)
+	ListCagesWithAudit(ctx context.Context, assessmentID string) ([]string, error)
+	GetKeyVersions(ctx context.Context, cageID string) ([]string, error)
 	SaveDigest(ctx context.Context, digest Digest) error
 	GetDigest(ctx context.Context, cageID string) (*Digest, error)
 	GetLatestDigest(ctx context.Context, assessmentID string) (*Digest, error)

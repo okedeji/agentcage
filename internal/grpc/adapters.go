@@ -481,9 +481,14 @@ func (a *auditAdapter) VerifyChain(ctx context.Context, req *pb.VerifyChainReque
 	if len(entries) == 0 {
 		return &pb.VerifyChainResponse{Valid: false, Error: "no audit entries found"}, nil
 	}
-	// Verification requires a KeyResolver. Without Vault access in the
-	// adapter, return the chain metadata. The CLI handles full verification
-	// with key resolution.
+
+	// Verify chain linkage and sequence continuity without HMAC
+	// signature verification (which requires Vault key access).
+	// This catches deleted/reordered entries and broken hash links.
+	if err := audit.VerifyChainLinkage(entries); err != nil {
+		return &pb.VerifyChainResponse{Valid: false, Error: err.Error(), EntryCount: int64(len(entries))}, nil
+	}
+
 	return &pb.VerifyChainResponse{Valid: true, EntryCount: int64(len(entries))}, nil
 }
 
@@ -491,21 +496,13 @@ func (a *auditAdapter) GetEntries(ctx context.Context, req *pb.GetEntriesRequest
 	if req.GetCageId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "cage_id is required")
 	}
-	entries, err := a.store.GetEntries(ctx, req.GetCageId())
+	entries, err := a.store.GetEntriesFiltered(ctx, req.GetCageId(), req.GetTypeFilter(), int(req.GetLimit()))
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
-	typeFilter := req.GetTypeFilter()
-	var pbEntries []*pb.AuditEntry
-	limit := int(req.GetLimit())
-	for _, e := range entries {
-		if typeFilter != "" && e.Type.String() != typeFilter {
-			continue
-		}
-		pbEntries = append(pbEntries, auditEntryToProto(e))
-		if limit > 0 && len(pbEntries) >= limit {
-			break
-		}
+	pbEntries := make([]*pb.AuditEntry, len(entries))
+	for i, e := range entries {
+		pbEntries[i] = auditEntryToProto(e)
 	}
 	return &pb.GetEntriesResponse{Entries: pbEntries}, nil
 }

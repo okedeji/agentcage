@@ -18,9 +18,9 @@ func NewPGStore(db *sql.DB) *PGStore {
 
 func (s *PGStore) AppendEntry(ctx context.Context, entry Entry) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO audit_entries (id, cage_id, assessment_id, sequence, type, timestamp, data, key_version, signature, previous_hash)
+		`INSERT INTO audit_entries (id, cage_id, assessment_id, sequence, entry_type, timestamp, data, key_version, signature, previous_hash)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		 ON CONFLICT (id) DO NOTHING`,
+		 ON CONFLICT (cage_id, sequence) DO NOTHING`,
 		entry.ID,
 		entry.CageID,
 		entry.AssessmentID,
@@ -40,7 +40,7 @@ func (s *PGStore) AppendEntry(ctx context.Context, entry Entry) error {
 
 func (s *PGStore) GetEntries(ctx context.Context, cageID string) ([]Entry, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, cage_id, assessment_id, sequence, type, timestamp, data, key_version, signature, previous_hash
+		`SELECT id, cage_id, assessment_id, sequence, entry_type, timestamp, data, key_version, signature, previous_hash
 		 FROM audit_entries
 		 WHERE cage_id = $1
 		 ORDER BY sequence ASC`,
@@ -153,12 +153,53 @@ func (s *PGStore) GetLatestDigest(ctx context.Context, assessmentID string) (*Di
 	return &d, nil
 }
 
+func (s *PGStore) GetEntriesFiltered(ctx context.Context, cageID, typeFilter string, limit int) ([]Entry, error) {
+	query := `SELECT id, cage_id, assessment_id, sequence, entry_type, timestamp, data, key_version, signature, previous_hash
+		 FROM audit_entries
+		 WHERE cage_id = $1`
+	args := []any{cageID}
+	argIdx := 2
+
+	if typeFilter != "" {
+		query += fmt.Sprintf(` AND entry_type = $%d`, argIdx)
+		args = append(args, typeFilter)
+		argIdx++
+	}
+
+	query += ` ORDER BY sequence ASC`
+
+	if limit > 0 {
+		query += fmt.Sprintf(` LIMIT $%d`, argIdx)
+		args = append(args, limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying filtered audit entries for cage %s: %w", cageID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var entries []Entry
+	for rows.Next() {
+		var e Entry
+		var typeName string
+		var data []byte
+		if err := rows.Scan(&e.ID, &e.CageID, &e.AssessmentID, &e.Sequence, &typeName, &e.Timestamp, &data, &e.KeyVersion, &e.Signature, &e.PreviousHash); err != nil {
+			return nil, fmt.Errorf("scanning audit entry: %w", err)
+		}
+		e.Type = entryTypeFromString(typeName)
+		e.Data = data
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 func (s *PGStore) GetEntryByID(ctx context.Context, entryID string) (*Entry, error) {
 	var e Entry
 	var typeName string
 	var data []byte
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, cage_id, assessment_id, sequence, type, timestamp, data, key_version, signature, previous_hash
+		`SELECT id, cage_id, assessment_id, sequence, entry_type, timestamp, data, key_version, signature, previous_hash
 		 FROM audit_entries WHERE id = $1`,
 		entryID,
 	).Scan(&e.ID, &e.CageID, &e.AssessmentID, &e.Sequence, &typeName, &e.Timestamp, &data, &e.KeyVersion, &e.Signature, &e.PreviousHash)
@@ -175,7 +216,7 @@ func (s *PGStore) GetEntryByID(ctx context.Context, entryID string) (*Entry, err
 
 func (s *PGStore) GetEntriesByAssessment(ctx context.Context, assessmentID string) ([]Entry, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, cage_id, assessment_id, sequence, type, timestamp, data, key_version, signature, previous_hash
+		`SELECT id, cage_id, assessment_id, sequence, entry_type, timestamp, data, key_version, signature, previous_hash
 		 FROM audit_entries
 		 WHERE assessment_id = $1
 		 ORDER BY cage_id, sequence ASC`,

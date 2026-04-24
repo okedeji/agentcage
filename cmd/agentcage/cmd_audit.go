@@ -122,7 +122,7 @@ func verifyOneCage(ctx context.Context, client pb.AuditServiceClient, cageID str
 		fmt.Fprintf(os.Stderr, "FAIL  %s: %s\n", cageID, resp.GetError())
 		return false
 	}
-	fmt.Printf("OK    %s (%d entries)\n", cageID, resp.GetEntryCount())
+	fmt.Printf("OK    %s (%d entries, chain linkage verified)\n", cageID, resp.GetEntryCount())
 	return true
 }
 
@@ -162,7 +162,11 @@ func cmdAuditList(args []string) {
 		if e.GetTimestamp() != nil {
 			ts = e.GetTimestamp().AsTime().Format(time.RFC3339)
 		}
-		fmt.Printf("  %4d  %-25s  %s  %s\n", e.GetSequence(), e.GetType(), ts, e.GetId()[:12])
+		id := e.GetId()
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		fmt.Printf("  %4d  %-25s  %s  %s\n", e.GetSequence(), e.GetType(), ts, id)
 	}
 }
 
@@ -244,8 +248,15 @@ func cmdAuditExport(args []string) {
 	if len(allExports) == 1 {
 		out = allExports[0]
 	} else {
+		wrapper := struct {
+			Cages      []json.RawMessage `json:"cages"`
+			ExportedAt string            `json:"exported_at"`
+		}{
+			Cages:      allExports,
+			ExportedAt: time.Now().UTC().Format(time.RFC3339),
+		}
 		var err error
-		out, err = json.MarshalIndent(allExports, "", "  ")
+		out, err = json.MarshalIndent(wrapper, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
@@ -434,6 +445,7 @@ func cmdAuditValidate(args []string) {
 		fmt.Printf(", digest present")
 	}
 	fmt.Println(")")
+	fmt.Fprintln(os.Stderr, "NOTE: Structural validation only. HMAC signature verification requires signing keys from Vault.")
 }
 
 func printAuditUsage() {
