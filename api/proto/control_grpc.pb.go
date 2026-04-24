@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ControlService_Ping_FullMethodName   = "/agentcage.control.v1.ControlService/Ping"
-	ControlService_Stop_FullMethodName   = "/agentcage.control.v1.ControlService/Stop"
-	ControlService_Health_FullMethodName = "/agentcage.control.v1.ControlService/Health"
+	ControlService_Ping_FullMethodName      = "/agentcage.control.v1.ControlService/Ping"
+	ControlService_Stop_FullMethodName      = "/agentcage.control.v1.ControlService/Stop"
+	ControlService_Health_FullMethodName    = "/agentcage.control.v1.ControlService/Health"
+	ControlService_GetConfig_FullMethodName = "/agentcage.control.v1.ControlService/GetConfig"
 )
 
 // ControlServiceClient is the client API for ControlService service.
@@ -31,6 +32,7 @@ type ControlServiceClient interface {
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 	Stop(ctx context.Context, in *StopRequest, opts ...grpc.CallOption) (*StopResponse, error)
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
+	GetConfig(ctx context.Context, in *GetConfigRequest, opts ...grpc.CallOption) (*GetConfigResponse, error)
 }
 
 type controlServiceClient struct {
@@ -71,6 +73,16 @@ func (c *controlServiceClient) Health(ctx context.Context, in *HealthRequest, op
 	return out, nil
 }
 
+func (c *controlServiceClient) GetConfig(ctx context.Context, in *GetConfigRequest, opts ...grpc.CallOption) (*GetConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetConfigResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ControlServiceServer is the server API for ControlService service.
 // All implementations must embed UnimplementedControlServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type ControlServiceServer interface {
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	Stop(context.Context, *StopRequest) (*StopResponse, error)
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
+	GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error)
 	mustEmbedUnimplementedControlServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedControlServiceServer) Stop(context.Context, *StopRequest) (*S
 }
 func (UnimplementedControlServiceServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Health not implemented")
+}
+func (UnimplementedControlServiceServer) GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetConfig not implemented")
 }
 func (UnimplementedControlServiceServer) mustEmbedUnimplementedControlServiceServer() {}
 func (UnimplementedControlServiceServer) testEmbeddedByValue()                        {}
@@ -172,6 +188,24 @@ func _ControlService_Health_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControlService_GetConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetConfig(ctx, req.(*GetConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ControlService_ServiceDesc is the grpc.ServiceDesc for ControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Health",
 			Handler:    _ControlService_Health_Handler,
+		},
+		{
+			MethodName: "GetConfig",
+			Handler:    _ControlService_GetConfig_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

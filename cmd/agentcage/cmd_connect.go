@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"os"
@@ -21,27 +23,38 @@ func cmdConnect(args []string) {
 	certFile := fs.String("cert", "", "client certificate file")
 	keyFile := fs.String("key", "", "client private key file")
 	caFile := fs.String("ca", "", "CA certificate file for server verification")
+	apiKey := fs.String("api-key", "", "API key for authentication")
 	insecureFlag := fs.Bool("insecure", false, "skip TLS (localhost/dev only)")
 	_ = fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: agentcage connect <address> [--cert <file> --key <file> --ca <file>] [--insecure]")
+		fmt.Fprintln(os.Stderr, "usage: agentcage connect <address> [options]")
 		fmt.Fprintln(os.Stderr, "\nExamples:")
 		fmt.Fprintln(os.Stderr, "  agentcage connect orchestrator.prod:9090 --cert client.crt --key client.key --ca ca.pem")
+		fmt.Fprintln(os.Stderr, "  agentcage connect orchestrator.prod:9090 --api-key <key> --ca ca.pem")
+		fmt.Fprintln(os.Stderr, "  agentcage connect orchestrator.prod:9090 --api-key <key> --insecure")
 		fmt.Fprintln(os.Stderr, "  agentcage connect localhost:9090 --insecure")
 		os.Exit(1)
 	}
 
 	addr := fs.Arg(0)
 
-	if !*insecureFlag && *caFile == "" {
-		fmt.Fprintln(os.Stderr, "error: specify --ca <file> for TLS or --insecure for plaintext")
+	if !*insecureFlag && *caFile == "" && *apiKey == "" && *certFile == "" {
+		fmt.Fprintln(os.Stderr, "error: specify --ca <file> for TLS, --api-key for key auth, or --insecure for plaintext")
 		os.Exit(1)
 	}
 
-	if err := pingOrchestrator(addr, *caFile, *insecureFlag); err != nil {
+	conn, err := connectOrchestrator(addr, *certFile, *keyFile, *caFile, *insecureFlag)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
+	}
+	defer func() { _ = conn.Close() }()
+
+	fmt.Println("Fetching operator config from orchestrator...")
+	remoteConfig, fetchErr := fetchRemoteConfig(conn)
+	if fetchErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not fetch config: %v (connection saved without config)\n", fetchErr)
 	}
 
 	home := config.HomeDir()
@@ -66,42 +79,75 @@ func cmdConnect(args []string) {
 			CAFile:   savedCA,
 		}
 	}
+	if *apiKey != "" {
+		server.APIKey = *apiKey
+	}
 
-	if err := writeServerConfig(server); err != nil {
+	if err := writeConnectConfig(server, remoteConfig); err != nil {
 		fmt.Fprintf(os.Stderr, "error saving config: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Connected to %s\n", addr)
+	if remoteConfig != nil {
+		fmt.Println("Operator config synced from orchestrator.")
+	}
 	fmt.Printf("Config saved to %s\n", config.DefaultPath())
 }
 
-func pingOrchestrator(addr, caFile string, insecure bool) error {
+func connectOrchestrator(addr, certFile, keyFile, caFile string, insecure bool) (*grpc.ClientConn, error) {
 	var creds grpc.DialOption
-	if insecure || caFile == "" {
+	if insecure {
 		creds = grpc.WithTransportCredentials(grpcinsecure.NewCredentials())
 	} else {
-		tc, err := credentials.NewClientTLSFromFile(caFile, "")
-		if err != nil {
-			return fmt.Errorf("loading CA %s: %w", caFile, err)
+		tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
+		if certFile != "" && keyFile != "" {
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				return nil, fmt.Errorf("loading client cert %s: %w", certFile, err)
+			}
+			tlsCfg.Certificates = []tls.Certificate{cert}
 		}
-		creds = grpc.WithTransportCredentials(tc)
+		if caFile != "" {
+			ca, err := os.ReadFile(caFile)
+			if err != nil {
+				return nil, fmt.Errorf("reading CA %s: %w", caFile, err)
+			}
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(ca) {
+				return nil, fmt.Errorf("CA file %s: no PEM certs found", caFile)
+			}
+			tlsCfg.RootCAs = pool
+		}
+		creds = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
 	}
 
 	conn, err := grpc.NewClient(addr, creds)
 	if err != nil {
-		return fmt.Errorf("connecting to %s: %w", addr, err)
+		return nil, fmt.Errorf("connecting to %s: %w", addr, err)
 	}
-	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	client := pb.NewControlServiceClient(conn)
 	if _, err := client.Ping(ctx, &pb.PingRequest{}); err != nil {
-		return fmt.Errorf("orchestrator not reachable at %s: %w", addr, err)
+		_ = conn.Close()
+		return nil, fmt.Errorf("orchestrator not reachable at %s: %w", addr, err)
 	}
-	return nil
+	return conn, nil
+}
+
+func fetchRemoteConfig(conn *grpc.ClientConn) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := pb.NewControlServiceClient(conn)
+	resp, err := client.GetConfig(ctx, &pb.GetConfigRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("fetching config: %w", err)
+	}
+	return resp.GetConfigYaml(), nil
 }
 
 func copyCertFile(src, home, name string) string {
@@ -122,11 +168,15 @@ func copyCertFile(src, home, name string) string {
 	return dest
 }
 
-func writeServerConfig(server config.ServerConfig) error {
+func writeConnectConfig(server config.ServerConfig, remoteConfigYAML []byte) error {
 	path := config.DefaultPath()
 
 	var cfg config.Config
-	if data, err := os.ReadFile(path); err == nil {
+	if remoteConfigYAML != nil {
+		if err := yaml.Unmarshal(remoteConfigYAML, &cfg); err != nil {
+			return fmt.Errorf("parsing remote config: %w", err)
+		}
+	} else if data, err := os.ReadFile(path); err == nil {
 		if parseErr := yaml.Unmarshal(data, &cfg); parseErr != nil {
 			return fmt.Errorf("parsing existing config %s: %w", path, parseErr)
 		}

@@ -31,13 +31,14 @@ type Services struct {
 	Findings      *findings.PGStore
 	Audit         *audit.PGStore
 	CageLogDir    string
+	ConfigYAML    []byte
 	Cancel        context.CancelFunc
 	Version       string
 }
 
 // Register wires all gRPC service adapters onto the server.
 func Register(srv *grpc.Server, svc Services) {
-	pb.RegisterControlServiceServer(srv, &controlAdapter{cancelFunc: svc.Cancel, version: svc.Version})
+	pb.RegisterControlServiceServer(srv, &controlAdapter{cancelFunc: svc.Cancel, version: svc.Version, configYAML: svc.ConfigYAML})
 	pb.RegisterCageServiceServer(srv, &cageAdapter{server: svc.Cages, logDir: svc.CageLogDir})
 	pb.RegisterAssessmentServiceServer(srv, &assessmentAdapter{server: svc.Assessments})
 	pb.RegisterInterventionServiceServer(srv, &interventionAdapter{server: svc.Interventions})
@@ -54,6 +55,7 @@ type controlAdapter struct {
 	pb.UnimplementedControlServiceServer
 	cancelFunc context.CancelFunc
 	version    string
+	configYAML []byte
 }
 
 func (a *controlAdapter) Ping(_ context.Context, _ *pb.PingRequest) (*pb.PingResponse, error) {
@@ -67,6 +69,10 @@ func (a *controlAdapter) Stop(_ context.Context, _ *pb.StopRequest) (*pb.StopRes
 
 func (a *controlAdapter) Health(_ context.Context, _ *pb.HealthRequest) (*pb.HealthResponse, error) {
 	return &pb.HealthResponse{Services: map[string]string{"status": "ok"}}, nil
+}
+
+func (a *controlAdapter) GetConfig(_ context.Context, _ *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {
+	return &pb.GetConfigResponse{ConfigYaml: a.configYAML}, nil
 }
 
 type cageAdapter struct {

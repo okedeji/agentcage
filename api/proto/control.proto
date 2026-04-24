@@ -6,6 +6,7 @@ service ControlService {
   rpc Ping(PingRequest) returns (PingResponse);
   rpc Stop(StopRequest) returns (StopResponse);
   rpc Health(HealthRequest) returns (HealthResponse);
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
 }
 
 message PingRequest {}
@@ -20,4 +21,9 @@ message StopResponse {}
 message HealthRequest {}
 message HealthResponse {
   map<string, string> services = 1;
+}
+
+message GetConfigRequest {}
+message GetConfigResponse {
+  bytes config_yaml = 1;
 }

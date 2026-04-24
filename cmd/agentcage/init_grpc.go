@@ -36,6 +36,7 @@ func buildGRPCServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainUnaryInterceptor(
 			agentgrpc.RecoveryUnaryInterceptor(log.WithValues("component", "grpc")),
+			agentgrpc.AuthUnaryInterceptor(cfg.Access, cfg.GRPC.RequiresClientCert(), log.WithValues("component", "grpc-auth")),
 			agentgrpc.LoggingUnaryInterceptor(log.WithValues("component", "grpc")),
 		),
 		// Caps so a buggy or hostile client can't exhaust us. 32 MB

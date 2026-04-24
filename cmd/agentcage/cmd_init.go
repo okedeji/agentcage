@@ -258,6 +258,8 @@ func runInit(configFile, logFormat string) error {
 		Log:           log,
 	})
 
+	configYAML, _ := config.Marshal(cfg)
+
 	grpcServer, reloadableCert, err := buildGRPCServer(ctx, cfg, spireSocket, trustDomain, agentgrpc.Services{
 		Cages:         cageSvc,
 		Assessments:   assessmentSvc,
@@ -266,6 +268,7 @@ func runInit(configFile, logFormat string) error {
 		Findings:      findingStore,
 		Audit:         cageRuntime.auditStore,
 		CageLogDir:    cageLogDir,
+		ConfigYAML:    configYAML,
 		Cancel:        cancel,
 		Version:       version,
 	}, log)

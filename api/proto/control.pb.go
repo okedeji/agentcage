@@ -261,6 +261,86 @@ func (x *HealthResponse) GetServices() map[string]string {
 	return nil
 }
 
+type GetConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigRequest) Reset() {
+	*x = GetConfigRequest{}
+	mi := &file_api_proto_control_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigRequest) ProtoMessage() {}
+
+func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_control_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
+func (*GetConfigRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_control_proto_rawDescGZIP(), []int{6}
+}
+
+type GetConfigResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ConfigYaml    []byte                 `protobuf:"bytes,1,opt,name=config_yaml,json=configYaml,proto3" json:"config_yaml,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConfigResponse) Reset() {
+	*x = GetConfigResponse{}
+	mi := &file_api_proto_control_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConfigResponse) ProtoMessage() {}
+
+func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_control_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
+func (*GetConfigResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_control_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetConfigResponse) GetConfigYaml() []byte {
+	if x != nil {
+		return x.ConfigYaml
+	}
+	return nil
+}
+
 var File_api_proto_control_proto protoreflect.FileDescriptor
 
 const file_api_proto_control_proto_rawDesc = "" +
@@ -277,11 +357,16 @@ const file_api_proto_control_proto_rawDesc = "" +
 	"\bservices\x18\x01 \x03(\v22.agentcage.control.v1.HealthResponse.ServicesEntryR\bservices\x1a;\n" +
 	"\rServicesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\x83\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x12\n" +
+	"\x10GetConfigRequest\"4\n" +
+	"\x11GetConfigResponse\x12\x1f\n" +
+	"\vconfig_yaml\x18\x01 \x01(\fR\n" +
+	"configYaml2\xe1\x02\n" +
 	"\x0eControlService\x12M\n" +
 	"\x04Ping\x12!.agentcage.control.v1.PingRequest\x1a\".agentcage.control.v1.PingResponse\x12M\n" +
 	"\x04Stop\x12!.agentcage.control.v1.StopRequest\x1a\".agentcage.control.v1.StopResponse\x12S\n" +
-	"\x06Health\x12#.agentcage.control.v1.HealthRequest\x1a$.agentcage.control.v1.HealthResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
+	"\x06Health\x12#.agentcage.control.v1.HealthRequest\x1a$.agentcage.control.v1.HealthResponse\x12\\\n" +
+	"\tGetConfig\x12&.agentcage.control.v1.GetConfigRequest\x1a'.agentcage.control.v1.GetConfigResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
 
 var (
 	file_api_proto_control_proto_rawDescOnce sync.Once
@@ -295,26 +380,30 @@ func file_api_proto_control_proto_rawDescGZIP() []byte {
 	return file_api_proto_control_proto_rawDescData
 }
 
-var file_api_proto_control_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_api_proto_control_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_api_proto_control_proto_goTypes = []any{
-	(*PingRequest)(nil),    // 0: agentcage.control.v1.PingRequest
-	(*PingResponse)(nil),   // 1: agentcage.control.v1.PingResponse
-	(*StopRequest)(nil),    // 2: agentcage.control.v1.StopRequest
-	(*StopResponse)(nil),   // 3: agentcage.control.v1.StopResponse
-	(*HealthRequest)(nil),  // 4: agentcage.control.v1.HealthRequest
-	(*HealthResponse)(nil), // 5: agentcage.control.v1.HealthResponse
-	nil,                    // 6: agentcage.control.v1.HealthResponse.ServicesEntry
+	(*PingRequest)(nil),       // 0: agentcage.control.v1.PingRequest
+	(*PingResponse)(nil),      // 1: agentcage.control.v1.PingResponse
+	(*StopRequest)(nil),       // 2: agentcage.control.v1.StopRequest
+	(*StopResponse)(nil),      // 3: agentcage.control.v1.StopResponse
+	(*HealthRequest)(nil),     // 4: agentcage.control.v1.HealthRequest
+	(*HealthResponse)(nil),    // 5: agentcage.control.v1.HealthResponse
+	(*GetConfigRequest)(nil),  // 6: agentcage.control.v1.GetConfigRequest
+	(*GetConfigResponse)(nil), // 7: agentcage.control.v1.GetConfigResponse
+	nil,                       // 8: agentcage.control.v1.HealthResponse.ServicesEntry
 }
 var file_api_proto_control_proto_depIdxs = []int32{
-	6, // 0: agentcage.control.v1.HealthResponse.services:type_name -> agentcage.control.v1.HealthResponse.ServicesEntry
+	8, // 0: agentcage.control.v1.HealthResponse.services:type_name -> agentcage.control.v1.HealthResponse.ServicesEntry
 	0, // 1: agentcage.control.v1.ControlService.Ping:input_type -> agentcage.control.v1.PingRequest
 	2, // 2: agentcage.control.v1.ControlService.Stop:input_type -> agentcage.control.v1.StopRequest
 	4, // 3: agentcage.control.v1.ControlService.Health:input_type -> agentcage.control.v1.HealthRequest
-	1, // 4: agentcage.control.v1.ControlService.Ping:output_type -> agentcage.control.v1.PingResponse
-	3, // 5: agentcage.control.v1.ControlService.Stop:output_type -> agentcage.control.v1.StopResponse
-	5, // 6: agentcage.control.v1.ControlService.Health:output_type -> agentcage.control.v1.HealthResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
+	6, // 4: agentcage.control.v1.ControlService.GetConfig:input_type -> agentcage.control.v1.GetConfigRequest
+	1, // 5: agentcage.control.v1.ControlService.Ping:output_type -> agentcage.control.v1.PingResponse
+	3, // 6: agentcage.control.v1.ControlService.Stop:output_type -> agentcage.control.v1.StopResponse
+	5, // 7: agentcage.control.v1.ControlService.Health:output_type -> agentcage.control.v1.HealthResponse
+	7, // 8: agentcage.control.v1.ControlService.GetConfig:output_type -> agentcage.control.v1.GetConfigResponse
+	5, // [5:9] is the sub-list for method output_type
+	1, // [1:5] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -331,7 +420,7 @@ func file_api_proto_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_control_proto_rawDesc), len(file_api_proto_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -69,6 +69,8 @@ func main() {
 		cmdConnect(args)
 	case "config":
 		cmdConfig(args)
+	case "access":
+		cmdAccess(args)
 	case "vault":
 		cmdVault(args)
 	case "version":
@@ -113,6 +115,7 @@ Operate:
   audit             Verify, inspect, and export tamper-evident audit logs
   falco             Manage Falco runtime monitoring rules (import, list, export)
   config            Manage operator config (show, export, import, get)
+  access            Manage client authentication (create-key, list-keys, revoke-key)
   vault             Manage secrets (put, get, list, delete, rotate, import, migrate)
 
 Info:

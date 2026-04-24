@@ -1,0 +1,140 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+)
+
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string     { return strings.Join(*s, ",") }
+func (s *stringSliceFlag) Set(v string) error { *s = append(*s, v); return nil }
+
+type runFlags struct {
+	plan             string
+	agent            string
+	target           string
+	ports            stringSliceFlag
+	paths            stringSliceFlag
+	skipPaths        stringSliceFlag
+	tokenBudget      int64
+	maxDuration      string
+	maxChainDepth    int
+	maxConcurrent    int
+	maxIterations    int
+	context          string
+	focus            stringSliceFlag
+	skip             stringSliceFlag
+	endpoints        stringSliceFlag
+	apiSpecs         stringSliceFlag
+	knownWeaknesses  stringSliceFlag
+	requirePoC       bool
+	headlessXSS      bool
+	notify           string
+	notifyOnFinding  bool
+	notifyOnComplete bool
+	follow           bool
+	format           string
+	name             string
+	tags             stringSliceFlag
+	customerID       string
+}
+
+func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
+	rf := &runFlags{}
+	fs := flag.NewFlagSet("run", flag.ExitOnError)
+	fs.Usage = printRunUsage
+
+	fs.StringVar(&rf.plan, "plan", "", "path to assessment YAML plan file")
+	fs.StringVar(&rf.agent, "agent", "", "path to .cage bundle")
+	fs.StringVar(&rf.target, "target", "", "target host(s), comma-separated")
+	fs.Var(&rf.ports, "port", "port to include (repeatable)")
+	fs.Var(&rf.paths, "path", "URL path to scope (repeatable)")
+	fs.Var(&rf.skipPaths, "skip-path", "URL path to skip (repeatable)")
+	fs.Int64Var(&rf.tokenBudget, "token-budget", 0, "LLM token cap")
+	fs.StringVar(&rf.maxDuration, "max-duration", "", "assessment wall clock (e.g. 30m, 4h)")
+	fs.IntVar(&rf.maxChainDepth, "max-chain-depth", 0, "escalation chain depth limit")
+	fs.IntVar(&rf.maxConcurrent, "max-concurrent", 0, "max concurrent cages")
+	fs.IntVar(&rf.maxIterations, "max-iterations", 0, "max coordinator iterations (default 20)")
+	fs.StringVar(&rf.context, "context", "", "free-text context for the LLM coordinator")
+	fs.Var(&rf.focus, "focus", "vuln class to prioritize (repeatable)")
+	fs.Var(&rf.skip, "deprioritize", "path to deprioritize (repeatable)")
+	fs.Var(&rf.endpoints, "endpoint", "endpoint to focus on (repeatable)")
+	fs.Var(&rf.apiSpecs, "api-spec", "OpenAPI/GraphQL spec URL (repeatable)")
+	fs.Var(&rf.knownWeaknesses, "known-weakness", "known weakness hint (repeatable)")
+	fs.BoolVar(&rf.requirePoC, "require-poc", false, "require PoC for every finding")
+	fs.BoolVar(&rf.headlessXSS, "headless-xss", false, "headless browser for XSS validation")
+	fs.StringVar(&rf.notify, "notify", "", "webhook URL for notifications")
+	fs.BoolVar(&rf.notifyOnFinding, "notify-on-finding", false, "notify per validated finding")
+	fs.BoolVar(&rf.notifyOnComplete, "notify-on-complete", false, "notify when assessment finishes")
+	fs.BoolVar(&rf.follow, "follow", false, "stream status updates until terminal state")
+	fs.StringVar(&rf.format, "format", "text", "output format: text, json")
+	fs.StringVar(&rf.name, "name", "", "human name for this assessment")
+	fs.Var(&rf.tags, "tag", "key=value metadata (repeatable)")
+	fs.StringVar(&rf.customerID, "customer-id", "", "customer identifier")
+
+	_ = fs.Parse(args)
+	return rf, fs
+}
+
+func explicitFlags(fs *flag.FlagSet) map[string]bool {
+	m := make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) {
+		m[f.Name] = true
+	})
+	return m
+}
+
+func printRunUsage() {
+	fmt.Fprintf(os.Stderr, `usage: agentcage run --agent <path> --target <host> [flags]
+       agentcage run --plan <assessment.yaml> [flag overrides]
+
+Examples:
+  agentcage run --agent ./my-agent.cage --target example.com
+  agentcage run --plan plans/staging.yaml --follow
+  agentcage run --agent ./my-agent.cage --target api.example.com --focus sqli --require-poc
+
+Required (unless in plan file):
+  --agent              .cage bundle (run 'agentcage pack <dir>' first)
+  --target             target host(s), comma-separated
+
+Plan file:
+  --plan               path to assessment YAML plan file
+
+Target scoping:
+  --port               port to include (repeatable)
+  --path               URL path to scope (repeatable)
+  --skip-path          URL path to skip (repeatable)
+
+Budget & limits:
+  --token-budget       LLM token cap
+  --max-duration       assessment wall clock (e.g. 30m, 4h)
+  --max-chain-depth    escalation chain depth limit
+  --max-concurrent     max concurrent cages
+  --max-iterations     max coordinator iterations (default 20)
+
+Guidance:
+  --context            free-text context for the LLM coordinator
+  --focus              vuln class to prioritize (repeatable)
+  --deprioritize       path to deprioritize (repeatable)
+  --endpoint           endpoint to focus on (repeatable)
+  --api-spec           OpenAPI/GraphQL spec URL (repeatable)
+  --known-weakness     known weakness hint (repeatable)
+  --require-poc        require PoC for every finding
+  --headless-xss       headless browser for XSS validation
+
+Notifications:
+  --notify             webhook URL for notifications
+  --notify-on-finding  notify per validated finding
+  --notify-on-complete notify when assessment finishes
+
+Output:
+  --follow             stream status updates until terminal state
+  --format             output format: text, json
+  --name               human name for this assessment
+  --tag                key=value metadata (repeatable)
+  --customer-id        customer identifier
+`)
+}

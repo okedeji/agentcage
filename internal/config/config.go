@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,7 +57,17 @@ type Config struct {
 	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
 	Intervention   InterventionConfig         `yaml:"intervention"`
 	Judge          *JudgeConfig               `yaml:"judge,omitempty"`
+	Access         AccessConfig               `yaml:"access"`
 	Server         ServerConfig               `yaml:"server"`
+}
+
+type AccessConfig struct {
+	APIKeys []APIKeyEntry `yaml:"api_keys,omitempty"`
+}
+
+type APIKeyEntry struct {
+	Name    string `yaml:"name"`
+	KeyHash string `yaml:"key_hash"`
 }
 
 // ServerConfig is the CLI-side connection config. Written by
@@ -66,6 +77,28 @@ type ServerConfig struct {
 	Address  string          `yaml:"address,omitempty"`
 	TLS      *ClientTLSConfig `yaml:"tls,omitempty"`
 	Insecure bool            `yaml:"insecure,omitempty"`
+	APIKey   string          `yaml:"api_key,omitempty"`
+}
+
+func (s ServerConfig) String() string {
+	key := ""
+	if s.APIKey != "" {
+		key = "REDACTED"
+	}
+	return fmt.Sprintf("ServerConfig{address=%s, insecure=%v, api_key=%s}", s.Address, s.Insecure, key)
+}
+
+func (s ServerConfig) GoString() string {
+	return s.String()
+}
+
+func (s ServerConfig) MarshalJSON() ([]byte, error) {
+	type redacted ServerConfig
+	c := redacted(s)
+	if c.APIKey != "" {
+		c.APIKey = "REDACTED"
+	}
+	return json.Marshal(c)
 }
 
 // ClientTLSConfig holds paths for client-side TLS credentials.
@@ -316,6 +349,10 @@ func (c *GRPCConfig) TLSEnabled() bool {
 
 func (c *GRPCConfig) UseInternalTLS() bool {
 	return c.TLS != nil && c.TLS.Internal
+}
+
+func (c *GRPCConfig) RequiresClientCert() bool {
+	return c.UseInternalTLS()
 }
 
 func (c *GRPCConfig) UseFileTLS() bool {
