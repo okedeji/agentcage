@@ -144,7 +144,12 @@ func GenerateFalcoRules(monitoring map[string]config.MonitoringConfig) (map[stri
 		for ruleName, action := range mc.Rules {
 			def, ok := detectConditions[ruleName]
 			if !ok {
+				fmt.Fprintf(os.Stderr, "warning: unknown monitoring rule %q in %s config, skipping\n", ruleName, cageType)
 				continue
+			}
+
+			if !isValidTripwireAction(action) {
+				fmt.Fprintf(os.Stderr, "warning: unknown action %q for rule %q in %s config, defaulting to log\n", action, ruleName, cageType)
 			}
 
 			fullName := fmt.Sprintf("%s in %s cage", humanizeRuleName(ruleName), cageType)
@@ -156,6 +161,7 @@ func GenerateFalcoRules(monitoring map[string]config.MonitoringConfig) (map[stri
 				if len(mc.AllowedProcesses) > 0 {
 					condition = fmt.Sprintf(condition, strings.Join(mc.AllowedProcesses, ", "))
 				} else {
+					fmt.Fprintf(os.Stderr, "warning: rule %q in %s requires allowed_processes but list is empty, skipping\n", ruleName, cageType)
 					continue
 				}
 			}
@@ -187,7 +193,7 @@ func RenderFalcoYAML(rules map[string][]FalcoRuleOutput) string {
 			fmt.Fprintf(&b, "- rule: %s\n", r.Rule)
 			fmt.Fprintf(&b, "  desc: %s\n", r.Desc)
 			fmt.Fprintf(&b, "  condition: %s\n", r.Condition)
-			fmt.Fprintf(&b, "  output: \"%s\"\n", r.Output)
+			fmt.Fprintf(&b, "  output: \"%s\"\n", escapeYAMLString(r.Output))
 			fmt.Fprintf(&b, "  priority: %s\n", r.Priority)
 			if len(r.Tags) > 0 {
 				fmt.Fprintf(&b, "  tags: [%s]\n", strings.Join(r.Tags, ", "))
@@ -211,8 +217,24 @@ func WriteFalcoRules(rules map[string][]FalcoRuleOutput, dir string) error {
 	return nil
 }
 
+func escapeYAMLString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	return s
+}
+
 func humanizeRuleName(name string) string {
 	return strings.ReplaceAll(name, "_", " ")
+}
+
+func isValidTripwireAction(s string) bool {
+	switch strings.ToLower(s) {
+	case "log", "log_and_continue", "human_review", "kill", "immediate_teardown":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseTripwireAction(s string) TripwirePolicy {

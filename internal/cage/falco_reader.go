@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+
+	agentmetrics "github.com/okedeji/agentcage/internal/metrics"
 )
 
 // FalcoAlertReader connects to a Falco Unix socket and reads JSON alert lines.
@@ -19,6 +21,9 @@ type FalcoAlertReader struct {
 }
 
 func NewFalcoAlertReader(socketPath string, log logr.Logger) *FalcoAlertReader {
+	if socketPath == "" {
+		log.Info("falco socket path not configured, alert reader disabled")
+	}
 	return &FalcoAlertReader{
 		socketPath: socketPath,
 		log:        log.WithValues("component", "falco-reader"),
@@ -65,6 +70,9 @@ func (r *FalcoAlertReader) Stream(ctx context.Context, cageID string) (<-chan Al
 
 			conn, err := net.DialTimeout("unix", r.socketPath, 5*time.Second)
 			if err != nil {
+				if agentmetrics.FalcoConnectionFailures != nil {
+					agentmetrics.FalcoConnectionFailures.Add(ctx, 1)
+				}
 				r.log.Info("falco connect failed; retrying",
 					"cage_id", cageID, "backoff", backoff, "error", err.Error())
 				if !sleepCtx(ctx, backoff) {
@@ -103,7 +111,8 @@ func (r *FalcoAlertReader) readLoop(ctx context.Context, conn net.Conn, cageID s
 			continue
 		}
 
-		if containerID, ok := raw.Fields["container.id"]; ok && containerID != cageID {
+		containerID, ok := raw.Fields["container.id"]
+		if !ok || containerID != cageID {
 			continue
 		}
 

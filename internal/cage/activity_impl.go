@@ -499,6 +499,10 @@ func (a *ActivityImpl) EvaluateAlert(ctx context.Context, cageType Type, assessm
 	}
 	a.log.Info("alert evaluated", "cage_id", alert.CageID, "rule", alert.RuleName, "policy", policy)
 
+	if agentmetrics.TripwiresFiredTotal != nil {
+		agentmetrics.TripwiresFiredTotal.Add(ctx, 1)
+	}
+
 	if a.alertNotifier != nil {
 		var priority int
 		switch policy {

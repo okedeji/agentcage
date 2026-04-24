@@ -27,6 +27,9 @@ var (
 
 	FleetHostsActive         metric.Int64UpDownCounter
 	FleetCapacityUtilization metric.Float64Gauge
+
+	TripwiresFiredTotal       metric.Int64Counter
+	FalcoConnectionFailures   metric.Int64Counter
 )
 
 // Init registers all agentcage metric instruments with the global meter provider.
@@ -134,6 +137,22 @@ func Init() error {
 	)
 	if err != nil {
 		return fmt.Errorf("creating fleet capacity utilization gauge: %w", err)
+	}
+
+	TripwiresFiredTotal, err = meter.Int64Counter(
+		"agentcage_tripwires_fired_total",
+		metric.WithDescription("Total Falco tripwire alerts fired, labeled by rule and action."),
+	)
+	if err != nil {
+		return fmt.Errorf("creating tripwires fired counter: %w", err)
+	}
+
+	FalcoConnectionFailures, err = meter.Int64Counter(
+		"agentcage_falco_connection_failures_total",
+		metric.WithDescription("Total Falco connection failures during cage monitoring."),
+	)
+	if err != nil {
+		return fmt.Errorf("creating falco connection failures counter: %w", err)
 	}
 
 	return nil

@@ -76,7 +76,7 @@ func (f *FalcoService) Start(ctx context.Context) error {
 	f.proc = newSubprocess("falco", f.log, bin,
 		"--modern-bpf",
 		"--json-output",
-		"--rules-file", filepath.Join(rulesDir, "agentcage_rules.yaml"),
+		"--rules-dir", rulesDir,
 		"--unbuffered",
 		"--unix-socket", socketPath,
 	)
