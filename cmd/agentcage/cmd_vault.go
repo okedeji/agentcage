@@ -68,7 +68,11 @@ func cmdVaultPut(args []string) {
 		os.Exit(1)
 	}
 	scope, key, value := args[0], args[1], args[2]
+	vaultWriteSecret(scope, key, value, "stored")
+}
 
+func vaultWriteSecret(scope, key, rawValue, verb string) {
+	value := rawValue
 	if value == "-" {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
@@ -99,7 +103,7 @@ func cmdVaultPut(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("stored %s/%s\n", scope, key)
+	fmt.Printf("%s %s/%s\n", verb, scope, key)
 }
 
 func cmdVaultGet(args []string) {
@@ -210,18 +214,7 @@ func cmdVaultRotate(args []string) {
 		os.Exit(1)
 	}
 	scope, key, value := args[0], args[1], args[2]
-
-	reader := mustBuildVaultCLIClient()
-	path := mustResolvePath(scope, key)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := reader.WriteSecret(ctx, path, map[string]any{"value": value}); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("rotated %s/%s\n", scope, key)
+	vaultWriteSecret(scope, key, value, "rotated")
 }
 
 func cmdVaultImport(args []string) {
@@ -243,7 +236,9 @@ func cmdVaultImport(args []string) {
 	defer func() { _ = f.Close() }()
 
 	reader := mustBuildVaultCLIClient()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Each key does a read (existence check) + write. 30s is too
+	// tight for large imports; 2 minutes matches the audit pattern.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	var imported, skipped int
@@ -304,10 +299,14 @@ func cmdVaultMigrate(args []string) {
 		os.Exit(1)
 	}
 
-	cfg, err := config.Load(config.Resolve(""))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
-		os.Exit(1)
+	cfg := config.Defaults()
+	if resolved := config.Resolve(""); resolved != "" {
+		override, loadErr := config.Load(resolved)
+		if loadErr != nil {
+			fmt.Fprintf(os.Stderr, "error loading config: %v\n", loadErr)
+			os.Exit(1)
+		}
+		cfg = config.Merge(cfg, override)
 	}
 
 	if !cfg.Infrastructure.IsExternalVault() {
@@ -315,7 +314,7 @@ func cmdVaultMigrate(args []string) {
 		os.Exit(1)
 	}
 
-	embeddedReader, err := identity.NewVaultTokenSecretReader("http://127.0.0.1:18200", "agentcage-dev-token", nil)
+	embeddedReader, err := identity.NewVaultTokenSecretReader(embeddedVaultAddr, embeddedVaultToken, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error connecting to embedded Vault: %v\n", err)
 		os.Exit(1)
@@ -359,13 +358,23 @@ func cmdVaultMigrate(args []string) {
 	fmt.Printf("\nmigrated %d secrets to external Vault\n", migrated)
 }
 
+const embeddedVaultAddr = "http://127.0.0.1:18200"
+const embeddedVaultToken = "agentcage-dev-token"
+
 func mustBuildVaultCLIClient() identity.SecretReader {
-	// Try embedded Vault first.
-	embedded, err := identity.NewVaultTokenSecretReader("http://127.0.0.1:18200", "agentcage-dev-token", nil)
+	// Try embedded Vault first. Only fall through if nothing is
+	// listening (connection refused). Any other error (403, 5xx)
+	// means Vault is up but misconfigured — return it and let the
+	// caller's operation surface the real error.
+	embedded, err := identity.NewVaultTokenSecretReader(embeddedVaultAddr, embeddedVaultToken, nil)
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		if _, readErr := embedded.ReadSecret(ctx, "secret/data/agentcage/orchestrator/_health"); readErr == nil || !strings.Contains(readErr.Error(), "connection refused") {
+		_, readErr := embedded.ReadSecret(ctx, "secret/data/agentcage/orchestrator/_health")
+		if readErr == nil {
+			return embedded
+		}
+		if !strings.Contains(readErr.Error(), "connection refused") {
 			return embedded
 		}
 	}
@@ -401,8 +410,8 @@ func mustBuildVaultCLIClient() identity.SecretReader {
 
 func mustResolvePath(scope, key string) string {
 	clean := filepath.Clean(key)
-	if strings.HasPrefix(clean, "..") || strings.HasPrefix(clean, "/") {
-		fmt.Fprintf(os.Stderr, "error: invalid key %q (path traversal not allowed)\n", key)
+	if clean == "." || clean == "" || strings.HasPrefix(clean, "..") || strings.HasPrefix(clean, "/") {
+		fmt.Fprintf(os.Stderr, "error: invalid key %q\n", key)
 		os.Exit(1)
 	}
 	prefix, err := identity.ScopeDataPrefix(scope)
