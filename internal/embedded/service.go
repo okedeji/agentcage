@@ -9,6 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -149,7 +152,33 @@ func newSubprocess(name string, log logr.Logger, binPath string, args ...string)
 	}
 }
 
+// isAlreadyRunning checks for a stale PID file and returns true if the
+// process is still alive. Cleans up the PID file if the process is dead.
+func (s *subprocess) isAlreadyRunning() bool {
+	pidPath := filepath.Join(RunDir(), s.name+".pid")
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		_ = os.Remove(pidPath)
+		return false
+	}
+	// Signal 0 tests whether the process exists without killing it.
+	if err := syscall.Kill(pid, 0); err != nil {
+		_ = os.Remove(pidPath)
+		return false
+	}
+	s.log.Info("already running", "pid", pid)
+	return true
+}
+
 func (s *subprocess) start(_ context.Context) error {
+	if s.isAlreadyRunning() {
+		return fmt.Errorf("%s is already running (see %s/%s.pid)", s.name, RunDir(), s.name)
+	}
+
 	logPath := filepath.Join(LogDir(), s.name+".log")
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {

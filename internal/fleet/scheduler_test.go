@@ -9,15 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestScheduler(hosts ...Host) *NomadScheduler {
+func newTestScheduler(hosts ...Host) *SimpleScheduler {
 	pm := NewPoolManager()
 	for _, h := range hosts {
 		_ = pm.AddHost(h)
 	}
-	return NewNomadScheduler(pm)
+	return NewSimpleScheduler(pm)
 }
 
-func TestNomadScheduler_Schedule(t *testing.T) {
+func TestSimpleScheduler_Schedule(t *testing.T) {
 	s := newTestScheduler(testHost("host-1", PoolActive, 10, 0))
 	ctx := context.Background()
 
@@ -31,7 +31,7 @@ func TestNomadScheduler_Schedule(t *testing.T) {
 	assert.Equal(t, int32(1), h.CageSlotsUsed)
 }
 
-func TestNomadScheduler_Schedule_NoCapacity(t *testing.T) {
+func TestSimpleScheduler_Schedule_NoCapacity(t *testing.T) {
 	s := newTestScheduler(testHost("host-1", PoolActive, 1, 1))
 	ctx := context.Background()
 
@@ -39,7 +39,7 @@ func TestNomadScheduler_Schedule_NoCapacity(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoCapacity)
 }
 
-func TestNomadScheduler_Schedule_EmptyFleet(t *testing.T) {
+func TestSimpleScheduler_Schedule_EmptyFleet(t *testing.T) {
 	s := newTestScheduler()
 	ctx := context.Background()
 
@@ -47,7 +47,7 @@ func TestNomadScheduler_Schedule_EmptyFleet(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoCapacity)
 }
 
-func TestNomadScheduler_Deallocate(t *testing.T) {
+func TestSimpleScheduler_Deallocate(t *testing.T) {
 	s := newTestScheduler(testHost("host-1", PoolActive, 10, 0))
 	ctx := context.Background()
 
@@ -60,7 +60,7 @@ func TestNomadScheduler_Deallocate(t *testing.T) {
 	assert.Equal(t, int32(0), h.CageSlotsUsed)
 }
 
-func TestNomadScheduler_Deallocate_Unknown(t *testing.T) {
+func TestSimpleScheduler_Deallocate_Unknown(t *testing.T) {
 	s := newTestScheduler()
 	ctx := context.Background()
 
@@ -68,7 +68,7 @@ func TestNomadScheduler_Deallocate_Unknown(t *testing.T) {
 	assert.ErrorIs(t, err, ErrAllocationNotFound)
 }
 
-func TestNomadScheduler_Status_Running(t *testing.T) {
+func TestSimpleScheduler_Status_Running(t *testing.T) {
 	s := newTestScheduler(testHost("host-1", PoolActive, 10, 0))
 	ctx := context.Background()
 
@@ -80,7 +80,7 @@ func TestNomadScheduler_Status_Running(t *testing.T) {
 	assert.Equal(t, cage.VMStatusRunning, status)
 }
 
-func TestNomadScheduler_Status_Unknown(t *testing.T) {
+func TestSimpleScheduler_Status_Unknown(t *testing.T) {
 	s := newTestScheduler()
 	ctx := context.Background()
 

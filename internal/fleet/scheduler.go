@@ -22,25 +22,24 @@ type allocation struct {
 	config cage.VMConfig
 }
 
-// NomadScheduler places cage workloads onto fleet hosts.
-// The actual Nomad API integration requires a running Nomad cluster
-// and is wired in Phase 13. This implementation provides the interface
-// contract with in-memory state tracking for workflow testing.
-type NomadScheduler struct {
+// SimpleScheduler places cage workloads onto fleet hosts using
+// first-available bin-packing. Suitable for single-host and small
+// multi-host deployments. For larger fleets use NomadScheduler.
+type SimpleScheduler struct {
 	pool   *PoolManager
 	mu     sync.Mutex
 	allocs map[string]*allocation
 	ipSeq  uint32
 }
 
-func NewNomadScheduler(pool *PoolManager) *NomadScheduler {
-	return &NomadScheduler{
+func NewSimpleScheduler(pool *PoolManager) *SimpleScheduler {
+	return &SimpleScheduler{
 		pool:   pool,
 		allocs: make(map[string]*allocation),
 	}
 }
 
-func (s *NomadScheduler) Schedule(ctx context.Context, config cage.VMConfig) (*cage.VMHandle, error) {
+func (s *SimpleScheduler) Schedule(ctx context.Context, config cage.VMConfig) (*cage.VMHandle, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -77,7 +76,7 @@ func (s *NomadScheduler) Schedule(ctx context.Context, config cage.VMConfig) (*c
 
 var ErrAllocationNotFound = fmt.Errorf("VM allocation not found")
 
-func (s *NomadScheduler) Deallocate(ctx context.Context, vmID string) error {
+func (s *SimpleScheduler) Deallocate(ctx context.Context, vmID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -94,7 +93,7 @@ func (s *NomadScheduler) Deallocate(ctx context.Context, vmID string) error {
 	return nil
 }
 
-func (s *NomadScheduler) Status(ctx context.Context, vmID string) (cage.VMStatus, error) {
+func (s *SimpleScheduler) Status(ctx context.Context, vmID string) (cage.VMStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

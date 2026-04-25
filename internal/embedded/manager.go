@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/okedeji/agentcage/internal/config"
 )
@@ -49,6 +50,10 @@ func NewManager(cfg *config.Config, log logr.Logger) *Manager {
 		m.services = append(m.services, NewFalcoService(log))
 	}
 
+	if !infra.IsExternalNomad() && infra.Nomad != nil {
+		m.services = append(m.services, NewNomadService(log))
+	}
+
 	m.services = append(m.services, NewFirecrackerDownloader(log))
 
 	return m
@@ -66,23 +71,45 @@ func (m *Manager) EmbeddedVault() *VaultService {
 	return nil
 }
 
+// EmbeddedNomad returns the embedded NomadService if Nomad is running
+// in embedded mode, or nil otherwise.
+func (m *Manager) EmbeddedNomad() *NomadService {
+	for _, svc := range m.services {
+		if n, ok := svc.(*NomadService); ok {
+			return n
+		}
+	}
+	return nil
+}
+
 // Download fetches all required binaries for embedded services.
+// Downloads run concurrently to reduce first-run startup time.
+// Each service's Download skips if the binary already exists.
 func (m *Manager) Download(ctx context.Context) error {
 	if err := EnsureDirs(); err != nil {
 		return fmt.Errorf("creating agentcage directories: %w", err)
 	}
 
+	var toDownload []Service
 	for _, svc := range m.services {
-		if svc.IsExternal() {
-			continue
+		if !svc.IsExternal() {
+			toDownload = append(toDownload, svc)
 		}
-		m.log.Info("downloading", "service", svc.Name())
-		if err := svc.Download(ctx); err != nil {
-			return fmt.Errorf("downloading %s: %w", svc.Name(), err)
-		}
-		m.log.Info("downloaded", "service", svc.Name())
 	}
-	return nil
+
+	g, gCtx := errgroup.WithContext(ctx)
+	for _, svc := range toDownload {
+		svc := svc
+		g.Go(func() error {
+			m.log.Info("downloading", "service", svc.Name())
+			if err := svc.Download(gCtx); err != nil {
+				return fmt.Errorf("downloading %s: %w", svc.Name(), err)
+			}
+			m.log.Info("downloaded", "service", svc.Name())
+			return nil
+		})
+	}
+	return g.Wait()
 }
 
 // Start launches all embedded services in order. Services that are external

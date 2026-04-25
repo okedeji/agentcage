@@ -14,6 +14,7 @@ const (
 	PathLLMKey       = OrchestratorPrefix + "llm-api-key"
 	PathTemporalKey  = OrchestratorPrefix + "temporal-api-key"
 	PathFleetKey     = OrchestratorPrefix + "fleet-api-key"
+	PathNomadToken   = OrchestratorPrefix + "nomad-token"
 	PathNATSURL      = OrchestratorPrefix + "nats-url"
 	PathPostgresURL  = OrchestratorPrefix + "postgres-url"
 	PathJudgeKey     = OrchestratorPrefix + "judge-api-key"
@@ -25,6 +26,7 @@ var EnvToVaultPath = map[string]string{
 	"AGENTCAGE_LLM_API_KEY":      PathLLMKey,
 	"AGENTCAGE_TEMPORAL_API_KEY":  PathTemporalKey,
 	"AGENTCAGE_FLEET_API_KEY":     PathFleetKey,
+	"AGENTCAGE_NOMAD_TOKEN":       PathNomadToken,
 	"AGENTCAGE_JUDGE_API_KEY":     PathJudgeKey,
 	"AGENTCAGE_NATS_URL":          PathNATSURL,
 	"AGENTCAGE_POSTGRES_URL":      PathPostgresURL,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/alert"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/identity"
 )
@@ -18,12 +20,13 @@ type fleetSetup struct {
 	demand       *fleet.DemandLedger
 	provisioner  fleet.HostProvisioner
 	autoscaler   *fleet.Autoscaler
+	scheduler    fleet.Scheduler
 	validatorRes fleet.CageResources
 }
 
 // Autoscaler is constructed here but started in runInit so its
 // cancel-on-death hookup shares context with the rest of shutdown.
-func setupFleet(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, alertDispatcher *alert.Dispatcher, log logr.Logger) (*fleetSetup, error) {
+func setupFleet(ctx context.Context, cfg *config.Config, embeddedMgr *embedded.Manager, secrets identity.SecretReader, alertDispatcher *alert.Dispatcher, log logr.Logger) (*fleetSetup, error) {
 	pool := fleet.NewPoolManager()
 	demand := fleet.NewDemandLedger()
 
@@ -63,13 +66,57 @@ func setupFleet(ctx context.Context, cfg *config.Config, secrets identity.Secret
 	}
 	autoscaler := fleet.NewAutoscaler(pool, demand, provisioner, alertDispatcher, autoscalerCfg, log.WithValues("component", "autoscaler"))
 
+	scheduler := buildScheduler(ctx, cfg, embeddedMgr, pool, secrets, log)
+
 	return &fleetSetup{
 		pool:         pool,
 		demand:       demand,
 		provisioner:  provisioner,
 		autoscaler:   autoscaler,
+		scheduler:    scheduler,
 		validatorRes: validatorRes,
 	}, nil
+}
+
+func buildScheduler(ctx context.Context, cfg *config.Config, embeddedMgr *embedded.Manager, pool *fleet.PoolManager, secrets identity.SecretReader, log logr.Logger) fleet.Scheduler {
+	// External Nomad: operator runs their own cluster.
+	if cfg.Infrastructure.IsExternalNomad() {
+		nomadCfg := cfg.Infrastructure.Nomad
+		var token string
+		if secrets != nil {
+			token, _ = identity.ReadSecretValue(ctx, secrets, identity.PathNomadToken)
+		}
+		var tlsCfg *tls.Config
+		if nomadCfg.TLS != nil && nomadCfg.TLS.CertFile != "" {
+			cert, err := tls.LoadX509KeyPair(nomadCfg.TLS.CertFile, nomadCfg.TLS.KeyFile)
+			if err != nil {
+				log.Error(err, "loading Nomad TLS cert, falling back to system CA")
+			} else {
+				tlsCfg = &tls.Config{
+					MinVersion:   tls.VersionTLS12,
+					Certificates: []tls.Certificate{cert},
+				}
+			}
+		}
+		log.Info("scheduler: nomad (external)", "addr", nomadCfg.Address)
+		return fleet.NewNomadScheduler(pool, fleet.NomadSchedulerConfig{
+			Address: nomadCfg.Address,
+			Token:   token,
+			TLS:     tlsCfg,
+		})
+	}
+
+	// Embedded Nomad: started by the service manager. No auth needed.
+	if n := embeddedMgr.EmbeddedNomad(); n != nil {
+		log.Info("scheduler: nomad (embedded)", "addr", n.Address())
+		return fleet.NewNomadScheduler(pool, fleet.NomadSchedulerConfig{
+			Address: n.Address(),
+		})
+	}
+
+	// No Nomad available: first-available bin-packing.
+	log.Info("scheduler: simple (no Nomad configured)")
+	return fleet.NewSimpleScheduler(pool)
 }
 
 func buildHostProvisioner(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, log logr.Logger) fleet.HostProvisioner {

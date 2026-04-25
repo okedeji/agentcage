@@ -145,7 +145,7 @@ func runInit(configFile, logFormat string) error {
 	scopeValidator := enforcement.NewScopeValidator(cfg)
 	cageValidator := buildCageValidator(cfg, opaEngine, scopeValidator, alertDispatcher)
 
-	fleetSetup, err := setupFleet(ctx, cfg, secretReader, alertDispatcher, log)
+	fleetSetup, err := setupFleet(ctx, cfg, embeddedMgr, secretReader, alertDispatcher, log)
 	if err != nil {
 		return err
 	}

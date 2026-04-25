@@ -412,7 +412,8 @@ type FalcoConfig struct {
 }
 
 type NomadConfig struct {
-	Address string `yaml:"address"`
+	Address string     `yaml:"address"`
+	TLS     *TLSConfig `yaml:"tls,omitempty"`
 }
 
 type OTelConfig struct {
