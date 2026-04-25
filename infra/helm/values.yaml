@@ -1,0 +1,131 @@
+# agentcage infrastructure via official upstream charts.
+#
+# After install, use 'agentcage vault put' to store service URLs,
+# then run 'agentcage init'. See NOTES.txt for exact commands.
+#
+# Each service can be disabled if the operator provides their own.
+
+# -- Postgres via CloudNativePG operator --
+# The subchart installs the CNPG operator. The Cluster CR is in
+# templates/postgres-cluster.yaml.
+postgres:
+  enabled: true
+  instances: 2
+  storage: 10Gi
+  storageClass: ""
+  image: ghcr.io/clevyr/cloudnativepg-timescale:16-ts2
+  database: agentcage
+  owner: agentcage
+
+# -- NATS --
+nats:
+  enabled: true
+  config:
+    jetstream:
+      enabled: true
+      fileStore:
+        pvc:
+          size: 5Gi
+    cluster:
+      enabled: false
+      replicas: 1
+    monitor:
+      enabled: true
+      port: 8222
+
+# -- Temporal --
+temporal:
+  enabled: true
+  server:
+    replicaCount: 1
+    config:
+      persistence:
+        default:
+          driver: sql
+          sql:
+            driver: postgres12
+            host: agentcage-infra-postgres-rw
+            port: 5432
+            database: temporal
+            user: agentcage
+            existingSecret: agentcage-infra-postgres-app
+            secretKey: password
+        visibility:
+          driver: sql
+          sql:
+            driver: postgres12
+            host: agentcage-infra-postgres-rw
+            port: 5432
+            database: temporal_visibility
+            user: agentcage
+            existingSecret: agentcage-infra-postgres-app
+            secretKey: password
+  schema:
+    setup:
+      enabled: true
+    update:
+      enabled: true
+
+# -- Vault --
+vault:
+  enabled: true
+  server:
+    dataStorage:
+      enabled: true
+      size: 5Gi
+    # For HA: set standalone.enabled=false, ha.enabled=true, ha.replicas=3
+    standalone:
+      enabled: true
+      config: |
+        listener "tcp" {
+          address     = "0.0.0.0:8200"
+          tls_disable = 1
+        }
+        storage "file" {
+          path = "/vault/data"
+        }
+        ui = false
+    ha:
+      enabled: false
+      replicas: 3
+      raft:
+        enabled: true
+
+# -- SPIRE --
+# Only deploys the SPIRE server. The agent runs on bare-metal hosts
+# via agentcage init, not in Kubernetes.
+spire:
+  enabled: true
+  spire-server:
+    enabled: true
+    trustDomain: agentcage.local
+    persistence:
+      enabled: true
+      size: 1Gi
+  spire-agent:
+    enabled: false
+  spiffe-csi-driver:
+    enabled: false
+  spiffe-oidc-discovery-provider:
+    enabled: false
+  spire-controller-manager:
+    enabled: false
+
+# -- Nomad (custom template, no official chart) --
+nomad:
+  enabled: true
+  image: hashicorp/nomad:2.0.0
+  port: 4646
+  replicas: 1
+  storage: 5Gi
+  storageClass: ""
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

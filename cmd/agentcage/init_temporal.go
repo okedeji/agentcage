@@ -9,6 +9,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	enums "go.temporal.io/api/enums/v1"
+	"google.golang.org/protobuf/types/known/durationpb"
 	taskqueue "go.temporal.io/api/taskqueue/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
@@ -69,7 +70,46 @@ func connectTemporal(ctx context.Context, cfg *config.Config, secrets identity.S
 	if namespace == "" {
 		namespace = "default"
 	}
+
+	if err := ensureNamespace(ctx, c, namespace, log); err != nil {
+		c.Close()
+		return nil, "", err
+	}
+
 	return c, namespace, nil
+}
+
+// ensureNamespace creates the namespace if it doesn't exist. Handles
+// the case where an operator sets up external Temporal but forgets
+// to create the namespace. The "default" namespace always exists.
+func ensureNamespace(ctx context.Context, c client.Client, namespace string, log logr.Logger) error {
+	if namespace == "default" {
+		return nil
+	}
+
+	descCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err := c.WorkflowService().DescribeNamespace(descCtx, &workflowservice.DescribeNamespaceRequest{
+		Namespace: namespace,
+	})
+	if err == nil {
+		return nil
+	}
+
+	log.Info("namespace not found, creating", "namespace", namespace)
+	regCtx, regCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer regCancel()
+
+	_, regErr := c.WorkflowService().RegisterNamespace(regCtx, &workflowservice.RegisterNamespaceRequest{
+		Namespace:                        namespace,
+		WorkflowExecutionRetentionPeriod: durationpb.New(7 * 24 * time.Hour),
+	})
+	if regErr != nil {
+		return fmt.Errorf("creating Temporal namespace %q: %w", namespace, regErr)
+	}
+	log.Info("namespace created", "namespace", namespace)
+	return nil
 }
 
 // Cage slots are sized off fleet capacity so a worker can't accept

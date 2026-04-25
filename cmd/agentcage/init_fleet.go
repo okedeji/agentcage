@@ -9,6 +9,7 @@ import (
 	"github.com/go-logr/logr"
 
 	"github.com/okedeji/agentcage/internal/alert"
+	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/fleet"
@@ -82,6 +83,12 @@ func buildScheduler(ctx context.Context, cfg *config.Config, embeddedMgr *embedd
 	// External Nomad: operator runs their own cluster.
 	if cfg.Infrastructure.IsExternalNomad() {
 		nomadCfg := cfg.Infrastructure.Nomad
+
+		if reason := cage.CheckNomadHealth(ctx, nomadCfg.Address); reason != "" {
+			log.Error(nil, "external Nomad not reachable, falling back to simple scheduler", "reason", reason)
+			return fleet.NewSimpleScheduler(pool)
+		}
+
 		var token string
 		if secrets != nil {
 			token, _ = identity.ReadSecretValue(ctx, secrets, identity.PathNomadToken)

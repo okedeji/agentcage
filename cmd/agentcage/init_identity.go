@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
@@ -77,7 +78,13 @@ func connectIdentityAndSecrets(
 	fmt.Println("Connecting to identity and secrets services...")
 
 	var svidIssuer identity.SVIDIssuer
-	if _, socketErr := os.Stat(spireSocket); socketErr == nil {
+	if reason := cage.CheckSpireSocket(ctx, spireSocket); reason != "" {
+		if cfg.Posture == config.PostureStrict {
+			cleanup()
+			return nil, nil, nil, nil, fmt.Errorf("SPIRE agent not usable (%s); strict posture requires SPIRE for mTLS", reason)
+		}
+		log.Info("WARNING: SPIRE not available, cages will use dev identities", "reason", reason)
+	} else {
 		spireClient, spireErr := identity.NewSpireClient(ctx, spireSocket, "agentcage.local")
 		if spireErr != nil {
 			log.Error(spireErr, "connecting to SPIRE, cages will use dev identities")
@@ -86,9 +93,6 @@ func connectIdentityAndSecrets(
 			cleanups = append(cleanups, func() { _ = spireClient.Close() })
 			log.Info("SPIRE identity issuer connected", "socket", spireSocket)
 		}
-	}
-	if svidIssuer == nil {
-		log.Info("SPIRE not available, cages will use dev identities")
 	}
 
 	secretFetcher, secretReader, err := buildSecretFetcher(ctx, cfg, embeddedMgr, spireSocket, &cleanups, log)

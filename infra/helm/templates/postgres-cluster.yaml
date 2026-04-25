@@ -1,0 +1,29 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "agentcage-infra.fullname" . }}-postgres
+  labels:
+    {{- include "agentcage-infra.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  instances: {{ .Values.postgres.instances }}
+  imageName: {{ .Values.postgres.image }}
+
+  postgresql:
+    shared_preload_libraries:
+      - timescaledb
+    parameters:
+      timescaledb.telemetry_level: "off"
+
+  bootstrap:
+    initdb:
+      database: {{ .Values.postgres.database }}
+      owner: {{ .Values.postgres.owner }}
+
+  storage:
+    size: {{ .Values.postgres.storage }}
+    {{- if .Values.postgres.storageClass }}
+    storageClass: {{ .Values.postgres.storageClass }}
+    {{- end }}
+{{- end }}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -59,6 +60,49 @@ func CheckFalcoSocket(ctx context.Context, socketPath string) string {
 		return fmt.Sprintf("socket not accepting connections: %v", err)
 	}
 	_ = conn.Close()
+	return ""
+}
+
+// CheckSpireSocket verifies that the given path is a Unix socket the
+// SPIRE agent is listening on. Same pattern as CheckFalcoSocket.
+func CheckSpireSocket(ctx context.Context, socketPath string) string {
+	info, err := os.Stat(socketPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "socket not present"
+		}
+		return fmt.Sprintf("socket stat: %v", err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Sprintf("%s is not a unix socket", socketPath)
+	}
+
+	dialer := net.Dialer{Timeout: 2 * time.Second}
+	conn, err := dialer.DialContext(ctx, "unix", socketPath)
+	if err != nil {
+		return fmt.Sprintf("socket not accepting connections: %v", err)
+	}
+	_ = conn.Close()
+	return ""
+}
+
+// CheckNomadHealth verifies that the Nomad HTTP API is reachable at
+// the given address. Returns an empty string on success or a reason.
+func CheckNomadHealth(ctx context.Context, addr string) string {
+	healthURL := addr + "/v1/agent/health"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return fmt.Sprintf("invalid nomad address: %v", err)
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Sprintf("nomad not reachable at %s: %v", addr, err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		return fmt.Sprintf("nomad returned %d at %s", resp.StatusCode, addr)
+	}
 	return ""
 }
 

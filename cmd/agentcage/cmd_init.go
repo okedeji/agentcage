@@ -370,9 +370,10 @@ func validateRequiredSecrets(ctx context.Context, reader identity.SecretReader, 
 		{identity.PathPostgresURL, "orchestrator postgres-url", cfg.Infrastructure.IsExternalPostgres()},
 		{identity.PathJudgeKey, "orchestrator judge-api-key", cfg.JudgeEndpoint() != ""},
 	}
-	if cfg.Infrastructure.IsExternalTemporal() {
-		checks = append(checks, required{identity.PathTemporalKey, "orchestrator temporal-api-key", true})
-	}
+	// Temporal API key is only needed for Temporal Cloud. Self-hosted
+	// Temporal authenticates via mTLS (SPIRE) or runs without auth.
+	// The key is read opportunistically in connectTemporal; not
+	// required here.
 	if cfg.Infrastructure.IsExternalNomad() {
 		checks = append(checks, required{identity.PathNomadToken, "orchestrator nomad-token", true})
 	}
