@@ -1,6 +1,6 @@
 .PHONY: all build build-agentcage build-linux-vm build-vm-rootfs build-cage-rootfs \
-       build-cage-internal clean proto test vet lint check-secrets check-checksums \
-       checksums ci tidy
+       build-cage-internal build-typescript-sdk clean proto test vet lint \
+       check-secrets check-checksums checksums ci tidy
 
 GO := go
 GOFLAGS := -trimpath
@@ -76,6 +76,9 @@ check-checksums:
 	$(GO) run scripts/check_checksums.go $(ASSETS_DIR)
 
 ci: vet lint check-secrets test build
+
+build-typescript-sdk:
+	cd sdk/typescript && npm install && npm run build
 
 tidy:
 	$(GO) mod tidy

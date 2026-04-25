@@ -13,6 +13,9 @@ import (
 
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
+
+	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/plan"
 )
 
 const TaskQueue = "assessment-lifecycle"
@@ -27,32 +30,54 @@ type FleetSignaler interface {
 }
 
 type Service struct {
-	temporal      client.Client
-	db            *sql.DB
-	fleet         FleetSignaler
-	maxIterations int32
-	mu            sync.RWMutex
-	assessments   map[string]*Info
+	temporal    client.Client
+	db         *sql.DB
+	fleet      FleetSignaler
+	operatorCfg *config.Config
+	mu         sync.RWMutex
+	assessments map[string]*Info
 }
 
-func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, maxIterations int32) *Service {
+func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, operatorCfg *config.Config) *Service {
 	return &Service{
-		temporal:      temporal,
-		db:            db,
-		fleet:         fleet,
-		maxIterations: maxIterations,
-		assessments:   make(map[string]*Info),
+		temporal:    temporal,
+		db:         db,
+		fleet:      fleet,
+		operatorCfg: operatorCfg,
+		assessments: make(map[string]*Info),
 	}
 }
 
-func (s *Service) CreateAssessment(ctx context.Context, config Config) (*Info, error) {
+func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, error) {
+	// Same merge order as the CLI: operator defaults → request overrides →
+	// apply defaults → validate → enforce ceilings. SDK users who don't
+	// set tokenBudget get the operator's default instead of zero.
+	var basePlan *plan.Plan
+	if s.operatorCfg != nil {
+		basePlan = plan.BasePlanFromConfig(s.operatorCfg)
+	} else {
+		basePlan = &plan.Plan{}
+	}
+	incoming := configToPlan(cfg)
+	p := plan.Merge(basePlan, incoming)
+
+	plan.ApplyDefaults(p)
+	if err := plan.Validate(p); err != nil {
+		return nil, fmt.Errorf("invalid assessment config: %w", err)
+	}
+	if s.operatorCfg != nil {
+		if err := plan.EnforceConfigCeilings(p, s.operatorCfg); err != nil {
+			return nil, fmt.Errorf("assessment config exceeds operator limits: %w", err)
+		}
+	}
+
 	assessmentID := uuid.NewString()
 	now := time.Now()
 	info := &Info{
 		ID:         assessmentID,
-		CustomerID: config.CustomerID,
+		CustomerID: cfg.CustomerID,
 		Status:     StatusDiscovery,
-		Config:     config,
+		Config:     cfg,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -69,12 +94,12 @@ func (s *Service) CreateAssessment(ctx context.Context, config Config) (*Info, e
 		ID:        "assessment-" + assessmentID,
 		TaskQueue: TaskQueue,
 	}
-	if config.MaxIterations <= 0 {
-		config.MaxIterations = s.maxIterations
+	if cfg.MaxIterations <= 0 && s.operatorCfg != nil {
+		cfg.MaxIterations = s.operatorCfg.Assessment.MaxIterations
 	}
 	input := AssessmentWorkflowInput{
 		AssessmentID: assessmentID,
-		Config:       config,
+		Config:       cfg,
 	}
 
 	if _, err := s.temporal.ExecuteWorkflow(ctx, workflowOpts, AssessmentWorkflow, input); err != nil {
@@ -85,7 +110,7 @@ func (s *Service) CreateAssessment(ctx context.Context, config Config) (*Info, e
 	}
 
 	if s.fleet != nil {
-		s.fleet.OnNewAssessment(assessmentID, len(config.Target.Hosts))
+		s.fleet.OnNewAssessment(assessmentID, len(cfg.Target.Hosts))
 	}
 
 	return info, nil

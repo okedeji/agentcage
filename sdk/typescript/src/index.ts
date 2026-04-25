@@ -1,112 +1,30 @@
-/**
- * agentcage TypeScript SDK — thin gRPC client for the agentcage platform.
- *
- * Usage:
- *   const client = new AgentCage("localhost:9090");
- *   const assessment = await client.run({ agent: "./solver.cage", target: ["app.example.com"] });
- *   for await (const finding of assessment.findings()) { ... }
- */
+// Client — everything the CLI does, as typed async methods.
+export { AgentCage, type AgentCageConfig, type ApiKeyAuth, type MtlsAuth } from './client';
+export type { VaultConfig, RunConfig, RunEvent, ApiKeyInfo, PackOptions, PackResult } from './client';
 
-export interface RunConfig {
-  agent: string;
-  target: string[];
-  tokenBudget?: number;
-  maxDuration?: string;
-  compliance?: string;
-}
+// Agent SDK — for TypeScript agents running inside cages.
+export { AgentSDK, type AgentConfig } from './agent';
 
-export interface Finding {
-  id: string;
-  title: string;
-  severity: string;
-  vulnClass: string;
-  endpoint: string;
-  status: string;
-}
+// Judge server — HTTP framework for payload safety classification.
+export { createJudgeServer, type EvaluateFn, type JudgeServerConfig } from './judge';
 
-export interface AssessmentStatus {
-  id: string;
-  status: string;
-  totalCages: number;
-  findings: number;
-}
+// Provisioner server — HTTP framework for bare-metal host management.
+export { createProvisionerServer, type ProvisionerHandler, type ProvisionerServerConfig } from './provisioner';
 
-export interface Intervention {
-  id: string;
-  type: string;
-  status: string;
-  cageId: string;
-  description: string;
-}
+// Vault client — direct Vault HTTP API access for secret management.
+export { VaultClient } from './client/vault';
 
-export class Assessment {
-  readonly id: string;
-  private client: AgentCage;
+// Access client — API key management via Vault.
+export { AccessClient } from './client/access';
 
-  constructor(id: string, client: AgentCage) {
-    this.id = id;
-    this.client = client;
-  }
-
-  async status(): Promise<AssessmentStatus> {
-    // TODO: gRPC call to AssessmentService.GetAssessment
-    return { id: this.id, status: "running", totalCages: 0, findings: 0 };
-  }
-
-  async *findings(pollInterval = 5000): AsyncGenerator<Finding> {
-    // TODO: Poll for new findings until assessment completes
-  }
-
-  async wait(pollInterval = 5000): Promise<AssessmentStatus> {
-    while (true) {
-      const info = await this.status();
-      if (info.status === "approved" || info.status === "rejected") {
-        return info;
-      }
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
-    }
-  }
-}
-
-export class AgentCage {
-  private addr: string;
-
-  constructor(addr: string = "localhost:9090") {
-    this.addr = addr;
-  }
-
-  async run(config: RunConfig): Promise<Assessment> {
-    // TODO: gRPC call to AssessmentService.CreateAssessment
-    const assessmentId = "pending-grpc-integration";
-    return new Assessment(assessmentId, this);
-  }
-
-  async test(config: RunConfig): Promise<string> {
-    // TODO: gRPC call to CageService.CreateCage
-    return "pending-grpc-integration";
-  }
-
-  async interventions(): Promise<Intervention[]> {
-    // TODO: gRPC call to InterventionService.ListInterventions
-    return [];
-  }
-
-  async resolve(
-    interventionId: string,
-    action: "resume" | "kill" | "allow" | "block",
-    rationale?: string
-  ): Promise<void> {
-    // TODO: gRPC call to InterventionService.ResolveCageIntervention
-  }
-
-  async fleetStatus(): Promise<{ totalHosts: number }> {
-    // TODO: gRPC call to FleetService.GetFleetStatus
-    return { totalHosts: 0 };
-  }
-
-  close(): void {
-    // TODO: Close gRPC channel
-  }
-}
-
-export default AgentCage;
+// Shared types.
+export * from './types/enums';
+export type { AssessmentInfo, AssessmentConfig, Report, CreateAssessmentRequest, ListAssessmentsRequest } from './types/assessment';
+export type { Finding, Evidence, ValidationProof, ListFindingsRequest } from './types/findings';
+export type { Intervention, ListInterventionsRequest, ResolveCageRequest, ResolveProofGapRequest, ResolveReviewRequest } from './types/intervention';
+export type { FleetStatus, HostInfo, Capacity, DrainHostRequest } from './types/fleet';
+export type { CageInfo, CageLogs } from './types/cage';
+export type { AuditEntry, AuditDigest, ChainStatus, VerifyResult } from './types/audit';
+export type { AgentFinding, Directive, DirectiveInstruction, HoldRequest, HoldResponse } from './types/agent';
+export type { JudgePayload, JudgeResult } from './types/judge';
+export type { ProvisionResult, StatusResult } from './types/provisioner';

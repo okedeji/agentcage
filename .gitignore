@@ -43,5 +43,10 @@ Thumbs.db
 # Generated
 api/gateway/
 
+# Node.js / TypeScript SDK
+node_modules/
+sdk/typescript/dist/
+sdk/typescript/package-lock.json
+
 # Build artifacts
 dist/

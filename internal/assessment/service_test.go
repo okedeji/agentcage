@@ -23,26 +23,27 @@ func testConfig() Config {
 }
 
 func TestServer_GetAssessment_NotFound(t *testing.T) {
-	srv := NewService(nil, nil, nil, 20)
+	srv := NewService(nil, nil, nil, nil)
 
 	_, err := srv.GetAssessment(context.Background(), "nonexistent-id")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrAssessmentNotFound))
 }
 
-func TestServer_CreateAssessment_StoresInfo(t *testing.T) {
-	// With a nil Temporal client, ExecuteWorkflow panics. This test verifies
-	// the server stores info before attempting to start the workflow.
-	srv := NewService(nil, nil, nil, 20)
+func TestServer_CreateAssessment_ValidatesConfig(t *testing.T) {
+	srv := NewService(nil, nil, nil, nil)
+
+	// Missing agent should fail validation.
 	cfg := testConfig()
+	_, err := srv.CreateAssessment(context.Background(), cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "agent is required")
 
-	require.Panics(t, func() {
-		_, _ = srv.CreateAssessment(context.Background(), cfg)
-	})
-
-	// The assessment should have been cleaned up after the panic/failure.
-	// With a nil client the panic happens inside ExecuteWorkflow, so the
-	// cleanup in the deferred recovery won't run. Instead we verify that
-	// the code path at least creates the info struct before calling Temporal.
-	// A proper integration test would use a real Temporal test server.
+	// Missing customer ID should fail.
+	cfg2 := testConfig()
+	cfg2.BundleRef = "sha256:abc123"
+	cfg2.CustomerID = ""
+	_, err2 := srv.CreateAssessment(context.Background(), cfg2)
+	require.Error(t, err2)
+	assert.Contains(t, err2.Error(), "customer_id is required")
 }

@@ -166,7 +166,7 @@ func runInit(configFile, logFormat string) error {
 
 	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, natsURL, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
 	fleetSvc := fleet.NewService(fleetSetup.pool, fleetSetup.demand, fleetSetup.provisioner, log.WithValues("component", "fleet"))
-	assessmentSvc := assessment.NewService(temporalClient, db, fleetSetup.autoscaler, cfg.Assessment.MaxIterations)
+	assessmentSvc := assessment.NewService(temporalClient, db, fleetSetup.autoscaler, cfg)
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
