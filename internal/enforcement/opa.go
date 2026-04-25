@@ -136,7 +136,7 @@ func (e *OPAEngine) EvaluateCageConfig(ctx context.Context, config cage.Config) 
 func (e *OPAEngine) EvaluatePayload(ctx context.Context, vulnClass string, payload string) (PayloadDecision, string, error) {
 	q, ok := e.payloadQueries[vulnClass]
 	if !ok {
-		return PayloadAllow, "", nil
+		return PayloadBlock, fmt.Sprintf("no payload policy for vulnerability class %q", vulnClass), nil
 	}
 
 	input := map[string]any{

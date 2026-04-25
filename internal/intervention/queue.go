@@ -32,6 +32,9 @@ func NewQueue(store Store, notifier Notifier, logger logr.Logger) *Queue {
 }
 
 func (q *Queue) Enqueue(ctx context.Context, reqType Type, priority Priority, cageID, assessmentID, description string, contextData []byte, timeout time.Duration) (*Request, error) {
+	if reqType < TypeTripwireEscalation || reqType > TypeAgentHold {
+		return nil, fmt.Errorf("invalid intervention type %d", reqType)
+	}
 	req := Request{
 		ID:           uuid.New().String(),
 		Type:         reqType,
@@ -123,8 +126,12 @@ func (q *Queue) Resolve(ctx context.Context, interventionID string, decision Dec
 	delete(q.pending, interventionID)
 	q.mu.Unlock()
 
+	// Notification failure is logged but not returned. The DB update
+	// already succeeded; failing the whole Resolve would leave the
+	// caller thinking the intervention is still pending.
 	if err := q.notifier.NotifyResolved(ctx, *req); err != nil {
-		q.logger.Error(err, "notifying intervention resolved", "intervention_id", interventionID)
+		q.logger.Error(err, "notifying intervention resolved (DB update succeeded, notification lost)",
+			"intervention_id", interventionID)
 	}
 
 	return nil
@@ -156,7 +163,8 @@ func (q *Queue) ResolveReview(ctx context.Context, interventionID string, result
 	q.mu.Unlock()
 
 	if err := q.notifier.NotifyResolved(ctx, *req); err != nil {
-		q.logger.Error(err, "notifying review resolved", "intervention_id", interventionID)
+		q.logger.Error(err, "notifying review resolved (DB update succeeded, notification lost)",
+			"intervention_id", interventionID)
 	}
 
 	return nil
@@ -184,7 +192,8 @@ func (q *Queue) TimeOut(ctx context.Context, interventionID string) error {
 	q.mu.Unlock()
 
 	if err := q.notifier.NotifyTimedOut(ctx, *req); err != nil {
-		q.logger.Error(err, "notifying intervention timed out", "intervention_id", interventionID)
+		q.logger.Error(err, "notifying intervention timed out (DB update succeeded, notification lost)",
+			"intervention_id", interventionID)
 	}
 
 	return nil

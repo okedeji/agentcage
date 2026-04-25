@@ -228,8 +228,10 @@ func forwardHoldToHost(port uint32, requestPayload []byte) ([]byte, error) {
 		return nil, fmt.Errorf("writing hold request: %w", err)
 	}
 
-	// Block until host responds. The hold timeout is enforced host-side.
-	_ = conn.SetReadDeadline(time.Now().Add(25 * time.Hour))
+	// Block until host responds. The hold timeout is enforced host-side
+	// (default 15m). This deadline is a safety net if the host-side
+	// enforcer is broken; 30 minutes gives ample headroom.
+	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Minute))
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024)
 	if !scanner.Scan() {

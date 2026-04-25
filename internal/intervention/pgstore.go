@@ -48,16 +48,22 @@ func (s *PGStore) SaveIntervention(ctx context.Context, req Request) error {
 }
 
 func (s *PGStore) UpdateIntervention(ctx context.Context, req Request) error {
-	_, err := s.db.ExecContext(ctx,
+	// WHERE status = 'pending' is a DB-level guard against concurrent
+	// Resolve and TimeOut racing on the same intervention.
+	result, err := s.db.ExecContext(ctx,
 		`UPDATE interventions
 		 SET status = $2, resolved_at = $3, updated_at = NOW()
-		 WHERE id = $1`,
+		 WHERE id = $1 AND status = 'pending'`,
 		req.ID,
 		statusToString(req.Status),
 		req.ResolvedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("updating intervention %s: %w", req.ID, err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return ErrNotPending
 	}
 	return nil
 }

@@ -337,10 +337,10 @@ func TestOPAPayload(t *testing.T) {
 			wantResult: PayloadBlock,
 		},
 		{
-			name:       "unknown vuln class allowed",
+			name:       "unknown vuln class blocked",
 			vulnClass:  "unknown",
 			payload:    "anything",
-			wantResult: PayloadAllow,
+			wantResult: PayloadBlock,
 		},
 	}
 

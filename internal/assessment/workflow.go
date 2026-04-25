@@ -422,9 +422,17 @@ func getValidatedFindings(ctx workflow.Context, assessmentID string) ([]findings
 }
 
 func enrichFindings(ctx workflow.Context, assessmentID string, validated []findings.Finding) {
+	var failed int
 	for _, f := range validated {
 		actCtx := withActivityTimeout(ctx, TimeoutGenerateReport)
-		_ = workflow.ExecuteActivity(actCtx, "EnrichFinding", assessmentID, f).Get(ctx, nil)
+		if err := workflow.ExecuteActivity(actCtx, "EnrichFinding", assessmentID, f).Get(ctx, nil); err != nil {
+			failed++
+			workflow.GetLogger(ctx).Warn("enrichment failed, finding will have incomplete CWE/CVSS/remediation",
+				"finding_id", f.ID, "error", err)
+		}
+	}
+	if failed > 0 {
+		workflow.GetLogger(ctx).Warn("enrichment incomplete", "failed", failed, "total", len(validated))
 	}
 }
 

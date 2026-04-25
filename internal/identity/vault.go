@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
@@ -383,9 +384,15 @@ type VaultJWTReaderConfig struct {
 }
 
 // VaultJWTSecretReader implements SecretReader for production Vault.
-// Authenticates once at construction with a JWT-SVID and caches the token.
+// Re-authenticates with a fresh JWT-SVID when the cached token is
+// within 60 seconds of expiry.
 type VaultJWTSecretReader struct {
-	client *vaultapi.Client
+	mu        sync.Mutex
+	client    *vaultapi.Client
+	jwtSource JWTSource
+	authPath  string
+	role      string
+	expiresAt time.Time
 }
 
 func NewVaultJWTSecretReader(cfg VaultJWTReaderConfig) (*VaultJWTSecretReader, error) {
@@ -422,10 +429,59 @@ func NewVaultJWTSecretReader(cfg VaultJWTReaderConfig) (*VaultJWTSecretReader, e
 	}
 
 	c.SetToken(secret.Auth.ClientToken)
-	return &VaultJWTSecretReader{client: c}, nil
+
+	ttl := time.Duration(secret.Auth.LeaseDuration) * time.Second
+	if ttl <= 0 {
+		ttl = 1 * time.Hour
+	}
+
+	return &VaultJWTSecretReader{
+		client:    c,
+		jwtSource: cfg.JWTSource,
+		authPath:  authPath,
+		role:      cfg.Role,
+		expiresAt: time.Now().Add(ttl),
+	}, nil
+}
+
+const tokenRenewalBuffer = 60 * time.Second
+
+func (r *VaultJWTSecretReader) ensureToken(ctx context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if time.Now().Add(tokenRenewalBuffer).Before(r.expiresAt) {
+		return nil
+	}
+
+	jwt, err := r.jwtSource.FetchJWTSVID(ctx, "vault")
+	if err != nil {
+		return fmt.Errorf("refreshing JWT-SVID for Vault: %w", err)
+	}
+	secret, err := r.client.Logical().WriteWithContext(ctx, r.authPath, map[string]any{
+		"role": r.role,
+		"jwt":  jwt.Marshal(),
+	})
+	if err != nil {
+		return fmt.Errorf("re-authenticating with Vault: %w", err)
+	}
+	if secret == nil || secret.Auth == nil {
+		return fmt.Errorf("re-authenticating with Vault: empty auth response")
+	}
+
+	r.client.SetToken(secret.Auth.ClientToken)
+	ttl := time.Duration(secret.Auth.LeaseDuration) * time.Second
+	if ttl <= 0 {
+		ttl = 1 * time.Hour
+	}
+	r.expiresAt = time.Now().Add(ttl)
+	return nil
 }
 
 func (r *VaultJWTSecretReader) ReadSecret(ctx context.Context, path string) (map[string]any, error) {
+	if err := r.ensureToken(ctx); err != nil {
+		return nil, err
+	}
 	secret, err := r.client.Logical().ReadWithContext(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
@@ -440,6 +496,9 @@ func (r *VaultJWTSecretReader) ReadSecret(ctx context.Context, path string) (map
 }
 
 func (r *VaultJWTSecretReader) WriteSecret(ctx context.Context, path string, data map[string]any) error {
+	if err := r.ensureToken(ctx); err != nil {
+		return err
+	}
 	_, err := r.client.Logical().WriteWithContext(ctx, path, map[string]any{
 		"data": data,
 	})
@@ -450,6 +509,9 @@ func (r *VaultJWTSecretReader) WriteSecret(ctx context.Context, path string, dat
 }
 
 func (r *VaultJWTSecretReader) DeleteSecret(ctx context.Context, path string) error {
+	if err := r.ensureToken(ctx); err != nil {
+		return err
+	}
 	_, err := r.client.Logical().DeleteWithContext(ctx, path)
 	if err != nil {
 		return fmt.Errorf("deleting %s: %w", path, err)
@@ -458,6 +520,9 @@ func (r *VaultJWTSecretReader) DeleteSecret(ctx context.Context, path string) er
 }
 
 func (r *VaultJWTSecretReader) ListSecrets(ctx context.Context, prefix string) ([]string, error) {
+	if err := r.ensureToken(ctx); err != nil {
+		return nil, err
+	}
 	secret, err := r.client.Logical().ListWithContext(ctx, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("listing %s: %w", prefix, err)

@@ -76,6 +76,20 @@ func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID stri
 			continue
 		}
 
+		// Cap large byte fields. The scanner already limits lines to
+		// 1MB, but individual fields can still be large enough to
+		// cause memory pressure when hundreds of findings arrive.
+		const maxFieldBytes = 256 * 1024
+		if len(finding.Evidence.Request) > maxFieldBytes {
+			finding.Evidence.Request = finding.Evidence.Request[:maxFieldBytes]
+		}
+		if len(finding.Evidence.Response) > maxFieldBytes {
+			finding.Evidence.Response = finding.Evidence.Response[:maxFieldBytes]
+		}
+		if len(finding.Evidence.Screenshot) > maxFieldBytes {
+			finding.Evidence.Screenshot = finding.Evidence.Screenshot[:maxFieldBytes]
+		}
+
 		finding.CageID = cageID
 		finding.AssessmentID = assessmentID
 		now := time.Now()

@@ -61,6 +61,10 @@ func (s *NomadScheduler) Schedule(ctx context.Context, config cage.VMConfig) (*c
 	}
 
 	s.ipSeq++
+	// 255 * 254 = 64770 unique IPs in 10.0.0.0/16 before wrap.
+	if s.ipSeq > 255*254 {
+		s.ipSeq = 1
+	}
 	octet3 := (s.ipSeq / 254) % 256
 	octet4 := (s.ipSeq % 254) + 1
 	return &cage.VMHandle{

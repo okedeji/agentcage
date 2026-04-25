@@ -114,8 +114,8 @@ func dialVsock(cid, port uint32) (net.Conn, error) {
 	}
 
 	// FileConn duplicates the fd; the original is closed by f.Close().
-	// Set a generous deadline. The hold timeout is enforced host-side.
-	_ = conn.SetDeadline(time.Now().Add(25 * time.Hour))
+	// Safety net if host-side timeout enforcer is broken.
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Minute))
 
 	return conn, nil
 }
