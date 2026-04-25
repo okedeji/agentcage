@@ -85,42 +85,45 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Printf(`agentcage %s - orchestrate AI security agents in sandboxed cages
+	fmt.Printf(`agentcage %s — autonomous security assessment in sandboxed cages
 
 Usage: agentcage [--home <dir>] <command> [options]
 
 Global flags:
-  --home <dir>      Override agentcage home directory (default: ~/.agentcage)
+  --home <dir>        Override home directory (default: ~/.agentcage)
 
-Platform:
-  init              Initialize agentcage, download deps, start local services
-  stop              Gracefully shut down all local services
-  connect           Configure connection to an orchestrator
+Setup:
+  init                Start the orchestrator and embedded services
+  stop                Gracefully shut down all services
+  connect             Point this CLI at a remote orchestrator
+  config              Manage operator config (show, export, import, get)
+  access              Manage API keys (create-key, list-keys, revoke-key)
+  vault               Manage secrets (put, get, list, delete, rotate, import, migrate)
 
-Agent:
-  pack <dir>        Bundle agent directory into .cage file
-  run               Start a full assessment (coordinator spawns many cages)
+Assess:
+  pack <dir>          Bundle an agent directory into a .cage file
+  run                 Launch an assessment against a target
 
-Observe:
-  assessments       List assessments or show details for one
-  findings          List findings from current/specified assessment
-  report            Show/export assessment report
-  logs              Stream cage logs
+Monitor:
+  assessments         List or inspect assessments
+  findings            List or inspect findings
+  report              Generate or export an assessment report
+  logs                View or stream cage logs
 
 Operate:
-  interventions     List, inspect, or resolve interventions
-  proof             Manage validation rules (add, list, validate)
-  fleet             Show fleet status (hosts, pools, capacity)
-  db                Database shell, migrations, and queries
-  audit             Verify, inspect, and export tamper-evident audit logs
-  falco             Manage Falco runtime monitoring rules (import, list, export)
-  config            Manage operator config (show, export, import, get)
-  access            Manage client authentication (create-key, list-keys, revoke-key)
-  vault             Manage secrets (put, get, list, delete, rotate, import, migrate)
+  interventions       List, inspect, or resolve pending interventions
+  proof               Manage proof-of-concept validation rules
+  fleet               Inspect fleet hosts, pools, and capacity
+  audit               Verify, inspect, and export audit logs
+  falco               Manage Falco runtime security rules
+
+Maintain:
+  db                  Database shell, migrations, and queries
 
 Info:
-  version           Show version info
-  help              Show this help
+  version             Print version
+  help                Print this help
 
+Run 'agentcage <command> --help' for details on a specific command.
 `, version)
 }
