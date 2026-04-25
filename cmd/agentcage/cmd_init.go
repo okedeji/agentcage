@@ -373,6 +373,9 @@ func validateRequiredSecrets(ctx context.Context, reader identity.SecretReader, 
 	if cfg.Infrastructure.IsExternalTemporal() {
 		checks = append(checks, required{identity.PathTemporalKey, "orchestrator temporal-api-key", true})
 	}
+	if cfg.Infrastructure.IsExternalNomad() {
+		checks = append(checks, required{identity.PathNomadToken, "orchestrator nomad-token", true})
+	}
 
 	var needed []string
 	for _, c := range checks {
