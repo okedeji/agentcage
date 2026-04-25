@@ -111,7 +111,7 @@ Operate:
   interventions     List, inspect, or resolve interventions
   proof             Manage validation rules (add, list, validate)
   fleet             Show fleet status (hosts, pools, capacity)
-  db                Open psql shell or show connection string
+  db                Database shell, migrations, and queries
   audit             Verify, inspect, and export tamper-evident audit logs
   falco             Manage Falco runtime monitoring rules (import, list, export)
   config            Manage operator config (show, export, import, get)

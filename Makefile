@@ -1,4 +1,6 @@
-.PHONY: all build clean proto test vet lint check-secrets check-checksums checksums ci
+.PHONY: all build build-agentcage build-linux-vm build-vm-rootfs build-cage-rootfs \
+       build-cage-internal clean proto test vet lint check-secrets check-checksums \
+       checksums ci tidy
 
 GO := go
 GOFLAGS := -trimpath
@@ -11,15 +13,30 @@ build: build-agentcage build-cage-internal
 build-agentcage:
 	$(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage ./cmd/agentcage/
 
+# Go uses GOARCH=arm64 on both macOS and Linux. uname -m returns
+# arm64 on macOS but aarch64 on Linux; normalize to Go convention.
+GOARCH_ARM := arm64
+GOARCH_AMD := amd64
+
 build-linux-vm:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINDIR)/vm/agentcage-linux-arm64 ./cmd/agentcage/
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINDIR)/vm/agentcage-linux-amd64 ./cmd/agentcage/
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH_ARM) $(GO) build $(GOFLAGS) -o $(BINDIR)/vm/agentcage-linux-$(GOARCH_ARM) ./cmd/agentcage/
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH_AMD) $(GO) build $(GOFLAGS) -o $(BINDIR)/vm/agentcage-linux-$(GOARCH_AMD) ./cmd/agentcage/
+
+# Normalize uname -m to Go arch for rootfs naming.
+UNAME_ARCH := $(shell uname -m)
+ifeq ($(UNAME_ARCH),x86_64)
+  NORMALIZED_ARCH := amd64
+else ifeq ($(UNAME_ARCH),aarch64)
+  NORMALIZED_ARCH := arm64
+else
+  NORMALIZED_ARCH := $(UNAME_ARCH)
+endif
 
 build-vm-rootfs:
-	./scripts/build-vm-rootfs.sh $(BINDIR)/vm/rootfs-$(shell uname -m).img
+	./scripts/build-vm-rootfs.sh $(BINDIR)/vm/rootfs-$(NORMALIZED_ARCH).img
 
 build-cage-rootfs: build-cage-internal
-	./scripts/build-cage-rootfs.sh $(BINDIR)/cage-rootfs-$(shell uname -m).ext4
+	./scripts/build-cage-rootfs.sh $(BINDIR)/cage-rootfs-$(NORMALIZED_ARCH).ext4
 
 CAGE_INTERNAL := cage-init payload-proxy findings-sidecar directive-sidecar
 
@@ -46,6 +63,7 @@ vet:
 	$(GO) vet ./...
 
 lint:
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "error: golangci-lint not found (install: https://golangci-lint.run/welcome/install/)"; exit 1; }
 	golangci-lint run ./...
 
 check-secrets:
@@ -61,10 +79,3 @@ ci: vet lint check-secrets test build
 
 tidy:
 	$(GO) mod tidy
-
-migrate-up:
-	@echo "Applying migrations to $(DATABASE_URL)..."
-	@for f in migrations/*.sql; do \
-		echo "Applying $$f..."; \
-		psql "$(DATABASE_URL)" -f "$$f"; \
-	done
