@@ -36,6 +36,7 @@ type Env struct {
 	JudgeEndpoint    string          `json:"judge_endpoint,omitempty"`
 	JudgeConfidence  float64         `json:"judge_confidence,omitempty"`
 	JudgeTimeoutSec  int             `json:"judge_timeout_sec,omitempty"`
+	ProofThreshold   float64         `json:"proof_threshold,omitempty"`
 	Guidance json.RawMessage `json:"guidance,omitempty"`
 }
 

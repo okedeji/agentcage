@@ -75,6 +75,12 @@ type Config struct {
 	MaxChainDepth    int32
 	MaxConcurrent    int32
 	MaxIterations    int32
+	// TrustAgentProof skips spawning a validator cage when the agent
+	// provides a confirmed ValidationProof on the finding. The finding
+	// is marked validated directly. Set false to always re-test
+	// independently (higher confidence, more expensive).
+	TrustAgentProof  bool
+	ProofThreshold   float64
 	Guidance         *Guidance
 	Tags             map[string]string
 	Notifications    NotificationConfig

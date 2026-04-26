@@ -105,8 +105,9 @@ type Config struct {
 	VulnClass       string
 	SkipPaths       []string
 	Guidance        []byte
-	InputContext    []byte
-	Credentials     string
+	InputContext     []byte
+	Credentials      string
+	ProofThreshold   float64
 }
 
 type Scope struct {

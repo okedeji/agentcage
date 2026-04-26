@@ -31,6 +31,7 @@ type CageEnv struct {
 	JudgeEndpoint     string          `json:"judge_endpoint,omitempty"`
 	JudgeConfidence   float64         `json:"judge_confidence,omitempty"`
 	JudgeTimeoutSec   int             `json:"judge_timeout_sec,omitempty"`
+	ProofThreshold    float64         `json:"proof_threshold,omitempty"`
 }
 
 const configPath = "/etc/agentcage/cage.json"
@@ -124,6 +125,9 @@ func main() {
 	}
 	if len(env.TargetCredentials) > 0 {
 		setEnv("AGENTCAGE_TARGET_CREDENTIALS", string(env.TargetCredentials))
+	}
+	if env.ProofThreshold > 0 {
+		setEnv("AGENTCAGE_PROOF_THRESHOLD", fmt.Sprintf("%.2f", env.ProofThreshold))
 	}
 	setEnv("AGENTCAGE_DIRECTIVES_FILE", "/var/run/agentcage/directives.json")
 	setEnv("AGENTCAGE_HOLD_SOCKET", "/var/run/agentcage/hold.sock")

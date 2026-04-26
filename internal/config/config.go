@@ -537,6 +537,13 @@ type AssessmentConfig struct {
 	MaxIterations     int32         `yaml:"max_iterations"`
 	MaxConcurrent     int32         `yaml:"max_concurrent"`
 	ReviewTimeout     time.Duration `yaml:"review_timeout"`
+	// TrustAgentProof skips independent validation when the agent
+	// provides a confirmed proof on the finding. Faster and cheaper
+	// but relies on the agent's honesty. Default false.
+	TrustAgentProof   bool          `yaml:"trust_agent_proof"`
+	// Minimum LLM confidence (0.0-1.0) for agents to attach a
+	// validation proof to findings. 0 uses the agent's built-in default.
+	ProofThreshold    float64       `yaml:"proof_threshold"`
 	ProofsDir         string        `yaml:"proofs_dir"`
 	ProofsMode        ProofsMode    `yaml:"proofs_mode"`
 	MaxScreenshotSize int64         `yaml:"max_screenshot_size"`

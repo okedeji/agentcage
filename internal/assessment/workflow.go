@@ -365,6 +365,7 @@ func applyCageDefaults(cageCfg *cage.Config, cfg Config) {
 	cageCfg.ProxyConfig.ExtraBlock = cfg.ExtraBlock
 	cageCfg.ProxyConfig.ExtraFlag = cfg.ExtraFlag
 	cageCfg.Credentials = cfg.Credentials
+	cageCfg.ProofThreshold = cfg.ProofThreshold
 	applyGuidance(cageCfg, cfg.Guidance)
 }
 
@@ -554,15 +555,60 @@ func validateFindings(
 		candidates = candidates[:MaxFindingsPerValidationPhase]
 	}
 
-	// First pass: bucket candidates by vuln_class so we can emit one
-	// proof_gap intervention per class instead of fanning out one per
-	// finding.
-	pending := make(map[string][]findings.Finding)
-	var classOrder []string
+	// Separate findings that carry agent-provided reproduction steps
+	// from those that need a proof from the library. Agent proofs
+	// bypass the proof_gap gate (no operator pause) but still get
+	// independently validated in a cage.
+	var withAgentProof, needsLibraryProof []findings.Finding
 	for _, f := range candidates {
 		if f.Status != findings.StatusCandidate {
 			continue
 		}
+		if f.ValidationProof != nil && f.ValidationProof.ReproductionSteps != "" {
+			withAgentProof = append(withAgentProof, f)
+		} else {
+			needsLibraryProof = append(needsLibraryProof, f)
+		}
+	}
+
+	// TrustAgentProof: mark agent-proven findings validated without
+	// spawning a validator cage. Opt-in only; default is always validate.
+	if cfg.TrustAgentProof && len(withAgentProof) > 0 {
+		for _, f := range withAgentProof {
+			actCtx := withActivityTimeout(ctx, TimeoutUpdateFinding)
+			if err := workflow.ExecuteActivity(actCtx, "UpdateFindingStatus", f.ID, findings.StatusValidated).Get(ctx, nil); err != nil {
+				return validatedCount, cagesSpawned, fmt.Errorf("marking agent-proven finding %s validated: %w", f.ID, err)
+			}
+			validatedCount++
+			_ = workflow.ExecuteActivity(
+				withActivityTimeout(ctx, TimeoutUpdateStatus),
+				"NotifyFinding", assessmentID, cfg.Notifications, f,
+			).Get(ctx, nil)
+		}
+		workflow.GetLogger(ctx).Info("agent-proven findings accepted without independent validation",
+			"assessment_id", assessmentID, "count", len(withAgentProof))
+		withAgentProof = nil
+	}
+
+	// Validate findings that carry agent reproduction steps. The agent's
+	// proof becomes the validator's input — same cage, same rigor, but
+	// no proof_gap pause because the agent already told us how to reproduce.
+	for _, f := range withAgentProof {
+		proof := agentProofToValidatorProof(f)
+		v, c, err := validateFindingGroup(ctx, assessmentID, cfg, []findings.Finding{f}, proof)
+		if err != nil {
+			return validatedCount, cagesSpawned, err
+		}
+		validatedCount += v
+		cagesSpawned += c
+	}
+
+	// Bucket remaining candidates by vuln_class so we can emit one
+	// proof_gap intervention per class instead of fanning out one per
+	// finding.
+	pending := make(map[string][]findings.Finding)
+	var classOrder []string
+	for _, f := range needsLibraryProof {
 		if _, seen := pending[f.VulnClass]; !seen {
 			classOrder = append(classOrder, f.VulnClass)
 		}
@@ -580,41 +626,87 @@ func validateFindings(
 			continue
 		}
 
-		for _, f := range group {
-			actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
-			var cageID string
-			if err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof, cfg.BundleRef).Get(ctx, &cageID); err != nil {
-				return validatedCount, cagesSpawned, fmt.Errorf("creating validator cage for finding %s: %w", f.ID, err)
-			}
-			cagesSpawned++
+		v, c, err := validateFindingGroup(ctx, assessmentID, cfg, group, proof)
+		if err != nil {
+			return validatedCount, cagesSpawned, err
+		}
+		validatedCount += v
+		cagesSpawned += c
+	}
 
-			if err := workflow.Sleep(ctx, validatorWaitFor(proof)); err != nil {
-				return validatedCount, cagesSpawned, fmt.Errorf("waiting for validator cage: %w", err)
-			}
+	return validatedCount, cagesSpawned, nil
+}
 
-			checkCtx := withActivityTimeout(ctx, TimeoutGetFindings)
-			var updated []findings.Finding
-			if err := workflow.ExecuteActivity(checkCtx, "GetCandidateFindings", assessmentID).Get(ctx, &updated); err != nil {
-				return validatedCount, cagesSpawned, fmt.Errorf("checking validation result for finding %s: %w", f.ID, err)
-			}
-			for _, u := range updated {
-				if u.ID == f.ID && u.Status == findings.StatusValidated {
-					validatedCount++
-					validationProof := findings.Proof{
-						Confirmed:       true,
-						Deterministic:   true,
-						ValidatorCageID: cageID,
-					}
-					_ = workflow.ExecuteActivity(
-						withActivityTimeout(ctx, TimeoutUpdateStatus),
-						"StoreValidationProof", f.ID, validationProof,
-					).Get(ctx, nil)
-					_ = workflow.ExecuteActivity(
-						withActivityTimeout(ctx, TimeoutUpdateStatus),
-						"NotifyFinding", assessmentID, cfg.Notifications, u,
-					).Get(ctx, nil)
-					break
+// agentProofToValidatorProof converts the agent's reproduction steps into
+// a structured Proof the validator cage can execute. The agent provides a
+// curl-style PoC; we map that to a response_contains confirmation since
+// the validator will replay the request and check for the same indicator.
+func agentProofToValidatorProof(f findings.Finding) *Proof {
+	return &Proof{
+		VulnClass:          f.VulnClass,
+		ValidationType:     "agent_provided",
+		Description:        fmt.Sprintf("agent-provided reproduction for %s", f.ID),
+		Payload: ProofPayload{
+			URL: f.Endpoint,
+		},
+		Confirmation: ProofConfirmation{
+			Type:            "response_contains",
+			ExpectedPattern: f.ValidationProof.Evidence,
+		},
+		MaxRequests:        3,
+		MaxDurationSeconds: 60,
+		Safety: SafetyClassification{
+			Rationale: "replaying agent-provided PoC under validator isolation",
+		},
+	}
+}
+
+// validateFindingGroup spawns a validator cage per finding using the
+// given proof, waits for results, and stores validation proofs.
+func validateFindingGroup(
+	ctx workflow.Context,
+	assessmentID string,
+	cfg Config,
+	group []findings.Finding,
+	proof *Proof,
+) (int32, int32, error) {
+	var validatedCount int32
+	var cagesSpawned int32
+
+	for _, f := range group {
+		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
+		var cageID string
+		if err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, f, proof, cfg.BundleRef).Get(ctx, &cageID); err != nil {
+			return validatedCount, cagesSpawned, fmt.Errorf("creating validator cage for finding %s: %w", f.ID, err)
+		}
+		cagesSpawned++
+
+		if err := workflow.Sleep(ctx, validatorWaitFor(proof)); err != nil {
+			return validatedCount, cagesSpawned, fmt.Errorf("waiting for validator cage: %w", err)
+		}
+
+		checkCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+		var updated []findings.Finding
+		if err := workflow.ExecuteActivity(checkCtx, "GetCandidateFindings", assessmentID).Get(ctx, &updated); err != nil {
+			return validatedCount, cagesSpawned, fmt.Errorf("checking validation result for finding %s: %w", f.ID, err)
+		}
+		for _, u := range updated {
+			if u.ID == f.ID && u.Status == findings.StatusValidated {
+				validatedCount++
+				validationProof := findings.Proof{
+					Confirmed:       true,
+					Deterministic:   true,
+					ValidatorCageID: cageID,
 				}
+				_ = workflow.ExecuteActivity(
+					withActivityTimeout(ctx, TimeoutUpdateStatus),
+					"StoreValidationProof", f.ID, validationProof,
+				).Get(ctx, nil)
+				_ = workflow.ExecuteActivity(
+					withActivityTimeout(ctx, TimeoutUpdateStatus),
+					"NotifyFinding", assessmentID, cfg.Notifications, u,
+				).Get(ctx, nil)
+				break
 			}
 		}
 	}

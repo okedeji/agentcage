@@ -82,6 +82,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		JudgeEndpoint:    cfg.ProxyConfig.JudgeEndpoint,
 		JudgeConfidence:  cfg.ProxyConfig.JudgeConfidence,
 		JudgeTimeoutSec:  cfg.ProxyConfig.JudgeTimeoutSec,
+		ProofThreshold:   cfg.ProofThreshold,
 	}
 	if cfg.LLM != nil {
 		env.TokenBudget = cfg.LLM.TokenBudget
