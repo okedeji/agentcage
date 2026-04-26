@@ -19,9 +19,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/okedeji/agentcage/internal/alert"
-	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
-	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 )
 
 // Every shutdown step is bounded so a wedged component can't trap
@@ -40,46 +38,18 @@ const (
 // Buffer 2 so a HUP arriving just before a TERM doesn't drop the TERM.
 func waitForShutdown(
 	ctx context.Context,
-	cfg *config.Config,
-	reloadableCert *agentgrpc.ReloadableCert,
 	log logr.Logger,
 ) chan os.Signal {
 	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	for {
-		select {
-		case sig := <-sigCh:
-			if sig == syscall.SIGHUP {
-				handleSIGHUP(reloadableCert, cfg, log)
-				continue
-			}
-			log.Info("received signal, shutting down", "signal", sig.String())
-			return sigCh
-		case <-ctx.Done():
-			// Something internal cancelled (worker OnFatalError, the
-			// gRPC serve goroutine, a long-running goroutine). It
-			// already logged. This line tells the operator the
-			// shutdown isn't from a signal.
-			log.Info("internal cancel, shutting down")
-			return sigCh
-		}
+	select {
+	case sig := <-sigCh:
+		log.Info("received signal, shutting down", "signal", sig.String())
+	case <-ctx.Done():
+		log.Info("internal cancel, shutting down")
 	}
-}
-
-// handleSIGHUP is the scoped reload path. Today only the file-TLS
-// cert reloads. Most other config drives one-shot startup decisions
-// that can't change in place.
-func handleSIGHUP(reloadableCert *agentgrpc.ReloadableCert, cfg *config.Config, log logr.Logger) {
-	if reloadableCert == nil {
-		log.Info("SIGHUP received, no reloadable file TLS configured (SPIRE-internal rotates automatically). Send SIGTERM to stop.")
-		return
-	}
-	if err := reloadableCert.Reload(); err != nil {
-		log.Error(err, "SIGHUP TLS reload failed, keeping previous cert")
-		return
-	}
-	log.Info("SIGHUP TLS reload succeeded", "cert", cfg.GRPC.TLS.CertFile)
+	return sigCh
 }
 
 type shutdownDeps struct {

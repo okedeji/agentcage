@@ -15,20 +15,20 @@ import type { PingResponse } from '../types/control';
 import * as yaml from 'js-yaml';
 import * as grpc from '@grpc/grpc-js';
 
-export type { AgentCageConfig, ApiKeyAuth, MtlsAuth } from './client';
+export type { AgentCageConfig, ApiKeyAuth } from './client';
 export type { VaultConfig } from './vault';
 export type { RunConfig, RunEvent } from './run';
 export type { PackOptions, PackResult, BundleManifest } from './pack';
 export type { ApiKeyInfo } from './access';
 
 export class AgentCage {
-  readonly assessment: AssessmentService;
-  readonly findings: FindingsService;
-  readonly intervention: InterventionService;
-  readonly fleet: FleetService;
-  readonly cage: CageService;
-  readonly control: ControlService;
-  readonly audit: AuditService;
+  assessment!: AssessmentService;
+  findings!: FindingsService;
+  intervention!: InterventionService;
+  fleet!: FleetService;
+  cage!: CageService;
+  control!: ControlService;
+  audit!: AuditService;
 
   /** Raw YAML config string from the orchestrator. Set after connect(). */
   configYaml = '';
@@ -36,10 +36,25 @@ export class AgentCage {
   /** Parsed operator config. Set after connect(). */
   config: Record<string, any> = {};
 
+  /** CA certificate PEM from the orchestrator. Set after connect(). */
+  caCert: Buffer | null = null;
+
+  private agentConfig: AgentCageConfig;
   private clients: grpc.Client[] = [];
 
   constructor(config: AgentCageConfig) {
-    const callCreds = config.auth?.type === 'apiKey'
+    this.agentConfig = config;
+    this.buildClients(config);
+  }
+
+  private buildClients(config: AgentCageConfig): void {
+    // Close existing clients if rebuilding.
+    for (const c of this.clients) {
+      c.close();
+    }
+    this.clients = [];
+
+    const callCreds = config.auth
       ? createCallCredentials(config.auth)
       : undefined;
 
@@ -65,14 +80,29 @@ export class AgentCage {
       mkClient('audit.proto', 'agentcage.audit.v1', 'AuditService'), callCreds);
   }
 
-  /** Verify connectivity and fetch operator config.
-   *  Equivalent to `agentcage connect`. Stores the config for use by run(). */
+  /** Verify connectivity, fetch CA cert and operator config.
+   *  Two-phase connect: initial call fetches CA cert from the server,
+   *  then rebuilds all gRPC clients with server verification enabled.
+   *  Equivalent to `agentcage connect`. */
   async connect(): Promise<{ ping: PingResponse; config: Record<string, any> }> {
+    // Phase 1: connect (possibly without CA verification) to fetch config + CA.
     const ping = await this.control.ping();
-    this.configYaml = await this.control.getConfig();
-    if (this.configYaml) {
+
+    const configResp = await this.control.getConfigFull();
+    if (configResp.configYaml) {
+      this.configYaml = configResp.configYaml;
       this.config = (yaml.load(this.configYaml) as Record<string, any>) ?? {};
     }
+
+    // Phase 2: if we got a CA cert, rebuild all clients with verification.
+    if (configResp.caCert && configResp.caCert.length > 0) {
+      this.caCert = Buffer.from(configResp.caCert);
+      this.buildClients({
+        ...this.agentConfig,
+        caCert: this.caCert,
+      });
+    }
+
     return { ping, config: this.config };
   }
 

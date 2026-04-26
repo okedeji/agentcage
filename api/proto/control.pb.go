@@ -300,6 +300,7 @@ func (*GetConfigRequest) Descriptor() ([]byte, []int) {
 type GetConfigResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ConfigYaml    []byte                 `protobuf:"bytes,1,opt,name=config_yaml,json=configYaml,proto3" json:"config_yaml,omitempty"`
+	CaCert        []byte                 `protobuf:"bytes,2,opt,name=ca_cert,json=caCert,proto3" json:"ca_cert,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -341,6 +342,13 @@ func (x *GetConfigResponse) GetConfigYaml() []byte {
 	return nil
 }
 
+func (x *GetConfigResponse) GetCaCert() []byte {
+	if x != nil {
+		return x.CaCert
+	}
+	return nil
+}
+
 var File_api_proto_control_proto protoreflect.FileDescriptor
 
 const file_api_proto_control_proto_rawDesc = "" +
@@ -358,10 +366,11 @@ const file_api_proto_control_proto_rawDesc = "" +
 	"\rServicesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x12\n" +
-	"\x10GetConfigRequest\"4\n" +
+	"\x10GetConfigRequest\"M\n" +
 	"\x11GetConfigResponse\x12\x1f\n" +
 	"\vconfig_yaml\x18\x01 \x01(\fR\n" +
-	"configYaml2\xe1\x02\n" +
+	"configYaml\x12\x17\n" +
+	"\aca_cert\x18\x02 \x01(\fR\x06caCert2\xe1\x02\n" +
 	"\x0eControlService\x12M\n" +
 	"\x04Ping\x12!.agentcage.control.v1.PingRequest\x1a\".agentcage.control.v1.PingResponse\x12M\n" +
 	"\x04Stop\x12!.agentcage.control.v1.StopRequest\x1a\".agentcage.control.v1.StopResponse\x12S\n" +

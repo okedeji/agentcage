@@ -26,4 +26,5 @@ message HealthResponse {
 message GetConfigRequest {}
 message GetConfigResponse {
   bytes config_yaml = 1;
+  bytes ca_cert = 2;
 }

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -19,29 +19,23 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/embedded"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 )
 
-// reloadableCert is non-nil only on the file-TLS branch; the
-// SPIRE-internal branch rotates via the workload API automatically.
 func buildGRPCServer(
 	ctx context.Context,
 	cfg *config.Config,
-	spireSocket string,
-	trustDomain spiffeid.TrustDomain,
 	services agentgrpc.Services,
 	log logr.Logger,
-) (*grpc.Server, *agentgrpc.ReloadableCert, error) {
+) (*grpc.Server, error) {
 	opts := []grpc.ServerOption{
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainUnaryInterceptor(
 			agentgrpc.RecoveryUnaryInterceptor(log.WithValues("component", "grpc")),
-			agentgrpc.AuthUnaryInterceptor(cfg.Access, cfg.GRPC.RequiresClientCert(), log.WithValues("component", "grpc-auth")),
+			agentgrpc.AuthUnaryInterceptor(cfg.Access, false, log.WithValues("component", "grpc-auth")),
 			agentgrpc.LoggingUnaryInterceptor(log.WithValues("component", "grpc")),
 		),
-		// Caps so a buggy or hostile client can't exhaust us. 32 MB
-		// matches the NATS findings cap. 256 streams covers operators
-		// running several concurrent CLIs.
 		grpc.MaxRecvMsgSize(32 * 1024 * 1024),
 		grpc.MaxConcurrentStreams(256),
 		grpc.KeepaliveParams(keepalive.ServerParameters{
@@ -54,26 +48,33 @@ func buildGRPCServer(
 		}),
 	}
 
-	var reloadableCert *agentgrpc.ReloadableCert
-	switch {
-	case cfg.GRPC.UseInternalTLS():
-		tlsCfg, tlsErr := agentgrpc.SPIREServerTLS(ctx, "unix://"+spireSocket, trustDomain)
-		if tlsErr != nil {
-			return nil, nil, fmt.Errorf("configuring internal mTLS for gRPC: %w", tlsErr)
+	if cfg.GRPC.TLSEnabled() {
+		hostname := cfg.GRPC.LetsEncryptDomain()
+		if hostname == "" {
+			host, _, _ := net.SplitHostPort(cfg.GRPCListenAddr())
+			if host == "" || host == "0.0.0.0" || host == "::" {
+				hostname = "localhost"
+			} else {
+				hostname = host
+			}
 		}
+
+		tlsDir := filepath.Join(embedded.DataDir(), "tls")
+		certs, err := agentgrpc.EnsureTLSCerts(tlsDir, hostname)
+		if err != nil {
+			return nil, fmt.Errorf("generating TLS certificates: %w", err)
+		}
+
+		tlsCfg, err := agentgrpc.LoadServerTLS(certs)
+		if err != nil {
+			return nil, fmt.Errorf("loading TLS certificates: %w", err)
+		}
+
+		caPEM, _ := agentgrpc.ReadCACert(certs)
+		services.CACert = caPEM
+
 		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
-		log.Info("gRPC mTLS enabled via internal identity provider")
-	case cfg.GRPC.UseFileTLS():
-		// SIGHUP re-reads the cert+key and swaps atomically. The
-		// SPIRE-internal branch above rotates via the workload API
-		// and does not need this.
-		rc, rcErr := agentgrpc.NewReloadableCert(cfg.GRPC.TLS.CertFile, cfg.GRPC.TLS.KeyFile)
-		if rcErr != nil {
-			return nil, nil, fmt.Errorf("loading TLS credentials: %w", rcErr)
-		}
-		reloadableCert = rc
-		opts = append(opts, grpc.Creds(credentials.NewTLS(reloadableCert.TLSConfig())))
-		log.Info("gRPC TLS enabled (reloadable on SIGHUP)", "cert", cfg.GRPC.TLS.CertFile)
+		log.Info("gRPC TLS enabled (self-signed CA)", "hostname", hostname, "dir", tlsDir)
 	}
 
 	server := grpc.NewServer(opts...)
@@ -83,15 +84,13 @@ func buildGRPCServer(
 	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(server, healthSrv)
 
-	// Reflection: dev posture defaults on, strict off. Exposes the
-	// full service surface to anyone who can hit the server.
 	if cfg.GRPCReflectionDefault() {
 		reflection.Register(server)
 		log.Info("gRPC reflection enabled")
 	}
 
 	log.Info("gRPC services registered")
-	return server, reloadableCert, nil
+	return server, nil
 }
 
 func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (net.Listener, bool, error) {
@@ -99,9 +98,6 @@ func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (ne
 	if isGlobalBind(grpcAddr) && !cfg.GRPC.TLSEnabled() && cfg.Posture == config.PostureStrict {
 		return nil, false, fmt.Errorf("refusing to bind gRPC on %s without TLS in strict posture: configure grpc.tls or set posture=dev", grpcAddr)
 	}
-	// Inherit a systemd-activated socket if one is present. Enables
-	// zero-downtime restarts and lets systemd bind a privileged port
-	// for an unprivileged agentcage. Falls back to net.Listen.
 	lis, activated, err := agentgrpc.AcquireListener(grpcAddr)
 	if err != nil {
 		if errors.Is(err, syscall.EADDRINUSE) {
@@ -109,7 +105,7 @@ func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (ne
 			if _, p, splitErr := net.SplitHostPort(grpcAddr); splitErr == nil {
 				port = p
 			}
-			return nil, false, fmt.Errorf("listening on %s: address already in use. Run `lsof -i :%s` to find the process; if it is another agentcage, `agentcage assessments` will confirm", grpcAddr, port)
+			return nil, false, fmt.Errorf("listening on %s: address already in use. Run `lsof -i :%s` to find the process", grpcAddr, port)
 		}
 		return nil, false, fmt.Errorf("listening on %s: %w", grpcAddr, err)
 	}
@@ -119,8 +115,6 @@ func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (ne
 	return lis, activated, nil
 }
 
-// ErrServerStopped is the clean shutdown path. Anything else
-// cancels the orchestrator.
 func serveGRPC(server *grpc.Server, lis net.Listener, cancel context.CancelFunc, log logr.Logger) {
 	go func() {
 		if srvErr := server.Serve(lis); srvErr != nil && !errors.Is(srvErr, grpc.ErrServerStopped) {
@@ -130,8 +124,6 @@ func serveGRPC(server *grpc.Server, lis net.Listener, cancel context.CancelFunc,
 	}()
 }
 
-// Without this probe a client connecting before the first accept
-// stalls on its first RPC.
 func waitForGRPCReady(ctx context.Context, cfg *config.Config, grpcAddr string) error {
 	readyCtx, readyCancel := context.WithTimeout(ctx, cfg.GRPC.ReadyProbeTimeoutOrDefault())
 	defer readyCancel()
@@ -141,15 +133,11 @@ func waitForGRPCReady(ctx context.Context, cfg *config.Config, grpcAddr string) 
 func isGlobalBind(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		// Can't parse, assume the worst.
 		return true
 	}
 	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
 		return true
 	}
 	ip := net.ParseIP(host)
-	if ip != nil && ip.IsUnspecified() {
-		return true
-	}
-	return false
+	return ip != nil && ip.IsUnspecified()
 }

@@ -1,24 +1,19 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
-import * as fs from 'fs';
 
 export interface ApiKeyAuth {
   type: 'apiKey';
   token: string;
 }
 
-export interface MtlsAuth {
-  type: 'mtls';
-  cert: Buffer;
-  key: Buffer;
-  ca: Buffer;
-}
-
 export interface AgentCageConfig {
   address: string;
-  auth?: ApiKeyAuth | MtlsAuth;
+  auth?: ApiKeyAuth;
   insecure?: boolean;
+  /** CA certificate PEM bytes for server verification.
+   *  If not provided, connect() fetches it from the server (trust-on-first-use). */
+  caCert?: Buffer;
 }
 
 const PROTO_DIR = path.resolve(__dirname, '../../proto');
@@ -36,26 +31,20 @@ function loadProto(filename: string): grpc.GrpcObject {
   return grpc.loadPackageDefinition(packageDef);
 }
 
-export function createChannel(config: AgentCageConfig): grpc.Channel {
-  let creds: grpc.ChannelCredentials;
-
-  if (config.insecure || !config.auth) {
-    creds = grpc.credentials.createInsecure();
-  } else if (config.auth.type === 'mtls') {
-    creds = grpc.credentials.createSsl(
-      config.auth.ca,
-      config.auth.key,
-      config.auth.cert,
-    );
-  } else {
-    creds = grpc.credentials.createInsecure();
+export function buildCredentials(config: AgentCageConfig): grpc.ChannelCredentials {
+  if (config.insecure) {
+    return grpc.credentials.createInsecure();
   }
-
-  return new grpc.Channel(config.address, creds, {});
+  if (config.caCert) {
+    return grpc.credentials.createSsl(config.caCert);
+  }
+  // No CA cert yet — skip verification for initial connect.
+  // connect() will fetch the CA and rebuild with verification.
+  return grpc.credentials.createSsl();
 }
 
 export function createCallCredentials(auth?: ApiKeyAuth): grpc.CallCredentials | undefined {
-  if (!auth || auth.type !== 'apiKey') return undefined;
+  if (!auth) return undefined;
   return grpc.credentials.createFromMetadataGenerator((_, cb) => {
     const metadata = new grpc.Metadata();
     metadata.set('authorization', `Bearer ${auth.token}`);
@@ -76,19 +65,8 @@ export function getServiceClient(
     pkg = pkg[p];
   }
   const ServiceClass = pkg[serviceName] as typeof grpc.Client;
-
-  let creds: grpc.ChannelCredentials;
-  if (config.insecure || !config.auth) {
-    creds = grpc.credentials.createInsecure();
-  } else if (config.auth.type === 'mtls') {
-    creds = grpc.credentials.createSsl(config.auth.ca, config.auth.key, config.auth.cert);
-  } else {
-    creds = grpc.credentials.createInsecure();
-  }
-
-  const client = new ServiceClass(config.address, creds);
-
-  return client;
+  const creds = buildCredentials(config);
+  return new ServiceClass(config.address, creds);
 }
 
 export function callUnary<TReq, TResp>(

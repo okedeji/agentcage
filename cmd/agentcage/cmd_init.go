@@ -260,7 +260,7 @@ func runInit(configFile, logFormat string) error {
 
 	configYAML, _ := config.Marshal(cfg)
 
-	grpcServer, reloadableCert, err := buildGRPCServer(ctx, cfg, spireSocket, trustDomain, agentgrpc.Services{
+	grpcServer, err := buildGRPCServer(ctx, cfg, agentgrpc.Services{
 		Cages:         cageSvc,
 		Assessments:   assessmentSvc,
 		Interventions: iSvc,
@@ -351,7 +351,7 @@ func runInit(configFile, logFormat string) error {
 	fmt.Printf("  Data:     %s\n\n", embedded.DataDir())
 	fmt.Println("Press Ctrl+C to stop.")
 
-	sigCh := waitForShutdown(ctx, cfg, reloadableCert, log)
+	sigCh := waitForShutdown(ctx, log)
 
 	shutdownSequence(cancel, deps, sigCh, log)
 

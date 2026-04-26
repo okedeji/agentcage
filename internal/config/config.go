@@ -71,13 +71,11 @@ type APIKeyEntry struct {
 }
 
 // ServerConfig is the CLI-side connection config. Written by
-// `agentcage login`, read by `agentcage run` and other client commands.
-// Ignored by the orchestrator (which uses grpc.tls for its server cert).
+// `agentcage connect`, read by `agentcage run` and other client commands.
 type ServerConfig struct {
-	Address  string          `yaml:"address,omitempty"`
-	TLS      *ClientTLSConfig `yaml:"tls,omitempty"`
-	Insecure bool            `yaml:"insecure,omitempty"`
-	APIKey   string          `yaml:"api_key,omitempty"`
+	Address  string `yaml:"address,omitempty"`
+	Insecure bool   `yaml:"insecure,omitempty"`
+	APIKey   string `yaml:"api_key,omitempty"`
 }
 
 func (s ServerConfig) String() string {
@@ -110,12 +108,6 @@ func (s ServerConfig) MarshalYAML() (interface{}, error) {
 	return c, nil
 }
 
-// ClientTLSConfig holds paths for client-side TLS credentials.
-type ClientTLSConfig struct {
-	CertFile string `yaml:"cert_file,omitempty"`
-	KeyFile  string `yaml:"key_file,omitempty"`
-	CAFile   string `yaml:"ca_file,omitempty"`
-}
 
 // ServerAddress returns the configured server address or the default.
 func (c *Config) ServerAddress() string {
@@ -317,16 +309,23 @@ type WebhookConfig struct {
 
 type GRPCConfig struct {
 	// Address is the server bind address. Defaults to 127.0.0.1:9090
-	// (loopback only). Set to 0.0.0.0:9090 to expose on all interfaces,
-	// but only with TLS configured in strict posture.
-	Address string     `yaml:"address,omitempty"`
-	TLS     *TLSConfig `yaml:"tls"`
+	// (loopback only). Set to 0.0.0.0:9090 to expose on all interfaces.
+	Address string          `yaml:"address,omitempty"`
+	TLS     *GRPCTLSConfig  `yaml:"tls,omitempty"`
 	// Reflection enables the gRPC server reflection service for debugging
 	// with grpcurl. Posture default: dev=true, strict=false.
 	Reflection *bool `yaml:"reflection,omitempty"`
 	// ReadyProbeTimeout bounds the post-Serve self-ping that gates the
 	// "agentcage ready" banner. Defaults to 5s.
 	ReadyProbeTimeout time.Duration `yaml:"ready_probe_timeout,omitempty"`
+}
+
+type GRPCTLSConfig struct {
+	// LetsEncrypt enables automatic TLS via Let's Encrypt ACME.
+	LetsEncrypt bool   `yaml:"letsencrypt,omitempty"`
+	// Domain is required when LetsEncrypt is true. The ACME challenge
+	// proves ownership of this domain.
+	Domain string `yaml:"domain,omitempty"`
 }
 
 // GRPCListenAddr returns the configured bind address or the default.
@@ -346,26 +345,15 @@ func (c *GRPCConfig) ReadyProbeTimeoutOrDefault() time.Duration {
 	return 5 * time.Second
 }
 
-type TLSConfig struct {
-	CertFile string `yaml:"cert_file,omitempty"`
-	KeyFile  string `yaml:"key_file,omitempty"`
-	Internal bool   `yaml:"internal,omitempty"`
-}
-
 func (c *GRPCConfig) TLSEnabled() bool {
-	return c.TLS != nil && (c.TLS.CertFile != "" || c.TLS.Internal)
+	return c.TLS != nil && c.TLS.LetsEncrypt
 }
 
-func (c *GRPCConfig) UseInternalTLS() bool {
-	return c.TLS != nil && c.TLS.Internal
-}
-
-func (c *GRPCConfig) RequiresClientCert() bool {
-	return c.UseInternalTLS()
-}
-
-func (c *GRPCConfig) UseFileTLS() bool {
-	return c.TLS != nil && c.TLS.CertFile != "" && c.TLS.KeyFile != "" && !c.TLS.Internal
+func (c *GRPCConfig) LetsEncryptDomain() string {
+	if c.TLS == nil {
+		return ""
+	}
+	return c.TLS.Domain
 }
 
 // InfrastructureConfig holds connection overrides for external
@@ -412,8 +400,15 @@ type FalcoConfig struct {
 }
 
 type NomadConfig struct {
-	Address string     `yaml:"address"`
-	TLS     *TLSConfig `yaml:"tls,omitempty"`
+	Address string       `yaml:"address"`
+	TLS     *InfraTLS    `yaml:"tls,omitempty"`
+}
+
+// InfraTLS holds cert/key paths for infrastructure service connections
+// (Nomad, Temporal, etc). Separate from the client-facing gRPC TLS.
+type InfraTLS struct {
+	CertFile string `yaml:"cert_file,omitempty"`
+	KeyFile  string `yaml:"key_file,omitempty"`
 }
 
 type OTelConfig struct {
@@ -421,8 +416,14 @@ type OTelConfig struct {
 	// Insecure disables TLS for the OTLP exporters. Posture default: never
 	// (strict refuses to start if explicitly set). Pointer so unset is
 	// distinct from explicit false.
-	Insecure *bool            `yaml:"insecure,omitempty"`
-	TLS      *ClientTLSConfig `yaml:"tls,omitempty"`
+	Insecure *bool       `yaml:"insecure,omitempty"`
+	TLS      *OTelTLS    `yaml:"tls,omitempty"`
+}
+
+type OTelTLS struct {
+	CertFile string `yaml:"cert_file,omitempty"`
+	KeyFile  string `yaml:"key_file,omitempty"`
+	CAFile   string `yaml:"ca_file,omitempty"`
 }
 
 // LLMConfig configures the LLM gateway connection. Model selection
@@ -971,9 +972,6 @@ func Merge(base, override *Config) *Config {
 	// Server: CLI-side connection config.
 	if override.Server.Address != "" {
 		result.Server.Address = override.Server.Address
-	}
-	if override.Server.TLS != nil {
-		result.Server.TLS = override.Server.TLS
 	}
 	if override.Server.Insecure {
 		result.Server.Insecure = true

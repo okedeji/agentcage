@@ -23,4 +23,13 @@ export class ControlService {
     }
     return '';
   }
+
+  /** Returns both config YAML and CA cert bytes from GetConfig RPC. */
+  async getConfigFull(): Promise<{ configYaml: string; caCert: Buffer | null }> {
+    const resp = await callUnary<any, any>(this.client, 'getConfig', {}, this.callCreds);
+    return {
+      configYaml: resp?.configYaml ? Buffer.from(resp.configYaml).toString('utf-8') : '',
+      caCert: resp?.caCert ? Buffer.from(resp.caCert) : null,
+    };
+  }
 }

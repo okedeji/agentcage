@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
-	"os"
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/config"
@@ -17,14 +14,21 @@ import (
 func dialOrchestrator(ctx context.Context, cfg *config.Config) (*grpc.ClientConn, error) {
 	addr := cfg.ServerAddress()
 
-	creds, err := buildClientCredentials(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("building TLS credentials: %w", err)
+	var dialOpts []grpc.DialOption
+	if cfg.Server.Insecure {
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(grpcinsecure.NewCredentials()))
+	} else if tlsCfg := buildClientTLS(); tlsCfg != nil {
+		// Use the CA cert saved by agentcage connect.
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
+	} else {
+		// No saved CA cert — fall back to system CA pool.
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(
+			credentials.NewClientTLSFromCert(nil, "")))
 	}
 
-	dialOpts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 	if cfg.Server.APIKey != "" {
-		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(apiKeyCredentials{key: cfg.Server.APIKey, insecure: cfg.Server.Insecure}))
+		dialOpts = append(dialOpts, grpc.WithPerRPCCredentials(apiKeyCredentials{
+			key: cfg.Server.APIKey, insecure: cfg.Server.Insecure}))
 	}
 
 	conn, err := grpc.NewClient(addr, dialOpts...)
@@ -41,42 +45,6 @@ func dialOrchestrator(ctx context.Context, cfg *config.Config) (*grpc.ClientConn
 		return nil, fmt.Errorf("orchestrator not reachable at %s (run 'agentcage init' first): %w", addr, err)
 	}
 	return conn, nil
-}
-
-// Plaintext when no TLS is configured, which is fine for localhost/dev.
-func buildClientCredentials(cfg *config.Config) (credentials.TransportCredentials, error) {
-	t := cfg.Server.TLS
-	if cfg.Server.Insecure || t == nil {
-		return grpcinsecure.NewCredentials(), nil
-	}
-
-	if t.CertFile != "" && t.CAFile == "" {
-		fmt.Fprintln(os.Stderr, "warning: server.tls has cert_file but no ca_file; the system CA pool will be used for server verification")
-	}
-
-	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS13}
-
-	if t.CertFile != "" && t.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("loading client cert %s: %w", t.CertFile, err)
-		}
-		tlsCfg.Certificates = []tls.Certificate{cert}
-	}
-
-	if t.CAFile != "" {
-		ca, err := os.ReadFile(t.CAFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading CA file %s: %w", t.CAFile, err)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(ca) {
-			return nil, fmt.Errorf("CA file %s: no PEM certs found", t.CAFile)
-		}
-		tlsCfg.RootCAs = pool
-	}
-
-	return credentials.NewTLS(tlsCfg), nil
 }
 
 type apiKeyCredentials struct {
