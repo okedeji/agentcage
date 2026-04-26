@@ -2,7 +2,8 @@
  * Reference fleet provisioner using GCP Compute Engine.
  *
  * Usage:
- *   FLEET_AUTH_TOKEN=secret GCP_PROJECT=my-project GCP_ZONE=us-central1-a npx ts-node index.ts
+ *   FLEET_AUTH_TOKEN=secret ORCHESTRATOR_ADDR=orchestrator:9090 ORCHESTRATOR_API_KEY=ak-xxx \
+ *   GCP_PROJECT=my-project GCP_ZONE=us-central1-a npx ts-node index.ts
  *
  * Then configure agentcage:
  *   fleet:
@@ -12,18 +13,20 @@
  * Requires: @google-cloud/compute (npm install @google-cloud/compute)
  */
 
-import { createProvisionerServer, ProvisionResult, StatusResult } from '@agentcage/sdk';
+import { createProvisionerServer, generateJoinScript, ProvisionResult, StatusResult } from '@agentcage/sdk';
 
 const AUTH_TOKEN = process.env.FLEET_AUTH_TOKEN ?? 'dev-token';
 const PORT = parseInt(process.env.PORT ?? '8081', 10);
+const ORCHESTRATOR_ADDR = process.env.ORCHESTRATOR_ADDR ?? '';
+const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATOR_API_KEY ?? '';
 const PROJECT = process.env.GCP_PROJECT ?? '';
 const ZONE = process.env.GCP_ZONE ?? 'us-central1-a';
 const MACHINE_TYPE = process.env.MACHINE_TYPE ?? 'n2-standard-96';
-const IMAGE = process.env.AGENTCAGE_IMAGE ?? '';
 const NETWORK = process.env.NETWORK ?? 'default';
 const VCPUS = parseInt(process.env.HOST_VCPUS ?? '96', 10);
 const MEMORY_MB = parseInt(process.env.HOST_MEMORY_MB ?? '393216', 10);
 const CAGE_SLOTS = parseInt(process.env.HOST_CAGE_SLOTS ?? '40', 10);
+const ROOTFS_URL = process.env.ROOTFS_URL ?? '';
 
 let computeClient: any = null;
 async function getCompute() {
@@ -33,6 +36,12 @@ async function getCompute() {
   }
   return computeClient;
 }
+
+const joinScript = generateJoinScript({
+  orchestratorAddress: ORCHESTRATOR_ADDR,
+  apiKey: ORCHESTRATOR_API_KEY,
+  rootfsUrl: ROOTFS_URL || undefined,
+});
 
 let counter = 0;
 
@@ -50,9 +59,16 @@ const server = createProvisionerServer({
         disks: [{
           boot: true,
           autoDelete: true,
-          initializeParams: { sourceImage: IMAGE, diskSizeGb: '200', diskType: `zones/${ZONE}/diskTypes/pd-ssd` },
+          initializeParams: {
+            sourceImage: 'projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts',
+            diskSizeGb: '200',
+            diskType: `zones/${ZONE}/diskTypes/pd-ssd`,
+          },
         }],
         networkInterfaces: [{ network: `global/networks/${NETWORK}` }],
+        metadata: {
+          items: [{ key: 'startup-script', value: joinScript }],
+        },
         labels: { service: 'agentcage' },
       },
     });

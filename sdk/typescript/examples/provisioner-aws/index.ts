@@ -2,31 +2,30 @@
  * Reference fleet provisioner using AWS EC2.
  *
  * Usage:
- *   FLEET_AUTH_TOKEN=secret AWS_REGION=us-east-1 npx ts-node index.ts
+ *   FLEET_AUTH_TOKEN=secret ORCHESTRATOR_ADDR=orchestrator:9090 ORCHESTRATOR_API_KEY=ak-xxx npx ts-node index.ts
  *
  * Then configure agentcage:
  *   fleet:
  *     provisioner:
  *       webhook_url: http://localhost:8081
  *
- * Requires: aws-sdk v3 (npm install @aws-sdk/client-ec2)
- * The EC2 instances use a pre-baked AMI with agentcage, Firecracker,
- * kernel, and rootfs already installed.
+ * Requires: @aws-sdk/client-ec2 (npm install @aws-sdk/client-ec2)
  */
 
-import { createProvisionerServer, ProvisionResult, StatusResult } from '@agentcage/sdk';
+import { createProvisionerServer, generateJoinScript, ProvisionResult, StatusResult } from '@agentcage/sdk';
 
 const AUTH_TOKEN = process.env.FLEET_AUTH_TOKEN ?? 'dev-token';
 const PORT = parseInt(process.env.PORT ?? '8081', 10);
-const AMI_ID = process.env.AGENTCAGE_AMI_ID ?? '';
+const ORCHESTRATOR_ADDR = process.env.ORCHESTRATOR_ADDR ?? '';
+const ORCHESTRATOR_API_KEY = process.env.ORCHESTRATOR_API_KEY ?? '';
 const INSTANCE_TYPE = process.env.INSTANCE_TYPE ?? 'm6i.metal';
 const SUBNET_ID = process.env.SUBNET_ID ?? '';
 const SECURITY_GROUP_ID = process.env.SECURITY_GROUP_ID ?? '';
 const VCPUS = parseInt(process.env.HOST_VCPUS ?? '128', 10);
 const MEMORY_MB = parseInt(process.env.HOST_MEMORY_MB ?? '524288', 10);
 const CAGE_SLOTS = parseInt(process.env.HOST_CAGE_SLOTS ?? '50', 10);
+const ROOTFS_URL = process.env.ROOTFS_URL ?? '';
 
-// Lazy import so the example compiles without aws-sdk installed.
 let ec2: any = null;
 async function getEC2() {
   if (!ec2) {
@@ -36,18 +35,27 @@ async function getEC2() {
   return ec2;
 }
 
+// Generate the join script once — same for every host.
+const joinScript = generateJoinScript({
+  orchestratorAddress: ORCHESTRATOR_ADDR,
+  apiKey: ORCHESTRATOR_API_KEY,
+  rootfsUrl: ROOTFS_URL || undefined,
+});
+
 const server = createProvisionerServer({
   async provision(): Promise<ProvisionResult> {
     const client = await getEC2();
     const { RunInstancesCommand } = await import('@aws-sdk/client-ec2');
 
     const result = await client.send(new RunInstancesCommand({
-      ImageId: AMI_ID,
       InstanceType: INSTANCE_TYPE,
+      // Base Ubuntu — agentcage join handles all setup.
+      ImageId: 'resolve-latest-ubuntu-ami',
       MinCount: 1,
       MaxCount: 1,
       SubnetId: SUBNET_ID || undefined,
       SecurityGroupIds: SECURITY_GROUP_ID ? [SECURITY_GROUP_ID] : undefined,
+      UserData: Buffer.from(joinScript).toString('base64'),
       TagSpecifications: [{
         ResourceType: 'instance',
         Tags: [
@@ -68,7 +76,7 @@ const server = createProvisionerServer({
   },
 
   async drain(hostId: string): Promise<void> {
-    console.log(`Draining host ${hostId} — new cages will not be scheduled`);
+    console.log(`Draining host ${hostId}`);
   },
 
   async terminate(hostId: string): Promise<void> {
