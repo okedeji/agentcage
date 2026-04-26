@@ -19,16 +19,23 @@ const (
 	nomadPort    = "14646"
 )
 
+func NomadPort() string { return nomadPort }
+
 // NomadService manages an embedded HashiCorp Nomad agent running in
 // dev mode (combined server + client). Suitable for single-host and
 // test deployments where the operator does not run a separate cluster.
 type NomadService struct {
-	proc *subprocess
-	log  logr.Logger
+	proc     *subprocess
+	bindAddr string
+	log      logr.Logger
 }
 
 func NewNomadService(log logr.Logger) *NomadService {
-	return &NomadService{log: log.WithValues("service", "nomad")}
+	return &NomadService{bindAddr: "127.0.0.1", log: log.WithValues("service", "nomad")}
+}
+
+func NewNomadServiceWithBind(log logr.Logger, bindAddr string) *NomadService {
+	return &NomadService{bindAddr: bindAddr, log: log.WithValues("service", "nomad")}
 }
 
 func (n *NomadService) Name() string     { return "nomad" }
@@ -108,11 +115,11 @@ func (n *NomadService) Start(ctx context.Context) error {
 	// embedded Nomad doesn't conflict with an existing installation.
 	cfgPath := filepath.Join(dataDir, "embedded.hcl")
 	cfgContent := fmt.Sprintf(`
-bind_addr = "127.0.0.1"
+bind_addr = "%s"
 ports {
   http = %s
 }
-`, nomadPort)
+`, n.bindAddr, nomadPort)
 	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0644); err != nil {
 		return fmt.Errorf("writing nomad config: %w", err)
 	}

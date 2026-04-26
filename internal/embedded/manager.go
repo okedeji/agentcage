@@ -26,6 +26,13 @@ func NewManager(cfg *config.Config, log logr.Logger) *Manager {
 
 	infra := cfg.Infrastructure
 
+	// When advertise_address is set, bind to 0.0.0.0 so cage hosts
+	// on other machines can reach embedded services.
+	bindAddr := "127.0.0.1"
+	if infra.IsMultiMachine() {
+		bindAddr = "0.0.0.0"
+	}
+
 	if !infra.IsExternalPostgres() {
 		m.services = append(m.services, NewPostgresService(log))
 	}
@@ -39,7 +46,7 @@ func NewManager(cfg *config.Config, log logr.Logger) *Manager {
 	}
 
 	if !infra.IsExternalSPIRE() {
-		m.services = append(m.services, NewSPIREService(log))
+		m.services = append(m.services, NewSPIREServiceWithBind(log, bindAddr))
 	}
 
 	if !infra.IsExternalVault() {
@@ -51,7 +58,7 @@ func NewManager(cfg *config.Config, log logr.Logger) *Manager {
 	}
 
 	if !infra.IsExternalNomad() && infra.Nomad != nil {
-		m.services = append(m.services, NewNomadService(log))
+		m.services = append(m.services, NewNomadServiceWithBind(log, bindAddr))
 	}
 
 	m.services = append(m.services, NewFirecrackerDownloader(log))

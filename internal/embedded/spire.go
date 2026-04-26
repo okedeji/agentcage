@@ -14,20 +14,27 @@ import (
 )
 
 const (
-	spireVersion    = "1.14.1"
-	spireServerPort = "18081"
+	spireVersion     = "1.14.1"
+	spireServerPort  = "18081"
 	spireTrustDomain = "agentcage.local"
 )
+
+func SPIREServerPort() string { return spireServerPort }
 
 // SPIREService manages embedded SPIRE server and agent processes.
 type SPIREService struct {
 	serverProc *subprocess
 	agentProc  *subprocess
+	bindAddr   string
 	log        logr.Logger
 }
 
 func NewSPIREService(log logr.Logger) *SPIREService {
-	return &SPIREService{log: log.WithValues("service", "spire")}
+	return &SPIREService{bindAddr: "127.0.0.1", log: log.WithValues("service", "spire")}
+}
+
+func NewSPIREServiceWithBind(log logr.Logger, bindAddr string) *SPIREService {
+	return &SPIREService{bindAddr: bindAddr, log: log.WithValues("service", "spire")}
 }
 
 func (s *SPIREService) Name() string      { return "spire" }
@@ -93,7 +100,7 @@ func (s *SPIREService) Start(ctx context.Context) error {
 
 	// Generate server config
 	serverConf := filepath.Join(dataDir, "server.conf")
-	if err := writeSpireServerConf(serverConf, dataDir, spireServerPort, spireTrustDomain); err != nil {
+	if err := writeSpireServerConf(serverConf, dataDir, spireServerPort, spireTrustDomain, s.bindAddr); err != nil {
 		return fmt.Errorf("writing SPIRE server config: %w", err)
 	}
 
@@ -196,7 +203,7 @@ func (s *SPIREService) waitServerReady(ctx context.Context) error {
 }
 
 var spireServerTemplate = template.Must(template.New("server.conf").Parse(`server {
-    bind_address = "127.0.0.1"
+    bind_address = "{{.BindAddr}}"
     bind_port = "{{.Port}}"
     trust_domain = "{{.TrustDomain}}"
     data_dir = "{{.DataDir}}"
@@ -241,7 +248,7 @@ plugins {
 }
 `))
 
-func writeSpireServerConf(path, dataDir, port, trustDomain string) error {
+func writeSpireServerConf(path, dataDir, port, trustDomain, bindAddr string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -251,6 +258,7 @@ func writeSpireServerConf(path, dataDir, port, trustDomain string) error {
 		"DataDir":     dataDir,
 		"Port":        port,
 		"TrustDomain": trustDomain,
+		"BindAddr":    bindAddr,
 	})
 }
 

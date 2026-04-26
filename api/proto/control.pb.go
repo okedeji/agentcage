@@ -298,11 +298,12 @@ func (*GetConfigRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetConfigResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ConfigYaml    []byte                 `protobuf:"bytes,1,opt,name=config_yaml,json=configYaml,proto3" json:"config_yaml,omitempty"`
-	CaCert        []byte                 `protobuf:"bytes,2,opt,name=ca_cert,json=caCert,proto3" json:"ca_cert,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ConfigYaml       []byte                 `protobuf:"bytes,1,opt,name=config_yaml,json=configYaml,proto3" json:"config_yaml,omitempty"`
+	CaCert           []byte                 `protobuf:"bytes,2,opt,name=ca_cert,json=caCert,proto3" json:"ca_cert,omitempty"`
+	ServiceEndpoints *ServiceEndpoints      `protobuf:"bytes,3,opt,name=service_endpoints,json=serviceEndpoints,proto3" json:"service_endpoints,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GetConfigResponse) Reset() {
@@ -349,6 +350,73 @@ func (x *GetConfigResponse) GetCaCert() []byte {
 	return nil
 }
 
+func (x *GetConfigResponse) GetServiceEndpoints() *ServiceEndpoints {
+	if x != nil {
+		return x.ServiceEndpoints
+	}
+	return nil
+}
+
+type ServiceEndpoints struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SpireServer   string                 `protobuf:"bytes,1,opt,name=spire_server,json=spireServer,proto3" json:"spire_server,omitempty"`
+	NomadServer   string                 `protobuf:"bytes,2,opt,name=nomad_server,json=nomadServer,proto3" json:"nomad_server,omitempty"`
+	RootfsUrl     string                 `protobuf:"bytes,3,opt,name=rootfs_url,json=rootfsUrl,proto3" json:"rootfs_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceEndpoints) Reset() {
+	*x = ServiceEndpoints{}
+	mi := &file_api_proto_control_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceEndpoints) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceEndpoints) ProtoMessage() {}
+
+func (x *ServiceEndpoints) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_control_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceEndpoints.ProtoReflect.Descriptor instead.
+func (*ServiceEndpoints) Descriptor() ([]byte, []int) {
+	return file_api_proto_control_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ServiceEndpoints) GetSpireServer() string {
+	if x != nil {
+		return x.SpireServer
+	}
+	return ""
+}
+
+func (x *ServiceEndpoints) GetNomadServer() string {
+	if x != nil {
+		return x.NomadServer
+	}
+	return ""
+}
+
+func (x *ServiceEndpoints) GetRootfsUrl() string {
+	if x != nil {
+		return x.RootfsUrl
+	}
+	return ""
+}
+
 var File_api_proto_control_proto protoreflect.FileDescriptor
 
 const file_api_proto_control_proto_rawDesc = "" +
@@ -366,11 +434,17 @@ const file_api_proto_control_proto_rawDesc = "" +
 	"\rServicesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x12\n" +
-	"\x10GetConfigRequest\"M\n" +
+	"\x10GetConfigRequest\"\xa2\x01\n" +
 	"\x11GetConfigResponse\x12\x1f\n" +
 	"\vconfig_yaml\x18\x01 \x01(\fR\n" +
 	"configYaml\x12\x17\n" +
-	"\aca_cert\x18\x02 \x01(\fR\x06caCert2\xe1\x02\n" +
+	"\aca_cert\x18\x02 \x01(\fR\x06caCert\x12S\n" +
+	"\x11service_endpoints\x18\x03 \x01(\v2&.agentcage.control.v1.ServiceEndpointsR\x10serviceEndpoints\"w\n" +
+	"\x10ServiceEndpoints\x12!\n" +
+	"\fspire_server\x18\x01 \x01(\tR\vspireServer\x12!\n" +
+	"\fnomad_server\x18\x02 \x01(\tR\vnomadServer\x12\x1d\n" +
+	"\n" +
+	"rootfs_url\x18\x03 \x01(\tR\trootfsUrl2\xe1\x02\n" +
 	"\x0eControlService\x12M\n" +
 	"\x04Ping\x12!.agentcage.control.v1.PingRequest\x1a\".agentcage.control.v1.PingResponse\x12M\n" +
 	"\x04Stop\x12!.agentcage.control.v1.StopRequest\x1a\".agentcage.control.v1.StopResponse\x12S\n" +
@@ -389,7 +463,7 @@ func file_api_proto_control_proto_rawDescGZIP() []byte {
 	return file_api_proto_control_proto_rawDescData
 }
 
-var file_api_proto_control_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_api_proto_control_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_api_proto_control_proto_goTypes = []any{
 	(*PingRequest)(nil),       // 0: agentcage.control.v1.PingRequest
 	(*PingResponse)(nil),      // 1: agentcage.control.v1.PingResponse
@@ -399,23 +473,25 @@ var file_api_proto_control_proto_goTypes = []any{
 	(*HealthResponse)(nil),    // 5: agentcage.control.v1.HealthResponse
 	(*GetConfigRequest)(nil),  // 6: agentcage.control.v1.GetConfigRequest
 	(*GetConfigResponse)(nil), // 7: agentcage.control.v1.GetConfigResponse
-	nil,                       // 8: agentcage.control.v1.HealthResponse.ServicesEntry
+	(*ServiceEndpoints)(nil),  // 8: agentcage.control.v1.ServiceEndpoints
+	nil,                       // 9: agentcage.control.v1.HealthResponse.ServicesEntry
 }
 var file_api_proto_control_proto_depIdxs = []int32{
-	8, // 0: agentcage.control.v1.HealthResponse.services:type_name -> agentcage.control.v1.HealthResponse.ServicesEntry
-	0, // 1: agentcage.control.v1.ControlService.Ping:input_type -> agentcage.control.v1.PingRequest
-	2, // 2: agentcage.control.v1.ControlService.Stop:input_type -> agentcage.control.v1.StopRequest
-	4, // 3: agentcage.control.v1.ControlService.Health:input_type -> agentcage.control.v1.HealthRequest
-	6, // 4: agentcage.control.v1.ControlService.GetConfig:input_type -> agentcage.control.v1.GetConfigRequest
-	1, // 5: agentcage.control.v1.ControlService.Ping:output_type -> agentcage.control.v1.PingResponse
-	3, // 6: agentcage.control.v1.ControlService.Stop:output_type -> agentcage.control.v1.StopResponse
-	5, // 7: agentcage.control.v1.ControlService.Health:output_type -> agentcage.control.v1.HealthResponse
-	7, // 8: agentcage.control.v1.ControlService.GetConfig:output_type -> agentcage.control.v1.GetConfigResponse
-	5, // [5:9] is the sub-list for method output_type
-	1, // [1:5] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	9, // 0: agentcage.control.v1.HealthResponse.services:type_name -> agentcage.control.v1.HealthResponse.ServicesEntry
+	8, // 1: agentcage.control.v1.GetConfigResponse.service_endpoints:type_name -> agentcage.control.v1.ServiceEndpoints
+	0, // 2: agentcage.control.v1.ControlService.Ping:input_type -> agentcage.control.v1.PingRequest
+	2, // 3: agentcage.control.v1.ControlService.Stop:input_type -> agentcage.control.v1.StopRequest
+	4, // 4: agentcage.control.v1.ControlService.Health:input_type -> agentcage.control.v1.HealthRequest
+	6, // 5: agentcage.control.v1.ControlService.GetConfig:input_type -> agentcage.control.v1.GetConfigRequest
+	1, // 6: agentcage.control.v1.ControlService.Ping:output_type -> agentcage.control.v1.PingResponse
+	3, // 7: agentcage.control.v1.ControlService.Stop:output_type -> agentcage.control.v1.StopResponse
+	5, // 8: agentcage.control.v1.ControlService.Health:output_type -> agentcage.control.v1.HealthResponse
+	7, // 9: agentcage.control.v1.ControlService.GetConfig:output_type -> agentcage.control.v1.GetConfigResponse
+	6, // [6:10] is the sub-list for method output_type
+	2, // [2:6] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_control_proto_init() }
@@ -429,7 +505,7 @@ func file_api_proto_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_control_proto_rawDesc), len(file_api_proto_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

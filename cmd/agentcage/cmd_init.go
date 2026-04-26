@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-logr/logr"
 
+	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
@@ -260,17 +261,27 @@ func runInit(configFile, logFormat string) error {
 
 	configYAML, _ := config.Marshal(cfg)
 
+	var endpoints *pb.ServiceEndpoints
+	if cfg.Infrastructure.IsMultiMachine() {
+		addr := cfg.Infrastructure.AdvertiseAddress
+		endpoints = &pb.ServiceEndpoints{
+			SpireServer: fmt.Sprintf("%s:%s", addr, embedded.SPIREServerPort()),
+			NomadServer: fmt.Sprintf("http://%s:%s", addr, embedded.NomadPort()),
+		}
+	}
+
 	grpcServer, err := buildGRPCServer(ctx, cfg, agentgrpc.Services{
-		Cages:         cageSvc,
-		Assessments:   assessmentSvc,
-		Interventions: iSvc,
-		Fleet:         fleetSvc,
-		Findings:      findingStore,
-		Audit:         cageRuntime.auditStore,
-		CageLogDir:    cageLogDir,
-		ConfigYAML:    configYAML,
-		Cancel:        cancel,
-		Version:       version,
+		Cages:            cageSvc,
+		Assessments:      assessmentSvc,
+		Interventions:    iSvc,
+		Fleet:            fleetSvc,
+		Findings:         findingStore,
+		Audit:            cageRuntime.auditStore,
+		CageLogDir:       cageLogDir,
+		ConfigYAML:       configYAML,
+		ServiceEndpoints: endpoints,
+		Cancel:           cancel,
+		Version:          version,
 	}, log)
 	if err != nil {
 		return err

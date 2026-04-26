@@ -83,6 +83,12 @@ func EnsureDirs() error {
 }
 
 // downloadBinary fetches a URL and writes it to dest with executable permissions.
+// DownloadFile downloads a URL to a local path. Used by host-init
+// for downloading the cage rootfs.
+func DownloadFile(ctx context.Context, url, dest string) error {
+	return downloadBinary(ctx, url, dest)
+}
+
 func downloadBinary(ctx context.Context, url, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return fmt.Errorf("creating directory for %s: %w", dest, err)

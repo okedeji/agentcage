@@ -359,6 +359,12 @@ func (c *GRPCConfig) LetsEncryptDomain() string {
 // InfrastructureConfig holds connection overrides for external
 // services. All fields are optional; omitted services run embedded.
 type InfrastructureConfig struct {
+	// AdvertiseAddress is the orchestrator's reachable IP or hostname.
+	// When set, embedded services bind to 0.0.0.0 so cage hosts on
+	// other machines can connect. GetConfig includes this address
+	// combined with embedded ports so host-init auto-discovers them.
+	AdvertiseAddress string `yaml:"advertise_address,omitempty"`
+
 	Postgres *PostgresConfig  `yaml:"postgres"`
 	NATS     *NATSConfig      `yaml:"nats"`
 	Temporal *TemporalConfig  `yaml:"temporal"`
@@ -367,6 +373,10 @@ type InfrastructureConfig struct {
 	Falco    *FalcoConfig     `yaml:"falco"`
 	Nomad    *NomadConfig     `yaml:"nomad"`
 	OTel     *OTelConfig      `yaml:"otel"`
+}
+
+func (c *InfrastructureConfig) IsMultiMachine() bool {
+	return c.AdvertiseAddress != ""
 }
 
 type PostgresConfig struct {
@@ -1022,6 +1032,9 @@ func Merge(base, override *Config) *Config {
 	}
 
 	// Infrastructure: override individual service configs if provided
+	if override.Infrastructure.AdvertiseAddress != "" {
+		result.Infrastructure.AdvertiseAddress = override.Infrastructure.AdvertiseAddress
+	}
 	if override.Infrastructure.Postgres != nil {
 		result.Infrastructure.Postgres = override.Infrastructure.Postgres
 	}

@@ -27,4 +27,11 @@ message GetConfigRequest {}
 message GetConfigResponse {
   bytes config_yaml = 1;
   bytes ca_cert = 2;
+  ServiceEndpoints service_endpoints = 3;
+}
+
+message ServiceEndpoints {
+  string spire_server = 1;
+  string nomad_server = 2;
+  string rootfs_url = 3;
 }

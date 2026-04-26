@@ -1,6 +1,7 @@
 // Client — everything the CLI does, as typed async methods.
 export { AgentCage, type AgentCageConfig, type ApiKeyAuth } from './client';
 export type { VaultConfig, RunConfig, RunEvent, ApiKeyInfo, PackOptions, PackResult } from './client';
+export { generateJoinScript, type JoinOptions } from './client/join';
 
 // Agent SDK — for TypeScript agents running inside cages.
 export { AgentSDK, type AgentConfig } from './agent';

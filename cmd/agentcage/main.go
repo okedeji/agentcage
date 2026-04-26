@@ -39,6 +39,8 @@ func main() {
 	switch cmd {
 	case "init":
 		platformInit(args)
+	case "join":
+		cmdJoin(args)
 	case "stop":
 		platformStop(args)
 	case "pack":
@@ -94,6 +96,7 @@ Global flags:
 
 Setup:
   init                Start the orchestrator and embedded services
+  join               Join a bare-metal host to the orchestrator's fleet
   stop                Gracefully shut down all services
   connect             Point this CLI at a remote orchestrator
   config              Manage operator config (show, export, import, get)

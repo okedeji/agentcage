@@ -30,16 +30,23 @@ type Services struct {
 	Fleet         *fleet.Service
 	Findings      *findings.PGStore
 	Audit         *audit.PGStore
-	CageLogDir    string
-	ConfigYAML    []byte
-	CACert        []byte
-	Cancel        context.CancelFunc
-	Version       string
+	CageLogDir        string
+	ConfigYAML        []byte
+	CACert            []byte
+	ServiceEndpoints  *pb.ServiceEndpoints
+	Cancel            context.CancelFunc
+	Version           string
 }
 
 // Register wires all gRPC service adapters onto the server.
 func Register(srv *grpc.Server, svc Services) {
-	pb.RegisterControlServiceServer(srv, &controlAdapter{cancelFunc: svc.Cancel, version: svc.Version, configYAML: svc.ConfigYAML, caCert: svc.CACert})
+	pb.RegisterControlServiceServer(srv, &controlAdapter{
+		cancelFunc:       svc.Cancel,
+		version:          svc.Version,
+		configYAML:       svc.ConfigYAML,
+		caCert:           svc.CACert,
+		serviceEndpoints: svc.ServiceEndpoints,
+	})
 	pb.RegisterCageServiceServer(srv, &cageAdapter{server: svc.Cages, logDir: svc.CageLogDir})
 	pb.RegisterAssessmentServiceServer(srv, &assessmentAdapter{server: svc.Assessments})
 	pb.RegisterInterventionServiceServer(srv, &interventionAdapter{server: svc.Interventions})
@@ -54,10 +61,11 @@ func Register(srv *grpc.Server, svc Services) {
 
 type controlAdapter struct {
 	pb.UnimplementedControlServiceServer
-	cancelFunc context.CancelFunc
-	version    string
-	configYAML []byte
-	caCert     []byte
+	cancelFunc       context.CancelFunc
+	version          string
+	configYAML       []byte
+	caCert           []byte
+	serviceEndpoints *pb.ServiceEndpoints
 }
 
 func (a *controlAdapter) Ping(_ context.Context, _ *pb.PingRequest) (*pb.PingResponse, error) {
@@ -74,7 +82,11 @@ func (a *controlAdapter) Health(_ context.Context, _ *pb.HealthRequest) (*pb.Hea
 }
 
 func (a *controlAdapter) GetConfig(_ context.Context, _ *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {
-	return &pb.GetConfigResponse{ConfigYaml: a.configYAML, CaCert: a.caCert}, nil
+	return &pb.GetConfigResponse{
+		ConfigYaml:       a.configYAML,
+		CaCert:           a.caCert,
+		ServiceEndpoints: a.serviceEndpoints,
+	}, nil
 }
 
 type cageAdapter struct {
