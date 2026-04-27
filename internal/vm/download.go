@@ -31,7 +31,7 @@ func EnsureAssets(ctx context.Context, agentcageVersion string) error {
 		return fmt.Errorf("creating VM directory: %w", err)
 	}
 
-	if err := ensureKernel(ctx); err != nil {
+	if err := ensureKernel(ctx, agentcageVersion); err != nil {
 		return fmt.Errorf("ensuring kernel: %w", err)
 	}
 	if err := ensureRootfs(ctx, agentcageVersion); err != nil {
@@ -43,7 +43,7 @@ func EnsureAssets(ctx context.Context, agentcageVersion string) error {
 	return nil
 }
 
-func ensureKernel(ctx context.Context) error {
+func ensureKernel(ctx context.Context, version string) error {
 	dest := KernelPath()
 	if _, err := os.Stat(dest); err == nil {
 		return nil
@@ -51,8 +51,8 @@ func ensureKernel(ctx context.Context) error {
 
 	arch := runtime.GOARCH
 	url := fmt.Sprintf(
-		"https://github.com/okedeji/agentcage/releases/download/vm-assets/vmlinux-%s-%s",
-		kernelVersion, arch,
+		"https://github.com/okedeji/agentcage/releases/download/v%s/vmlinux-%s-%s",
+		version, kernelVersion, arch,
 	)
 	if err := download(ctx, url, dest); err != nil {
 		return err
