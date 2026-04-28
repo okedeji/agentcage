@@ -62,10 +62,11 @@ sudo tee "$MOUNTPOINT/sbin/init-agentcage" > /dev/null << 'INITEOF'
 #!/bin/sh
 set -e
 
-# Mount essential filesystems
-mount -t proc proc /proc
-mount -t sysfs sys /sys
-mount -t devtmpfs dev /dev
+# Mount essential filesystems. The kernel may have already mounted
+# some of these (devtmpfs in particular); skip if already present.
+mountpoint -q /proc || mount -t proc proc /proc
+mountpoint -q /sys  || mount -t sysfs sys /sys
+mountpoint -q /dev  || mount -t devtmpfs dev /dev
 
 # Set hostname
 hostname agentcage-vm
@@ -73,9 +74,13 @@ hostname agentcage-vm
 # Bring up loopback
 ip link set lo up
 
-# Bring up eth0 via DHCP
-ip link set eth0 up
-udhcpc -i eth0 -s /etc/udhcpc/default.script -q 2>/dev/null || true
+# Find the first non-loopback network interface. VZ uses virtio-net
+# which may appear as eth0, enp0s1, or similar depending on the kernel.
+NET_IF=$(ip -o link show | awk -F': ' '{print $2}' | grep -v '^lo$' | head -1)
+if [ -n "$NET_IF" ]; then
+    ip link set "$NET_IF" up
+    udhcpc -i "$NET_IF" -s /etc/udhcpc/default.script -q 2>/dev/null || true
+fi
 
 # Mount VirtioFS shared directory
 mkdir -p /mnt/agentcage

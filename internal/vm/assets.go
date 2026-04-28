@@ -24,6 +24,7 @@ func KernelPath() string {
 	return filepath.Join(Dir(), "vmlinux-"+kernelVersion+"-"+runtime.GOARCH)
 }
 
+
 func RootfsPath() string {
 	return filepath.Join(Dir(), "rootfs-"+alpineVersion+"-"+runtime.GOARCH+".img")
 }

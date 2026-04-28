@@ -1,7 +1,6 @@
 package vm
 
 import (
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -13,9 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
-	"golang.org/x/sync/errgroup"
+	"github.com/schollz/progressbar/v3"
 )
 
 // knownChecksums maps asset filenames to expected SHA-256 hex
@@ -30,88 +27,57 @@ var knownChecksums = map[string]string{
 	// "agentcage-linux-amd64":      "sha256-hex-here",
 }
 
-// EnsureAssets downloads the kernel, rootfs, and linux agentcage binary if not already cached.
+// EnsureAssets downloads the kernel, rootfs, and linux agentcage
+// binary if not already cached. Downloads run sequentially so each
+// progress bar gets a clean terminal line.
 func EnsureAssets(ctx context.Context, agentcageVersion string) error {
 	if err := os.MkdirAll(Dir(), 0755); err != nil {
 		return fmt.Errorf("creating VM directory: %w", err)
 	}
 
-	// Check which assets need downloading before creating progress bars.
 	needed := 0
-	if _, err := os.Stat(KernelPath()); err != nil {
-		needed++
-	}
-	if _, err := os.Stat(RootfsPath()); err != nil {
-		needed++
-	}
-	if _, err := os.Stat(LinuxBinaryPath()); err != nil {
-		needed++
+	for _, p := range []string{KernelPath(), RootfsPath(), LinuxBinaryPath()} {
+		if _, err := os.Stat(p); err != nil {
+			needed++
+		}
 	}
 	if needed == 0 {
 		fmt.Println("     All assets cached")
 		return nil
 	}
 
-	p := mpb.NewWithContext(ctx, mpb.WithWidth(60))
-
-	g, gCtx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		if err := ensureKernel(gCtx, agentcageVersion, p); err != nil {
-			return fmt.Errorf("ensuring kernel: %w", err)
-		}
-		return nil
-	})
-	g.Go(func() error {
-		if err := ensureRootfs(gCtx, agentcageVersion, p); err != nil {
-			return fmt.Errorf("ensuring rootfs: %w", err)
-		}
-		return nil
-	})
-	g.Go(func() error {
-		if err := ensureLinuxBinary(gCtx, agentcageVersion, p); err != nil {
-			return fmt.Errorf("ensuring linux binary: %w", err)
-		}
-		return nil
-	})
-	err := g.Wait()
-	p.Wait()
-	return err
+	if err := ensureKernel(ctx, agentcageVersion); err != nil {
+		return fmt.Errorf("ensuring kernel: %w", err)
+	}
+	if err := ensureRootfs(ctx, agentcageVersion); err != nil {
+		return fmt.Errorf("ensuring rootfs: %w", err)
+	}
+	if err := ensureLinuxBinary(ctx, agentcageVersion); err != nil {
+		return fmt.Errorf("ensuring linux binary: %w", err)
+	}
+	return nil
 }
 
-func ensureKernel(ctx context.Context, _ string, p *mpb.Progress) error {
+func ensureKernel(ctx context.Context, version string) error {
 	dest := KernelPath()
 	if _, err := os.Stat(dest); err == nil {
 		return nil
 	}
 
-	// Ubuntu cloud kernels are built with the virtio drivers that
-	// Apple Virtualization.framework needs (virtio-mmio, virtio-blk,
-	// virtio-net, virtio-console, virtiofs). Firecracker kernels
-	// from AWS S3 lack these and fail to boot under VZ.
+	// Custom kernel built with all virtio drivers and virtiofs as
+	// built-in (=y). No modules, no initramfs needed.
 	arch := runtime.GOARCH
-	var ubuntuArch string
-	if arch == "arm64" {
-		ubuntuArch = "arm64"
-	} else {
-		ubuntuArch = "amd64"
-	}
 	url := fmt.Sprintf(
-		"https://cloud-images.ubuntu.com/releases/noble/release/unpacked/ubuntu-24.04-server-cloudimg-%s-vmlinuz-generic",
-		ubuntuArch,
+		"https://github.com/okedeji/agentcage/releases/download/v%s/vmlinux-%s-%s",
+		version, kernelVersion, arch,
 	)
-	compressed := dest + ".gz"
-	if err := download(ctx, url, compressed, p); err != nil {
+	if err := download(ctx, url, dest, ""); err != nil {
 		return err
 	}
-	if err := decompressGzip(compressed, dest); err != nil {
-		_ = os.Remove(compressed)
-		return fmt.Errorf("decompressing kernel: %w", err)
-	}
-	_ = os.Remove(compressed)
 	return verifyChecksum(dest)
 }
 
-func ensureRootfs(ctx context.Context, version string, p *mpb.Progress) error {
+func ensureRootfs(ctx context.Context, version string) error {
 	dest := RootfsPath()
 	if _, err := os.Stat(dest); err == nil {
 		return nil
@@ -122,13 +88,13 @@ func ensureRootfs(ctx context.Context, version string, p *mpb.Progress) error {
 		"https://github.com/okedeji/agentcage/releases/download/v%s/rootfs-%s.img",
 		version, arch,
 	)
-	if err := download(ctx, url, dest, p); err != nil {
+	if err := download(ctx, url, dest, ""); err != nil {
 		return err
 	}
 	return verifyChecksum(dest)
 }
 
-func ensureLinuxBinary(ctx context.Context, version string, p *mpb.Progress) error {
+func ensureLinuxBinary(ctx context.Context, version string) error {
 	dest := LinuxBinaryPath()
 	if _, err := os.Stat(dest); err == nil {
 		return nil
@@ -139,7 +105,7 @@ func ensureLinuxBinary(ctx context.Context, version string, p *mpb.Progress) err
 		"https://github.com/okedeji/agentcage/releases/download/v%s/agentcage-linux-%s",
 		version, arch,
 	)
-	if err := download(ctx, url, dest, p); err != nil {
+	if err := download(ctx, url, dest, ""); err != nil {
 		return err
 	}
 	if err := verifyChecksum(dest); err != nil {
@@ -178,7 +144,9 @@ func verifyChecksum(path string) error {
 	return nil
 }
 
-func download(ctx context.Context, url, dest string, p *mpb.Progress) error {
+// download fetches url to dest with a progress bar. displayName overrides
+// the filename shown in the bar; empty uses the dest basename.
+func download(ctx context.Context, url, dest, displayName string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return fmt.Errorf("creating directory for %s: %w", dest, err)
 	}
@@ -204,23 +172,17 @@ func download(ctx context.Context, url, dest string, p *mpb.Progress) error {
 		return fmt.Errorf("creating %s: %w", tmp, err)
 	}
 
-	name := filepath.Base(dest)
+	name := displayName
+	if name == "" {
+		name = filepath.Base(dest)
+	}
+
 	var reader io.Reader = resp.Body
 	if resp.ContentLength > 0 {
-		bar := p.AddBar(resp.ContentLength,
-			mpb.PrependDecorators(
-				decor.Name(name, decor.WCSyncSpaceR),
-				decor.CountersKibiByte("% .1f / % .1f"),
-			),
-			mpb.AppendDecorators(
-				decor.EwmaETA(decor.ET_STYLE_GO, 30),
-				decor.Name(" "),
-				decor.EwmaSpeed(decor.SizeB1024(0), "% .1f", 30),
-			),
-		)
-		reader = bar.ProxyReader(resp.Body)
+		bar := progressbar.DefaultBytes(resp.ContentLength, "     "+name)
+		reader = io.TeeReader(resp.Body, bar)
 	} else {
-		fmt.Printf("  %s: downloading...\n", name)
+		fmt.Printf("     %s: downloading...\n", name)
 	}
 
 	written, err := io.Copy(f, reader)
@@ -246,28 +208,3 @@ func download(ctx context.Context, url, dest string, p *mpb.Progress) error {
 	return nil
 }
 
-func decompressGzip(src, dest string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("opening %s: %w", src, err)
-	}
-	defer func() { _ = in.Close() }()
-
-	gr, err := gzip.NewReader(in)
-	if err != nil {
-		return fmt.Errorf("creating gzip reader: %w", err)
-	}
-	defer func() { _ = gr.Close() }()
-
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("creating %s: %w", dest, err)
-	}
-
-	if _, err := io.Copy(out, gr); err != nil {
-		_ = out.Close()
-		_ = os.Remove(dest)
-		return fmt.Errorf("decompressing: %w", err)
-	}
-	return out.Close()
-}
