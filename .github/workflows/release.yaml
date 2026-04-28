@@ -47,11 +47,13 @@ jobs:
             kernel_arch: aarch64
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross-compiler
-        if: matrix.arch == 'arm64'
+      - name: Install kernel build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user-static
+          sudo apt-get install -y flex bison bc libelf-dev libssl-dev
+      - name: Install cross-compiler
+        if: matrix.arch == 'arm64'
+        run: sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user-static
       - name: Build VM kernel
         run: ./scripts/build-vm-kernel.sh ${{ matrix.arch }} vmlinux-6.1-${{ matrix.arch }}
       - name: Build rootfs image

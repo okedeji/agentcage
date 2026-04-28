@@ -164,10 +164,15 @@ CONFIG_MEMORY_BALLOON=y
 KCONFIG
 
 echo "Configuring kernel..."
-make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" olddefconfig -j$(nproc) > /dev/null 2>&1
+make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" olddefconfig -j"$(nproc)"
 
+BUILD_LOG="$WORKDIR/build.log"
 echo "Building kernel (this takes a few minutes)..."
-make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" "$IMAGE_NAME" -j$(nproc) 2>&1 | tail -5
+if ! make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" "$IMAGE_NAME" -j"$(nproc)" > "$BUILD_LOG" 2>&1; then
+    echo "Kernel build failed. Last 50 lines:"
+    tail -50 "$BUILD_LOG"
+    exit 1
+fi
 
 cp "$SRCDIR/arch/${LINUX_ARCH}/boot/${IMAGE_NAME}" "$OUTPUT"
 echo
