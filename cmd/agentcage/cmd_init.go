@@ -34,15 +34,16 @@ func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
 	logFormat := fs.String("log-format", "json", "log output format (json or text)")
+	grpcAddr := fs.String("grpc-addr", "", "override gRPC listen address (e.g. 0.0.0.0:9090)")
 	_ = fs.Parse(args)
 
-	if err := runInit(*configFile, *logFormat); err != nil {
+	if err := runInit(*configFile, *logFormat, *grpcAddr); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runInit(configFile, logFormat string) error {
+func runInit(configFile, logFormat, grpcAddr string) error {
 	defaultPath := config.DefaultPath()
 	created, err := config.WriteDefaults(defaultPath)
 	if err != nil {
@@ -326,7 +327,9 @@ func runInit(configFile, logFormat string) error {
 		embeddedMgr:      embeddedMgr,
 	}
 
-	grpcAddr := cfg.GRPCListenAddr()
+	if grpcAddr == "" {
+		grpcAddr = cfg.GRPCListenAddr()
+	}
 	lis, _, err := startGRPCListener(grpcAddr, cfg, log)
 	if err != nil {
 		return err

@@ -25,6 +25,7 @@ var validServices = map[string]bool{
 	"vault":    true,
 	"falco":    true,
 	"nats":     true,
+	"vm":       true,
 }
 
 func cmdLogs(args []string) {
@@ -61,7 +62,12 @@ func tailServiceLog(service string, follow bool, tailLines int) {
 		os.Exit(1)
 	}
 
-	logFile := filepath.Join(embedded.LogDir(), service+".log")
+	var logFile string
+	if service == "vm" {
+		logFile = filepath.Join(config.HomeDir(), "vm-console.log")
+	} else {
+		logFile = filepath.Join(embedded.LogDir(), service+".log")
+	}
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "no log file for service %s\n", service)
 		os.Exit(1)
@@ -290,7 +296,7 @@ Examples:
   agentcage logs --assessment <assessment-id>
 
 Flags:
-  --service      service log: postgres, temporal, spire, vault, falco, nats
+  --service      service log: postgres, temporal, spire, vault, falco, nats, vm
   --cage         cage ID to stream logs from
   --assessment   tail logs for all cages in an assessment
   --follow       stream live logs (running cages only)

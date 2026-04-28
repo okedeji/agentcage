@@ -86,6 +86,13 @@ fi
 mkdir -p /mnt/agentcage
 mount -t virtiofs agentcage /mnt/agentcage
 
+# Set clock from host. Without this, TLS verification fails because
+# the VM boots with epoch time (1970). The host writes a timestamp
+# file to the shared directory before boot.
+if [ -f /mnt/agentcage/.vm-clock ]; then
+    date -s "$(cat /mnt/agentcage/.vm-clock)" 2>/dev/null || true
+fi
+
 # Detect architecture
 ARCH=$(uname -m)
 case "$ARCH" in

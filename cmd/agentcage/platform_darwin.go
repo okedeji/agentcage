@@ -81,7 +81,13 @@ func platformInit(args []string) {
 		ui.OK("Config copied to %s", dest)
 	}
 
+	// VM has no hardware clock and boots to 1970. Write the host
+	// time so the init script can set it before TLS connections.
+	_ = os.WriteFile(filepath.Join(home, ".vm-clock"),
+		[]byte(time.Now().UTC().Format("2006-01-02T15:04:05Z")), 0644)
+
 	ui.Section("Linux VM")
+	ui.Step("VM logs: agentcage logs --service vm --follow")
 	cfg := vm.DefaultConfig(home)
 	machine, err := vm.Boot(ctx, cfg)
 	if err != nil {

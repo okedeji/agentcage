@@ -187,7 +187,7 @@ func (v *LinuxVM) waitForGRPC(ctx context.Context) error {
 	deadline := time.Now().Add(90 * time.Second)
 	start := time.Now()
 
-	fmt.Print("  Waiting for VM network...")
+	fmt.Print("     Waiting for VM network...")
 	attempt := 0
 	for time.Now().Before(deadline) {
 		if ip, ok := v.scanSubnet(ctx, port); ok {
