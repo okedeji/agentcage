@@ -24,6 +24,7 @@ import (
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/intervention"
 	proxylog "github.com/okedeji/agentcage/internal/log"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 // Keeps darwin builds happy; cmdInit is dispatched from platform_linux.go.
@@ -48,7 +49,7 @@ func runInit(configFile, logFormat string) error {
 		return fmt.Errorf("writing default config: %w", err)
 	}
 	if created {
-		fmt.Printf("Config written to %s\n", defaultPath)
+		ui.Step("Config written to %s", defaultPath)
 	}
 	cfg := config.Defaults()
 	if resolved := config.Resolve(configFile); resolved != "" {
@@ -70,7 +71,7 @@ func runInit(configFile, logFormat string) error {
 	}
 	log = log.WithValues("component", "agentcage")
 
-	fmt.Printf("Initializing agentcage v%s...\n\n", version)
+	ui.Banner(version, "linux")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -83,11 +84,11 @@ func runInit(configFile, logFormat string) error {
 	}
 
 	embeddedMgr := embedded.NewManager(cfg, log)
-	fmt.Println("Downloading dependencies...")
+	ui.Section("Dependencies")
 	if err := embeddedMgr.Download(ctx); err != nil {
 		return fmt.Errorf("downloading dependencies: %w", err)
 	}
-	fmt.Println("\nStarting local services...")
+	ui.Section("Services")
 	if err := embeddedMgr.Start(ctx); err != nil {
 		return fmt.Errorf("starting local services: %w", err)
 	}
@@ -151,7 +152,7 @@ func runInit(configFile, logFormat string) error {
 		return err
 	}
 	autoscalerLog := log.WithValues("component", "autoscaler")
-	fmt.Println("Starting fleet autoscaler...")
+	ui.Step("Fleet autoscaler started")
 	go func() {
 		// If the autoscaler dies, fleet scaling stops. Cancel everything
 		// so the operator notices instead of running degraded.
@@ -356,11 +357,12 @@ func runInit(configFile, logFormat string) error {
 	}()
 
 	// lis.Addr() resolves the real port for ephemeral binds (`:0`).
-	fmt.Printf("\nagentcage ready.\n")
-	fmt.Printf("  gRPC:     %s\n", lis.Addr().String())
-	fmt.Printf("  Temporal: %s\n", resolveTemporalAddr(cfg))
-	fmt.Printf("  Data:     %s\n\n", embedded.DataDir())
-	fmt.Println("Press Ctrl+C to stop.")
+	ui.Ready()
+	ui.Info("gRPC", lis.Addr().String())
+	ui.Info("Temporal", resolveTemporalAddr(cfg))
+	ui.Info("Data", embedded.DataDir())
+	fmt.Println()
+	ui.Step("Press Ctrl+C to stop.")
 
 	sigCh := waitForShutdown(ctx, log)
 

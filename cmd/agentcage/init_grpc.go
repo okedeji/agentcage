@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/ui"
 	"github.com/okedeji/agentcage/internal/embedded"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 )
@@ -94,7 +95,7 @@ func buildGRPCServer(
 }
 
 func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (net.Listener, bool, error) {
-	fmt.Printf("Starting gRPC server on %s...\n", grpcAddr)
+	ui.Step("Starting gRPC server on %s", grpcAddr)
 	if isGlobalBind(grpcAddr) && !cfg.GRPC.TLSEnabled() && cfg.Posture == config.PostureStrict {
 		return nil, false, fmt.Errorf("refusing to bind gRPC on %s without TLS in strict posture: configure grpc.tls or set posture=dev", grpcAddr)
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/enforcement"
+	"github.com/okedeji/agentcage/internal/ui"
 	"github.com/okedeji/agentcage/internal/intervention"
 )
 
@@ -33,7 +34,7 @@ type cageRuntimeSetup struct {
 // Provisioner runs first because its isolated flag decides whether
 // we need NFTables and a real rootfs or neither.
 func setupCageRuntime(ctx context.Context, cfg *config.Config, db *sql.DB, log logr.Logger) (*cageRuntimeSetup, error) {
-	fmt.Println("Setting up cage provisioner...")
+	ui.Step("Setting up cage provisioner")
 	binDir := embedded.BinDir()
 	log.Info("embedded bin dir", "path", binDir)
 
@@ -107,7 +108,7 @@ func buildRootfs(ctx context.Context, isolated bool, log logr.Logger) (*cage.Roo
 
 // Must run before the Falco daemon starts.
 func writeFalcoRules(cfg *config.Config, log logr.Logger) (cage.AlertHandler, error) {
-	fmt.Println("Generating Falco rules...")
+	ui.Step("Generating Falco rules")
 	rules, tripwires := enforcement.GenerateFalcoRules(cfg.Monitoring)
 	handler := enforcement.NewFalcoHandlerFromGenerated(tripwires)
 	alertHandler := enforcement.NewFalcoAlertAdapter(handler)

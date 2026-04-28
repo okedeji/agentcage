@@ -15,12 +15,13 @@ import (
 
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/metrics"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 const otelFlushDeadline = 5 * time.Second
 
 func setupTelemetry(ctx context.Context, cfg *config.Config, log logr.Logger) (func(), error) {
-	fmt.Println("Initializing telemetry...")
+	ui.Step("Initializing telemetry")
 
 	shutdown := func() {} // no-op default
 

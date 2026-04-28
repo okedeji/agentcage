@@ -20,6 +20,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/alert"
 	"github.com/okedeji/agentcage/internal/embedded"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 // Every shutdown step is bounded so a wedged component can't trap
@@ -74,7 +75,7 @@ func shutdownSequence(
 		go forceExitOnSecondSignal(sigCh)
 	}
 
-	fmt.Println("\nShutting down...")
+	ui.Shutdown()
 
 	// Hard deadline on the whole sequence. Every step is bounded
 	// individually, but a future addition could still hang. Force-exit
@@ -98,7 +99,7 @@ func shutdownSequence(
 
 	stopEmbeddedBounded(deps.embeddedMgr, log)
 
-	fmt.Println("agentcage stopped.")
+	ui.Stopped()
 }
 
 // SIGHUP is ignored here because operators occasionally send it by

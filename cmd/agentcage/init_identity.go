@@ -15,6 +15,7 @@ import (
 	"github.com/okedeji/agentcage/internal/embedded"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 func resolveSpireSocket(cfg *config.Config) string {
@@ -75,7 +76,7 @@ func connectIdentityAndSecrets(
 		}
 	}
 
-	fmt.Println("Connecting to identity and secrets services...")
+	ui.Section("Identity & Secrets")
 
 	var svidIssuer identity.SVIDIssuer
 	if reason := cage.CheckSpireSocket(ctx, spireSocket); reason != "" {

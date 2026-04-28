@@ -20,6 +20,7 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
+	"github.com/okedeji/agentcage/internal/ui"
 	"github.com/okedeji/agentcage/internal/vm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -56,9 +57,9 @@ func platformInit(args []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Printf("Initializing agentcage v%s (macOS, booting Linux VM)...\n\n", version)
+	ui.Banner(version, "macOS")
 
-	fmt.Println("Downloading VM assets...")
+	ui.Section("VM Assets")
 	if err := vm.EnsureAssets(ctx, version); err != nil {
 		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
 		os.Exit(1)
@@ -77,10 +78,10 @@ func platformInit(args []string) {
 			fmt.Fprintf(os.Stderr, "agentcage init: writing config to shared dir: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Config copied to %s (shared with VM)\n", dest)
+		ui.OK("Config copied to %s", dest)
 	}
 
-	fmt.Println("Booting Linux VM...")
+	ui.Section("Linux VM")
 	cfg := vm.DefaultConfig(home)
 	machine, err := vm.Boot(ctx, cfg)
 	if err != nil {
@@ -136,7 +137,7 @@ func platformInit(args []string) {
 
 	// Real RPC, not a TCP connect check. The TCP socket opens long
 	// before the gRPC server starts dispatching.
-	fmt.Println("Waiting for services inside VM to be ready...")
+	ui.Step("Waiting for services inside VM")
 	readyCtx, readyCancel := context.WithTimeout(ctx, 120*time.Second)
 	defer readyCancel()
 	if err := agentgrpc.WaitForReady(readyCtx, machine.GRPCAddr()); err != nil {
@@ -146,12 +147,12 @@ func platformInit(args []string) {
 		fatalf("agentcage init: VM services did not become ready: %v\n", err)
 	}
 
-	fmt.Printf("\nagentcage ready (running inside Linux VM).\n")
-	fmt.Printf("  gRPC:     localhost:9090\n")
-	fmt.Printf("  Postgres: localhost:15432\n")
-	fmt.Printf("  VM:       Apple Virtualization.framework (%s)\n", runtime.GOARCH)
-	fmt.Printf("  Data:     %s\n\n", home)
-	fmt.Println("Press Ctrl+C to stop.")
+	ui.Ready()
+	ui.Info("gRPC", "localhost:9090")
+	ui.Info("Postgres", "localhost:15432")
+	ui.Info("VM", fmt.Sprintf("Apple Virtualization.framework (%s)", runtime.GOARCH))
+	ui.Info("Data", home)
+	ui.Step("Press Ctrl+C to stop.")
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -161,9 +162,9 @@ func platformInit(args []string) {
 	case <-ctx.Done():
 	}
 
-	fmt.Println("\nShutting down...")
+	ui.Shutdown()
 
-	fmt.Println("Stopping services inside VM...")
+	ui.Step("Stopping services inside VM")
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stopCancel()
 
@@ -176,14 +177,14 @@ func platformInit(args []string) {
 		_ = conn.Close()
 	}
 
-	fmt.Println("Shutting down VM...")
+	ui.Step("Shutting down VM")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 	if err := machine.Shutdown(shutdownCtx); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: VM shutdown error: %v\n", err)
 	}
 
-	fmt.Println("agentcage stopped.")
+	ui.Stopped()
 }
 
 func platformStop(_ []string) {
@@ -234,7 +235,7 @@ func stopViaGRPC() bool {
 		_, pingErr := client.Ping(checkCtx, &pb.PingRequest{})
 		checkCancel()
 		if pingErr != nil {
-			fmt.Println("agentcage stopped.")
+			ui.Stopped()
 			return true
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -279,7 +280,7 @@ func stopViaPID(pidFile string) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := proc.Signal(syscall.Signal(0)); err != nil {
-			fmt.Println("agentcage stopped.")
+			ui.Stopped()
 			_ = os.Remove(pidFile)
 			return
 		}

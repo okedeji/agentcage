@@ -50,13 +50,13 @@ jobs:
       - name: Download Linux kernel
         run: |
           curl -fsSL -o vmlinux-6.1-${{ matrix.arch }} \
-            "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/${{ matrix.kernel_arch }}/kernels/vmlinux.bin"
+            "https://cloud-images.ubuntu.com/releases/noble/release/unpacked/ubuntu-24.04-server-cloudimg-${{ matrix.arch }}-vmlinuz-generic"
       - name: Install qemu-user-static for cross-arch
         if: matrix.arch == 'arm64'
         run: sudo apt-get update && sudo apt-get install -y qemu-user-static
       - name: Build rootfs image
         run: |
-          sudo ./scripts/build-vm-rootfs.sh rootfs-${{ matrix.arch }}.img
+          sudo ./scripts/build-vm-rootfs.sh ${{ matrix.arch }} rootfs-${{ matrix.arch }}.img
       - uses: actions/upload-artifact@v4
         with:
           name: vm-assets-${{ matrix.arch }}
@@ -90,6 +90,8 @@ jobs:
         run: |
           CGO_ENABLED=1 GOOS=darwin GOARCH=${{ matrix.goarch }} \
             go build -trimpath -o agentcage-darwin-${{ matrix.goarch }} ./cmd/agentcage/
+      - name: Sign with virtualization entitlement
+        run: codesign --entitlements entitlements.plist --force -s - agentcage-darwin-${{ matrix.goarch }}
       - uses: actions/upload-artifact@v4
         with:
           name: darwin-${{ matrix.goarch }}

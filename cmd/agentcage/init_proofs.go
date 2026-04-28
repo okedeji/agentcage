@@ -8,6 +8,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 // A malformed proof YAML is fatal so a broken validation rule
@@ -17,7 +18,7 @@ func loadProofLibrary(cfg *config.Config, log logr.Logger) (*assessment.ProofLib
 	if dir == "" {
 		dir = proofsDir()
 	}
-	fmt.Println("Loading validation rules...")
+	ui.Step("Loading validation rules")
 
 	switch cfg.Assessment.ProofsMode {
 	case config.ProofsModeBYOP:

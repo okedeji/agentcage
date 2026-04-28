@@ -21,6 +21,7 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/internal/metrics"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 func resolveTemporalAddr(cfg *config.Config) string {
@@ -35,7 +36,7 @@ func resolveTemporalAddr(cfg *config.Config) string {
 func connectTemporal(ctx context.Context, cfg *config.Config, secrets identity.SecretReader, spireSocket string, trustDomain spiffeid.TrustDomain, log logr.Logger) (client.Client, string, error) {
 	temporalAddr := resolveTemporalAddr(cfg)
 
-	fmt.Println("Connecting to Temporal...")
+	ui.Step("Connecting to Temporal")
 	opts := client.Options{
 		HostPort: temporalAddr,
 		// SDK metrics through OTel so worker internals land in the
@@ -139,7 +140,7 @@ func buildTemporalWorkers(
 	cageIdentity := fmt.Sprintf("agentcage-%s-%s-cage", version, hostname)
 	assessmentIdentity := fmt.Sprintf("agentcage-%s-%s-assessment", version, hostname)
 
-	fmt.Println("Registering Temporal workers...")
+	ui.Step("Registering Temporal workers")
 	cageWorkerLog := log.WithValues("component", "cage-worker")
 	cageWorker := worker.New(temporal, cage.TaskQueue, worker.Options{
 		Identity:                           cageIdentity,
@@ -192,7 +193,7 @@ func startTemporalWorkers(
 	cageWorker, assessmentWorker worker.Worker,
 	log logr.Logger,
 ) error {
-	fmt.Println("Starting Temporal workers...")
+	ui.Step("Starting Temporal workers")
 	if err := cageWorker.Start(); err != nil {
 		return fmt.Errorf("starting cage worker: %w", err)
 	}

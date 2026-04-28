@@ -12,6 +12,7 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/agentcage/internal/ui"
 	"github.com/okedeji/agentcage/migrations"
 )
 
@@ -39,21 +40,21 @@ func connectDatabase(ctx context.Context, cfg *config.Config, secrets identity.S
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 
-	fmt.Println("Connecting to database...")
+	ui.Step("Connecting to database")
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("connecting to database: %w", err)
 	}
 	log.Info("database connected", "url", redactDBURL(dbURL))
 
-	fmt.Println("Running database migrations...")
+	ui.Step("Running migrations")
 	applied, err := migrations.Up(ctx, db)
 	if err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
 	if len(applied) > 0 {
-		fmt.Printf("  %d migration(s) applied.\n", len(applied))
+		ui.OK("%d migration(s) applied", len(applied))
 	}
 	for _, name := range applied {
 		log.Info("migration applied", "name", name)

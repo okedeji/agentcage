@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -69,9 +71,23 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 		vmCfg.SetDirectorySharingDevicesVirtualMachineConfiguration([]vz.DirectorySharingDeviceConfiguration{shareDevice})
 	}
 
-	// Serial console
-	serialPort, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(nil)
+	// Serial console — connected to a file so VM boot messages are
+	// captured without cluttering the operator's terminal.
+	consoleLog, err := os.OpenFile(
+		filepath.Join(cfg.ShareDir, "vm-console.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644,
+	)
 	if err != nil {
+		return nil, fmt.Errorf("creating VM console log: %w", err)
+	}
+	serialAttachment, err := vz.NewFileHandleSerialPortAttachment(consoleLog, consoleLog)
+	if err != nil {
+		_ = consoleLog.Close()
+		return nil, fmt.Errorf("creating serial attachment: %w", err)
+	}
+	serialPort, err := vz.NewVirtioConsoleDeviceSerialPortConfiguration(serialAttachment)
+	if err != nil {
+		_ = consoleLog.Close()
 		return nil, fmt.Errorf("creating serial port: %w", err)
 	}
 	vmCfg.SetSerialPortsVirtualMachineConfiguration([]*vz.VirtioConsoleDeviceSerialPortConfiguration{serialPort})
@@ -169,20 +185,30 @@ func (v *LinuxVM) GRPCAddr() string {
 func (v *LinuxVM) waitForGRPC(ctx context.Context) error {
 	port := fmt.Sprintf("%d", grpcPort)
 	deadline := time.Now().Add(90 * time.Second)
+	start := time.Now()
 
+	fmt.Print("  Waiting for VM network...")
+	attempt := 0
 	for time.Now().Before(deadline) {
 		if ip, ok := v.scanSubnet(ctx, port); ok {
 			v.mu.Lock()
 			v.ip = ip
 			v.mu.Unlock()
+			fmt.Printf(" found at %s (%ds)\n", ip, int(time.Since(start).Seconds()))
 			return nil
+		}
+		attempt++
+		if attempt%5 == 0 {
+			fmt.Printf(" %ds...", int(time.Since(start).Seconds()))
 		}
 		select {
 		case <-ctx.Done():
+			fmt.Println()
 			return ctx.Err()
 		case <-time.After(2 * time.Second):
 		}
 	}
+	fmt.Println(" timed out")
 	return fmt.Errorf("gRPC not reachable after 90s on 192.168.64.0/24")
 }
 

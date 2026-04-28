@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -10,6 +9,7 @@ import (
 	"github.com/okedeji/agentcage/internal/alert"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/intervention"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 // Short enough that an unreachable webhook can't back up the
@@ -17,7 +17,7 @@ import (
 const webhookDefaultTimeout = 5 * time.Second
 
 func setupNotifications(db *sql.DB, cfg *config.Config, log logr.Logger) (*intervention.PGStore, intervention.Notifier, *alert.Dispatcher) {
-	fmt.Println("Setting up notifications...")
+	ui.Step("Setting up notifications")
 	store := intervention.NewPGStore(db)
 
 	notifiers := []intervention.Notifier{intervention.NewLogNotifier(log)}

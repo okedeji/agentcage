@@ -12,6 +12,9 @@ build: build-agentcage build-cage-internal
 
 build-agentcage:
 	$(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage ./cmd/agentcage/
+ifeq ($(shell uname),Darwin)
+	codesign --entitlements entitlements.plist --force -s - $(BINDIR)/agentcage
+endif
 
 # Go uses GOARCH=arm64 on both macOS and Linux. uname -m returns
 # arm64 on macOS but aarch64 on Linux; normalize to Go convention.

@@ -14,6 +14,7 @@ import (
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 type fleetSetup struct {
@@ -40,7 +41,7 @@ func setupFleet(ctx context.Context, cfg *config.Config, embeddedMgr *embedded.M
 	discoveryRes := cageRes("discovery")
 	escalationRes := cageRes("escalation")
 
-	fmt.Println("Initializing fleet pool...")
+	ui.Step("Initializing fleet pool")
 	if err := fleet.InitPool(pool, cfg.Fleet.Hosts, validatorRes, discoveryRes, escalationRes); err != nil {
 		return nil, fmt.Errorf("initializing fleet pool: %w", err)
 	}

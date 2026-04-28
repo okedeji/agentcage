@@ -13,6 +13,7 @@ import (
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 func resolveNATSURL(ctx context.Context, cfg *config.Config, secrets identity.SecretReader) (string, error) {
@@ -39,7 +40,7 @@ func connectFindingsBus(ctx context.Context, cfg *config.Config, natsURL string,
 		}
 	}
 
-	fmt.Println("Connecting to NATS findings bus...")
+	ui.Step("Connecting to NATS findings bus")
 	bus, err := findings.NewNATSBus(natsURL, natsOpts...)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("connecting to NATS at %s: %w", natsURL, err)

@@ -8,14 +8,16 @@ set -euo pipefail
 # Requires: qemu-img (or dd), tar, root/sudo for mount
 
 ALPINE_VERSION="3.19"
-ARCH=$(uname -m)
-case "$ARCH" in
+
+# Target architecture: first positional arg (amd64/arm64) or detect from host.
+TARGET_ARCH="${1:-$(uname -m)}"
+case "$TARGET_ARCH" in
     arm64|aarch64) ALPINE_ARCH="aarch64" ;;
     x86_64|amd64)  ALPINE_ARCH="x86_64" ;;
-    *) echo "unsupported architecture: $ARCH"; exit 1 ;;
+    *) echo "unsupported architecture: $TARGET_ARCH"; exit 1 ;;
 esac
 
-OUTPUT="${1:-rootfs-${ALPINE_VERSION}-$(uname -m).img}"
+OUTPUT="${2:-rootfs-${TARGET_ARCH}.img}"
 WORKDIR=$(mktemp -d)
 MOUNTPOINT="${WORKDIR}/mnt"
 IMG_SIZE="512M"
