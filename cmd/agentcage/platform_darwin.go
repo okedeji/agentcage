@@ -29,28 +29,20 @@ import (
 func platformInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
-	grpcAddr := fs.String("grpc-addr", "", "ignored on macOS")
-	logFormat := fs.String("log-format", "", "ignored on macOS")
+	grpcAddr := fs.String("grpc-addr", "127.0.0.1:9090", "host-side gRPC proxy address")
 	_ = fs.Parse(args)
-
-	if *grpcAddr != "" {
-		fmt.Fprintln(os.Stderr, "warning: --grpc-addr is ignored on macOS (proxy always listens on :9090)")
-	}
-	if *logFormat != "" {
-		fmt.Fprintln(os.Stderr, "warning: --log-format is ignored on macOS (VM uses its own log config)")
-	}
 
 	// VM reads from this directory via VirtioFS, so it has to exist
 	// before we boot.
 	home := config.HomeDir()
 	if err := os.MkdirAll(home, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "agentcage init: creating home: %v\n", err)
+		ui.Fail("creating home: %v", err)
 		os.Exit(1)
 	}
 
 	pidFile := filepath.Join(home, "run", "agentcage.pid")
 	if isProcessRunning(pidFile) {
-		fmt.Fprintln(os.Stderr, "agentcage is already running. Run 'agentcage stop' first.")
+		ui.Fail("agentcage is already running. Run 'agentcage stop' first.")
 		os.Exit(1)
 	}
 
@@ -61,7 +53,7 @@ func platformInit(args []string) {
 
 	ui.Section("VM Assets")
 	if err := vm.EnsureAssets(ctx, version); err != nil {
-		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
+		ui.Fail("%v", err)
 		os.Exit(1)
 	}
 
@@ -70,12 +62,12 @@ func platformInit(args []string) {
 	if *configFile != "" {
 		data, err := os.ReadFile(*configFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "agentcage init: reading config %s: %v\n", *configFile, err)
+			ui.Fail("reading config %s: %v", *configFile, err)
 			os.Exit(1)
 		}
 		dest := home + "/config.yaml"
 		if err := os.WriteFile(dest, data, 0600); err != nil {
-			fmt.Fprintf(os.Stderr, "agentcage init: writing config to shared dir: %v\n", err)
+			ui.Fail("writing config to shared dir: %v", err)
 			os.Exit(1)
 		}
 		ui.OK("Config copied to %s", dest)
@@ -84,21 +76,21 @@ func platformInit(args []string) {
 	// VM has no hardware clock and boots to 1970. Write the host
 	// time so the init script can set it before TLS connections.
 	_ = os.WriteFile(filepath.Join(home, ".vm-clock"),
-		[]byte(time.Now().UTC().Format("2006-01-02T15:04:05Z")), 0644)
+		[]byte(time.Now().UTC().Format("2006-01-02 15:04:05")), 0644)
 
 	ui.Section("Linux VM")
 	ui.Step("VM logs: agentcage logs --service vm --follow")
 	cfg := vm.DefaultConfig(home)
 	machine, err := vm.Boot(ctx, cfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "agentcage init: booting VM: %v\n", err)
+		ui.Fail("booting VM: %v", err)
 		os.Exit(1)
 	}
 
 	// os.Exit skips defers, so any error path that needs to tear the
 	// VM down and remove the PID file has to do it explicitly here.
 	fatalf := func(format string, args ...any) {
-		fmt.Fprintf(os.Stderr, format, args...)
+		ui.Fail(format, args...)
 		_ = os.Remove(pidFile)
 		_ = machine.Shutdown(context.Background())
 		os.Exit(1)
@@ -118,9 +110,9 @@ func platformInit(args []string) {
 
 	// Bind eagerly so a port conflict fails fast with a clear error
 	// instead of timing out in waitForGRPCReady with a misleading one.
-	grpcLn, err := net.Listen("tcp", "127.0.0.1:9090")
+	grpcLn, err := net.Listen("tcp", *grpcAddr)
 	if err != nil {
-		fatalf("agentcage init: port 9090 already in use. Is another agentcage running?\n  Check: lsof -i :9090\n")
+		fatalf("port %s already in use. Is another agentcage running?\n  Check: lsof -i :%s\n", *grpcAddr, portFromAddr(*grpcAddr))
 	}
 	pgLn, err := net.Listen("tcp", "127.0.0.1:15432")
 	if err != nil {
@@ -141,20 +133,17 @@ func platformInit(args []string) {
 		}
 	}()
 
-	// Real RPC, not a TCP connect check. The TCP socket opens long
-	// before the gRPC server starts dispatching.
-	ui.Step("Waiting for services inside VM")
-	readyCtx, readyCancel := context.WithTimeout(ctx, 120*time.Second)
+	// waitForGRPC already confirmed TCP connectivity on port 9090.
+	// Do a quick gRPC Ping to verify the server is dispatching RPCs.
+	ui.Step("Verifying gRPC readiness")
+	readyCtx, readyCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer readyCancel()
 	if err := agentgrpc.WaitForReady(readyCtx, machine.GRPCAddr()); err != nil {
-		if ctx.Err() != nil {
-			fatalf("agentcage init: proxy failed during startup, check port conflicts above\n")
-		}
-		fatalf("agentcage init: VM services did not become ready: %v\n", err)
+		fatalf("gRPC server not responding: %v\n", err)
 	}
 
 	ui.Ready()
-	ui.Info("gRPC", "localhost:9090")
+	ui.Info("gRPC", *grpcAddr)
 	ui.Info("Postgres", "localhost:15432")
 	ui.Info("VM", fmt.Sprintf("Apple Virtualization.framework (%s)", runtime.GOARCH))
 	ui.Info("Data", home)

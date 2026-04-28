@@ -56,6 +56,15 @@ sudo mount -o loop "$OUTPUT" "$MOUNTPOINT"
 echo "Extracting Alpine rootfs..."
 sudo tar xzf "$ALPINE_TAR" -C "$MOUNTPOINT"
 
+# Install packages that embedded services need. The zonky
+# embedded-postgres binaries are glibc-linked and won't run on
+# Alpine (musl). System packages solve this cleanly.
+echo "Installing system packages..."
+sudo cp /etc/resolv.conf "$MOUNTPOINT/etc/resolv.conf"
+sudo chroot "$MOUNTPOINT" /bin/sh -c "
+    apk add --no-cache postgresql postgresql-client
+" 2>&1 | tail -5
+
 # Write init script that mounts VirtioFS and launches agentcage
 echo "Writing init script..."
 sudo tee "$MOUNTPOINT/sbin/init-agentcage" > /dev/null << 'INITEOF'
@@ -107,9 +116,9 @@ if [ ! -x "$BINARY" ]; then
     exec /bin/sh
 fi
 
-# Run agentcage inside the VM
-export AGENTCAGE_HOME=/mnt/agentcage
-exec "$BINARY" init --grpc-addr 0.0.0.0:9090 --log-format json
+# Run agentcage inside the VM. --home must precede the subcommand
+# because main.go parses global flags before dispatching.
+exec "$BINARY" --home /mnt/agentcage init --grpc-addr 0.0.0.0:9090 --debug
 INITEOF
 sudo chmod 755 "$MOUNTPOINT/sbin/init-agentcage"
 

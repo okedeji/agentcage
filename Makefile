@@ -3,7 +3,9 @@
        check-secrets check-checksums checksums ci tidy
 
 GO := go
-GOFLAGS := -trimpath
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo dev)
+LDFLAGS := -X main.version=$(VERSION:v%=%)
+GOFLAGS := -trimpath -ldflags '$(LDFLAGS)'
 BINDIR := bin
 
 all: vet build

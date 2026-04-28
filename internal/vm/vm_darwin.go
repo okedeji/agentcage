@@ -3,6 +3,7 @@
 package vm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -16,9 +17,10 @@ import (
 
 // LinuxVM manages a lightweight Linux VM on macOS via Apple Virtualization.framework.
 type LinuxVM struct {
-	machine *vz.VirtualMachine
-	ip      string
-	mu      sync.Mutex
+	machine        *vz.VirtualMachine
+	ip             string
+	mu             sync.Mutex
+	consoleLogPath string
 }
 
 // Boot creates and starts a Linux VM with the given configuration.
@@ -71,16 +73,14 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 		vmCfg.SetDirectorySharingDevicesVirtualMachineConfiguration([]vz.DirectorySharingDeviceConfiguration{shareDevice})
 	}
 
-	// Serial console — connected to a file so VM boot messages are
-	// captured without cluttering the operator's terminal.
-	consoleLog, err := os.OpenFile(
-		filepath.Join(cfg.ShareDir, "vm-console.log"),
-		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644,
-	)
+	// Serial console — write to a file so the operator can inspect
+	// VM boot output via `agentcage logs --service vm`.
+	consoleLogPath := filepath.Join(cfg.ShareDir, "vm-console.log")
+	consoleLog, err := os.OpenFile(consoleLogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("creating VM console log: %w", err)
 	}
-	serialAttachment, err := vz.NewFileHandleSerialPortAttachment(consoleLog, consoleLog)
+	serialAttachment, err := vz.NewFileHandleSerialPortAttachment(os.Stdin, consoleLog)
 	if err != nil {
 		_ = consoleLog.Close()
 		return nil, fmt.Errorf("creating serial attachment: %w", err)
@@ -119,11 +119,15 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 		return nil, fmt.Errorf("creating virtual machine: %w", err)
 	}
 
-	v := &LinuxVM{machine: machine}
+	v := &LinuxVM{
+		machine:        machine,
+		consoleLogPath: consoleLogPath,
+	}
 
 	if err := machine.Start(); err != nil {
 		return nil, fmt.Errorf("starting VM: %w", err)
 	}
+
 
 	if err := v.waitForGRPC(ctx); err != nil {
 		_ = v.Shutdown(context.Background())
@@ -184,23 +188,36 @@ func (v *LinuxVM) GRPCAddr() string {
 // range in parallel rather than guessing a handful of candidates.
 func (v *LinuxVM) waitForGRPC(ctx context.Context) error {
 	port := fmt.Sprintf("%d", grpcPort)
-	deadline := time.Now().Add(90 * time.Second)
 	start := time.Now()
 
-	fmt.Print("     Waiting for VM network...")
-	attempt := 0
-	for time.Now().Before(deadline) {
+	for {
 		if ip, ok := v.scanSubnet(ctx, port); ok {
 			v.mu.Lock()
 			v.ip = ip
 			v.mu.Unlock()
-			fmt.Printf(" found at %s (%ds)\n", ip, int(time.Since(start).Seconds()))
+			elapsed := int(time.Since(start).Seconds())
+			fmt.Printf("\r     Waiting for VM... ready at %s (%ds)          \n", ip, elapsed)
 			return nil
 		}
-		attempt++
-		if attempt%5 == 0 {
-			fmt.Printf(" %ds...", int(time.Since(start).Seconds()))
+
+		if v.machine.State() == vz.VirtualMachineStateStopped {
+			fmt.Printf("\r     Waiting for VM... stopped                      \n")
+			return fmt.Errorf("VM exited unexpectedly (check: agentcage logs --service vm)")
 		}
+
+		if data, err := os.ReadFile(v.consoleLogPath); err == nil {
+			if bytes.Contains(data, []byte("Kernel panic")) {
+				fmt.Printf("\r     Waiting for VM... crashed                      \n")
+				_ = v.machine.Stop()
+				return fmt.Errorf("VM kernel panic (check: agentcage logs --service vm)")
+			}
+		}
+
+		elapsed := int(time.Since(start).Seconds())
+		min := elapsed / 60
+		sec := elapsed % 60
+		fmt.Printf("\r     Waiting for VM... %dm%02ds", min, sec)
+
 		select {
 		case <-ctx.Done():
 			fmt.Println()
@@ -208,8 +225,6 @@ func (v *LinuxVM) waitForGRPC(ctx context.Context) error {
 		case <-time.After(2 * time.Second):
 		}
 	}
-	fmt.Println(" timed out")
-	return fmt.Errorf("gRPC not reachable after 90s on 192.168.64.0/24")
 }
 
 // scanSubnet tries every host in 192.168.64.2-254 concurrently.
@@ -248,6 +263,7 @@ func (v *LinuxVM) scanSubnet(_ context.Context, port string) (string, bool) {
 	}
 	return "", false
 }
+
 
 func configureVirtioFS(shareDir, tag string) (*vz.VirtioFileSystemDeviceConfiguration, error) {
 	sharedDir, err := vz.NewSharedDirectory(shareDir, false)

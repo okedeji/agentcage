@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-logr/logr"
 	_ "github.com/lib/pq"
+	"github.com/ulikunitz/xz"
 )
 
 const (
@@ -247,7 +248,7 @@ func (p *PostgresService) ensureDatabase(ctx context.Context) error {
 }
 
 // extractPostgresBinaries unpacks the zonky embedded-postgres jar (a zip
-// containing a tar.gz of the postgres installation) into destDir.
+// containing a tar.gz or tar.xz of the postgres installation) into destDir.
 func extractPostgresBinaries(jarPath, destDir string) error {
 	zr, err := zip.OpenReader(jarPath)
 	if err != nil {
@@ -256,18 +257,26 @@ func extractPostgresBinaries(jarPath, destDir string) error {
 	defer func() { _ = zr.Close() }()
 
 	for _, f := range zr.File {
-		if !strings.HasSuffix(f.Name, ".tar.gz") {
-			continue
+		if strings.HasSuffix(f.Name, ".tar.gz") {
+			rc, err := f.Open()
+			if err != nil {
+				return fmt.Errorf("opening %s in jar: %w", f.Name, err)
+			}
+			err = extractTarGz(rc, destDir)
+			_ = rc.Close()
+			return err
 		}
-		rc, err := f.Open()
-		if err != nil {
-			return fmt.Errorf("opening %s in jar: %w", f.Name, err)
+		if strings.HasSuffix(f.Name, ".txz") {
+			rc, err := f.Open()
+			if err != nil {
+				return fmt.Errorf("opening %s in jar: %w", f.Name, err)
+			}
+			err = extractTarXz(rc, destDir)
+			_ = rc.Close()
+			return err
 		}
-		err = extractTarGz(rc, destDir)
-		_ = rc.Close()
-		return err
 	}
-	return fmt.Errorf("no .tar.gz found in jar")
+	return fmt.Errorf("no .tar.gz or .txz found in jar")
 }
 
 func extractTarGz(r io.Reader, destDir string) error {
@@ -278,6 +287,54 @@ func extractTarGz(r io.Reader, destDir string) error {
 	defer func() { _ = gr.Close() }()
 
 	tr := tar.NewReader(gr)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading tar: %w", err)
+		}
+
+		target := filepath.Join(destDir, hdr.Name)
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)) {
+			return fmt.Errorf("path traversal in tar: %s", hdr.Name)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
+				return fmt.Errorf("creating directory %s: %w", target, err)
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return fmt.Errorf("creating parent for %s: %w", target, err)
+			}
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
+			if err != nil {
+				return fmt.Errorf("creating file %s: %w", target, err)
+			}
+			if _, err := io.Copy(f, tr); err != nil {
+				_ = f.Close()
+				return fmt.Errorf("writing %s: %w", target, err)
+			}
+			_ = f.Close()
+		case tar.TypeSymlink:
+			if err := os.Symlink(hdr.Linkname, target); err != nil {
+				return fmt.Errorf("creating symlink %s: %w", target, err)
+			}
+		}
+	}
+	return nil
+}
+
+func extractTarXz(r io.Reader, destDir string) error {
+	xr, err := xz.NewReader(r)
+	if err != nil {
+		return fmt.Errorf("opening xz: %w", err)
+	}
+
+	tr := tar.NewReader(xr)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {

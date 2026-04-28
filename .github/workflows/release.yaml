@@ -20,8 +20,9 @@ jobs:
           go-version: "1.25"
       - name: Build agentcage binary
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} \
-            go build -trimpath -o agentcage-linux-${{ matrix.goarch }} ./cmd/agentcage/
+            go build -trimpath -ldflags "-X main.version=${VERSION}" -o agentcage-linux-${{ matrix.goarch }} ./cmd/agentcage/
       - name: Build cage-internal binaries
         run: |
           for svc in cage-init payload-proxy findings-sidecar; do
@@ -90,8 +91,9 @@ jobs:
         run: go run scripts/check_checksums.go release-assets
       - name: Build agentcage binary
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           CGO_ENABLED=1 GOOS=darwin GOARCH=${{ matrix.goarch }} \
-            go build -trimpath -o agentcage-darwin-${{ matrix.goarch }} ./cmd/agentcage/
+            go build -trimpath -ldflags "-X main.version=${VERSION}" -o agentcage-darwin-${{ matrix.goarch }} ./cmd/agentcage/
       - name: Sign with virtualization entitlement
         run: codesign --entitlements entitlements.plist --force -s - agentcage-darwin-${{ matrix.goarch }}
       - uses: actions/upload-artifact@v4

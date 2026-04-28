@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	spireVersion     = "1.14.1"
+	spireVersion     = "1.14.6"
 	spireServerPort  = "18081"
 	spireTrustDomain = "agentcage.local"
 )
@@ -55,7 +55,7 @@ func (s *SPIREService) Download(ctx context.Context) error {
 	}
 
 	arch := runtime.GOARCH
-	url := fmt.Sprintf("https://github.com/spiffe/spire/releases/download/v%s/spire-%s-linux-%s-glibc.tar.gz",
+	url := fmt.Sprintf("https://github.com/spiffe/spire/releases/download/v%s/spire-%s-linux-%s-musl.tar.gz",
 		spireVersion, spireVersion, arch)
 
 	s.log.Info("downloading spire", "version", spireVersion, "url", url)

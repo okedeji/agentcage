@@ -33,17 +33,17 @@ var _ = cmdInit
 func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
-	logFormat := fs.String("log-format", "json", "log output format (json or text)")
 	grpcAddr := fs.String("grpc-addr", "", "override gRPC listen address (e.g. 0.0.0.0:9090)")
+	debug := fs.Bool("debug", false, "show structured logs on stderr in addition to log file")
 	_ = fs.Parse(args)
 
-	if err := runInit(*configFile, *logFormat, *grpcAddr); err != nil {
-		fmt.Fprintf(os.Stderr, "agentcage init: %v\n", err)
+	if err := runInit(*configFile, *grpcAddr, *debug); err != nil {
+		ui.Fail("%v", err)
 		os.Exit(1)
 	}
 }
 
-func runInit(configFile, logFormat, grpcAddr string) error {
+func runInit(configFile, grpcAddr string, debug bool) error {
 	defaultPath := config.DefaultPath()
 	created, err := config.WriteDefaults(defaultPath)
 	if err != nil {
@@ -61,15 +61,18 @@ func runInit(configFile, logFormat, grpcAddr string) error {
 		cfg = config.Merge(cfg, override)
 	}
 
+	logPath := filepath.Join(embedded.LogDir(), "orchestrator.log")
 	var log logr.Logger
-	if logFormat == "text" {
-		log, err = proxylog.NewDev()
+	if debug {
+		log, err = proxylog.NewFileAndStderr(logPath)
 	} else {
-		log, err = proxylog.New()
+		log, err = proxylog.NewFile(logPath)
 	}
 	if err != nil {
 		return fmt.Errorf("creating logger: %w", err)
 	}
+	ui.Step("Logs: agentcage logs --service orchestrator --follow")
+	ui.Step("Or run with --debug to see logs inline")
 	log = log.WithValues("component", "agentcage")
 
 	ui.Banner(version, "linux")

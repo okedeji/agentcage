@@ -8,7 +8,12 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 )
 
-const version = "0.1.0"
+// version is set at build time via -ldflags:
+//
+//	go build -ldflags "-X main.version=1.2.3" ./cmd/agentcage/
+//
+// Falls back to "dev" for local builds without ldflags.
+var version = "dev"
 
 func main() {
 	// Parse global flags before the subcommand. Flags like --home and

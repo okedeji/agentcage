@@ -56,8 +56,9 @@ func (f *FalcoService) Download(ctx context.Context) error {
 	}
 	_ = os.Remove(archivePath)
 
-	// Move falco binary to BinDir
-	src := filepath.Join(falcoDir, "usr", "bin", "falco")
+	// The archive extracts with an arch-suffixed directory name
+	// (e.g. falco-0.43.0-aarch64/usr/bin/falco).
+	src := filepath.Join(falcoDir, fmt.Sprintf("falco-%s-%s", falcoVersion, arch), "usr", "bin", "falco")
 	if err := os.Rename(src, dest); err != nil {
 		return fmt.Errorf("moving falco binary: %w", err)
 	}
