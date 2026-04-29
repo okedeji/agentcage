@@ -50,3 +50,7 @@ sdk/typescript/package-lock.json
 
 # Build artifacts
 dist/
+
+# ops
+dev.yaml
+*.env

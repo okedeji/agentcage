@@ -14,13 +14,20 @@ SELECT create_hypertable('slo_metrics', 'measured_at');
 
 CREATE INDEX idx_slo_metrics_indicator ON slo_metrics(indicator, measured_at DESC);
 
-ALTER TABLE slo_metrics SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'indicator',
-    timescaledb.compress_orderby = 'measured_at'
-);
-SELECT add_compression_policy('slo_metrics', INTERVAL '30 days');
+DO $$ BEGIN
+    ALTER TABLE slo_metrics SET (
+        timescaledb.compress,
+        timescaledb.compress_segmentby = 'indicator',
+        timescaledb.compress_orderby = 'measured_at'
+    );
+    PERFORM add_compression_policy('slo_metrics', INTERVAL '30 days');
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'compression not available (apache license), skipping';
+END $$;
 
 -- +migrate Down
-SELECT remove_compression_policy('slo_metrics', if_exists => true);
+DO $$ BEGIN
+    PERFORM remove_compression_policy('slo_metrics', if_exists => true);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 DROP TABLE IF EXISTS slo_metrics;

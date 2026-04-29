@@ -96,6 +96,15 @@ func (s *SPIREService) Download(ctx context.Context) error {
 func (s *SPIREService) Start(ctx context.Context) error {
 	dataDir := ServiceDataDir("spire")
 	socketDir := filepath.Join(RunDir(), "spire")
+
+	// Clear stale agent data from previous runs. The server
+	// regenerates its CA on each start, so cached trust bundles
+	// from a prior server instance cause TLS verification failures.
+	_ = os.Remove(filepath.Join(dataDir, "agent-data.json"))
+	_ = os.Remove(filepath.Join(dataDir, "datastore.sqlite3"))
+	_ = os.Remove(filepath.Join(dataDir, "datastore.sqlite3-shm"))
+	_ = os.Remove(filepath.Join(dataDir, "datastore.sqlite3-wal"))
+
 	if err := os.MkdirAll(socketDir, 0755); err != nil {
 		return fmt.Errorf("creating SPIRE socket directory: %w", err)
 	}

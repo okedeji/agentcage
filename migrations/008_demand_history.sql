@@ -13,13 +13,20 @@ SELECT create_hypertable('demand_history', 'measured_at');
 
 CREATE INDEX idx_demand_history_cage_type ON demand_history(cage_type, measured_at DESC);
 
-ALTER TABLE demand_history SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'cage_type',
-    timescaledb.compress_orderby = 'measured_at'
-);
-SELECT add_compression_policy('demand_history', INTERVAL '90 days');
+DO $$ BEGIN
+    ALTER TABLE demand_history SET (
+        timescaledb.compress,
+        timescaledb.compress_segmentby = 'cage_type',
+        timescaledb.compress_orderby = 'measured_at'
+    );
+    PERFORM add_compression_policy('demand_history', INTERVAL '90 days');
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'compression not available (apache license), skipping';
+END $$;
 
 -- +migrate Down
-SELECT remove_compression_policy('demand_history', if_exists => true);
+DO $$ BEGIN
+    PERFORM remove_compression_policy('demand_history', if_exists => true);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 DROP TABLE IF EXISTS demand_history;

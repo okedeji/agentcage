@@ -50,9 +50,11 @@ func connectTemporal(ctx context.Context, cfg *config.Config, secrets identity.S
 		}
 	}
 
-	if tlsCfg := buildSPIREClientTLS(ctx, spireSocket, trustDomain); tlsCfg != nil {
-		opts.ConnectionOptions = client.ConnectionOptions{TLS: tlsCfg}
-		log.Info("Temporal mTLS enabled via SPIRE")
+	if cfg.Infrastructure.IsExternalTemporal() {
+		if tlsCfg := buildSPIREClientTLS(ctx, spireSocket, trustDomain); tlsCfg != nil {
+			opts.ConnectionOptions = client.ConnectionOptions{TLS: tlsCfg}
+			log.Info("Temporal mTLS enabled via SPIRE")
+		}
 	}
 
 	if secrets != nil {

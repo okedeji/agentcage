@@ -29,6 +29,7 @@ import (
 func platformInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
+	secretsFile := fs.String("secrets", "", "path to secrets file (KEY=VALUE lines, seeded into Vault on first boot)")
 	grpcAddr := fs.String("grpc-addr", "127.0.0.1:9090", "host-side gRPC proxy address")
 	_ = fs.Parse(args)
 
@@ -71,6 +72,19 @@ func platformInit(args []string) {
 			os.Exit(1)
 		}
 		ui.OK("Config copied to %s", dest)
+	}
+
+	if *secretsFile != "" {
+		data, err := os.ReadFile(*secretsFile)
+		if err != nil {
+			ui.Fail("reading secrets %s: %v", *secretsFile, err)
+			os.Exit(1)
+		}
+		dest := home + "/secrets.env"
+		if err := os.WriteFile(dest, data, 0600); err != nil {
+			ui.Fail("writing secrets to shared dir: %v", err)
+			os.Exit(1)
+		}
 	}
 
 	// VM has no hardware clock and boots to 1970. Write the host

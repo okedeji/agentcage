@@ -3,10 +3,12 @@ package embedded
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -19,11 +21,12 @@ const (
 	vaultPort    = "18200"
 )
 
-// VaultService manages an embedded HashiCorp Vault instance running with
-// a file storage backend.
+// VaultService manages an embedded HashiCorp Vault instance with
+// file storage so secrets persist across restarts.
 type VaultService struct {
-	proc *subprocess
-	log  logr.Logger
+	proc      *subprocess
+	log       logr.Logger
+	rootToken string
 }
 
 func NewVaultService(log logr.Logger) *VaultService {
@@ -37,10 +40,10 @@ func (v *VaultService) Address() string {
 	return "http://localhost:" + vaultPort
 }
 
-// RootToken returns the dev-mode root token baked into `vault server
-// -dev`. Embedded mode only; never exposed to external Vault clients.
+// RootToken returns the root token generated during init. Set after
+// Start completes.
 func (v *VaultService) RootToken() string {
-	return "agentcage-dev-token"
+	return v.rootToken
 }
 
 func (v *VaultService) Download(ctx context.Context) error {
@@ -103,18 +106,35 @@ func extractVaultBinary(zipPath, dest string) error {
 
 func (v *VaultService) Start(ctx context.Context) error {
 	bin := filepath.Join(BinDir(), "vault")
+	dataDir := ServiceDataDir("vault")
+	storageDir := filepath.Join(dataDir, "storage")
+	if err := os.MkdirAll(storageDir, 0700); err != nil {
+		return fmt.Errorf("creating vault storage dir: %w", err)
+	}
 
-	// Dev mode: in-memory storage, auto-unsealed, root token preset.
-	// Data does not persist across restarts; acceptable for local mode.
-	v.proc = newSubprocess("vault", v.log, bin,
-		"server",
-		"-dev",
-		"-dev-listen-address", "127.0.0.1:"+vaultPort,
-		"-dev-root-token-id", "agentcage-dev-token",
-	)
-	v.proc.cmd.Env = append(os.Environ(),
-		"VAULT_DEV_ROOT_TOKEN_ID=agentcage-dev-token",
-	)
+	// File storage so secrets persist across restarts. Init and
+	// unseal are automatic using a single key share stored locally.
+	cfgPath := filepath.Join(dataDir, "vault.hcl")
+	cfgContent := fmt.Sprintf(`
+disable_mlock = true
+ui            = false
+api_addr      = "http://127.0.0.1:%s"
+
+listener "tcp" {
+  address     = "127.0.0.1:%s"
+  tls_disable = 1
+}
+
+storage "file" {
+  path = "%s"
+}
+`, vaultPort, vaultPort, storageDir)
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0600); err != nil {
+		return fmt.Errorf("writing vault config: %w", err)
+	}
+
+	v.proc = newSubprocess("vault", v.log, bin, "server", "-config", cfgPath)
+	v.proc.cmd.Env = append(os.Environ(), "VAULT_ADDR=http://127.0.0.1:"+vaultPort)
 
 	if err := v.proc.start(ctx); err != nil {
 		return err
@@ -124,7 +144,60 @@ func (v *VaultService) Start(ctx context.Context) error {
 		return fmt.Errorf("waiting for vault: %w", err)
 	}
 
-	v.log.Info("vault ready", "address", v.Address())
+	if err := v.initAndUnseal(ctx, bin, dataDir); err != nil {
+		return fmt.Errorf("vault init/unseal: %w", err)
+	}
+
+	v.log.Info("vault ready", "address", v.Address(), "storage", storageDir)
+	return nil
+}
+
+func (v *VaultService) initAndUnseal(ctx context.Context, bin, dataDir string) error {
+	keyFile := filepath.Join(dataDir, "init-keys.json")
+	env := append(os.Environ(), "VAULT_ADDR="+v.Address())
+
+	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
+		initCmd := exec.CommandContext(ctx, bin, "operator", "init",
+			"-key-shares=1", "-key-threshold=1", "-format=json")
+		initCmd.Env = env
+		out, err := initCmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("vault operator init: %w\n%s", err, out)
+		}
+		if err := os.WriteFile(keyFile, out, 0600); err != nil {
+			return fmt.Errorf("saving vault init keys: %w", err)
+		}
+		v.log.Info("vault initialized (first run)")
+	}
+
+	data, err := os.ReadFile(keyFile)
+	if err != nil {
+		return fmt.Errorf("reading vault init keys: %w", err)
+	}
+
+	var initResult struct {
+		UnsealKeysB64 []string `json:"unseal_keys_b64"`
+		RootToken     string   `json:"root_token"`
+	}
+	if err := json.Unmarshal(data, &initResult); err != nil {
+		return fmt.Errorf("parsing vault init keys: %w", err)
+	}
+	if len(initResult.UnsealKeysB64) == 0 {
+		return fmt.Errorf("no unseal keys in %s", keyFile)
+	}
+	v.rootToken = initResult.RootToken
+
+	unsealCmd := exec.CommandContext(ctx, bin, "operator", "unseal", initResult.UnsealKeysB64[0])
+	unsealCmd.Env = env
+	if out, err := unsealCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("vault unseal: %w\n%s", err, out)
+	}
+
+	// Enable KV v2 secrets engine on first run.
+	kvCmd := exec.CommandContext(ctx, bin, "secrets", "enable", "-path=secret", "kv-v2")
+	kvCmd.Env = append(env, "VAULT_TOKEN="+v.rootToken)
+	_, _ = kvCmd.CombinedOutput()
+
 	return nil
 }
 

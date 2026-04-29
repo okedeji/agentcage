@@ -125,7 +125,11 @@ fi
 
 # Run agentcage inside the VM. --home must precede the subcommand
 # because main.go parses global flags before dispatching.
-exec "$BINARY" --home /mnt/agentcage init --grpc-addr 0.0.0.0:9090 --debug
+INIT_ARGS="--grpc-addr 0.0.0.0:9090 --debug"
+if [ -f /mnt/agentcage/secrets.env ]; then
+    INIT_ARGS="$INIT_ARGS --secrets /mnt/agentcage/secrets.env"
+fi
+exec "$BINARY" --home /mnt/agentcage init $INIT_ARGS
 INITEOF
 sudo chmod 755 "$MOUNTPOINT/sbin/init-agentcage"
 

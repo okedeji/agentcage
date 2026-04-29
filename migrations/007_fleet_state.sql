@@ -37,14 +37,21 @@ CREATE TABLE capacity_snapshots (
 
 SELECT create_hypertable('capacity_snapshots', 'snapshot_at');
 
-ALTER TABLE capacity_snapshots SET (
-    timescaledb.compress,
-    timescaledb.compress_orderby = 'snapshot_at'
-);
-SELECT add_compression_policy('capacity_snapshots', INTERVAL '30 days');
+DO $$ BEGIN
+    ALTER TABLE capacity_snapshots SET (
+        timescaledb.compress,
+        timescaledb.compress_orderby = 'snapshot_at'
+    );
+    PERFORM add_compression_policy('capacity_snapshots', INTERVAL '30 days');
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'compression not available (apache license), skipping';
+END $$;
 
 -- +migrate Down
-SELECT remove_compression_policy('capacity_snapshots', if_exists => true);
+DO $$ BEGIN
+    PERFORM remove_compression_policy('capacity_snapshots', if_exists => true);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 DROP TABLE IF EXISTS capacity_snapshots;
 DROP TABLE IF EXISTS hosts;
 DROP TYPE IF EXISTS host_state;

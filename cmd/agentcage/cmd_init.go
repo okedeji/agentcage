@@ -1,14 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-logr/logr"
 
@@ -34,16 +35,17 @@ func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	configFile := fs.String("config", "", "path to config YAML override file")
 	grpcAddr := fs.String("grpc-addr", "", "override gRPC listen address (e.g. 0.0.0.0:9090)")
+	secretsFile := fs.String("secrets", "", "path to secrets file (KEY=VALUE lines, seeded into Vault on first boot)")
 	debug := fs.Bool("debug", false, "show structured logs on stderr in addition to log file")
 	_ = fs.Parse(args)
 
-	if err := runInit(*configFile, *grpcAddr, *debug); err != nil {
+	if err := runInit(*configFile, *grpcAddr, *secretsFile, *debug); err != nil {
 		ui.Fail("%v", err)
 		os.Exit(1)
 	}
 }
 
-func runInit(configFile, grpcAddr string, debug bool) error {
+func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 	defaultPath := config.DefaultPath()
 	created, err := config.WriteDefaults(defaultPath)
 	if err != nil {
@@ -116,6 +118,13 @@ func runInit(configFile, grpcAddr string, debug bool) error {
 	svidIssuer, secretFetcher, secretReader, identityCleanup, err := connectIdentityAndSecrets(ctx, cfg, embeddedMgr, spireSocket, log)
 	if err != nil {
 		return err
+	}
+
+	if secretsFile != "" {
+		if err := seedSecrets(ctx, secretReader, secretsFile); err != nil {
+			identityCleanup()
+			return fmt.Errorf("seeding secrets: %w", err)
+		}
 	}
 
 	if valErr := validateRequiredSecrets(ctx, secretReader, cfg); valErr != nil {
@@ -431,7 +440,50 @@ func validateRequiredSecrets(ctx context.Context, reader identity.SecretReader, 
 	for _, m := range missing {
 		fmt.Fprintf(&b, "  %s\n", m)
 	}
-	b.WriteString("\nImport from file:  agentcage vault import --from-file secrets.env\n")
-	b.WriteString("Add individually:  agentcage vault put <scope> <key> <value>\n")
+	b.WriteString("\nSeed on boot: agentcage init --secrets secrets.env\n")
+	b.WriteString("\nExample secrets.env:\n")
+	b.WriteString("  AGENTCAGE_LLM_API_KEY=sk-...\n")
 	return errors.New(b.String())
+}
+
+func seedSecrets(ctx context.Context, reader identity.SecretReader, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("opening secrets file %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	ui.Step("Seeding secrets from %s", path)
+	var seeded int
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+
+		vaultPath, known := identity.EnvToVaultPath[key]
+		if !known {
+			continue
+		}
+
+		if err := reader.WriteSecret(ctx, vaultPath, map[string]any{"value": value}); err != nil {
+			return fmt.Errorf("writing %s: %w", key, err)
+		}
+		ui.OK("Seeded %s", key)
+		seeded++
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("reading secrets file: %w", err)
+	}
+	if seeded == 0 {
+		ui.Warn("No recognized secrets found in %s", path)
+	}
+	return nil
 }
