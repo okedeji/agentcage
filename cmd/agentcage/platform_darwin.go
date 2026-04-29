@@ -31,7 +31,12 @@ func platformInit(args []string) {
 	configFile := fs.String("config", "", "path to config YAML override file")
 	secretsFile := fs.String("secrets", "", "path to secrets file (KEY=VALUE lines, seeded into Vault on first boot)")
 	grpcAddr := fs.String("grpc-addr", "127.0.0.1:9090", "host-side gRPC proxy address")
+	detach := fs.Bool("detach", false, "run in background")
 	_ = fs.Parse(args)
+
+	if *detach {
+		detachProcess(append([]string{"init"}, args...))
+	}
 
 	// VM reads from this directory via VirtioFS, so it has to exist
 	// before we boot.

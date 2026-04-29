@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -37,9 +38,17 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 		return nil, fmt.Errorf("creating VM config: %w", err)
 	}
 
+	// Copy rootfs to a working file. Apple VZ's daemon holds the disk
+	// image open after shutdown, preventing reuse on the next boot.
+	workingRootfs := cfg.RootfsPath + ".active"
+	if err := copyFile(cfg.RootfsPath, workingRootfs); err != nil {
+		return nil, fmt.Errorf("copying rootfs for boot: %w", err)
+	}
+
 	// Disk (rootfs)
-	diskAttachment, err := vz.NewDiskImageStorageDeviceAttachment(cfg.RootfsPath, false)
+	diskAttachment, err := vz.NewDiskImageStorageDeviceAttachment(workingRootfs, false)
 	if err != nil {
+		_ = os.Remove(workingRootfs)
 		return nil, fmt.Errorf("creating disk attachment: %w", err)
 	}
 	blockDevice, err := vz.NewVirtioBlockDeviceConfiguration(diskAttachment)
@@ -280,4 +289,24 @@ func configureVirtioFS(shareDir, tag string) (*vz.VirtioFileSystemDeviceConfigur
 	}
 	device.SetDirectoryShare(share)
 	return device, nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	return out.Close()
 }

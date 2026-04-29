@@ -1204,6 +1204,17 @@ func Merge(base, override *Config) *Config {
 		result.Judge = override.Judge
 	}
 
+	// CageRuntime
+	if override.CageRuntime.AllowUnisolated != nil {
+		result.CageRuntime.AllowUnisolated = override.CageRuntime.AllowUnisolated
+	}
+	if override.CageRuntime.FirecrackerBin != "" {
+		result.CageRuntime.FirecrackerBin = override.CageRuntime.FirecrackerBin
+	}
+	if override.CageRuntime.KernelPath != "" {
+		result.CageRuntime.KernelPath = override.CageRuntime.KernelPath
+	}
+
 	return &result
 }
 

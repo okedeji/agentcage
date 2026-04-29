@@ -33,6 +33,7 @@ Thumbs.db
 .env
 *.pem
 *.key
+*.env
 
 # Terraform
 .terraform/
@@ -50,7 +51,3 @@ sdk/typescript/package-lock.json
 
 # Build artifacts
 dist/
-
-# ops
-dev.yaml
-*.env

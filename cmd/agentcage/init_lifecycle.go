@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -22,6 +23,83 @@ import (
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/ui"
 )
+
+// detachProcess re-execs the current binary with the same args minus
+// --detach, redirects output to a log file, and exits. The child
+// runs in the background as a daemon.
+func detachProcess(args []string) {
+	logPath := filepath.Join(embedded.LogDir(), "agentcage.out")
+	_ = os.MkdirAll(filepath.Dir(logPath), 0755)
+
+	outFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		ui.Fail("creating detach log: %v", err)
+		os.Exit(1)
+	}
+
+	// Remove --detach from args so the child runs in foreground.
+	var childArgs []string
+	for _, a := range args {
+		if a != "--detach" {
+			childArgs = append(childArgs, a)
+		}
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		ui.Fail("resolving executable path: %v", err)
+		os.Exit(1)
+	}
+
+	proc, err := os.StartProcess(exe, append([]string{exe}, childArgs...), &os.ProcAttr{
+		Dir:   ".",
+		Env:   os.Environ(),
+		Files: []*os.File{devNull(), outFile, outFile},
+		Sys:   &syscall.SysProcAttr{Setsid: true},
+	})
+	if err != nil {
+		ui.Fail("starting background process: %v", err)
+		os.Exit(1)
+	}
+
+	pid := proc.Pid
+	_ = proc.Release()
+
+	// Wait for gRPC to become reachable before reporting success.
+	// This ensures `agentcage stop` works immediately after detach returns.
+	ui.Step("Starting (pid %d)...", pid)
+	readyCtx, readyCancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer readyCancel()
+	addr := "127.0.0.1:9090"
+	for {
+		conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
+		if err == nil {
+			_ = conn.Close()
+			break
+		}
+		// Check if process died.
+		if err := syscall.Kill(pid, 0); err != nil {
+			ui.Fail("agentcage exited before becoming ready. Check: %s", logPath)
+			os.Exit(1)
+		}
+		select {
+		case <-readyCtx.Done():
+			ui.Fail("timed out waiting for agentcage to start. Check: %s", logPath)
+			os.Exit(1)
+		case <-time.After(1 * time.Second):
+		}
+	}
+
+	ui.OK("agentcage running (pid %d)", pid)
+	ui.Step("Output: %s", logPath)
+	ui.Step("Stop:   agentcage stop")
+	os.Exit(0)
+}
+
+func devNull() *os.File {
+	f, _ := os.Open(os.DevNull)
+	return f
+}
 
 // Every shutdown step is bounded so a wedged component can't trap
 // the operator. The overall deadline catches whatever we missed.

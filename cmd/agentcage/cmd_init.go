@@ -37,7 +37,12 @@ func cmdInit(args []string) {
 	grpcAddr := fs.String("grpc-addr", "", "override gRPC listen address (e.g. 0.0.0.0:9090)")
 	secretsFile := fs.String("secrets", "", "path to secrets file (KEY=VALUE lines, seeded into Vault on first boot)")
 	debug := fs.Bool("debug", false, "show structured logs on stderr in addition to log file")
+	detach := fs.Bool("detach", false, "run in background")
 	_ = fs.Parse(args)
+
+	if *detach {
+		detachProcess(append([]string{"init"}, args...))
+	}
 
 	if err := runInit(*configFile, *grpcAddr, *secretsFile, *debug); err != nil {
 		ui.Fail("%v", err)

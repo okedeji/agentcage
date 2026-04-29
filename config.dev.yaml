@@ -1,0 +1,5 @@
+posture: dev
+llm:
+  endpoint: "https://api.openai.com/v1"
+cage_runtime:
+  allow_unisolated: true
