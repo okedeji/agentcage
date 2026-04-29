@@ -62,7 +62,7 @@ sudo tar xzf "$ALPINE_TAR" -C "$MOUNTPOINT"
 echo "Installing system packages..."
 sudo cp /etc/resolv.conf "$MOUNTPOINT/etc/resolv.conf"
 sudo chroot "$MOUNTPOINT" /bin/sh -c "
-    apk add --no-cache postgresql postgresql-client
+    apk add --no-cache postgresql postgresql-client postgresql16-timescaledb
     adduser -D -H postgres 2>/dev/null || true
 " 2>&1 | tail -5
 

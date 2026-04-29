@@ -181,6 +181,7 @@ func (p *PostgresService) Start(ctx context.Context) error {
 		"-D", pgData,
 		"-p", postgresPort,
 		"-k", socketDir,
+		"-c", "shared_preload_libraries=timescaledb",
 	)
 	if os.Getuid() == 0 {
 		p.proc.cmd.SysProcAttr = &syscall.SysProcAttr{
