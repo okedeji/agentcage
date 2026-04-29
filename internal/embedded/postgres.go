@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -146,6 +147,13 @@ func (p *PostgresService) Start(ctx context.Context) error {
 			"--auth=scram-sha-256",
 			"--pwfile="+pwFile,
 		)
+		if os.Getuid() == 0 {
+			_ = os.MkdirAll(pgData, 0700)
+			_ = exec.Command("chown", "-R", "postgres:postgres", p.dataDir).Run()
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Credential: &syscall.Credential{Uid: 70, Gid: 70},
+			}
+		}
 		out, err := cmd.CombinedOutput()
 		_ = os.Remove(pwFile)
 		if err != nil {
@@ -165,11 +173,20 @@ func (p *PostgresService) Start(ctx context.Context) error {
 		postgresBin = "postgres"
 	}
 
+	socketDir := p.dataDir
+	if os.Getuid() == 0 {
+		socketDir = "/tmp"
+	}
 	p.proc = newSubprocess("postgres", p.log, postgresBin,
 		"-D", pgData,
 		"-p", postgresPort,
-		"-k", p.dataDir,
+		"-k", socketDir,
 	)
+	if os.Getuid() == 0 {
+		p.proc.cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{Uid: 70, Gid: 70},
+		}
+	}
 
 	if err := p.proc.start(ctx); err != nil {
 		return err
@@ -206,12 +223,17 @@ func (p *PostgresService) Health(ctx context.Context) error {
 }
 
 func (p *PostgresService) waitReady(ctx context.Context) error {
+	connStr := fmt.Sprintf("host=localhost port=%s user=%s password=%s dbname=postgres sslmode=disable",
+		postgresPort, postgresUser, p.password)
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", "localhost:"+postgresPort, 500*time.Millisecond)
+		db, err := sql.Open("postgres", connStr)
 		if err == nil {
-			_ = conn.Close()
-			return nil
+			if err := db.PingContext(ctx); err == nil {
+				_ = db.Close()
+				return nil
+			}
+			_ = db.Close()
 		}
 		select {
 		case <-ctx.Done():

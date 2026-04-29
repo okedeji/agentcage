@@ -84,7 +84,7 @@ func (f *FalcoService) Start(ctx context.Context) error {
 
 	if err := f.proc.start(ctx); err != nil {
 		f.log.Info("falco failed to start, syscall monitoring unavailable (may require root)", "error", err)
-		// Non-fatal: agentcage can run without Falco in local mode
+		f.proc = nil
 		return nil
 	}
 
@@ -100,7 +100,13 @@ func (f *FalcoService) Stop(ctx context.Context) error {
 }
 
 func (f *FalcoService) Health(_ context.Context) error {
-	if f.proc == nil || f.proc.cmd == nil || f.proc.cmd.Process == nil {
+	// nil proc means Falco failed to start non-fatally (missing
+	// binary, no root, no eBPF). This is an expected state in dev
+	// mode, not a health failure.
+	if f.proc == nil {
+		return nil
+	}
+	if f.proc.cmd == nil || f.proc.cmd.Process == nil {
 		return fmt.Errorf("falco not running")
 	}
 	return nil

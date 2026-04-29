@@ -63,6 +63,7 @@ echo "Installing system packages..."
 sudo cp /etc/resolv.conf "$MOUNTPOINT/etc/resolv.conf"
 sudo chroot "$MOUNTPOINT" /bin/sh -c "
     apk add --no-cache postgresql postgresql-client
+    adduser -D -H postgres
 " 2>&1 | tail -5
 
 # Write init script that mounts VirtioFS and launches agentcage
@@ -76,6 +77,7 @@ set -e
 mountpoint -q /proc || mount -t proc proc /proc
 mountpoint -q /sys  || mount -t sysfs sys /sys
 mountpoint -q /dev  || mount -t devtmpfs dev /dev
+mountpoint -q /run  || mount -t tmpfs tmpfs /run
 
 # Set hostname
 hostname agentcage-vm

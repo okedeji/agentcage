@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"text/template"
 	"time"
 
@@ -100,7 +102,7 @@ func (s *SPIREService) Start(ctx context.Context) error {
 
 	// Generate server config
 	serverConf := filepath.Join(dataDir, "server.conf")
-	if err := writeSpireServerConf(serverConf, dataDir, spireServerPort, spireTrustDomain, s.bindAddr); err != nil {
+	if err := writeSpireServerConf(serverConf, dataDir, socketDir, spireServerPort, spireTrustDomain, s.bindAddr); err != nil {
 		return fmt.Errorf("writing SPIRE server config: %w", err)
 	}
 
@@ -118,17 +120,38 @@ func (s *SPIREService) Start(ctx context.Context) error {
 		return fmt.Errorf("waiting for SPIRE server: %w", err)
 	}
 
+	// Generate a join token for the agent. The token is single-use
+	// and consumed during the agent's first attestation.
+	// SPIRE server API socket is at <data_dir>/api.sock by default.
+	serverBinPath := filepath.Join(BinDir(), "spire-server")
+	serverSocket := filepath.Join(socketDir, "server.sock")
+	tokenCmd := exec.CommandContext(ctx, serverBinPath,
+		"token", "generate",
+		"-spiffeID", "spiffe://"+spireTrustDomain+"/agent",
+		"-socketPath", serverSocket,
+	)
+	tokenOut, err := tokenCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("generating SPIRE join token: %w\n%s", err, tokenOut)
+	}
+	joinToken := extractJoinToken(string(tokenOut))
+	if joinToken == "" {
+		return fmt.Errorf("failed to parse join token from output: %s", tokenOut)
+	}
+	s.log.Info("join token generated")
+
 	// Generate agent config
 	agentConf := filepath.Join(dataDir, "agent.conf")
 	if err := writeSpireAgentConf(agentConf, dataDir, socketDir, spireServerPort, spireTrustDomain); err != nil {
 		return fmt.Errorf("writing SPIRE agent config: %w", err)
 	}
 
-	// Start agent
+	// Start agent with the join token
 	agentBin := filepath.Join(BinDir(), "spire-agent")
 	s.agentProc = newSubprocess("spire-agent", s.log, agentBin,
 		"run",
 		"-config", agentConf,
+		"-joinToken", joinToken,
 	)
 	if err := s.agentProc.start(ctx); err != nil {
 		return fmt.Errorf("starting SPIRE agent: %w", err)
@@ -205,6 +228,7 @@ func (s *SPIREService) waitServerReady(ctx context.Context) error {
 var spireServerTemplate = template.Must(template.New("server.conf").Parse(`server {
     bind_address = "{{.BindAddr}}"
     bind_port = "{{.Port}}"
+    socket_path = "{{.SocketDir}}/server.sock"
     trust_domain = "{{.TrustDomain}}"
     data_dir = "{{.DataDir}}"
     log_level = "WARN"
@@ -233,6 +257,7 @@ var spireAgentTemplate = template.Must(template.New("agent.conf").Parse(`agent {
     server_port = "{{.ServerPort}}"
     socket_path = "{{.SocketDir}}/agent.sock"
     trust_domain = "{{.TrustDomain}}"
+    insecure_bootstrap = true
 }
 
 plugins {
@@ -248,7 +273,7 @@ plugins {
 }
 `))
 
-func writeSpireServerConf(path, dataDir, port, trustDomain, bindAddr string) error {
+func writeSpireServerConf(path, dataDir, socketDir, port, trustDomain, bindAddr string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -256,10 +281,23 @@ func writeSpireServerConf(path, dataDir, port, trustDomain, bindAddr string) err
 	defer func() { _ = f.Close() }()
 	return spireServerTemplate.Execute(f, map[string]string{
 		"DataDir":     dataDir,
+		"SocketDir":   socketDir,
 		"Port":        port,
 		"TrustDomain": trustDomain,
 		"BindAddr":    bindAddr,
 	})
+}
+
+// extractJoinToken parses the token from spire-server token generate output.
+// Output format: "Token: <uuid-token>\n"
+func extractJoinToken(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Token:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Token:"))
+		}
+	}
+	return strings.TrimSpace(output)
 }
 
 func writeSpireAgentConf(path, dataDir, socketDir, serverPort, trustDomain string) error {
