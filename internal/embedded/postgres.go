@@ -66,15 +66,21 @@ func (p *PostgresService) Download(ctx context.Context) error {
 		return nil
 	}
 
-	// Check common installation paths
+	// Check common installation paths. Alpine 3.19+ puts postgresql
+	// at /usr/libexec/postgresql<ver>/, Debian/Ubuntu at
+	// /usr/lib/postgresql/<ver>/bin.
 	for _, candidate := range []string{
+		"/usr/libexec/postgresql" + postgresMajorVersion,
 		"/usr/lib/postgresql/" + postgresMajorVersion + "/bin",
 		"/usr/bin",
 	} {
-		if _, err := os.Stat(filepath.Join(candidate, "postgres")); err == nil {
+		fullPath := filepath.Join(candidate, "postgres")
+		if _, err := os.Stat(fullPath); err == nil {
 			p.binPath = candidate
+			p.log.Info("using system postgres", "path", fullPath)
 			return nil
 		}
+		p.log.Info("postgres not found", "checked", fullPath)
 	}
 
 	// Download embedded postgres binaries

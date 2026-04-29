@@ -61,10 +61,15 @@ sudo tar xzf "$ALPINE_TAR" -C "$MOUNTPOINT"
 # Alpine (musl). System packages solve this cleanly.
 echo "Installing system packages..."
 sudo cp /etc/resolv.conf "$MOUNTPOINT/etc/resolv.conf"
+sudo tee "$MOUNTPOINT/etc/apk/repositories" > /dev/null << REPOEOF
+https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/main
+https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/community
+REPOEOF
 sudo chroot "$MOUNTPOINT" /bin/sh -c "
+    apk update
     apk add --no-cache postgresql postgresql-client postgresql16-timescaledb
     adduser -D -H postgres 2>/dev/null || true
-" 2>&1 | tail -5
+"
 
 # Write init script that mounts VirtioFS and launches agentcage
 echo "Writing init script..."
