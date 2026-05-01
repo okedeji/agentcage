@@ -112,6 +112,8 @@ type HostRuntimeConfig struct {
 	FirecrackerBin  string
 	KernelPath      string
 	AllowUnisolated bool
+	CageInitBin     string
+	SidecarDir      string
 }
 
 // BuildProvisioner constructs the VM provisioner used by the cage
@@ -121,7 +123,7 @@ type HostRuntimeConfig struct {
 // kernel-isolated.
 //
 // If Firecracker prerequisites are not met, AllowUnisolated=true
-// falls back to MockProvisioner with a loud warning.
+// falls back to SubprocessProvisioner with a loud warning.
 // AllowUnisolated=false returns an error so the orchestrator refuses
 // to start, preventing exploit code from running directly on the host.
 func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logger) (VMProvisioner, bool, error) {
@@ -129,9 +131,9 @@ func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logge
 		if !cfg.AllowUnisolated {
 			return nil, false, fmt.Errorf("firecracker not usable (%s); set cage_runtime.allow_unisolated=true to run without microVM isolation", reason)
 		}
-		log.Info("WARNING: cage isolation disabled, running agents directly on the host",
-			"reason", reason)
-		return NewMockProvisioner(), false, nil
+		log.Info("WARNING: cage isolation disabled, running agents as subprocesses",
+			"reason", reason, "cage_init", cfg.CageInitBin, "sidecar_dir", cfg.SidecarDir)
+		return NewSubprocessProvisioner(cfg.CageInitBin, cfg.SidecarDir), false, nil
 	}
 
 	if version, err := firecrackerVersion(ctx, cfg.FirecrackerBin); err == nil {

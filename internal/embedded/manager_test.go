@@ -12,11 +12,11 @@ import (
 
 func TestNewManager_DefaultConfig_AllEmbedded(t *testing.T) {
 	cfg := config.Defaults()
-	m := NewManager(cfg, logr.Discard())
+	m := NewManager(cfg, logr.Discard(), "0.1.0")
 
 	require.NotNil(t, m)
-	// Postgres, NATS, Temporal, SPIRE, Vault, Falco, Firecracker = 7
-	assert.Len(t, m.services, 7)
+	// Postgres, NATS, Temporal, SPIRE, Vault, Falco, Firecracker, CageInternal = 8
+	assert.Len(t, m.services, 8)
 
 	names := make([]string, len(m.services))
 	for i, svc := range m.services {
@@ -36,7 +36,7 @@ func TestNewManager_ExternalPostgres_Excluded(t *testing.T) {
 	cfg.Infrastructure.Postgres = &config.PostgresConfig{
 		External: true,
 	}
-	m := NewManager(cfg, logr.Discard())
+	m := NewManager(cfg, logr.Discard(), "0.1.0")
 
 	names := make([]string, len(m.services))
 	for i, svc := range m.services {
@@ -56,11 +56,12 @@ func TestNewManager_ExternalAll_OnlyFirecracker(t *testing.T) {
 		Vault:    &config.VaultConfig{Address: "https://ext:8200"},
 		Falco:    &config.FalcoConfig{Socket: "/run/falco.sock"},
 	}
-	m := NewManager(cfg, logr.Discard())
+	m := NewManager(cfg, logr.Discard(), "0.1.0")
 
-	// Only Firecracker downloader remains (always embedded)
-	assert.Len(t, m.services, 1)
+	// Firecracker + cage-internal downloaders remain (always embedded)
+	assert.Len(t, m.services, 2)
 	assert.Equal(t, "firecracker", m.services[0].Name())
+	assert.Equal(t, "cage-internal", m.services[1].Name())
 }
 
 func TestServiceNames(t *testing.T) {

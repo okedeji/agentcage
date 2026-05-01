@@ -34,7 +34,21 @@ type CageEnv struct {
 	ProofThreshold    float64         `json:"proof_threshold,omitempty"`
 }
 
-const configPath = "/etc/agentcage/cage.json"
+// Paths configurable via environment for unisolated mode where
+// cage-init runs as a regular process instead of PID 1 inside a VM.
+var (
+	configPath = envOr("AGENTCAGE_CAGE_CONFIG", "/etc/agentcage/cage.json")
+	socketDir  = envOr("AGENTCAGE_SOCKET_DIR", "/var/run/agentcage")
+	agentDir   = envOr("AGENTCAGE_AGENT_DIR", "/opt/agent")
+	sidecarDir = envOr("AGENTCAGE_SIDECAR_DIR", "/usr/local/bin")
+)
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 func main() {
 	env, err := loadConfig()
@@ -44,10 +58,15 @@ func main() {
 
 	fmt.Printf("cage-init: cage=%s assessment=%s type=%s\n", env.CageID, env.AssessmentID, env.CageType)
 
+	// Ensure socket directory exists before starting sidecars.
+	if err := os.MkdirAll(socketDir, 0755); err != nil {
+		fatal("creating socket directory: %v", err)
+	}
+
 	// 1. Start findings-sidecar
 	sidecar := startService("findings-sidecar",
-		"/usr/local/bin/findings-sidecar",
-		"-socket", "/var/run/agentcage/findings.sock",
+		sidecarDir+"/findings-sidecar",
+		"-socket", socketDir+"/findings.sock",
 		"-nats", env.NATSAddr,
 		"-assessment-id", env.AssessmentID,
 		"-cage-id", env.CageID,
@@ -55,10 +74,10 @@ func main() {
 
 	// 2. Start directive-sidecar
 	directiveSidecar := startService("directive-sidecar",
-		"/usr/local/bin/directive-sidecar",
-		"-directive-file", "/var/run/agentcage/directives.json",
-		"-hold-socket", "/var/run/agentcage/hold.sock",
-		"-log-socket", "/var/run/agentcage/logs.sock",
+		sidecarDir+"/directive-sidecar",
+		"-directive-file", socketDir+"/directives.json",
+		"-hold-socket", socketDir+"/hold.sock",
+		"-log-socket", socketDir+"/logs.sock",
 	)
 
 	// 3. Start payload-proxy
@@ -95,25 +114,21 @@ func main() {
 				proxyArgs = append(proxyArgs, "-judge-timeout", fmt.Sprintf("%d", env.JudgeTimeoutSec))
 			}
 		}
-		proxy = startService("payload-proxy", "/usr/local/bin/payload-proxy", proxyArgs...)
+		proxy = startService("payload-proxy", sidecarDir+"/payload-proxy", proxyArgs...)
 	}
 
-	// 3. Set up iptables to redirect outbound HTTP through the proxy
+	// 3. Set up iptables to redirect outbound HTTP through the proxy.
+	// Skipped in unisolated mode (iptables not available on macOS/non-root).
 	if proxy != nil {
 		setupIPTables()
 	}
 
-	// 4. Ensure socket directory exists
-	if err := os.MkdirAll("/var/run/agentcage", 0755); err != nil {
-		fatal("creating socket directory: %v", err)
-	}
-
-	// 5. Export environment variables for the agent
+	// 4. Export environment variables for the agent
 	setEnv("AGENTCAGE_CAGE_ID", env.CageID)
 	setEnv("AGENTCAGE_ASSESSMENT_ID", env.AssessmentID)
 	setEnv("AGENTCAGE_CAGE_TYPE", env.CageType)
 	setEnv("AGENTCAGE_SCOPE", strings.Join(env.ScopeHosts, ","))
-	setEnv("AGENTCAGE_FINDINGS_SOCKET", "/var/run/agentcage/findings.sock")
+	setEnv("AGENTCAGE_FINDINGS_SOCKET", socketDir+"/findings.sock")
 	if env.LLMEndpoint != "" {
 		setEnv("AGENTCAGE_LLM_ENDPOINT", env.LLMEndpoint)
 	}
@@ -129,9 +144,9 @@ func main() {
 	if env.ProofThreshold > 0 {
 		setEnv("AGENTCAGE_PROOF_THRESHOLD", fmt.Sprintf("%.2f", env.ProofThreshold))
 	}
-	setEnv("AGENTCAGE_DIRECTIVES_FILE", "/var/run/agentcage/directives.json")
-	setEnv("AGENTCAGE_HOLD_SOCKET", "/var/run/agentcage/hold.sock")
-	setEnv("AGENTCAGE_LOG_SOCKET", "/var/run/agentcage/logs.sock")
+	setEnv("AGENTCAGE_DIRECTIVES_FILE", socketDir+"/directives.json")
+	setEnv("AGENTCAGE_HOLD_SOCKET", socketDir+"/hold.sock")
+	setEnv("AGENTCAGE_LOG_SOCKET", socketDir+"/logs.sock")
 
 	// 6. Exec the agent entrypoint.
 	// This replaces PID 1 with the agent process. When the agent
@@ -141,22 +156,16 @@ func main() {
 	parts := strings.Fields(env.Entrypoint)
 	agentBin, err := exec.LookPath(parts[0])
 	if err != nil {
-		// Try under /opt/agent if not in PATH
-		agentBin = "/opt/agent/" + parts[0]
+		agentBin = agentDir + "/" + parts[0]
 		if _, statErr := os.Stat(agentBin); statErr != nil {
-			fatal("agent binary not found: %s", parts[0])
+			fatal("agent binary not found: %s (checked PATH and %s)", parts[0], agentDir)
 		}
 	}
 
-	agentArgs := parts
-	agentArgs[0] = agentBin
-
-	// Don't exec; keep cage-init as PID 1 so we can reap zombies
-	// and wait for the agent to exit.
 	agentCmd := exec.Command(agentBin, parts[1:]...)
 	agentCmd.Stdout = os.Stdout
 	agentCmd.Stderr = os.Stderr
-	agentCmd.Dir = "/opt/agent"
+	agentCmd.Dir = agentDir
 
 	if err := agentCmd.Run(); err != nil {
 		fmt.Printf("cage-init: agent exited with error: %v\n", err)

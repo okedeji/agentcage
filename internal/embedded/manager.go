@@ -21,7 +21,7 @@ type Manager struct {
 
 // NewManager creates a Manager with services configured from the unified config.
 // External services (where the user provided their own address) are excluded.
-func NewManager(cfg *config.Config, log logr.Logger) *Manager {
+func NewManager(cfg *config.Config, log logr.Logger, agentcageVersion string) *Manager {
 	m := &Manager{log: log.WithValues("component", "embedded")}
 
 	infra := cfg.Infrastructure
@@ -62,6 +62,7 @@ func NewManager(cfg *config.Config, log logr.Logger) *Manager {
 	}
 
 	m.services = append(m.services, NewFirecrackerDownloader(log))
+	m.services = append(m.services, NewCageInternalDownloader(log, agentcageVersion))
 
 	return m
 }

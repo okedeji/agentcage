@@ -3,31 +3,32 @@ package cage
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestMockProvisioner_Provision(t *testing.T) {
-	p := NewMockProvisioner()
+func TestSubprocessProvisioner_Provision(t *testing.T) {
+	// Use a non-existent binary — Provision will fail at Start but
+	// we're testing the handle creation and idempotency logic.
+	p := NewSubprocessProvisioner("/usr/bin/false", "/tmp")
 	ctx := context.Background()
 
 	handle, err := p.Provision(ctx, VMConfig{
-		CageID:     "cage-1",
-		VCPUs:      2,
-		MemoryMB:   512,
-		RootfsPath: "/rootfs",
-		KernelPath: "/kernel",
+		CageID:   "cage-1",
+		VCPUs:    2,
+		MemoryMB: 512,
 	})
+	// /bin/false will start and exit immediately, which is fine for
+	// testing that the provisioner creates handles.
 	require.NoError(t, err)
 	assert.Equal(t, "cage-1", handle.CageID)
 	assert.NotEmpty(t, handle.ID)
-	assert.NotEmpty(t, handle.IPAddress)
-	assert.NotEmpty(t, handle.SocketPath)
 }
 
-func TestMockProvisioner_ProvisionIdempotent(t *testing.T) {
-	p := NewMockProvisioner()
+func TestSubprocessProvisioner_ProvisionIdempotent(t *testing.T) {
+	p := NewSubprocessProvisioner("/usr/bin/false", "/tmp")
 	ctx := context.Background()
 	cfg := VMConfig{CageID: "cage-1", VCPUs: 2, MemoryMB: 512}
 
@@ -40,8 +41,8 @@ func TestMockProvisioner_ProvisionIdempotent(t *testing.T) {
 	assert.Equal(t, first.ID, second.ID)
 }
 
-func TestMockProvisioner_Terminate(t *testing.T) {
-	p := NewMockProvisioner()
+func TestSubprocessProvisioner_Terminate(t *testing.T) {
+	p := NewSubprocessProvisioner("/usr/bin/false", "/tmp")
 	ctx := context.Background()
 
 	handle, err := p.Provision(ctx, VMConfig{CageID: "cage-1"})
@@ -55,27 +56,29 @@ func TestMockProvisioner_Terminate(t *testing.T) {
 	assert.Equal(t, VMStatusStopped, status)
 }
 
-func TestMockProvisioner_TerminateNonExistent(t *testing.T) {
-	p := NewMockProvisioner()
+func TestSubprocessProvisioner_TerminateNonExistent(t *testing.T) {
+	p := NewSubprocessProvisioner("/usr/bin/false", "/tmp")
 	err := p.Terminate(context.Background(), "nonexistent-vm")
 	require.NoError(t, err)
 }
 
-func TestMockProvisioner_StatusRunning(t *testing.T) {
-	p := NewMockProvisioner()
+func TestSubprocessProvisioner_StatusAfterExit(t *testing.T) {
+	// /bin/false exits immediately with code 1, so status should
+	// report stopped after a brief wait.
+	p := NewSubprocessProvisioner("/usr/bin/false", "/tmp")
 	ctx := context.Background()
 
 	handle, err := p.Provision(ctx, VMConfig{CageID: "cage-1"})
 	require.NoError(t, err)
 
-	status, err := p.Status(ctx, handle.ID)
-	require.NoError(t, err)
-	assert.Equal(t, VMStatusRunning, status)
-}
-
-func TestMockProvisioner_StatusUnknownVM(t *testing.T) {
-	p := NewMockProvisioner()
-	status, err := p.Status(context.Background(), "unknown-vm")
-	require.NoError(t, err)
-	assert.Equal(t, VMStatusStopped, status)
+	// Give the process a moment to exit.
+	// The background goroutine calls cmd.Wait() which sets ProcessState.
+	for i := 0; i < 50; i++ {
+		status, _ := p.Status(ctx, handle.ID)
+		if status == VMStatusStopped {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("process did not exit within 500ms")
 }

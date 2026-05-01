@@ -94,7 +94,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 		return err
 	}
 
-	embeddedMgr := embedded.NewManager(cfg, log)
+	embeddedMgr := embedded.NewManager(cfg, log, version)
 	ui.Section("Dependencies")
 	if err := embeddedMgr.Download(ctx); err != nil {
 		return fmt.Errorf("downloading dependencies: %w", err)

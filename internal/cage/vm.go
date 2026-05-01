@@ -3,7 +3,11 @@ package cage
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,89 +58,164 @@ type VMProvisioner interface {
 	ResumeVM(ctx context.Context, vmID string) error
 }
 
-// MockProvisioner is an in-memory VM provisioner for tests and CI
-// environments without KVM. It tracks VM state in maps but does not
-// create real VMs. The real provisioner is FirecrackerProvisioner.
-type MockProvisioner struct {
-	mu     sync.Mutex
-	vms    map[string]*VMHandle
-	paused map[string]bool
-	// byCageID enables idempotent provisioning: if a cage already
-	// has a VM, we return the existing handle instead of creating a duplicate.
+// SubprocessProvisioner runs cages as local processes instead of
+// Firecracker microVMs. Same cage-init binary, same sidecars, same
+// findings flow — only the isolation boundary is missing.
+type SubprocessProvisioner struct {
+	mu       sync.Mutex
+	procs    map[string]*subprocessCage
 	byCageID map[string]string
+	// CageInitBin is the path to the cage-init binary.
+	CageInitBin string
+	// SidecarDir is where findings-sidecar, directive-sidecar,
+	// payload-proxy binaries live.
+	SidecarDir string
 }
 
-func NewMockProvisioner() *MockProvisioner {
-	return &MockProvisioner{
-		vms:      make(map[string]*VMHandle),
-		paused:   make(map[string]bool),
-		byCageID: make(map[string]string),
+type subprocessCage struct {
+	handle  *VMHandle
+	cmd     *exec.Cmd
+	workDir string
+}
+
+func NewSubprocessProvisioner(cageInitBin, sidecarDir string) *SubprocessProvisioner {
+	return &SubprocessProvisioner{
+		procs:       make(map[string]*subprocessCage),
+		byCageID:    make(map[string]string),
+		CageInitBin: cageInitBin,
+		SidecarDir:  sidecarDir,
 	}
 }
 
-func (p *MockProvisioner) Provision(ctx context.Context, config VMConfig) (*VMHandle, error) {
+func (p *SubprocessProvisioner) Provision(ctx context.Context, config VMConfig) (*VMHandle, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if vmID, ok := p.byCageID[config.CageID]; ok {
-		return p.vms[vmID], nil
+		handle := p.procs[vmID].handle
+		p.mu.Unlock()
+		return handle, nil
 	}
+	p.mu.Unlock()
 
 	id := uuid.New().String()
+	workDir := filepath.Join(os.TempDir(), "agentcage-cage-"+id[:8])
+	if err := os.MkdirAll(filepath.Join(workDir, "run"), 0755); err != nil {
+		return nil, fmt.Errorf("creating cage work dir: %w", err)
+	}
+
+	// cage.json is written by AssembleRootfs in unisolated mode.
+	// The config path is at workDir/cage.json.
+	cmd := exec.CommandContext(ctx, p.CageInitBin)
+	cmd.Env = append(os.Environ(),
+		"AGENTCAGE_CAGE_CONFIG="+filepath.Join(workDir, "cage.json"),
+		"AGENTCAGE_SOCKET_DIR="+filepath.Join(workDir, "run"),
+		"AGENTCAGE_AGENT_DIR="+filepath.Join(workDir, "agent"),
+		"AGENTCAGE_SIDECAR_DIR="+p.SidecarDir,
+	)
+	cmd.Dir = workDir
+
+	// Log to a file in the work dir so cage logs are accessible.
+	logFile, _ := os.OpenFile(filepath.Join(workDir, "cage.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	if err := cmd.Start(); err != nil {
+		_ = os.RemoveAll(workDir)
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		return nil, fmt.Errorf("starting cage-init: %w", err)
+	}
+
 	handle := &VMHandle{
 		ID:         id,
 		CageID:     config.CageID,
-		IPAddress:  fmt.Sprintf("172.20.0.%d", len(p.vms)+2),
-		SocketPath: fmt.Sprintf("/tmp/firecracker/%s.sock", id),
-		VsockPath:  fmt.Sprintf("/tmp/firecracker/%s.vsock", id),
+		IPAddress:  "127.0.0.1",
+		SocketPath: filepath.Join(workDir, "run", "findings.sock"),
+		VsockPath:  "",
 		StartedAt:  time.Now(),
 	}
-	p.vms[id] = handle
+
+	cage := &subprocessCage{handle: handle, cmd: cmd, workDir: workDir}
+
+	p.mu.Lock()
+	p.procs[id] = cage
 	p.byCageID[config.CageID] = id
+	p.mu.Unlock()
+
+	// Reap the process in background so Status can detect exit.
+	go func() {
+		_ = cmd.Wait()
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+	}()
+
 	return handle, nil
 }
 
-func (p *MockProvisioner) Terminate(_ context.Context, vmID string) error {
+func (p *SubprocessProvisioner) Terminate(_ context.Context, vmID string) error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	handle, ok := p.vms[vmID]
+	cage, ok := p.procs[vmID]
 	if !ok {
+		p.mu.Unlock()
 		return nil
 	}
-	delete(p.byCageID, handle.CageID)
-	delete(p.vms, vmID)
+	delete(p.byCageID, cage.handle.CageID)
+	delete(p.procs, vmID)
+	p.mu.Unlock()
+
+	if cage.cmd.Process != nil {
+		_ = cage.cmd.Process.Signal(syscall.SIGTERM)
+		time.AfterFunc(5*time.Second, func() {
+			if cage.cmd.ProcessState == nil {
+				_ = cage.cmd.Process.Kill()
+			}
+		})
+	}
+	_ = os.RemoveAll(cage.workDir)
 	return nil
 }
 
-func (p *MockProvisioner) Status(_ context.Context, vmID string) (VMStatus, error) {
+func (p *SubprocessProvisioner) Status(_ context.Context, vmID string) (VMStatus, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	cage, ok := p.procs[vmID]
+	p.mu.Unlock()
 
-	if _, ok := p.vms[vmID]; ok {
-		return VMStatusRunning, nil
+	if !ok {
+		return VMStatusStopped, nil
 	}
-	return VMStatusStopped, nil
+	if cage.cmd.ProcessState != nil {
+		return VMStatusStopped, nil
+	}
+	return VMStatusRunning, nil
 }
 
-func (p *MockProvisioner) PauseVM(_ context.Context, vmID string) error {
+func (p *SubprocessProvisioner) PauseVM(_ context.Context, vmID string) error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	cage, ok := p.procs[vmID]
+	p.mu.Unlock()
 
-	if _, ok := p.vms[vmID]; !ok {
-		return fmt.Errorf("VM %s not found", vmID)
+	if !ok {
+		return fmt.Errorf("cage %s not found", vmID)
 	}
-	p.paused[vmID] = true
+	if cage.cmd.Process != nil {
+		return cage.cmd.Process.Signal(syscall.SIGSTOP)
+	}
 	return nil
 }
 
-func (p *MockProvisioner) ResumeVM(_ context.Context, vmID string) error {
+func (p *SubprocessProvisioner) ResumeVM(_ context.Context, vmID string) error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	cage, ok := p.procs[vmID]
+	p.mu.Unlock()
 
-	if _, ok := p.vms[vmID]; !ok {
-		return fmt.Errorf("VM %s not found", vmID)
+	if !ok {
+		return fmt.Errorf("cage %s not found", vmID)
 	}
-	delete(p.paused, vmID)
+	if cage.cmd.Process != nil {
+		return cage.cmd.Process.Signal(syscall.SIGCONT)
+	}
 	return nil
 }
+

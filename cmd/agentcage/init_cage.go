@@ -47,10 +47,15 @@ func setupCageRuntime(ctx context.Context, cfg *config.Config, db *sql.DB, log l
 		kernelBin = filepath.Join(binDir, "vmlinux")
 	}
 
+	cageInitBin := filepath.Join(binDir, "cage-internal", "cage-init")
+	sidecarBinDir := filepath.Join(binDir, "cage-internal")
+
 	provisioner, isolated, err := cage.BuildProvisioner(ctx, cage.HostRuntimeConfig{
 		FirecrackerBin:  firecrackerBin,
 		KernelPath:      kernelBin,
 		AllowUnisolated: cfg.AllowUnisolatedDefault(),
+		CageInitBin:     cageInitBin,
+		SidecarDir:      sidecarBinDir,
 	}, log)
 	if err != nil {
 		return nil, fmt.Errorf("setting up cage provisioner: %w", err)
