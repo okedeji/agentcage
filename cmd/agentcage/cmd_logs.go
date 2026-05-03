@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,10 +41,11 @@ func cmdLogs(args []string) {
 	assessmentID := fs.String("assessment", "", "tail logs for all cages in an assessment")
 	follow := fs.Bool("follow", false, "stream live logs (running cages only)")
 	lines := fs.Int("lines", 0, "show last N lines before streaming")
+	format := fs.String("format", "text", "output format: text (human-readable) or json (raw)")
 	_ = fs.Parse(args)
 
 	if *service != "" {
-		tailServiceLog(*service, *follow, *lines)
+		tailServiceLog(*service, *follow, *lines, *format)
 		return
 	}
 
@@ -57,7 +62,7 @@ func cmdLogs(args []string) {
 	printLogsUsage()
 }
 
-func tailServiceLog(service string, follow bool, tailLines int) {
+func tailServiceLog(service string, follow bool, tailLines int, format string) {
 	if !validServices[service] {
 		fmt.Fprintf(os.Stderr, "error: unknown service %q (valid: %s)\n", service, strings.Join(serviceNames(), ", "))
 		os.Exit(1)
@@ -95,9 +100,21 @@ func tailServiceLog(service string, follow bool, tailLines int) {
 
 	fmt.Printf("Tailing %s logs...\n", service)
 	tail := exec.Command("tail", tailArgs...)
-	tail.Stdout = os.Stdout
 	tail.Stderr = os.Stderr
 	tail.Stdin = os.Stdin
+
+	if format == "json" {
+		tail.Stdout = os.Stdout
+	} else {
+		// Pipe through formatter for human-readable output.
+		stdout, err := tail.StdoutPipe()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		go formatLogLines(stdout)
+	}
+
 	if err := tail.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -271,6 +288,105 @@ func tailAssessmentLogs(assessmentID string, follow bool, tailLines int) {
 	}
 }
 
+// formatLogLines reads JSON log lines from r and prints them as
+// human-readable text: "timestamp LEVEL message key=value ..."
+func formatLogLines(r io.Reader) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			// Not JSON — print as-is (UI output, plain text lines).
+			fmt.Println(line)
+			continue
+		}
+
+		// Extract standard fields.
+		ts := extractString(entry, "ts", "time", "timestamp", "T")
+		level := strings.ToUpper(extractString(entry, "level", "L"))
+		msg := extractString(entry, "msg", "message", "M")
+		caller := extractString(entry, "caller")
+
+		// Format timestamp.
+		if tsFloat, ok := entry["ts"].(float64); ok {
+			sec := int64(tsFloat)
+			nsec := int64((tsFloat - float64(sec)) * 1e9)
+			t := time.Unix(sec, nsec).Local()
+			ts = t.Format("15:04:05.000")
+			delete(entry, "ts")
+		} else if ts != "" {
+			if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
+				ts = t.Local().Format("15:04:05.000")
+			} else if t, err := time.Parse("2006-01-02T15:04:05.000Z", ts); err == nil {
+				ts = t.Local().Format("15:04:05.000")
+			}
+		}
+
+		// Remove already-printed fields.
+		delete(entry, "level")
+		delete(entry, "L")
+		delete(entry, "msg")
+		delete(entry, "message")
+		delete(entry, "M")
+		delete(entry, "time")
+		delete(entry, "timestamp")
+		delete(entry, "T")
+		delete(entry, "caller")
+
+		// Build key=value pairs from remaining fields.
+		var extra []string
+		keys := make([]string, 0, len(entry))
+		for k := range entry {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := entry[k]
+			extra = append(extra, fmt.Sprintf("%s=%v", k, v))
+		}
+
+		// Color the level.
+		levelColored := level
+		switch level {
+		case "INFO":
+			levelColored = "\033[36mINFO\033[0m"
+		case "WARN", "WARNING":
+			levelColored = "\033[33mWARN\033[0m"
+		case "ERROR":
+			levelColored = "\033[31mERRO\033[0m"
+		case "DEBUG":
+			levelColored = "\033[90mDEBG\033[0m"
+		}
+
+		// Print formatted line.
+		out := fmt.Sprintf("%s %s %s", ts, levelColored, msg)
+		if caller != "" {
+			out += fmt.Sprintf(" \033[90m(%s)\033[0m", caller)
+		}
+		if len(extra) > 0 {
+			out += " \033[90m" + strings.Join(extra, " ") + "\033[0m"
+		}
+		fmt.Println(out)
+	}
+}
+
+func extractString(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			if s, ok := v.(string); ok {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 func serviceNames() []string {
 	names := make([]string, 0, len(validServices))
 	for name := range validServices {
@@ -305,5 +421,6 @@ Flags:
   --assessment   tail logs for all cages in an assessment
   --follow       stream live logs (running cages only)
   --lines N      show last N lines (0 = all)
+  --format       output format: text (default, human-readable) or json (raw)
 `)
 }
