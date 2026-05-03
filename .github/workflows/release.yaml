@@ -25,7 +25,7 @@ jobs:
             go build -trimpath -ldflags "-X main.version=${VERSION}" -o agentcage-linux-${{ matrix.goarch }} ./cmd/agentcage/
       - name: Build cage-internal binaries
         run: |
-          for svc in cage-init payload-proxy findings-sidecar; do
+          for svc in cage-init payload-proxy findings-sidecar directive-sidecar; do
             CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} \
               go build -trimpath -o cage-internal-${svc}-linux-${{ matrix.goarch }} ./cmd/cage-internal/${svc}/
           done
