@@ -58,7 +58,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y qemu-user-static
       - name: Build cage rootfs
         run: |
-          sudo BINDIR=bin/cage-internal ./scripts/build-cage-rootfs.sh ${{ matrix.arch }} cage-rootfs-${{ matrix.arch }}.ext4.gz
+          sudo BINDIR=bin/cage-internal ./scripts/build-cage-rootfs.sh ${{ matrix.arch }} cage-rootfs-${{ matrix.arch }}.ext4
       - uses: actions/upload-artifact@v4
         with:
           name: cage-rootfs-${{ matrix.arch }}
