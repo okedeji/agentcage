@@ -21,7 +21,7 @@ esac
 OUTPUT="${2:-cage-rootfs-${TARGET_ARCH}.ext4}"
 WORKDIR=$(mktemp -d)
 MOUNTPOINT="${WORKDIR}/mnt"
-IMG_SIZE="2G"
+IMG_SIZE="1500M"
 BINDIR="${BINDIR:-bin/cage-internal}"
 
 cleanup() {
