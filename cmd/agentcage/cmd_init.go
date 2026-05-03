@@ -296,6 +296,10 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 		Fleet:            fleetSvc,
 		Findings:         findingStore,
 		Audit:            cageRuntime.auditStore,
+		Pack: agentgrpc.PackConfig{
+			BundleStoreDir: filepath.Join(embedded.DataDir(), "bundles"),
+			SDKTarball:     filepath.Join(embedded.BinDir(), "agentcage-sdk.tgz"),
+		},
 		CageLogDir:       cageLogDir,
 		ConfigYAML:       configYAML,
 		ServiceEndpoints: endpoints,

@@ -1,89 +1,211 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"strings"
+	"time"
 
+	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 func cmdPack(args []string) {
 	fs := flag.NewFlagSet("pack", flag.ExitOnError)
-	output := fs.String("output", "", "output .cage file path (default: <dir-name>.cage)")
-	maxSizeMB := fs.Int64("max-size", 0, "max directory size in MB (default: 2048)")
 	_ = fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: agentcage pack <directory> [--output path.cage]")
+		fmt.Fprintln(os.Stderr, "usage: agentcage pack <directory>")
 		os.Exit(1)
 	}
 
 	dir := fs.Arg(0)
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "error: %s is not a directory\n", dir)
+		ui.Fail("%s is not a directory", dir)
 		os.Exit(1)
 	}
 
-	outPath := *output
-	if outPath == "" {
-		name := filepath.Base(dir)
-		name = strings.TrimSuffix(name, "/")
-		outPath = name + ".cage"
-	}
-
-	fmt.Printf("Packing %s...\n", dir)
-	fmt.Println("  Scanning files and computing hashes...")
-
-	var maxSize int64
-	if *maxSizeMB > 0 {
-		maxSize = *maxSizeMB * 1024 * 1024
-	}
-
-	keyPath := filepath.Join(config.HomeDir(), "signing-key.pem")
-	signingKey, keyErr := cagefile.LoadOrGenerateSigningKey(keyPath)
-	if keyErr != nil {
-		fmt.Fprintf(os.Stderr, "warning: signing disabled: %v\n", keyErr)
-	}
-	var packOpts *cagefile.PackOptions
-	if signingKey != nil {
-		packOpts = &cagefile.PackOptions{SigningKey: signingKey}
-	}
-
-	manifest, err := cagefile.PackToFile(dir, version, outPath, maxSize, packOpts)
+	// Read and validate Cagefile locally for fast failure.
+	cagefilePath := filepath.Join(dir, "Cagefile")
+	cagefileData, err := os.ReadFile(cagefilePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		ui.Fail("reading Cagefile: %v", err)
+		os.Exit(1)
+	}
+	manifest, err := cagefile.ParseString(string(cagefileData))
+	if err != nil {
+		ui.Fail("invalid Cagefile: %v", err)
 		os.Exit(1)
 	}
 
-	var sizeMB float64
-	if outInfo, statErr := os.Stat(outPath); statErr == nil {
-		sizeMB = float64(outInfo.Size()) / (1024 * 1024)
+	ui.Section("Pack")
+	ui.Step("Agent: %s (%s, %s)", filepath.Base(dir), manifest.Runtime, manifest.Entrypoint)
+
+	// Load config and connect to orchestrator.
+	cfg := config.Defaults()
+	if resolved := config.Resolve(""); resolved != "" {
+		if override, loadErr := config.Load(resolved); loadErr == nil {
+			cfg = config.Merge(cfg, override)
+		}
 	}
 
-	fmt.Printf("\n  Bundle:     %s (%.1f MB)\n", outPath, sizeMB)
-	fmt.Printf("  Version:    %s\n", manifest.Version)
-	fmt.Printf("  Runtime:    %s\n", manifest.Runtime)
-	fmt.Printf("  Entrypoint: %s\n", manifest.Entrypoint)
-	if len(manifest.SystemDeps) > 0 {
-		fmt.Printf("  Deps:       %s\n", strings.Join(manifest.SystemDeps, ", "))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	conn, err := dialOrchestrator(ctx, cfg)
+	if err != nil {
+		ui.Fail("connecting to orchestrator: %v", err)
+		os.Exit(1)
 	}
-	if len(manifest.Packages) > 0 {
-		fmt.Printf("  Packages:   %s\n", strings.Join(manifest.Packages, ", "))
+	defer func() { _ = conn.Close() }()
+
+	client := pb.NewPackServiceClient(conn)
+	stream, err := client.Pack(ctx)
+	if err != nil {
+		ui.Fail("starting pack stream: %v", err)
+		os.Exit(1)
 	}
-	if len(manifest.PipDeps) > 0 {
-		fmt.Printf("  Pip:        %s\n", strings.Join(manifest.PipDeps, ", "))
+
+	// Send metadata first.
+	if err := stream.Send(&pb.PackRequest{
+		Payload: &pb.PackRequest_Metadata{
+			Metadata: &pb.PackMetadata{
+				CagefileContent: string(cagefileData),
+				DirectoryName:   filepath.Base(dir),
+			},
+		},
+	}); err != nil {
+		ui.Fail("sending metadata: %v", err)
+		os.Exit(1)
 	}
-	if len(manifest.NpmDeps) > 0 {
-		fmt.Printf("  Npm:        %s\n", strings.Join(manifest.NpmDeps, ", "))
+
+	// Tar and stream the source directory.
+	ui.Step("Uploading source...")
+	if err := streamSourceDir(stream, dir); err != nil {
+		ui.Fail("uploading source: %v", err)
+		os.Exit(1)
 	}
-	if len(manifest.GoDeps) > 0 {
-		fmt.Printf("  Go:         %s\n", strings.Join(manifest.GoDeps, ", "))
+
+	// Close send side to signal upload complete.
+	if err := stream.CloseSend(); err != nil {
+		ui.Fail("closing upload: %v", err)
+		os.Exit(1)
 	}
-	fmt.Printf("  Hash:       %s\n", manifest.FilesHash)
-	fmt.Printf("\nReady. Use 'agentcage run --agent %s --target <host>' to start an assessment.\n", outPath)
+
+	// Receive progress updates and final result.
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			ui.Fail("pack failed: %v", err)
+			os.Exit(1)
+		}
+
+		switch p := resp.Payload.(type) {
+		case *pb.PackResponse_Progress:
+			ui.Step("[%s] %s", p.Progress.Stage, p.Progress.Message)
+		case *pb.PackResponse_Result:
+			sizeMB := float64(p.Result.SizeBytes) / (1024 * 1024)
+			fmt.Println()
+			ui.OK("Packed: %s v%s (%.1f MB)", p.Result.Name, p.Result.Version, sizeMB)
+			ui.Info("Runtime", p.Result.Runtime)
+			ui.Info("Entrypoint", p.Result.Entrypoint)
+			ui.Info("Bundle ref", p.Result.BundleRef[:12]+"...")
+			fmt.Println()
+			ui.Step("Run: agentcage run --plan plan.yaml")
+		}
+	}
 }
+
+// streamSourceDir creates a gzipped tar of the directory and streams
+// it as chunks to the PackService.
+func streamSourceDir(stream pb.PackService_PackClient, dir string) error {
+	pr, pw := io.Pipe()
+
+	// Tar in background, stream chunks in foreground.
+	go func() {
+		gw := gzip.NewWriter(pw)
+		tw := tar.NewWriter(gw)
+
+		walkErr := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			// Skip common non-source directories.
+			name := info.Name()
+			if info.IsDir() && (name == "node_modules" || name == "__pycache__" ||
+				name == ".git" || name == "vendor" || name == ".venv") {
+				return filepath.SkipDir
+			}
+
+			rel, err := filepath.Rel(dir, path)
+			if err != nil {
+				return err
+			}
+
+			// Skip symlinks and non-regular files.
+			if !info.Mode().IsRegular() && !info.IsDir() {
+				return nil
+			}
+
+			hdr, err := tar.FileInfoHeader(info, "")
+			if err != nil {
+				return err
+			}
+			hdr.Name = rel
+
+			if err := tw.WriteHeader(hdr); err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = f.Close() }()
+			_, err = io.Copy(tw, f)
+			return err
+		})
+
+		_ = tw.Close()
+		_ = gw.Close()
+		_ = pw.CloseWithError(walkErr)
+	}()
+
+	// Stream chunks from the pipe.
+	buf := make([]byte, 64*1024) // 64KB chunks
+	for {
+		n, err := pr.Read(buf)
+		if n > 0 {
+			chunk := make([]byte, n)
+			copy(chunk, buf[:n])
+			if sendErr := stream.Send(&pb.PackRequest{
+				Payload: &pb.PackRequest_Chunk{Chunk: chunk},
+			}); sendErr != nil {
+				return sendErr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+

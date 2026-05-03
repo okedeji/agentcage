@@ -80,6 +80,8 @@ func main() {
 		cmdAccess(args)
 	case "vault":
 		cmdVault(args)
+	case "sdk":
+		cmdSDK(args)
 	case "version":
 		fmt.Printf("agentcage %s\n", version)
 	case "help", "--help", "-h":
@@ -107,6 +109,7 @@ Setup:
   config              Manage operator config (show, export, import, get)
   access              Manage API keys (create-key, list-keys, revoke-key)
   vault               Manage secrets (put, get, list, delete, rotate, import, migrate)
+  sdk                 Install agent SDK for local development
 
 Assess:
   pack <dir>          Bundle an agent directory into a .cage file

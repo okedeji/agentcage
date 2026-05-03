@@ -30,6 +30,7 @@ type Services struct {
 	Fleet         *fleet.Service
 	Findings      *findings.PGStore
 	Audit         *audit.PGStore
+	Pack              PackConfig
 	CageLogDir        string
 	ConfigYAML        []byte
 	CACert            []byte
@@ -57,6 +58,7 @@ func Register(srv *grpc.Server, svc Services) {
 	if svc.Audit != nil {
 		pb.RegisterAuditServiceServer(srv, &auditAdapter{store: svc.Audit})
 	}
+	pb.RegisterPackServiceServer(srv, &packAdapter{config: svc.Pack})
 }
 
 type controlAdapter struct {

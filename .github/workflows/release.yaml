@@ -101,9 +101,28 @@ jobs:
           name: darwin-${{ matrix.goarch }}
           path: agentcage-darwin-${{ matrix.goarch }}
 
+  build-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: Build and pack SDK
+        run: |
+          cd sdk/typescript
+          npm install
+          npm run build
+          npm pack
+          mv agentcage-sdk-*.tgz ../../agentcage-sdk-${GITHUB_REF_NAME#v}.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk
+          path: agentcage-sdk-*.tgz
+
   release:
     runs-on: ubuntu-latest
-    needs: [build-linux, build-darwin, build-vm-assets]
+    needs: [build-linux, build-darwin, build-vm-assets, build-sdk]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -119,4 +138,5 @@ jobs:
             cage-internal-*
             vmlinux-*
             rootfs-*.img
+            agentcage-sdk-*
           generate_release_notes: true
