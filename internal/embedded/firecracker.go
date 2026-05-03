@@ -1,8 +1,10 @@
 package embedded
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -110,11 +112,48 @@ func (f *FirecrackerDownloader) downloadCageRootfs(ctx context.Context) error {
 	}
 
 	arch := runtime.GOARCH
-	url := fmt.Sprintf("https://github.com/okedeji/agentcage/releases/download/v%s/cage-rootfs-%s.ext4",
+	url := fmt.Sprintf("https://github.com/okedeji/agentcage/releases/download/v%s/cage-rootfs-%s.ext4.gz",
 		f.version, arch)
 
+	compressed := dest + ".gz"
 	f.log.Info("downloading cage rootfs", "url", url)
-	return downloadBinaryWithLog(ctx, url, dest, f.log)
+	if err := downloadBinaryWithLog(ctx, url, compressed, f.log); err != nil {
+		return err
+	}
+
+	f.log.Info("decompressing cage rootfs")
+	if err := decompressGzipFile(compressed, dest); err != nil {
+		_ = os.Remove(compressed)
+		return fmt.Errorf("decompressing cage rootfs: %w", err)
+	}
+	_ = os.Remove(compressed)
+	return nil
+}
+
+func decompressGzipFile(src, dest string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+
+	gr, err := gzip.NewReader(in)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = gr.Close() }()
+
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(out, gr); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dest)
+		return err
+	}
+	return out.Close()
 }
 
 // Start is a no-op. Firecracker is started per-cage, not as a daemon.

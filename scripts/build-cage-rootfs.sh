@@ -21,7 +21,7 @@ esac
 OUTPUT="${2:-cage-rootfs-${TARGET_ARCH}.ext4}"
 WORKDIR=$(mktemp -d)
 MOUNTPOINT="${WORKDIR}/mnt"
-IMG_SIZE="1500M"
+IMG_SIZE="2G"
 BINDIR="${BINDIR:-bin/cage-internal}"
 
 cleanup() {
@@ -158,9 +158,17 @@ sudo rm -rf "$MOUNTPOINT/var/cache/apk/"*
 sudo rm -rf "$MOUNTPOINT/tmp/"*
 sudo rm -f "$MOUNTPOINT/etc/resolv.conf"
 
-# Unmount
+# Zero free space so gzip compresses it well, then unmount.
+sudo fstrim "$MOUNTPOINT" 2>/dev/null || true
+sudo dd if=/dev/zero of="$MOUNTPOINT/.zero" bs=1M 2>/dev/null || true
+sudo rm -f "$MOUNTPOINT/.zero"
 sudo umount "$MOUNTPOINT"
 
+# Compress. The ext4 image is mostly empty space that compresses
+# to near zero. Output stays under GitHub's 2GB asset limit.
+echo "Compressing..."
+gzip -f "$OUTPUT"
+
 echo
-echo "Cage rootfs built: ${OUTPUT}"
-echo "Size: $(du -h "$OUTPUT" | cut -f1)"
+echo "Cage rootfs built: ${OUTPUT}.gz"
+echo "Size: $(du -h "${OUTPUT}.gz" | cut -f1)"
