@@ -79,12 +79,12 @@ jobs:
       - name: Install kernel build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y flex bison bc libelf-dev libssl-dev
+          sudo apt-get install -y flex bison bc libelf-dev libssl-dev dwarves
       - name: Install cross-compiler
         if: matrix.arch == 'arm64'
         run: sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user-static
       - name: Build VM kernel
-        run: ./scripts/build-vm-kernel.sh ${{ matrix.arch }} vmlinux-6.1-${{ matrix.arch }}
+        run: ./scripts/build-vm-kernel.sh ${{ matrix.arch }} vmlinux-6.12-${{ matrix.arch }}
       - name: Build rootfs image
         run: |
           sudo ./scripts/build-vm-rootfs.sh ${{ matrix.arch }} rootfs-${{ matrix.arch }}.img
@@ -92,7 +92,7 @@ jobs:
         with:
           name: vm-assets-${{ matrix.arch }}
           path: |
-            vmlinux-6.1-${{ matrix.arch }}
+            vmlinux-6.12-${{ matrix.arch }}
             rootfs-${{ matrix.arch }}.img
 
   # Darwin builds happen AFTER linux + rootfs so checksums can be embedded.

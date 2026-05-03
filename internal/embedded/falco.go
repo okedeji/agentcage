@@ -33,7 +33,9 @@ func (f *FalcoService) Download(ctx context.Context) error {
 	}
 
 	arch := archSuffix()
-	url := fmt.Sprintf("https://download.falco.org/packages/bin/%s/falco-%s-%s.tar.gz",
+	// Static binary runs on both glibc and musl. The VM rootfs is
+	// Alpine (musl), so the default glibc-linked build won't work.
+	url := fmt.Sprintf("https://download.falco.org/packages/bin/%s/falco-%s-static-%s.tar.gz",
 		arch, falcoVersion, arch)
 
 	f.log.Info("downloading falco", "version", falcoVersion, "url", url)
@@ -58,7 +60,7 @@ func (f *FalcoService) Download(ctx context.Context) error {
 
 	// The archive extracts with an arch-suffixed directory name
 	// (e.g. falco-0.43.0-aarch64/usr/bin/falco).
-	src := filepath.Join(falcoDir, fmt.Sprintf("falco-%s-%s", falcoVersion, arch), "usr", "bin", "falco")
+	src := filepath.Join(falcoDir, fmt.Sprintf("falco-%s-static-%s", falcoVersion, arch), "usr", "bin", "falco")
 	if err := os.Rename(src, dest); err != nil {
 		return fmt.Errorf("moving falco binary: %w", err)
 	}

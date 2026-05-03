@@ -8,10 +8,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/schollz/progressbar/v3"
 )
@@ -197,32 +200,11 @@ func verifyChecksum(path string) error {
 	return nil
 }
 
-// download fetches url to dest with a progress bar. displayName overrides
-// the filename shown in the bar; empty uses the dest basename.
+// download fetches url to dest using curl for reliability (retries,
+// resume, TLS handling) and renders progress with our own UI.
 func download(ctx context.Context, url, dest, displayName string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return fmt.Errorf("creating directory for %s: %w", dest, err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("creating request for %s: %w", url, err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("downloading %s: %w", url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("downloading %s: status %d", url, resp.StatusCode)
-	}
-
-	tmp := dest + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("creating %s: %w", tmp, err)
 	}
 
 	name := displayName
@@ -230,34 +212,82 @@ func download(ctx context.Context, url, dest, displayName string) error {
 		name = filepath.Base(dest)
 	}
 
-	var reader io.Reader = resp.Body
-	if resp.ContentLength > 0 {
-		bar := progressbar.DefaultBytes(resp.ContentLength, "     "+name)
-		reader = io.TeeReader(resp.Body, bar)
+	tmp := dest + ".tmp"
+
+	// First, get the file size with a HEAD request via curl.
+	headCmd := exec.CommandContext(ctx, "curl",
+		"-fsSLI",
+		"--connect-timeout", "30",
+		"-o", "/dev/null",
+		"-w", "%{size_download}:%{http_code}",
+		url,
+	)
+	headOut, _ := headCmd.Output()
+
+	// Download with curl writing progress to a temp file that we poll.
+	cmd := exec.CommandContext(ctx, "curl",
+		"-fSL",
+		"--retry", "3",
+		"--retry-delay", "2",
+		"--connect-timeout", "30",
+		"-C", "-",
+		"-o", tmp,
+		url,
+	)
+	// Suppress curl's own progress, we render our own.
+	cmd.Stderr = io.Discard
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("starting download of %s: %w", name, err)
+	}
+
+	// Parse total size from HEAD if available, otherwise unknown.
+	var totalBytes int64
+	if parts := strings.SplitN(string(headOut), ":", 2); len(parts) == 2 {
+		totalBytes, _ = strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	}
+
+	// Poll file size and render progress.
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	var bar *progressbar.ProgressBar
+	if totalBytes > 0 {
+		bar = progressbar.DefaultBytes(totalBytes, "     "+name)
 	} else {
 		fmt.Printf("     %s: downloading...\n", name)
 	}
 
-	written, err := io.Copy(f, reader)
-	if err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return fmt.Errorf("writing %s: %w", dest, err)
-	}
-	if resp.ContentLength > 0 && written != resp.ContentLength {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return fmt.Errorf("downloading %s: expected %d bytes, got %d (truncated)", name, resp.ContentLength, written)
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("closing %s: %w", tmp, err)
-	}
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
 
-	if err := os.Rename(tmp, dest); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("finalizing %s: %w", dest, err)
+	for {
+		select {
+		case err := <-done:
+			// Final size update.
+			if bar != nil {
+				if info, statErr := os.Stat(tmp); statErr == nil {
+					_ = bar.Set64(info.Size())
+				}
+				_ = bar.Finish()
+			}
+			if err != nil {
+				_ = os.Remove(tmp)
+				return fmt.Errorf("downloading %s: %w", name, err)
+			}
+			if err := os.Rename(tmp, dest); err != nil {
+				_ = os.Remove(tmp)
+				return fmt.Errorf("finalizing %s: %w", dest, err)
+			}
+			return nil
+
+		case <-ticker.C:
+			if bar != nil {
+				if info, err := os.Stat(tmp); err == nil {
+					_ = bar.Set64(info.Size())
+				}
+			}
+		}
 	}
-	return nil
 }
 
