@@ -122,8 +122,8 @@ sudo chroot "$MOUNTPOINT" /bin/sh -c "apk add --no-cache perl perl-net-ssleay"
 curl -fsSL "https://github.com/sullo/nikto/archive/refs/heads/master.tar.gz" -o "${WORKDIR}/nikto.tar.gz"
 sudo mkdir -p "$MOUNTPOINT/opt/nikto"
 sudo tar xzf "${WORKDIR}/nikto.tar.gz" --strip-components=1 -C "$MOUNTPOINT/opt/nikto"
-sudo ln -sf /opt/nikto/program/nikto.pl "$MOUNTPOINT/usr/local/bin/nikto"
-sudo chmod 755 "$MOUNTPOINT/usr/local/bin/nikto"
+sudo chroot "$MOUNTPOINT" ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto
+sudo chmod 755 "$MOUNTPOINT/opt/nikto/program/nikto.pl"
 
 # Create standard directories
 sudo mkdir -p "$MOUNTPOINT/usr/local/bin"
