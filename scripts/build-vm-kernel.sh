@@ -147,6 +147,11 @@ CONFIG_NET_UNIX=y
 # Memory management
 CONFIG_MEMORY_BALLOON=y
 
+# KVM (nested virtualization — Firecracker runs inside this VM)
+CONFIG_VIRTUALIZATION=y
+CONFIG_KVM=y
+CONFIG_KVM_ARM_HOST=y
+
 # Disable unnecessary features
 # CONFIG_MODULES is not set
 # CONFIG_BLK_DEV_INITRD is not set
