@@ -106,34 +106,19 @@ func CheckNomadHealth(ctx context.Context, addr string) string {
 	return ""
 }
 
-// HostRuntimeConfig is the orchestrator-side input to BuildProvisioner:
-// resolved binary paths and the operator's opt-in for unisolated mode.
+// HostRuntimeConfig is the orchestrator-side input to BuildProvisioner.
 type HostRuntimeConfig struct {
-	FirecrackerBin  string
-	KernelPath      string
-	AllowUnisolated bool
-	CageInitBin     string
-	SidecarDir      string
+	FirecrackerBin string
+	KernelPath     string
 }
 
 // BuildProvisioner constructs the VM provisioner used by the cage
-// activity layer. It runs pre-flight checks against the host so
-// misconfigurations are caught at startup rather than the first cage
-// provision. Returns the provisioner and whether cages will be
-// kernel-isolated.
-//
-// If Firecracker prerequisites are not met, AllowUnisolated=true
-// falls back to SubprocessProvisioner with a loud warning.
-// AllowUnisolated=false returns an error so the orchestrator refuses
-// to start, preventing exploit code from running directly on the host.
+// activity layer. Requires /dev/kvm and the Firecracker binary.
+// On macOS, nested virtualization (M3+, macOS 15+) provides KVM
+// inside the Apple VZ VM. On Linux, KVM is native.
 func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logger) (VMProvisioner, bool, error) {
 	if reason := checkFirecrackerHost(cfg.FirecrackerBin, cfg.KernelPath); reason != "" {
-		if !cfg.AllowUnisolated {
-			return nil, false, fmt.Errorf("firecracker not usable (%s); set cage_runtime.allow_unisolated=true to run without microVM isolation", reason)
-		}
-		log.Info("WARNING: cage isolation disabled, running agents as subprocesses",
-			"reason", reason, "cage_init", cfg.CageInitBin, "sidecar_dir", cfg.SidecarDir)
-		return NewSubprocessProvisioner(cfg.CageInitBin, cfg.SidecarDir), false, nil
+		return nil, false, fmt.Errorf("cage provisioner requires hardware virtualization: %s\n  Linux: ensure /dev/kvm exists and is accessible\n  macOS: requires M3+ chip with macOS 15+ (nested virtualization)", reason)
 	}
 
 	if version, err := firecrackerVersion(ctx, cfg.FirecrackerBin); err == nil {

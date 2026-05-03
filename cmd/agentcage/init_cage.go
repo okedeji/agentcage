@@ -47,31 +47,18 @@ func setupCageRuntime(ctx context.Context, cfg *config.Config, db *sql.DB, log l
 		kernelBin = filepath.Join(binDir, "vmlinux")
 	}
 
-	cageInitBin := filepath.Join(binDir, "cage-internal", "cage-init")
-	sidecarBinDir := filepath.Join(binDir, "cage-internal")
-
-	provisioner, isolated, err := cage.BuildProvisioner(ctx, cage.HostRuntimeConfig{
-		FirecrackerBin:  firecrackerBin,
-		KernelPath:      kernelBin,
-		AllowUnisolated: cfg.AllowUnisolatedDefault(),
-		CageInitBin:     cageInitBin,
-		SidecarDir:      sidecarBinDir,
+	provisioner, _, err := cage.BuildProvisioner(ctx, cage.HostRuntimeConfig{
+		FirecrackerBin: firecrackerBin,
+		KernelPath:     kernelBin,
 	}, log)
 	if err != nil {
 		return nil, fmt.Errorf("setting up cage provisioner: %w", err)
 	}
 
-	var network enforcement.NetworkEnforcer
-	if isolated {
-		network = enforcement.NewNFTablesEnforcer(log)
-	} else {
-		network = enforcement.NewNoopEnforcer(log)
-		log.Info("network enforcement disabled (unisolated cage runtime)")
-	}
-
+	network := enforcement.NewNFTablesEnforcer(log)
 	auditStore := audit.NewPGStore(db)
 
-	rootfs, err := buildRootfs(ctx, isolated, log)
+	rootfs, err := buildRootfs(ctx, true, log)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +70,7 @@ func setupCageRuntime(ctx context.Context, cfg *config.Config, db *sql.DB, log l
 
 	return &cageRuntimeSetup{
 		provisioner: provisioner,
-		isolated:    isolated,
+		isolated:    true,
 		rootfs:      rootfs,
 		network:     network,
 		auditStore:  auditStore,
@@ -135,12 +122,7 @@ func openFalcoReader(ctx context.Context, cfg *config.Config, log logr.Logger) (
 	}
 
 	if reason := cage.CheckFalcoSocket(ctx, socket); reason != "" {
-		if !cfg.AllowUnisolatedDefault() {
-			return nil, fmt.Errorf("falco not usable (%s); set cage_runtime.allow_unisolated=true to run cages without behavioral tripwires", reason)
-		}
-		log.Info("WARNING: Falco unavailable, cages will run without behavioral tripwires",
-			"socket", socket, "reason", reason)
-		return nil, nil
+		return nil, fmt.Errorf("falco not usable (%s): behavioral tripwires are required for cage isolation", reason)
 	}
 
 	log.Info("Falco alert reader configured", "socket", socket)

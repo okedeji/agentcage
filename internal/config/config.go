@@ -39,9 +39,8 @@ const DefaultGRPCAddr = "localhost:9090"
 type Config struct {
 	// Posture controls network and scope defaults. "strict" (default)
 	// enforces TLS, denies localhost/wildcard targets, requires LLM.
-	// "dev" relaxes those for laptop development. Cage isolation is
-	// separate: cage_runtime.allow_unisolated controls Firecracker and
-	// Falco independently of posture.
+	// "dev" relaxes those for laptop development. Cage isolation via
+	// Firecracker is always required regardless of posture.
 	Posture        Posture                    `yaml:"posture"`
 	Infrastructure InfrastructureConfig       `yaml:"infrastructure"`
 	GRPC           GRPCConfig                 `yaml:"grpc"`
@@ -173,22 +172,6 @@ type CageRuntimeConfig struct {
 	// KernelPath overrides the path to the vmlinux kernel. If empty, the
 	// orchestrator falls back to <embedded.BinDir>/vmlinux.
 	KernelPath string `yaml:"kernel_path"`
-	// AllowUnisolated permits the mock provisioner (no microVM boundary)
-	// and tolerates missing Falco (no behavioral tripwires). Only controls
-	// cage isolation. Network, TLS, and secret management are governed by
-	// the top-level posture and their own config fields. If unset, derives
-	// from posture: dev=true, strict=false.
-	AllowUnisolated *bool `yaml:"allow_unisolated,omitempty"`
-}
-
-// AllowUnisolatedDefault returns the effective value of AllowUnisolated
-// after applying the posture default. Use this throughout the codebase
-// instead of reading the field directly.
-func (c *Config) AllowUnisolatedDefault() bool {
-	if c.CageRuntime.AllowUnisolated != nil {
-		return *c.CageRuntime.AllowUnisolated
-	}
-	return c.Posture == PostureDev
 }
 
 // OTelInsecureDefault returns the effective value of otel.insecure after
@@ -1205,9 +1188,6 @@ func Merge(base, override *Config) *Config {
 	}
 
 	// CageRuntime
-	if override.CageRuntime.AllowUnisolated != nil {
-		result.CageRuntime.AllowUnisolated = override.CageRuntime.AllowUnisolated
-	}
 	if override.CageRuntime.FirecrackerBin != "" {
 		result.CageRuntime.FirecrackerBin = override.CageRuntime.FirecrackerBin
 	}

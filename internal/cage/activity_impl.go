@@ -2,7 +2,6 @@ package cage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -234,55 +233,15 @@ func (a *ActivityImpl) AssembleRootfs(ctx context.Context, cageID string, bundle
 	if bundleRef == "" {
 		return "", fmt.Errorf("cage %s: no bundle ref provided", cageID)
 	}
+	if a.rootfs == nil {
+		return "", fmt.Errorf("cage %s: rootfs builder not configured (Firecracker isolation requires a base rootfs image)", cageID)
+	}
 
 	bundlePath := filepath.Join(a.bundleStoreDir, bundleRef+".cage")
 	if _, err := os.Stat(bundlePath); err != nil {
 		return "", fmt.Errorf("cage %s: bundle %s not found in store: %w", cageID, bundleRef, err)
 	}
 
-	// Unisolated mode: prepare a work directory for SubprocessProvisioner.
-	// Write cage.json and unpack agent files so cage-init can run them.
-	if a.rootfs == nil {
-		workDir := filepath.Join(os.TempDir(), "agentcage-cage-"+cageID[:8])
-		if err := os.MkdirAll(filepath.Join(workDir, "agent"), 0755); err != nil {
-			return "", fmt.Errorf("cage %s: creating work dir: %w", cageID, err)
-		}
-
-		manifest, err := cagefile.UnpackFile(bundlePath, workDir)
-		if err != nil {
-			return "", fmt.Errorf("cage %s: unpacking bundle: %w", cageID, err)
-		}
-		if err := cagefile.CheckContentPolicy(manifest); err != nil {
-			_ = os.RemoveAll(workDir)
-			return "", fmt.Errorf("cage %s: bundle content policy: %w", cageID, err)
-		}
-
-		env.Entrypoint = manifest.Entrypoint
-
-		// Move unpacked files to agent/ subdirectory.
-		filesDir := filepath.Join(workDir, "files")
-		agentDir := filepath.Join(workDir, "agent")
-		if _, err := os.Stat(filesDir); err == nil {
-			_ = os.RemoveAll(agentDir)
-			_ = os.Rename(filesDir, agentDir)
-		}
-
-		// Write cage.json for cage-init to read.
-		cageJSON, err := json.Marshal(env)
-		if err != nil {
-			_ = os.RemoveAll(workDir)
-			return "", fmt.Errorf("cage %s: marshaling cage env: %w", cageID, err)
-		}
-		if err := os.WriteFile(filepath.Join(workDir, "cage.json"), cageJSON, 0644); err != nil {
-			_ = os.RemoveAll(workDir)
-			return "", fmt.Errorf("cage %s: writing cage.json: %w", cageID, err)
-		}
-
-		a.log.Info("cage work dir prepared (unisolated)", "cage_id", cageID, "dir", workDir)
-		return workDir, nil
-	}
-
-	// Isolated mode: build a real ext4 rootfs.
 	tmpDir, err := os.MkdirTemp("", "agentcage-unpack-"+cageID+"-*")
 	if err != nil {
 		return "", fmt.Errorf("cage %s: creating unpack dir: %w", cageID, err)
