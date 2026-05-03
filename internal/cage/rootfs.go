@@ -135,25 +135,12 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	// Chroot installs run with the orchestrator's network access.
 	// Pinned versions in the Cagefile mitigate dependency confusion;
 	// full network isolation requires a local package mirror.
+	// System packages (apk) install in chroot — can't be bundled.
+	// Runtime deps (npm, pip, go) are installed at pack time and
+	// already present in the bundle. One path, no duplication.
 	if len(bundle.Packages) > 0 {
 		if err := installPackages(ctx, mountDir, bundle.Packages); err != nil {
 			return "", fmt.Errorf("installing packages: %w", err)
-		}
-	}
-
-	if len(bundle.PipDeps) > 0 {
-		if err := installPipDeps(ctx, mountDir, bundle.PipDeps); err != nil {
-			return "", fmt.Errorf("installing pip dependencies: %w", err)
-		}
-	}
-	if len(bundle.NpmDeps) > 0 {
-		if err := installNpmDeps(ctx, mountDir, bundle.NpmDeps); err != nil {
-			return "", fmt.Errorf("installing npm dependencies: %w", err)
-		}
-	}
-	if len(bundle.GoDeps) > 0 {
-		if err := installGoDeps(ctx, mountDir, bundle.GoDeps); err != nil {
-			return "", fmt.Errorf("installing go dependencies: %w", err)
 		}
 	}
 
@@ -298,33 +285,6 @@ func installPackages(ctx context.Context, mountDir string, packages []string) er
 	return nil
 }
 
-func installPipDeps(ctx context.Context, mountDir string, deps []string) error {
-	args := append([]string{mountDir, "pip3", "install", "--no-cache-dir"}, deps...)
-	cmd := exec.CommandContext(ctx, "chroot", args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("pip install %s: %w\n%s", strings.Join(deps, ","), err, out)
-	}
-	return nil
-}
-
-func installNpmDeps(ctx context.Context, mountDir string, deps []string) error {
-	args := append([]string{mountDir, "npm", "install", "-g"}, deps...)
-	cmd := exec.CommandContext(ctx, "chroot", args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("npm install %s: %w\n%s", strings.Join(deps, ","), err, out)
-	}
-	return nil
-}
-
-func installGoDeps(ctx context.Context, mountDir string, deps []string) error {
-	for _, dep := range deps {
-		cmd := exec.CommandContext(ctx, "chroot", mountDir, "go", "install", dep)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("go install %s: %w\n%s", dep, err, out)
-		}
-	}
-	return nil
-}
 
 func copyDir(ctx context.Context, src, dst string) error {
 	cmd := exec.CommandContext(ctx, "cp", "-a", src+"/.", dst)

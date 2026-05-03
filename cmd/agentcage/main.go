@@ -103,7 +103,7 @@ Global flags:
 
 Setup:
   init                Start the orchestrator and embedded services
-  join               Join a bare-metal host to the orchestrator's fleet
+  join                Join a bare-metal host to the orchestrator's fleet
   stop                Gracefully shut down all services
   connect             Point this CLI at a remote orchestrator
   config              Manage operator config (show, export, import, get)

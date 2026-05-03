@@ -79,12 +79,13 @@ sudo chroot "$MOUNTPOINT" /bin/sh -c "
         iptables iproute2
 "
 
-# Install security tools from Alpine repos.
-echo "Installing security tools (Alpine packages)..."
+# Install security tools. Some are in Alpine repos, others need
+# pip or direct download.
+echo "Installing security tools..."
 sudo chroot "$MOUNTPOINT" /bin/sh -c "
     apk add --no-cache \
-        chromium nmap sqlmap nikto ffuf \
-        curl wget jq bind-tools
+        chromium nmap curl wget jq bind-tools
+    pip3 install --break-system-packages sqlmap
 "
 
 # ProjectDiscovery tools — Go binaries distributed as GitHub releases.
@@ -106,6 +107,21 @@ install_pd_tool interactsh 1.3.1  interactsh-client
 install_pd_tool subfinder  2.14.0
 install_pd_tool httpx      1.9.0
 install_pd_tool katana     1.5.0
+
+# ffuf — Go binary from GitHub (not in Alpine repos)
+echo "  ffuf v2.1.0..."
+curl -fsSL "https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_linux_${PD_ARCH}.tar.gz" -o "${WORKDIR}/ffuf.tar.gz"
+tar xzf "${WORKDIR}/ffuf.tar.gz" -C "${WORKDIR}" ffuf
+sudo cp "${WORKDIR}/ffuf" "$MOUNTPOINT/usr/local/bin/ffuf"
+sudo chmod 755 "$MOUNTPOINT/usr/local/bin/ffuf"
+
+# nikto — Perl-based scanner, installed from git
+echo "  nikto..."
+sudo chroot "$MOUNTPOINT" /bin/sh -c "
+    apk add --no-cache perl perl-net-ssleay git
+    git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto
+    ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto
+"
 
 # Create standard directories
 sudo mkdir -p "$MOUNTPOINT/usr/local/bin"
