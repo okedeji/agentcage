@@ -33,6 +33,10 @@ func LinuxBinaryPath() string {
 	return filepath.Join(Dir(), "agentcage-linux-"+runtime.GOARCH)
 }
 
+func CageRootfsPath() string {
+	return filepath.Join(Dir(), "cage-rootfs.img")
+}
+
 func homeDir() string {
 	return config.HomeDir()
 }

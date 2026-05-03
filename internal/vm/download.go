@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -36,7 +37,7 @@ func EnsureAssets(ctx context.Context, agentcageVersion string) error {
 	}
 
 	needed := 0
-	for _, p := range []string{KernelPath(), RootfsPath(), LinuxBinaryPath()} {
+	for _, p := range []string{KernelPath(), RootfsPath(), LinuxBinaryPath(), CageRootfsPath()} {
 		if _, err := os.Stat(p); err != nil {
 			needed++
 		}
@@ -54,6 +55,9 @@ func EnsureAssets(ctx context.Context, agentcageVersion string) error {
 	}
 	if err := ensureLinuxBinary(ctx, agentcageVersion); err != nil {
 		return fmt.Errorf("ensuring linux binary: %w", err)
+	}
+	if err := ensureCageRootfs(ctx, agentcageVersion); err != nil {
+		return fmt.Errorf("ensuring cage rootfs: %w", err)
 	}
 	return nil
 }
@@ -112,6 +116,55 @@ func ensureLinuxBinary(ctx context.Context, version string) error {
 		return err
 	}
 	return os.Chmod(dest, 0755)
+}
+
+func ensureCageRootfs(ctx context.Context, version string) error {
+	dest := CageRootfsPath()
+	if _, err := os.Stat(dest); err == nil {
+		return nil
+	}
+
+	arch := runtime.GOARCH
+	url := fmt.Sprintf(
+		"https://github.com/okedeji/agentcage/releases/download/v%s/cage-rootfs-%s.ext4.gz",
+		version, arch,
+	)
+	compressed := dest + ".gz"
+	if err := download(ctx, url, compressed, filepath.Base(dest)); err != nil {
+		return err
+	}
+	if err := decompressGzipFile(compressed, dest); err != nil {
+		_ = os.Remove(compressed)
+		return fmt.Errorf("decompressing cage rootfs: %w", err)
+	}
+	_ = os.Remove(compressed)
+	return nil
+}
+
+func decompressGzipFile(src, dest string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+
+	gr, err := gzip.NewReader(in)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = gr.Close() }()
+
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(out, gr); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dest)
+		return err
+	}
+	return out.Close()
 }
 
 // verifyChecksum computes the SHA-256 of the file at path and compares it
