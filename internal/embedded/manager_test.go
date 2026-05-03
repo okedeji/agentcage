@@ -73,7 +73,7 @@ func TestServiceNames(t *testing.T) {
 		NewSPIREService(log),
 		NewVaultService(log),
 		NewFalcoService(log),
-		NewFirecrackerDownloader(log),
+		NewFirecrackerDownloader(log, "0.1.0"),
 	}
 
 	expected := []string{"postgres", "nats", "temporal", "spire", "vault", "falco", "firecracker"}
@@ -115,7 +115,7 @@ func TestSPIREService_Socket(t *testing.T) {
 }
 
 func TestFirecrackerDownloader_Paths(t *testing.T) {
-	dl := NewFirecrackerDownloader(logr.Discard())
+	dl := NewFirecrackerDownloader(logr.Discard(), "0.1.0")
 	assert.Contains(t, dl.BinPath(), "firecracker")
 	assert.Contains(t, dl.KernelPath(), "vmlinux")
 }

@@ -47,7 +47,7 @@ func (t *TemporalService) Download(ctx context.Context) error {
 		temporalVersion, archiveName)
 
 	archivePath := filepath.Join(BinDir(), archiveName)
-	if err := downloadBinary(ctx, url, archivePath); err != nil {
+	if err := downloadBinaryWithLog(ctx, url, archivePath, t.log); err != nil {
 		return fmt.Errorf("downloading temporal CLI: %w", err)
 	}
 

@@ -61,7 +61,7 @@ func NewManager(cfg *config.Config, log logr.Logger, agentcageVersion string) *M
 		m.services = append(m.services, NewNomadServiceWithBind(log, bindAddr))
 	}
 
-	m.services = append(m.services, NewFirecrackerDownloader(log))
+	m.services = append(m.services, NewFirecrackerDownloader(log, agentcageVersion))
 	m.services = append(m.services, NewCageInternalDownloader(log, agentcageVersion))
 
 	return m

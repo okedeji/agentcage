@@ -96,6 +96,31 @@ func DownloadFile(ctx context.Context, url, dest string) error {
 }
 
 func downloadBinary(ctx context.Context, url, dest string) error {
+	return downloadBinaryWithLog(ctx, url, dest, logr.Discard())
+}
+
+type progressLogger struct {
+	reader  io.Reader
+	total   int64
+	current int64
+	name    string
+	lastPct int
+	log     logr.Logger
+}
+
+func (p *progressLogger) Read(buf []byte) (int, error) {
+	n, err := p.reader.Read(buf)
+	p.current += int64(n)
+	pct := int(p.current * 100 / p.total)
+	if pct >= p.lastPct+10 {
+		p.lastPct = pct - (pct % 10)
+		p.log.Info("downloading", "service", p.name, "percent", pct)
+	}
+	return n, err
+}
+
+// downloadBinaryWithLog is like downloadBinary but logs progress.
+func downloadBinaryWithLog(ctx context.Context, url, dest string, log logr.Logger) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return fmt.Errorf("creating directory for %s: %w", dest, err)
 	}
@@ -127,6 +152,7 @@ func downloadBinary(ctx context.Context, url, dest string) error {
 			reader: resp.Body,
 			total:  resp.ContentLength,
 			name:   filepath.Base(dest),
+			log:    log,
 		}
 	}
 
@@ -151,25 +177,6 @@ func downloadBinary(ctx context.Context, url, dest string) error {
 		return fmt.Errorf("finalizing %s: %w", dest, err)
 	}
 	return nil
-}
-
-type progressLogger struct {
-	reader  io.Reader
-	total   int64
-	current int64
-	name    string
-	lastPct int
-}
-
-func (p *progressLogger) Read(buf []byte) (int, error) {
-	n, err := p.reader.Read(buf)
-	p.current += int64(n)
-	pct := int(p.current * 100 / p.total)
-	if pct >= p.lastPct+10 {
-		p.lastPct = pct - (pct % 10)
-		fmt.Fprintf(os.Stderr, "{\"level\":\"info\",\"msg\":\"progress\",\"service\":\"%s\",\"percent\":%d}\n", p.name, pct)
-	}
-	return n, err
 }
 
 // archSuffix returns the architecture string for download URLs.

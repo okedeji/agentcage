@@ -60,7 +60,7 @@ func (v *VaultService) Download(ctx context.Context) error {
 	v.log.Info("downloading vault", "version", vaultVersion, "url", url)
 
 	archivePath := filepath.Join(BinDir(), "vault-"+vaultVersion+".zip")
-	if err := downloadBinary(ctx, url, archivePath); err != nil {
+	if err := downloadBinaryWithLog(ctx, url, archivePath, v.log); err != nil {
 		return fmt.Errorf("downloading vault: %w", err)
 	}
 

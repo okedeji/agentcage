@@ -105,7 +105,7 @@ func (p *PostgresService) Download(ctx context.Context) error {
 	p.log.Info("downloading postgres", "version", postgresVersion, "url", url)
 
 	archivePath := filepath.Join(BinDir(), "postgres-"+postgresVersion+".jar")
-	if err := downloadBinary(ctx, url, archivePath); err != nil {
+	if err := downloadBinaryWithLog(ctx, url, archivePath, p.log); err != nil {
 		return fmt.Errorf("downloading postgres: %w. Install PostgreSQL %s or set infrastructure.postgres.url in config", err, postgresMajorVersion)
 	}
 

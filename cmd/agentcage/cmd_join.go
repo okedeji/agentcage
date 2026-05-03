@@ -93,7 +93,7 @@ func cmdJoin(args []string) {
 
 	fmt.Println("Downloading Firecracker + kernel...")
 	log := logr.Discard()
-	fc := embedded.NewFirecrackerDownloader(log)
+	fc := embedded.NewFirecrackerDownloader(log, version)
 	if err := fc.Download(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "error downloading Firecracker: %v\n", err)
 		os.Exit(1)

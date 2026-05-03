@@ -63,7 +63,7 @@ func (s *SPIREService) Download(ctx context.Context) error {
 	s.log.Info("downloading spire", "version", spireVersion, "url", url)
 
 	archivePath := filepath.Join(BinDir(), "spire-"+spireVersion+".tar.gz")
-	if err := downloadBinary(ctx, url, archivePath); err != nil {
+	if err := downloadBinaryWithLog(ctx, url, archivePath, s.log); err != nil {
 		return fmt.Errorf("downloading spire: %w", err)
 	}
 

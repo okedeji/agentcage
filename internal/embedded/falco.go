@@ -39,7 +39,7 @@ func (f *FalcoService) Download(ctx context.Context) error {
 	f.log.Info("downloading falco", "version", falcoVersion, "url", url)
 
 	archivePath := filepath.Join(BinDir(), "falco-"+falcoVersion+".tar.gz")
-	if err := downloadBinary(ctx, url, archivePath); err != nil {
+	if err := downloadBinaryWithLog(ctx, url, archivePath, f.log); err != nil {
 		return fmt.Errorf("downloading falco: %w", err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/go-logr/logr"
 )
@@ -19,11 +20,12 @@ const (
 // long-running subprocess; it's started per-cage by the VM
 // provisioner.
 type FirecrackerDownloader struct {
-	log logr.Logger
+	log     logr.Logger
+	version string
 }
 
-func NewFirecrackerDownloader(log logr.Logger) *FirecrackerDownloader {
-	return &FirecrackerDownloader{log: log.WithValues("service", "firecracker")}
+func NewFirecrackerDownloader(log logr.Logger, version string) *FirecrackerDownloader {
+	return &FirecrackerDownloader{log: log.WithValues("service", "firecracker"), version: version}
 }
 
 func (f *FirecrackerDownloader) Name() string      { return "firecracker" }
@@ -41,7 +43,10 @@ func (f *FirecrackerDownloader) Download(ctx context.Context) error {
 	if err := f.downloadFirecracker(ctx); err != nil {
 		return err
 	}
-	return f.downloadKernel(ctx)
+	if err := f.downloadKernel(ctx); err != nil {
+		return err
+	}
+	return f.downloadCageRootfs(ctx)
 }
 
 func (f *FirecrackerDownloader) downloadFirecracker(ctx context.Context) error {
@@ -96,6 +101,20 @@ func (f *FirecrackerDownloader) downloadKernel(ctx context.Context) error {
 
 	f.log.Info("downloading linux kernel", "version", kernelVersion, "arch", arch)
 	return downloadBinary(ctx, url, dest)
+}
+
+func (f *FirecrackerDownloader) downloadCageRootfs(ctx context.Context) error {
+	dest := filepath.Join(VMDir(), "cage-rootfs.img")
+	if _, err := os.Stat(dest); err == nil {
+		return nil
+	}
+
+	arch := runtime.GOARCH
+	url := fmt.Sprintf("https://github.com/okedeji/agentcage/releases/download/v%s/cage-rootfs-%s.ext4",
+		f.version, arch)
+
+	f.log.Info("downloading cage rootfs", "url", url)
+	return downloadBinaryWithLog(ctx, url, dest, f.log)
 }
 
 // Start is a no-op. Firecracker is started per-cage, not as a daemon.
