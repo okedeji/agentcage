@@ -8,8 +8,7 @@ import (
 )
 
 const (
-	kernelVersion = "6.1"
-	alpineVersion = "3.19"
+	kernelVersion = "6.12"
 	vmMemoryMB    = 4096
 	vmCPUs        = 4
 	grpcPort      = 9090
@@ -26,7 +25,7 @@ func KernelPath() string {
 
 
 func RootfsPath() string {
-	return filepath.Join(Dir(), "rootfs-"+alpineVersion+"-"+runtime.GOARCH+".img")
+	return filepath.Join(Dir(), "rootfs-"+runtime.GOARCH+".img")
 }
 
 func LinuxBinaryPath() string {

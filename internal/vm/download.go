@@ -23,10 +23,10 @@ import (
 // digests. Populate at release time. When empty, verification is
 // skipped with a warning; only acceptable during development.
 var knownChecksums = map[string]string{
-	// "vmlinux-6.1-arm64":          "sha256-hex-here",
-	// "vmlinux-6.1-amd64":          "sha256-hex-here",
-	// "rootfs-3.19-arm64.img":      "sha256-hex-here",
-	// "rootfs-3.19-amd64.img":      "sha256-hex-here",
+	// "vmlinux-6.12-arm64":         "sha256-hex-here",
+	// "vmlinux-6.12-amd64":         "sha256-hex-here",
+	// "rootfs-arm64.img":           "sha256-hex-here",
+	// "rootfs-amd64.img":           "sha256-hex-here",
 	// "agentcage-linux-arm64":      "sha256-hex-here",
 	// "agentcage-linux-amd64":      "sha256-hex-here",
 }

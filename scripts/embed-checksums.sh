@@ -4,8 +4,8 @@
 # Usage: ./scripts/embed-checksums.sh <assets-dir>
 #
 # The assets directory must contain the files named exactly as download.go expects:
-#   vmlinux-6.1-arm64, vmlinux-6.1-amd64,
-#   rootfs-3.19-arm64.img, rootfs-3.19-amd64.img,
+#   vmlinux-6.12-arm64, vmlinux-6.12-amd64,
+#   rootfs-arm64.img, rootfs-amd64.img,
 #   agentcage-linux-arm64, agentcage-linux-amd64
 #
 # Only files that exist in the directory are patched. Missing files are skipped.
@@ -21,10 +21,10 @@ if [ ! -f "$DOWNLOAD_GO" ]; then
 fi
 
 EXPECTED_FILES=(
-    "vmlinux-6.1-arm64"
-    "vmlinux-6.1-amd64"
-    "rootfs-3.19-arm64.img"
-    "rootfs-3.19-amd64.img"
+    "vmlinux-6.12-arm64"
+    "vmlinux-6.12-amd64"
+    "rootfs-arm64.img"
+    "rootfs-amd64.img"
     "agentcage-linux-arm64"
     "agentcage-linux-amd64"
 )
@@ -40,8 +40,8 @@ for name in "${EXPECTED_FILES[@]}"; do
     checksum=$(shasum -a 256 "$filepath" | awk '{print $1}')
 
     # Replace the commented-out placeholder with an active entry.
-    # Matches lines like: // "vmlinux-6.1-arm64":          "sha256-hex-here",
-    # Also matches already-patched lines: "vmlinux-6.1-arm64":          "abc123...",
+    # Matches lines like: // "vmlinux-6.12-arm64":          "sha256-hex-here",
+    # Also matches already-patched lines: "vmlinux-6.12-arm64":          "abc123...",
     escaped_name=$(printf '%s' "$name" | sed 's/\./\\./g')
     if grep -q "\"$name\":" "$DOWNLOAD_GO"; then
         sed -i.bak -E "s|//[[:space:]]*\"${escaped_name}\":[[:space:]]*\"[^\"]*\",|\"${name}\": \"${checksum}\",|" "$DOWNLOAD_GO"
