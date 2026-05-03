@@ -115,6 +115,22 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 	}
 	vmCfg.SetMemoryBalloonDevicesVirtualMachineConfiguration([]vz.MemoryBalloonDeviceConfiguration{balloonDevice})
 
+	// Nested virtualization: enables /dev/kvm inside the guest so
+	// Firecracker can run cage microVMs. Requires M3+ and macOS 15+.
+	if vz.IsNestedVirtualizationSupported() {
+		platform, err := vz.NewGenericPlatformConfiguration()
+		if err != nil {
+			return nil, fmt.Errorf("creating platform config: %w", err)
+		}
+		if err := platform.SetNestedVirtualizationEnabled(true); err != nil {
+			return nil, fmt.Errorf("enabling nested virtualization: %w", err)
+		}
+		vmCfg.SetPlatformVirtualMachineConfiguration(platform)
+		fmt.Println("     Nested virtualization enabled (/dev/kvm available in VM)")
+	} else {
+		return nil, fmt.Errorf("nested virtualization not supported on this hardware (requires M3+ chip with macOS 15+)")
+	}
+
 	validated, err := vmCfg.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("validating VM config: %w", err)
