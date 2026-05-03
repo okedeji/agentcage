@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -9,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/okedeji/agentcage/internal/config"
@@ -77,9 +77,23 @@ func installNodeSDK() {
 		ui.Step("Using cached SDK: %s", filepath.Base(sdkPath))
 	}
 
-	// Run npm install with the tarball.
+	// Ensure package.json exists so npm doesn't walk up the tree.
+	if _, err := os.Stat("package.json"); os.IsNotExist(err) {
+		ui.Step("Initializing package.json...")
+		initCmd := exec.Command("npm", "init", "-y")
+		initCmd.Stdout = os.Stdout
+		initCmd.Stderr = os.Stderr
+		if err := initCmd.Run(); err != nil {
+			ui.Fail("npm init failed: %v", err)
+			os.Exit(1)
+		}
+	}
+
+	// Install from tarball but record as a versioned dependency.
+	// The pack handler resolves @agentcage/sdk from its local tarball
+	// via .npmrc, so the package.json must use a version, not a file path.
 	ui.Step("Running npm install...")
-	cmd := exec.Command("npm", "install", sdkPath)
+	cmd := exec.Command("npm", "install", "--save", sdkPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -87,8 +101,47 @@ func installNodeSDK() {
 		os.Exit(1)
 	}
 
+	// Rewrite the file: dependency to a clean version string so the
+	// package.json is portable (not tied to the local SDK path).
+	rewriteSDKDep(version)
+
 	ui.OK("@agentcage/sdk installed")
 	ui.Step("Import: import { AgentSDK } from '@agentcage/sdk'")
+}
+
+// rewriteSDKDep replaces the file: path in package.json with a clean version.
+func rewriteSDKDep(ver string) {
+	data, err := os.ReadFile("package.json")
+	if err != nil {
+		return
+	}
+	// Replace "file://.../agentcage-sdk-X.Y.Z.tgz" with "X.Y.Z"
+	content := string(data)
+	old := `"@agentcage/sdk"`
+	idx := strings.Index(content, old)
+	if idx == -1 {
+		return
+	}
+	// Find the value after the key
+	afterKey := content[idx+len(old):]
+	colonIdx := strings.Index(afterKey, ":")
+	if colonIdx == -1 {
+		return
+	}
+	afterColon := afterKey[colonIdx+1:]
+	quoteStart := strings.Index(afterColon, `"`)
+	if quoteStart == -1 {
+		return
+	}
+	quoteEnd := strings.Index(afterColon[quoteStart+1:], `"`)
+	if quoteEnd == -1 {
+		return
+	}
+	// Replace the value
+	valueStart := idx + len(old) + colonIdx + 1 + quoteStart
+	valueEnd := valueStart + quoteEnd + 2
+	newContent := content[:valueStart] + `"` + ver + `"` + content[valueEnd:]
+	_ = os.WriteFile("package.json", []byte(newContent), 0644)
 }
 
 // findSDKTarball checks the local agentcage home for a cached SDK tarball.
@@ -120,21 +173,18 @@ func downloadSDKTarball() (string, error) {
 		version, version,
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	// GitHub releases return a 302 to a CDN. Use a client with
+	// generous timeouts and explicit redirect following.
+	client := &http.Client{Timeout: 2 * time.Minute}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	resp, err := client.Get(url)
 	if err != nil {
-		return "", err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
+		return "", fmt.Errorf("fetching %s: %w", url, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download returned HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("download returned HTTP %d (url: %s)", resp.StatusCode, url)
 	}
 
 	dest := filepath.Join(sdkDir, fmt.Sprintf("agentcage-sdk-%s.tgz", version))

@@ -46,8 +46,8 @@ api/gateway/
 
 # Node.js / TypeScript SDK
 node_modules/
+package-lock.json
 sdk/typescript/dist/
-sdk/typescript/package-lock.json
 
 # Build artifacts
 dist/
