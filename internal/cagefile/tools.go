@@ -7,7 +7,6 @@ var ToolPackages = map[string]string{
 	"chromium":   "chromium",
 	"nmap":       "nmap",
 	"sqlmap":     "sqlmap",
-	"nikto":      "nikto",
 	"ffuf":       "ffuf",
 	"curl":       "curl",
 	"wget":       "wget",

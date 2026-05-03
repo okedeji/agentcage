@@ -115,15 +115,6 @@ tar xzf "${WORKDIR}/ffuf.tar.gz" -C "${WORKDIR}" ffuf
 sudo cp "${WORKDIR}/ffuf" "$MOUNTPOINT/usr/local/bin/ffuf"
 sudo chmod 755 "$MOUNTPOINT/usr/local/bin/ffuf"
 
-# nikto — Perl-based scanner, downloaded as tarball (git clone
-# fails in chroot due to missing /dev/urandom)
-echo "  nikto..."
-sudo chroot "$MOUNTPOINT" /bin/sh -c "apk add --no-cache perl perl-net-ssleay"
-curl -fsSL "https://github.com/sullo/nikto/archive/refs/heads/master.tar.gz" -o "${WORKDIR}/nikto.tar.gz"
-sudo mkdir -p "$MOUNTPOINT/opt/nikto"
-sudo tar xzf "${WORKDIR}/nikto.tar.gz" --strip-components=1 -C "$MOUNTPOINT/opt/nikto"
-sudo chroot "$MOUNTPOINT" ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto
-sudo chmod 755 "$MOUNTPOINT/opt/nikto/program/nikto.pl"
 
 # Create standard directories
 sudo mkdir -p "$MOUNTPOINT/usr/local/bin"
