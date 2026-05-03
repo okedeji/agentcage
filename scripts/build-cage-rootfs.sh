@@ -115,13 +115,15 @@ tar xzf "${WORKDIR}/ffuf.tar.gz" -C "${WORKDIR}" ffuf
 sudo cp "${WORKDIR}/ffuf" "$MOUNTPOINT/usr/local/bin/ffuf"
 sudo chmod 755 "$MOUNTPOINT/usr/local/bin/ffuf"
 
-# nikto — Perl-based scanner, installed from git
+# nikto — Perl-based scanner, downloaded as tarball (git clone
+# fails in chroot due to missing /dev/urandom)
 echo "  nikto..."
-sudo chroot "$MOUNTPOINT" /bin/sh -c "
-    apk add --no-cache perl perl-net-ssleay git
-    git clone --depth 1 https://github.com/sullo/nikto.git /opt/nikto
-    ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto
-"
+sudo chroot "$MOUNTPOINT" /bin/sh -c "apk add --no-cache perl perl-net-ssleay"
+curl -fsSL "https://github.com/sullo/nikto/archive/refs/heads/master.tar.gz" -o "${WORKDIR}/nikto.tar.gz"
+sudo mkdir -p "$MOUNTPOINT/opt/nikto"
+sudo tar xzf "${WORKDIR}/nikto.tar.gz" --strip-components=1 -C "$MOUNTPOINT/opt/nikto"
+sudo ln -sf /opt/nikto/program/nikto.pl "$MOUNTPOINT/usr/local/bin/nikto"
+sudo chmod 755 "$MOUNTPOINT/usr/local/bin/nikto"
 
 # Create standard directories
 sudo mkdir -p "$MOUNTPOINT/usr/local/bin"
@@ -129,17 +131,24 @@ sudo mkdir -p "$MOUNTPOINT/opt/agent"
 sudo mkdir -p "$MOUNTPOINT/etc/agentcage"
 sudo mkdir -p "$MOUNTPOINT/var/run/agentcage"
 
-# Install cage-internal binaries
+# Install cage-internal binaries. Release artifacts are named
+# cage-internal-{svc}-linux-{arch}; local builds use just {svc}.
 echo "Installing cage-internal binaries..."
 for svc in cage-init payload-proxy findings-sidecar directive-sidecar; do
+    src=""
     if [ -f "${BINDIR}/${svc}" ]; then
-        sudo cp "${BINDIR}/${svc}" "$MOUNTPOINT/usr/local/bin/${svc}"
-        sudo chmod 755 "$MOUNTPOINT/usr/local/bin/${svc}"
-        echo "  ${svc} installed"
-    else
-        echo "  ERROR: ${BINDIR}/${svc} not found"
+        src="${BINDIR}/${svc}"
+    elif [ -f "${BINDIR}/cage-internal-${svc}-linux-${TARGET_ARCH}" ]; then
+        src="${BINDIR}/cage-internal-${svc}-linux-${TARGET_ARCH}"
+    fi
+    if [ -z "$src" ]; then
+        echo "  ERROR: ${svc} not found in ${BINDIR}"
+        ls -la "${BINDIR}/" 2>/dev/null || true
         exit 1
     fi
+    sudo cp "$src" "$MOUNTPOINT/usr/local/bin/${svc}"
+    sudo chmod 755 "$MOUNTPOINT/usr/local/bin/${svc}"
+    echo "  ${svc} installed"
 done
 
 # Write init script. cage-init becomes PID 1 and manages the cage lifecycle.
