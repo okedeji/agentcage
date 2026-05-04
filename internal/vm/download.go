@@ -214,17 +214,25 @@ func download(ctx context.Context, url, dest, displayName string) error {
 
 	tmp := dest + ".tmp"
 
-	// First, get the file size with a HEAD request via curl.
+	// Get total file size so we can render a progress bar. GitHub
+	// release URLs redirect to a CDN, so -L follows the chain and
+	// we parse Content-Length from the final response headers.
 	headCmd := exec.CommandContext(ctx, "curl",
-		"-fsSLI",
+		"-sSLI",
 		"--connect-timeout", "30",
-		"-o", "/dev/null",
-		"-w", "%{size_download}:%{http_code}",
 		url,
 	)
 	headOut, _ := headCmd.Output()
 
-	// Download with curl writing progress to a temp file that we poll.
+	var totalBytes int64
+	for _, line := range strings.Split(string(headOut), "\n") {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "content-length:") {
+			val := strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
+			totalBytes, _ = strconv.ParseInt(val, 10, 64)
+		}
+	}
+
+	// Download with curl writing to a temp file that we poll for size.
 	cmd := exec.CommandContext(ctx, "curl",
 		"-fSL",
 		"--retry", "3",
@@ -234,17 +242,10 @@ func download(ctx context.Context, url, dest, displayName string) error {
 		"-o", tmp,
 		url,
 	)
-	// Suppress curl's own progress, we render our own.
 	cmd.Stderr = io.Discard
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting download of %s: %w", name, err)
-	}
-
-	// Parse total size from HEAD if available, otherwise unknown.
-	var totalBytes int64
-	if parts := strings.SplitN(string(headOut), ":", 2); len(parts) == 2 {
-		totalBytes, _ = strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
 	}
 
 	// Poll file size and render progress.
