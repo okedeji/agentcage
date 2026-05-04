@@ -81,6 +81,13 @@ func (f *FalcoService) Start(ctx context.Context) error {
 		return nil
 	}
 
+	// Create the alert file so readiness checks pass immediately.
+	// Falco only creates it on first alert, but consumers need to
+	// know Falco is alive before any alert fires.
+	if _, err := os.Create(alertFile); err != nil {
+		f.log.Info("warning: could not pre-create alert file", "error", err)
+	}
+
 	f.log.Info("falco started")
 	return nil
 }
