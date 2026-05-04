@@ -121,7 +121,17 @@ func openFalcoReader(ctx context.Context, cfg *config.Config, log logr.Logger) (
 		socket = cfg.Infrastructure.Falco.Socket
 	}
 
-	if reason := cage.CheckFalcoSocket(ctx, socket); reason != "" {
+	// Falco was just started by the embedded manager. Give it up to
+	// 10s to create and bind its socket before declaring failure.
+	var reason string
+	for attempts := 0; attempts < 20; attempts++ {
+		reason = cage.CheckFalcoSocket(ctx, socket)
+		if reason == "" {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if reason != "" {
 		return nil, fmt.Errorf("falco not usable (%s): behavioral tripwires are required for cage isolation", reason)
 	}
 
