@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -214,7 +215,47 @@ func cmdFalcoRemove(args []string) {
 	}
 }
 
+// validateFalcoYAML runs Falco in dry-run mode to validate rule syntax.
+// Falls back to basic field checks if the Falco binary isn't available
+// (e.g. running from a Mac where only the linux binary exists).
 func validateFalcoYAML(data []byte) error {
+	falcoBin := filepath.Join(embedded.BinDir(), "falco")
+	if _, err := os.Stat(falcoBin); err != nil {
+		return validateFalcoYAMLBasic(data)
+	}
+
+	tmpFile, err := os.CreateTemp("", "falco-validate-*.yaml")
+	if err != nil {
+		return validateFalcoYAMLBasic(data)
+	}
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		return validateFalcoYAMLBasic(data)
+	}
+	_ = tmpFile.Close()
+
+	confFile, err := os.CreateTemp("", "falco-conf-*.yaml")
+	if err != nil {
+		return validateFalcoYAMLBasic(data)
+	}
+	defer func() { _ = os.Remove(confFile.Name()) }()
+	_, _ = confFile.WriteString("# validation\n")
+	_ = confFile.Close()
+
+	out, err := exec.Command(falcoBin, "-c", confFile.Name(), "-r", tmpFile.Name(), "--dry-run").CombinedOutput()
+	if err != nil {
+		lines := strings.TrimSpace(string(out))
+		if lines == "" {
+			return fmt.Errorf("falco validation failed: %w", err)
+		}
+		return fmt.Errorf("falco validation failed:\n%s", lines)
+	}
+	return nil
+}
+
+func validateFalcoYAMLBasic(data []byte) error {
 	content := string(data)
 	if !strings.Contains(content, "rule:") {
 		return fmt.Errorf("missing 'rule:' field")
