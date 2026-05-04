@@ -159,8 +159,8 @@ CONFIG_BPF_JIT=y
 CONFIG_BPF_JIT_ALWAYS_ON=y
 CONFIG_BPF_EVENTS=y
 CONFIG_HAVE_EBPF_JIT=y
-# DEBUG_INFO_NONE must be explicitly disabled or the Kconfig choice
-# defaults to "none" and drops BTF silently.
+# BTF requires DEBUG_INFO which is gated behind DEBUG_KERNEL.
+CONFIG_DEBUG_KERNEL=y
 # CONFIG_DEBUG_INFO_NONE is not set
 CONFIG_DEBUG_INFO=y
 CONFIG_DEBUG_INFO_DWARF5=y
