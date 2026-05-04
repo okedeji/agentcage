@@ -18,7 +18,7 @@
 // base image and a .cage bundle, with bundle integrity verified
 // before any chroot install runs. FirecrackerProvisioner manages the
 // per-cage Firecracker process, TAP device, and API socket.
-// FalcoAlertReader streams behavioral alerts from the Falco unix
-// socket into the monitor activity, reconnecting with backoff so a
-// brief Falco blip doesn't silently degrade the tripwire layer.
+// FalcoAlertReader tails the Falco alert file and feeds parsed
+// alerts into the monitor activity so a cage that trips a behavioral
+// rule gets caught.
 package cage

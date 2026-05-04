@@ -53,9 +53,7 @@ func NewManager(cfg *config.Config, log logr.Logger, agentcageVersion string) *M
 		m.services = append(m.services, NewVaultService(log))
 	}
 
-	if !infra.IsExternalFalco() {
-		m.services = append(m.services, NewFalcoService(log, agentcageVersion))
-	}
+	m.services = append(m.services, NewFalcoService(log, agentcageVersion))
 
 	if !infra.IsExternalNomad() && infra.Nomad != nil {
 		m.services = append(m.services, NewNomadServiceWithBind(log, bindAddr))

@@ -54,10 +54,18 @@ func (f *FalcoService) Start(ctx context.Context) error {
 	bin := filepath.Join(BinDir(), "falco")
 	rulesDir := filepath.Join(RunDir(), "falco", "rules.d")
 	alertFile := f.AlertFilePath()
+	confFile := filepath.Join(RunDir(), "falco", "falco.yaml")
 
 	_ = os.MkdirAll(filepath.Dir(alertFile), 0755)
 
+	// Falco requires a base config file even when all settings are
+	// overridden via -o flags. Write a minimal one.
+	if err := os.WriteFile(confFile, []byte("# agentcage-managed\n"), 0644); err != nil {
+		return fmt.Errorf("writing falco config: %w", err)
+	}
+
 	f.proc = newSubprocess("falco", f.log, bin,
+		"-c", confFile,
 		"-o", "engine.kind=modern_ebpf",
 		"-o", "json_output=true",
 		"-o", "buffered_outputs=false",

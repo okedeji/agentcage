@@ -485,7 +485,6 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 }
 
 // EvaluateAlert determines the response to a behavioral monitoring alert.
-// Called by the Falco gRPC alert stream consumer when an alert fires for a cage.
 // Returns the tripwire policy that the workflow should act on.
 func (a *ActivityImpl) EvaluateAlert(ctx context.Context, cageType Type, assessmentID string, alert AlertEvent) (TripwirePolicy, error) {
 	if a.alertHandler == nil {

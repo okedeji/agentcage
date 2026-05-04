@@ -117,9 +117,6 @@ func writeFalcoRules(cfg *config.Config, log logr.Logger) (cage.AlertHandler, er
 // fatal in strict posture.
 func openFalcoReader(ctx context.Context, cfg *config.Config, log logr.Logger) (*cage.FalcoAlertReader, error) {
 	alertFile := filepath.Join(embedded.RunDir(), "falco", "alerts.jsonl")
-	if cfg.Infrastructure.Falco != nil && cfg.Infrastructure.Falco.AlertFile != "" {
-		alertFile = cfg.Infrastructure.Falco.AlertFile
-	}
 
 	// Falco was just started by the embedded manager. Give it up to
 	// 10s to create the alert file before declaring failure.

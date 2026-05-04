@@ -107,11 +107,8 @@ func (r *FalcoAlertReader) tailLoop(ctx context.Context, f *os.File, cageID stri
 			continue
 		}
 
-		containerID, ok := raw.Fields["container.id"]
-		if !ok || containerID != cageID {
-			continue
-		}
-
+		// Each Firecracker VM is one cage. All alerts from this
+		// VM belong to the cage — no container.id filtering needed.
 		select {
 		case ch <- AlertEvent{
 			RuleName: raw.Rule,

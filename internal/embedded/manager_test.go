@@ -54,14 +54,14 @@ func TestNewManager_ExternalAll_OnlyFirecracker(t *testing.T) {
 		Temporal: &config.TemporalConfig{Address: "ext:7233"},
 		SPIRE:    &config.SPIREConfig{ServerAddress: "ext:8081"},
 		Vault:    &config.VaultConfig{Address: "https://ext:8200"},
-		Falco:    &config.FalcoConfig{Socket: "/run/falco.sock"},
 	}
 	m := NewManager(cfg, logr.Discard(), "0.1.0")
 
-	// Firecracker + cage-internal downloaders remain (always embedded)
-	assert.Len(t, m.services, 2)
-	assert.Equal(t, "firecracker", m.services[0].Name())
-	assert.Equal(t, "cage-internal", m.services[1].Name())
+	// Falco + Firecracker + cage-internal remain (always embedded)
+	assert.Len(t, m.services, 3)
+	assert.Equal(t, "falco", m.services[0].Name())
+	assert.Equal(t, "firecracker", m.services[1].Name())
+	assert.Equal(t, "cage-internal", m.services[2].Name())
 }
 
 func TestServiceNames(t *testing.T) {
