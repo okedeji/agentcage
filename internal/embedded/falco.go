@@ -53,7 +53,7 @@ func (f *FalcoService) Start(ctx context.Context) error {
 	_ = os.MkdirAll(filepath.Dir(socketPath), 0755)
 
 	f.proc = newSubprocess("falco", f.log, bin,
-		"--modern-bpf",
+		"-o", "engine.kind=modern_ebpf",
 		"--json-output",
 		"--rules-dir", rulesDir,
 		"--unbuffered",
