@@ -353,7 +353,6 @@ type InfrastructureConfig struct {
 	Temporal *TemporalConfig  `yaml:"temporal"`
 	SPIRE    *SPIREConfig     `yaml:"spire"`
 	Vault    *VaultConfig     `yaml:"vault"`
-	Falco    *FalcoConfig     `yaml:"falco"`
 	Nomad    *NomadConfig     `yaml:"nomad"`
 	OTel     *OTelConfig      `yaml:"otel"`
 }
@@ -386,11 +385,6 @@ type VaultConfig struct {
 	AuthPath         string `yaml:"auth_path"`
 	Role             string `yaml:"role"`
 	OrchestratorRole string `yaml:"orchestrator_role"`
-}
-
-type FalcoConfig struct {
-	Socket    string `yaml:"socket"`
-	AlertFile string `yaml:"alert_file"`
 }
 
 type NomadConfig struct {
@@ -1041,9 +1035,6 @@ func Merge(base, override *Config) *Config {
 	if override.Infrastructure.Vault != nil {
 		result.Infrastructure.Vault = override.Infrastructure.Vault
 	}
-	if override.Infrastructure.Falco != nil {
-		result.Infrastructure.Falco = override.Infrastructure.Falco
-	}
 	if override.Infrastructure.Nomad != nil {
 		result.Infrastructure.Nomad = override.Infrastructure.Nomad
 	}
@@ -1285,9 +1276,6 @@ func (c *InfrastructureConfig) IsExternalVault() bool {
 	return c.Vault != nil && c.Vault.Address != ""
 }
 
-func (c *InfrastructureConfig) IsExternalFalco() bool {
-	return c.Falco != nil && c.Falco.Socket != ""
-}
 
 func (c *InfrastructureConfig) IsExternalNomad() bool {
 	return c.Nomad != nil && c.Nomad.Address != ""

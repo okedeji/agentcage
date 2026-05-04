@@ -144,7 +144,6 @@ func TestDefaults_InfrastructureAllEmbedded(t *testing.T) {
 	assert.False(t, infra.IsExternalTemporal())
 	assert.False(t, infra.IsExternalSPIRE())
 	assert.False(t, infra.IsExternalVault())
-	assert.False(t, infra.IsExternalFalco())
 	assert.False(t, infra.IsExternalNomad())
 }
 
