@@ -84,14 +84,24 @@ func (a *packAdapter) Pack(stream pb.PackService_PackServer) error {
 
 	sendProgress("uploading", fmt.Sprintf("received %d bytes", totalBytes), 100)
 
-	// Phase 3: Unpack source to temp directory.
+	// Phase 3: Unpack source to a directory named after the agent so
+	// the bundle manifest picks up the correct name.
 	sendProgress("unpacking", "extracting source files", 0)
-	workDir, err := os.MkdirTemp("", "agentcage-pack-build-*")
+	tmpParent, err := os.MkdirTemp("", "agentcage-pack-*")
 	if err != nil {
 		return packErr("creating work dir: %v", err)
 	}
-	defer func() { _ = os.RemoveAll(workDir) }()
+	defer func() { _ = os.RemoveAll(tmpParent) }()
 
+	dirName := meta.GetDirectoryName()
+	if dirName == "" {
+		dirName = "agent"
+	}
+	workDir := filepath.Join(tmpParent, dirName)
+
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		return packErr("creating agent dir: %v", err)
+	}
 	if err := extractTarGz(tmpTar.Name(), workDir); err != nil {
 		return packErr("extracting source: %v", err)
 	}
