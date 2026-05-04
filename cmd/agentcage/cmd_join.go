@@ -100,7 +100,7 @@ func cmdJoin(args []string) {
 	}
 
 	fmt.Println("Downloading Falco...")
-	falco := embedded.NewFalcoService(log)
+	falco := embedded.NewFalcoService(log, version)
 	if err := falco.Download(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "error downloading Falco: %v\n", err)
 		os.Exit(1)

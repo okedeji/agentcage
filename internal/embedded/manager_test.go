@@ -72,7 +72,7 @@ func TestServiceNames(t *testing.T) {
 		NewTemporalService(log),
 		NewSPIREService(log),
 		NewVaultService(log),
-		NewFalcoService(log),
+		NewFalcoService(log, "0.1.0"),
 		NewFirecrackerDownloader(log, "0.1.0"),
 	}
 

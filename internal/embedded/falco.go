@@ -5,22 +5,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/go-logr/logr"
 )
-
-const falcoVersion = "0.43.0"
 
 // FalcoService manages an embedded Falco runtime security monitor.
 // Falco watches syscalls from cage VMs and emits alerts that agentcage's
 // tripwire system handles.
 type FalcoService struct {
-	proc *subprocess
-	log  logr.Logger
+	proc    *subprocess
+	log     logr.Logger
+	version string
 }
 
-func NewFalcoService(log logr.Logger) *FalcoService {
-	return &FalcoService{log: log.WithValues("service", "falco")}
+func NewFalcoService(log logr.Logger, version string) *FalcoService {
+	return &FalcoService{log: log.WithValues("service", "falco"), version: version}
 }
 
 func (f *FalcoService) Name() string      { return "falco" }
@@ -32,41 +32,17 @@ func (f *FalcoService) Download(ctx context.Context) error {
 		return nil
 	}
 
-	arch := archSuffix()
-	// Static binary runs on both glibc and musl. The VM rootfs is
-	// Alpine (musl), so the default glibc-linked build won't work.
-	url := fmt.Sprintf("https://download.falco.org/packages/bin/%s/falco-%s-static-%s.tar.gz",
-		arch, falcoVersion, arch)
+	// Built from source with -DMUSL_OPTIMIZED_BUILD=ON in our
+	// release CI. Native musl binary, no gcompat shim needed.
+	arch := runtime.GOARCH
+	url := fmt.Sprintf("https://github.com/okedeji/agentcage/releases/download/v%s/falco-%s",
+		f.version, arch)
 
-	f.log.Info("downloading falco", "version", falcoVersion, "url", url)
-
-	archivePath := filepath.Join(BinDir(), "falco-"+falcoVersion+".tar.gz")
-	if err := downloadBinaryWithLog(ctx, url, archivePath, f.log); err != nil {
+	f.log.Info("downloading falco", "url", url)
+	if err := downloadBinaryWithLog(ctx, url, dest, f.log); err != nil {
 		return fmt.Errorf("downloading falco: %w", err)
 	}
-
-	falcoDir := filepath.Join(BinDir(), "falco-"+falcoVersion)
-	archive, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("opening falco archive: %w", err)
-	}
-	defer func() { _ = archive.Close() }()
-
-	if err := extractTarGz(archive, falcoDir); err != nil {
-		_ = os.Remove(archivePath)
-		return fmt.Errorf("extracting falco: %w", err)
-	}
-	_ = os.Remove(archivePath)
-
-	// The archive extracts with an arch-suffixed directory name
-	// (e.g. falco-0.43.0-aarch64/usr/bin/falco).
-	src := filepath.Join(falcoDir, fmt.Sprintf("falco-%s-static-%s", falcoVersion, arch), "usr", "bin", "falco")
-	if err := os.Rename(src, dest); err != nil {
-		return fmt.Errorf("moving falco binary: %w", err)
-	}
-	_ = os.RemoveAll(falcoDir)
-
-	return nil
+	return os.Chmod(dest, 0755)
 }
 
 func (f *FalcoService) Start(ctx context.Context) error {
