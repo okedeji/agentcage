@@ -36,93 +36,93 @@ var detectConditions = map[string]struct {
 	priority  string
 }{
 	"privileged_shell": {
-		condition: "spawned_process and proc.name in (bash, sh, dash, zsh) and proc.uid = 0 and container.id != host",
-		output:    "Privileged shell spawned (user=%user.name command=%proc.cmdline container=%container.id)",
+		condition: "spawned_process and proc.name in (bash, sh, dash, zsh) and user.uid = 0",
+		output:    "Privileged shell spawned user=%user.name command=%proc.cmdline pid=%proc.pid",
 		priority:  "WARNING",
 	},
 	"any_shell": {
-		condition: "spawned_process and proc.name in (bash, sh, dash, zsh) and container.id != host",
-		output:    "Shell spawned (command=%proc.cmdline container=%container.id)",
+		condition: "spawned_process and proc.name in (bash, sh, dash, zsh)",
+		output:    "Shell spawned command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"sensitive_file_write": {
-		condition: "open_write and (fd.name startswith /etc/ or fd.name startswith /proc/ or fd.name startswith /sys/) and container.id != host",
-		output:    "Sensitive file write (file=%fd.name command=%proc.cmdline container=%container.id)",
+		condition: "open_write and (fd.name startswith /etc/ or fd.name startswith /proc/ or fd.name startswith /sys/)",
+		output:    "Sensitive file write file=%fd.name command=%proc.cmdline pid=%proc.pid",
 		priority:  "WARNING",
 	},
 	"any_file_write": {
-		condition: "open_write and container.id != host",
-		output:    "File write (file=%fd.name command=%proc.cmdline container=%container.id)",
+		condition: "open_write",
+		output:    "File write file=%fd.name command=%proc.cmdline pid=%proc.pid",
 		priority:  "WARNING",
 	},
 	"privilege_escalation": {
-		condition: "(evt.type in (setuid, setgid, setreuid, setregid) or proc.name = sudo) and container.id != host",
-		output:    "Privilege escalation attempt (syscall=%evt.type command=%proc.cmdline container=%container.id)",
+		condition: "(evt.type in (setuid, setgid, setreuid, setregid) or proc.name = sudo)",
+		output:    "Privilege escalation attempt syscall=%evt.type command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"fork_bomb": {
-		condition: "evt.type = clone and container.id != host",
-		output:    "Process fork (command=%proc.cmdline parent=%proc.pname container=%container.id)",
+		condition: "evt.type = clone",
+		output:    "Process fork command=%proc.cmdline parent=%proc.pname pid=%proc.pid",
 		priority:  "NOTICE",
 	},
 	"unexpected_network": {
-		condition: "evt.type in (connect, sendto) and fd.type = ipv4 and container.id != host",
-		output:    "Network connection (dest=%fd.sip:%fd.sport command=%proc.cmdline container=%container.id)",
+		condition: "evt.type in (connect, sendto) and fd.type = ipv4",
+		output:    "Network connection dest=%fd.sip:%fd.sport command=%proc.cmdline pid=%proc.pid",
 		priority:  "NOTICE",
 	},
 	"lateral_movement": {
-		condition: "evt.type in (connect, sendto) and fd.sport in (22, 3389, 445) and container.id != host",
-		output:    "Lateral movement attempt (dest=%fd.sip:%fd.sport command=%proc.cmdline container=%container.id)",
+		condition: "evt.type in (connect, sendto) and fd.sport in (22, 3389, 445)",
+		output:    "Lateral movement attempt dest=%fd.sip:%fd.sport command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"unexpected_process": {
-		condition: "spawned_process and not proc.name in (%s) and container.id != host",
-		output:    "Unexpected process (process=%proc.name command=%proc.cmdline container=%container.id)",
+		condition: "spawned_process and not proc.name in (%s)",
+		output:    "Unexpected process process=%proc.name command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"kernel_module": {
-		condition: "(evt.type in (init_module, finit_module) or proc.name in (insmod, modprobe)) and container.id != host",
-		output:    "Kernel module load attempt (command=%proc.cmdline container=%container.id)",
+		condition: "(evt.type in (init_module, finit_module) or proc.name in (insmod, modprobe))",
+		output:    "Kernel module load attempt command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"ptrace": {
-		condition: "evt.type = ptrace and evt.arg.request in (PTRACE_ATTACH, PTRACE_SEIZE) and container.id != host",
-		output:    "Ptrace attach to process (target=%proc.pid command=%proc.cmdline container=%container.id)",
+		condition: "evt.type = ptrace and evt.arg.request in (PTRACE_ATTACH, PTRACE_SEIZE)",
+		output:    "Ptrace attach to process target=%proc.pid command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"mount": {
-		condition: "evt.type in (mount, umount2) and container.id != host",
-		output:    "Mount operation (command=%proc.cmdline container=%container.id)",
+		condition: "evt.type in (mount, umount2)",
+		output:    "Mount operation command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"container_escape": {
-		condition: "open_read and (fd.name startswith /var/run/docker.sock or fd.name startswith /proc/1/root or fd.name startswith /proc/1/ns) and container.id != host",
-		output:    "Container escape attempt (file=%fd.name command=%proc.cmdline container=%container.id)",
+		condition: "open_read and (fd.name startswith /var/run/docker.sock or fd.name startswith /proc/1/root or fd.name startswith /proc/1/ns)",
+		output:    "Container escape attempt file=%fd.name command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"raw_socket": {
-		condition: "evt.type = socket and evt.arg.type in (SOCK_RAW, SOCK_PACKET) and container.id != host",
-		output:    "Raw socket created (command=%proc.cmdline container=%container.id)",
+		condition: "evt.type = socket and evt.arg.type in (SOCK_RAW, SOCK_PACKET)",
+		output:    "Raw socket created command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"dns_exfil": {
-		condition: "evt.type in (connect, sendto) and fd.sport = 53 and fd.type = ipv4 and container.id != host",
-		output:    "DNS query (dest=%fd.sip command=%proc.cmdline container=%container.id)",
+		condition: "evt.type in (connect, sendto) and fd.sport = 53 and fd.type = ipv4",
+		output:    "DNS query dest=%fd.sip command=%proc.cmdline pid=%proc.pid",
 		priority:  "NOTICE",
 	},
 	"large_read": {
-		condition: "open_read and evt.rawres > 1048576 and container.id != host",
-		output:    "Large file read (file=%fd.name bytes=%evt.rawres command=%proc.cmdline container=%container.id)",
+		condition: "open_read and evt.rawres > 1048576",
+		output:    "Large file read file=%fd.name bytes=%evt.rawres command=%proc.cmdline pid=%proc.pid",
 		priority:  "WARNING",
 	},
 	"persistence": {
-		condition: "(open_write and fd.name startswith /var/spool/cron) or (proc.name in (crontab, at, atd)) and container.id != host",
-		output:    "Persistence attempt via scheduled job (file=%fd.name command=%proc.cmdline container=%container.id)",
+		condition: "(open_write and fd.name startswith /var/spool/cron) or (proc.name in (crontab, at, atd))",
+		output:    "Persistence attempt via scheduled job file=%fd.name command=%proc.cmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 	"download_exec": {
-		condition: "spawned_process and proc.name in (curl, wget) and proc.pcmdline contains chmod and container.id != host",
-		output:    "Download and execute (command=%proc.cmdline parent=%proc.pcmdline container=%container.id)",
+		condition: "spawned_process and proc.name in (curl, wget) and proc.pcmdline contains chmod",
+		output:    "Download and execute command=%proc.cmdline parent=%proc.pcmdline pid=%proc.pid",
 		priority:  "CRITICAL",
 	},
 }
@@ -170,7 +170,7 @@ func GenerateFalcoRules(monitoring map[string]config.MonitoringConfig) (map[stri
 				Rule:      fullName,
 				Desc:      fmt.Sprintf("Detects %s in %s cages", humanizeRuleName(ruleName), cageType),
 				Condition: condition,
-				Output:    fmt.Sprintf("%s in %s cage (%s)", humanizeRuleName(ruleName), cageType, output),
+				Output:    fmt.Sprintf("%s in %s cage: %s", humanizeRuleName(ruleName), cageType, output),
 				Priority:  def.priority,
 				Tags:      []string{"agentcage", cageType, ruleName},
 			})
@@ -186,8 +186,22 @@ func GenerateFalcoRules(monitoring map[string]config.MonitoringConfig) (map[stri
 }
 
 // RenderFalcoYAML serializes generated rules to Falco YAML format.
+// Macros our rules reference. Defined here so we don't depend on
+// Falco's bundled falco_rules.yaml which may not be installed.
+const falcoMacroPreamble = `- macro: spawned_process
+  condition: evt.type in (execve, execveat)
+
+- macro: open_read
+  condition: evt.type in (open, openat, openat2) and evt.is_open_read = true and fd.typechar = f
+
+- macro: open_write
+  condition: evt.type in (open, openat, openat2) and evt.is_open_write = true and fd.typechar = f
+
+`
+
 func RenderFalcoYAML(rules map[string][]FalcoRuleOutput) string {
 	var b strings.Builder
+	b.WriteString(falcoMacroPreamble)
 	for _, ruleSet := range rules {
 		for _, r := range ruleSet {
 			fmt.Fprintf(&b, "- rule: %s\n", r.Rule)
