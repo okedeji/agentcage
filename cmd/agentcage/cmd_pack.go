@@ -79,7 +79,7 @@ func cmdPack(args []string) {
 		Payload: &pb.PackRequest_Metadata{
 			Metadata: &pb.PackMetadata{
 				CagefileContent: string(cagefileData),
-				DirectoryName:   filepath.Base(dir),
+				DirectoryName:   resolvedDirName(dir),
 			},
 		},
 	}); err != nil {
@@ -116,13 +116,17 @@ func cmdPack(args []string) {
 			ui.Step("[%s] %s", p.Progress.Stage, p.Progress.Message)
 		case *pb.PackResponse_Result:
 			sizeMB := float64(p.Result.SizeBytes) / (1024 * 1024)
+			ref := p.Result.BundleRef
+			shortRef := ref[:12]
 			fmt.Println()
 			ui.OK("Packed: %s v%s (%.1f MB)", p.Result.Name, p.Result.Version, sizeMB)
 			ui.Info("Runtime", p.Result.Runtime)
 			ui.Info("Entrypoint", p.Result.Entrypoint)
-			ui.Info("Bundle ref", p.Result.BundleRef[:12]+"...")
+			ui.Info("Bundle", shortRef)
 			fmt.Println()
-			ui.Step("Run: agentcage run --plan plan.yaml")
+			fmt.Printf("  Run an assessment:\n")
+			fmt.Printf("    agentcage run --bundle %s --target <domain> --customer-id <id>\n", shortRef)
+			fmt.Println()
 		}
 	}
 }
@@ -207,5 +211,13 @@ func streamSourceDir(stream pb.PackService_PackClient, dir string) error {
 		}
 	}
 	return nil
+}
+
+func resolvedDirName(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return filepath.Base(dir)
+	}
+	return filepath.Base(abs)
 }
 
