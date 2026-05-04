@@ -159,9 +159,12 @@ CONFIG_BPF_JIT=y
 CONFIG_BPF_JIT_ALWAYS_ON=y
 CONFIG_BPF_EVENTS=y
 CONFIG_HAVE_EBPF_JIT=y
+# DEBUG_INFO_NONE must be explicitly disabled or the Kconfig choice
+# defaults to "none" and drops BTF silently.
+# CONFIG_DEBUG_INFO_NONE is not set
 CONFIG_DEBUG_INFO=y
-CONFIG_DEBUG_INFO_BTF=y
 CONFIG_DEBUG_INFO_DWARF5=y
+CONFIG_DEBUG_INFO_BTF=y
 CONFIG_TRACING=y
 CONFIG_TRACEPOINTS=y
 CONFIG_HAVE_SYSCALL_TRACEPOINTS=y
@@ -202,7 +205,7 @@ echo "==="
 
 # Verify critical BPF/tracing configs survived olddefconfig.
 # These are easy to lose silently when a dependency isn't met.
-REQUIRED_CONFIGS="BPF_SYSCALL BPF_JIT BPF_EVENTS DEBUG_INFO_BTF TRACING TRACEPOINTS FTRACE FTRACE_SYSCALLS PERF_EVENTS KPROBES KPROBE_EVENTS"
+REQUIRED_CONFIGS="BPF_SYSCALL BPF_JIT BPF_EVENTS DEBUG_INFO DEBUG_INFO_BTF TRACING TRACEPOINTS FTRACE FTRACE_SYSCALLS PERF_EVENTS KPROBES KPROBE_EVENTS"
 for cfg in $REQUIRED_CONFIGS; do
     if ! grep -q "CONFIG_${cfg}=y" "$SRCDIR/.config"; then
         echo "FATAL: CONFIG_${cfg} not enabled after olddefconfig (dependency missing?)"
