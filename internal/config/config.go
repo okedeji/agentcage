@@ -389,7 +389,8 @@ type VaultConfig struct {
 }
 
 type FalcoConfig struct {
-	Socket string `yaml:"socket"`
+	Socket    string `yaml:"socket"`
+	AlertFile string `yaml:"alert_file"`
 }
 
 type NomadConfig struct {

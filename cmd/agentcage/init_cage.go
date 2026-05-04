@@ -116,27 +116,27 @@ func writeFalcoRules(cfg *config.Config, log logr.Logger) (cage.AlertHandler, er
 // Falco is the only behavioral tripwire, so missing Falco is
 // fatal in strict posture.
 func openFalcoReader(ctx context.Context, cfg *config.Config, log logr.Logger) (*cage.FalcoAlertReader, error) {
-	socket := filepath.Join(embedded.RunDir(), "falco", "falco.sock")
-	if cfg.Infrastructure.Falco != nil && cfg.Infrastructure.Falco.Socket != "" {
-		socket = cfg.Infrastructure.Falco.Socket
+	alertFile := filepath.Join(embedded.RunDir(), "falco", "alerts.jsonl")
+	if cfg.Infrastructure.Falco != nil && cfg.Infrastructure.Falco.AlertFile != "" {
+		alertFile = cfg.Infrastructure.Falco.AlertFile
 	}
 
 	// Falco was just started by the embedded manager. Give it up to
-	// 10s to create and bind its socket before declaring failure.
-	var reason string
+	// 10s to create the alert file before declaring failure.
+	var found bool
 	for attempts := 0; attempts < 20; attempts++ {
-		reason = cage.CheckFalcoSocket(ctx, socket)
-		if reason == "" {
+		if _, err := os.Stat(alertFile); err == nil {
+			found = true
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	if reason != "" {
-		return nil, fmt.Errorf("falco not usable (%s): behavioral tripwires are required for cage isolation", reason)
+	if !found {
+		return nil, fmt.Errorf("falco not usable (alert file not created): behavioral tripwires are required for cage isolation")
 	}
 
-	log.Info("Falco alert reader configured", "socket", socket)
-	return cage.NewFalcoAlertReader(socket, log), nil
+	log.Info("Falco alert reader configured", "file", alertFile)
+	return cage.NewFalcoAlertReader(alertFile, log), nil
 }
 
 // startHoldControlServer binds an HTTP server that receives payload hold

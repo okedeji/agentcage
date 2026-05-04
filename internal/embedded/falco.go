@@ -45,19 +45,26 @@ func (f *FalcoService) Download(ctx context.Context) error {
 	return os.Chmod(dest, 0755)
 }
 
+// AlertFilePath returns where Falco writes JSON alert lines.
+func (f *FalcoService) AlertFilePath() string {
+	return filepath.Join(RunDir(), "falco", "alerts.jsonl")
+}
+
 func (f *FalcoService) Start(ctx context.Context) error {
 	bin := filepath.Join(BinDir(), "falco")
 	rulesDir := filepath.Join(RunDir(), "falco", "rules.d")
-	socketPath := filepath.Join(RunDir(), "falco", "falco.sock")
+	alertFile := f.AlertFilePath()
 
-	_ = os.MkdirAll(filepath.Dir(socketPath), 0755)
+	_ = os.MkdirAll(filepath.Dir(alertFile), 0755)
 
 	f.proc = newSubprocess("falco", f.log, bin,
 		"-o", "engine.kind=modern_ebpf",
-		"--json-output",
-		"--rules-dir", rulesDir,
-		"--unbuffered",
-		"--unix-socket", socketPath,
+		"-o", "json_output=true",
+		"-o", "buffered_outputs=false",
+		"-o", "file_output.enabled=true",
+		"-o", "file_output.filename="+alertFile,
+		"-o", "file_output.keep_alive=true",
+		"-r", rulesDir,
 	)
 
 	if err := f.proc.start(ctx); err != nil {
