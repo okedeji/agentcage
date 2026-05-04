@@ -53,6 +53,21 @@ func (c *CageInternalDownloader) Download(ctx context.Context) error {
 			return fmt.Errorf("downloading %s: %w", name, err)
 		}
 	}
+
+	// SDK tarball is needed by the pack service to resolve
+	// @agentcage/sdk during npm install.
+	sdkDest := filepath.Join(BinDir(), "agentcage-sdk.tgz")
+	if _, err := os.Stat(sdkDest); err != nil {
+		url := fmt.Sprintf(
+			"https://github.com/okedeji/agentcage/releases/download/v%s/agentcage-sdk-%s.tgz",
+			c.version, c.version,
+		)
+		c.log.Info("downloading", "binary", "agentcage-sdk", "url", url)
+		if err := downloadBinary(ctx, url, sdkDest); err != nil {
+			return fmt.Errorf("downloading SDK tarball: %w", err)
+		}
+	}
+
 	return nil
 }
 

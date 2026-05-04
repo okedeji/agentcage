@@ -124,6 +124,9 @@ if [ ! -x "$BINARY" ]; then
     exec /bin/sh
 fi
 
+# Ensure installed tools (npm, python3, go) are reachable.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 # Run agentcage inside the VM. --home must precede the subcommand
 # because main.go parses global flags before dispatching.
 INIT_ARGS="--grpc-addr 0.0.0.0:9090"
