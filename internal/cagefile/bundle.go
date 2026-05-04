@@ -427,13 +427,29 @@ func addDirToTar(tw *tar.Writer, srcDir, prefix string) error {
 			return nil
 		}
 
-		// Could reference files outside the agent directory.
+		// Resolve symlinks but reject any that escape the agent directory.
 		linfo, lstatErr := os.Lstat(path)
 		if lstatErr != nil {
 			return fmt.Errorf("stat %s: %w", path, lstatErr)
 		}
 		if linfo.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlinks not allowed in agent directory: %s", path)
+			resolved, resolveErr := filepath.EvalSymlinks(path)
+			if resolveErr != nil {
+				return fmt.Errorf("resolving symlink %s: %w", path, resolveErr)
+			}
+			if !strings.HasPrefix(resolved, srcDir) {
+				return fmt.Errorf("symlink %s escapes agent directory (points to %s)", path, resolved)
+			}
+			// Skip directory symlinks to avoid walking them twice.
+			resolvedInfo, statErr := os.Stat(resolved)
+			if statErr != nil {
+				return fmt.Errorf("stat resolved symlink %s: %w", resolved, statErr)
+			}
+			if resolvedInfo.IsDir() {
+				return filepath.SkipDir
+			}
+			// Use the resolved file's info for correct size in tar header.
+			info = resolvedInfo
 		}
 
 		rel, err := filepath.Rel(srcDir, path)
@@ -494,7 +510,14 @@ func hashDir(dir string) (string, error) {
 			return fmt.Errorf("stat %s: %w", path, lstatErr)
 		}
 		if linfo.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlinks not allowed in agent directory: %s", path)
+			resolved, resolveErr := filepath.EvalSymlinks(path)
+			if resolveErr != nil {
+				return fmt.Errorf("resolving symlink %s: %w", path, resolveErr)
+			}
+			if !strings.HasPrefix(resolved, dir) {
+				return fmt.Errorf("symlink %s escapes agent directory (points to %s)", path, resolved)
+			}
+			return nil
 		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {

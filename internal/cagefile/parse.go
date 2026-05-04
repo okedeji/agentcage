@@ -27,6 +27,7 @@ var SupportedTools = func() map[string]bool {
 type Manifest struct {
 	Runtime    string   `json:"runtime"`
 	Entrypoint string   `json:"entrypoint"`
+	Build      string   `json:"build,omitempty"`
 	SystemDeps []string `json:"system_deps,omitempty"`
 	Packages   []string `json:"packages,omitempty"`
 	PipDeps    []string `json:"pip_deps,omitempty"`
@@ -70,6 +71,12 @@ func Parse(r io.Reader) (*Manifest, error) {
 				return nil, fmt.Errorf("line %d: duplicate entrypoint directive", lineNum)
 			}
 			m.Entrypoint = value
+
+		case "build":
+			if m.Build != "" {
+				return nil, fmt.Errorf("line %d: duplicate build directive", lineNum)
+			}
+			m.Build = value
 
 		case "deps":
 			deps := strings.Fields(value)

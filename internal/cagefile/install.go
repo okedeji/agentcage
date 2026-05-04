@@ -16,69 +16,87 @@ import (
 func InstallDependencies(ctx context.Context, manifest *Manifest, agentDir, sdkTarball string, progress func(string)) error {
 	switch manifest.Runtime {
 	case "node":
-		return installNodeDeps(ctx, manifest, agentDir, sdkTarball, progress)
+		if err := installNodeDeps(ctx, manifest, agentDir, sdkTarball, progress); err != nil {
+			return err
+		}
 	case "python3":
-		return installPythonDeps(ctx, manifest, agentDir, progress)
+		if err := installPythonDeps(ctx, manifest, agentDir, progress); err != nil {
+			return err
+		}
 	case "go":
-		return installGoDeps(ctx, manifest, agentDir, progress)
+		if err := installGoDeps(ctx, manifest, agentDir, progress); err != nil {
+			return err
+		}
 	case "static":
 		progress("static runtime, no dependencies to install")
-		return nil
 	default:
 		return fmt.Errorf("unsupported runtime: %s", manifest.Runtime)
 	}
+
+	if manifest.Build != "" {
+		if err := runBuild(ctx, manifest, agentDir, progress); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runBuild(ctx context.Context, manifest *Manifest, agentDir string, progress func(string)) error {
+	progress("build: " + manifest.Build)
+	parts := strings.Fields(manifest.Build)
+	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+	cmd.Dir = agentDir
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("build failed: %w\n%s", err, out)
+	}
+	progress("build complete")
+	return nil
 }
 
 func installNodeDeps(ctx context.Context, manifest *Manifest, agentDir, sdkTarball string, progress func(string)) error {
-	if len(manifest.NpmDeps) == 0 {
-		progress("no npm dependencies declared")
+	hasPkgJSON := fileExistsAt(filepath.Join(agentDir, "package.json"))
+
+	if !hasPkgJSON && len(manifest.NpmDeps) == 0 {
+		progress("no package.json and no npm dependencies declared")
 		return nil
 	}
 
-	progress("writing package.json")
-
-	// Build package.json from manifest deps.
-	deps := make(map[string]string, len(manifest.NpmDeps))
-	for _, dep := range manifest.NpmDeps {
-		name, version := splitNpmDep(dep)
-		deps[name] = version
-	}
-
-	pkg := map[string]any{
-		"name":         "agentcage-build",
-		"version":      "1.0.0",
-		"private":      true,
-		"dependencies": deps,
-	}
-	pkgJSON, err := json.MarshalIndent(pkg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling package.json: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(agentDir, "package.json"), pkgJSON, 0644); err != nil {
-		return fmt.Errorf("writing package.json: %w", err)
-	}
-
-	// Write .npmrc to resolve @agentcage/sdk from local tarball.
-	if sdkTarball != "" {
-		npmrc := fmt.Sprintf("@agentcage:registry=file://%s\n", filepath.Dir(sdkTarball))
-		if err := os.WriteFile(filepath.Join(agentDir, ".npmrc"), []byte(npmrc), 0644); err != nil {
-			return fmt.Errorf("writing .npmrc: %w", err)
+	// If no package.json but Cagefile lists npm deps, generate one.
+	if !hasPkgJSON {
+		progress("generating package.json from Cagefile")
+		deps := make(map[string]string, len(manifest.NpmDeps))
+		for _, dep := range manifest.NpmDeps {
+			name, version := splitNpmDep(dep)
+			deps[name] = version
 		}
+		pkg := map[string]any{
+			"name":         "agentcage-build",
+			"version":      "1.0.0",
+			"private":      true,
+			"dependencies": deps,
+		}
+		pkgJSON, err := json.MarshalIndent(pkg, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshaling package.json: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(agentDir, "package.json"), pkgJSON, 0644); err != nil {
+			return fmt.Errorf("writing package.json: %w", err)
+		}
+	}
 
-		// Also rewrite the SDK dep to point to the tarball directly
-		// since file: registries don't work like real registries.
-		if _, ok := deps["@agentcage/sdk"]; ok {
-			deps["@agentcage/sdk"] = "file:" + sdkTarball
-			pkg["dependencies"] = deps
-			pkgJSON, _ = json.MarshalIndent(pkg, "", "  ")
-			_ = os.WriteFile(filepath.Join(agentDir, "package.json"), pkgJSON, 0644)
+	// Rewrite @agentcage/sdk to resolve from local tarball so
+	// npm install works without registry access.
+	if sdkTarball != "" {
+		if err := rewriteSDKDep(agentDir, sdkTarball); err != nil {
+			progress("warning: could not rewrite SDK dep: " + err.Error())
 		}
 	}
 
 	progress("npm install")
-	cmd := exec.CommandContext(ctx, "npm", "install", "--production", "--no-audit", "--no-fund")
+	cmd := exec.CommandContext(ctx, "npm", "install", "--no-audit", "--no-fund")
 	cmd.Dir = agentDir
-	cmd.Env = append(os.Environ(), "NODE_ENV=production")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("npm install failed: %w\n%s", err, out)
@@ -86,6 +104,43 @@ func installNodeDeps(ctx context.Context, manifest *Manifest, agentDir, sdkTarba
 
 	progress("npm install complete")
 	return nil
+}
+
+// rewriteSDKDep patches @agentcage/sdk in package.json to point to
+// the local tarball. Reads the existing package.json, modifies the
+// dep, writes it back.
+func rewriteSDKDep(agentDir, sdkTarball string) error {
+	pkgPath := filepath.Join(agentDir, "package.json")
+	data, err := os.ReadFile(pkgPath)
+	if err != nil {
+		return err
+	}
+
+	var pkg map[string]any
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return err
+	}
+
+	deps, ok := pkg["dependencies"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	if _, hasDep := deps["@agentcage/sdk"]; !hasDep {
+		return nil
+	}
+
+	deps["@agentcage/sdk"] = "file:" + sdkTarball
+	pkg["dependencies"] = deps
+	out, err := json.MarshalIndent(pkg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(pkgPath, out, 0644)
+}
+
+func fileExistsAt(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func installPythonDeps(ctx context.Context, manifest *Manifest, agentDir string, progress func(string)) error {
