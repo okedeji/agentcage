@@ -134,7 +134,14 @@ jobs:
           sudo apt-get install -y flex bison bc libelf-dev libssl-dev dwarves
       - name: Install cross-compiler
         if: steps.kernel-cache.outputs.cache-hit != 'true' && matrix.arch == 'arm64'
-        run: sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user-static
+        run: sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Install QEMU for cross-arch chroot
+        if: matrix.arch == 'arm64'
+        run: |
+          if ! command -v qemu-aarch64-static &>/dev/null; then
+            sudo apt-get update || true
+            sudo apt-get install -y qemu-user-static
+          fi
       - name: Build VM kernel
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         run: ./scripts/build-vm-kernel.sh ${{ matrix.arch }} vmlinux-6.12-${{ matrix.arch }}
