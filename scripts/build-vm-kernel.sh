@@ -152,20 +152,21 @@ CONFIG_VIRTUALIZATION=y
 CONFIG_KVM=y
 CONFIG_KVM_ARM_HOST=y
 
-# BPF + BTF (Falco modern-bpf needs these for syscall monitoring)
+# BPF + tracing (Falco modern eBPF uses BPF_PROG_TYPE_TRACING with raw tracepoints)
 CONFIG_BPF=y
 CONFIG_BPF_SYSCALL=y
 CONFIG_BPF_JIT=y
+CONFIG_BPF_JIT_ALWAYS_ON=y
 CONFIG_BPF_EVENTS=y
 CONFIG_HAVE_EBPF_JIT=y
 CONFIG_DEBUG_INFO=y
 CONFIG_DEBUG_INFO_BTF=y
 CONFIG_DEBUG_INFO_DWARF5=y
-
-# Tracepoints + perf (Falco modern eBPF attaches BPF_PROG_TYPE_TRACING programs)
+CONFIG_TRACING=y
 CONFIG_TRACEPOINTS=y
 CONFIG_HAVE_SYSCALL_TRACEPOINTS=y
 CONFIG_FTRACE=y
+CONFIG_DYNAMIC_FTRACE=y
 CONFIG_FTRACE_SYSCALLS=y
 CONFIG_PERF_EVENTS=y
 CONFIG_PROFILING=y
@@ -192,6 +193,24 @@ KCONFIG
 
 echo "Configuring kernel..."
 make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" olddefconfig -j"$(nproc)"
+
+# Dump BPF/tracing config state after olddefconfig so we can see
+# exactly what was resolved vs dropped.
+echo "=== BPF/tracing config after olddefconfig ==="
+grep -E "CONFIG_(BPF|TRACING|TRACEPOINT|FTRACE|PERF_EVENTS|KPROBE|UPROBE|PROFILING|DEBUG_INFO_BTF|DYNAMIC_FTRACE)" "$SRCDIR/.config" | sort
+echo "==="
+
+# Verify critical BPF/tracing configs survived olddefconfig.
+# These are easy to lose silently when a dependency isn't met.
+REQUIRED_CONFIGS="BPF_SYSCALL BPF_JIT BPF_EVENTS DEBUG_INFO_BTF TRACING TRACEPOINTS FTRACE FTRACE_SYSCALLS PERF_EVENTS KPROBES KPROBE_EVENTS"
+for cfg in $REQUIRED_CONFIGS; do
+    if ! grep -q "CONFIG_${cfg}=y" "$SRCDIR/.config"; then
+        echo "FATAL: CONFIG_${cfg} not enabled after olddefconfig (dependency missing?)"
+        grep "CONFIG_${cfg}" "$SRCDIR/.config" || echo "  (not present in .config at all)"
+        exit 1
+    fi
+done
+echo "All required BPF/tracing configs verified."
 
 BUILD_LOG="$WORKDIR/build.log"
 echo "Building kernel (this takes a few minutes)..."
