@@ -65,35 +65,45 @@ jobs:
           path: cage-rootfs-${{ matrix.arch }}.ext4.gz
 
   build-falco:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         arch: [amd64, arm64]
         include:
           - arch: amd64
-            platform: linux/amd64
+            runner: ubuntu-latest
           - arch: arm64
-            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Set up QEMU
-        if: matrix.arch == 'arm64'
-        uses: docker/setup-qemu-action@v3
+      - name: Cache Falco build
+        uses: actions/cache@v4
+        with:
+          path: falco-build-${{ matrix.arch }}
+          key: falco-0.43.0-modern-bpf-${{ matrix.arch }}
       - name: Build Falco from source (musl)
         run: |
-          docker run --rm --platform ${{ matrix.platform }} \
-            -v $PWD:/out \
-            alpine:3.19 /bin/sh -c '
-              apk add g++ gcc cmake make git bash perl linux-headers \
-                autoconf automake m4 libtool elfutils-dev libelf-static \
-                binutils bpftool clang
-              git clone --depth 1 --branch 0.43.0 \
-                https://github.com/falcosecurity/falco.git /build
-              cd /build && mkdir build && cd build
-              cmake -DUSE_BUNDLED_DEPS=ON -DMUSL_OPTIMIZED_BUILD=ON \
-                -DCMAKE_BUILD_TYPE=Release ..
-              make -j$(nproc) falco
-              cp /build/build/userspace/falco/falco /out/falco-${{ matrix.arch }}
-            '
+          mkdir -p falco-build-${{ matrix.arch }}
+          if [ -f "falco-build-${{ matrix.arch }}/userspace/falco/falco" ]; then
+            cp "falco-build-${{ matrix.arch }}/userspace/falco/falco" falco-${{ matrix.arch }}
+            echo "Using cached Falco binary"
+          else
+            docker run --rm \
+              -v $PWD/falco-build-${{ matrix.arch }}:/build/build \
+              -v $PWD:/out \
+              alpine:3.19 /bin/sh -c '
+                apk add g++ gcc cmake make git bash perl linux-headers \
+                  autoconf automake m4 libtool elfutils-dev libelf-static \
+                  binutils bpftool clang
+                git clone --depth 1 --branch 0.43.0 \
+                  https://github.com/falcosecurity/falco.git /build/src
+                cd /build/build
+                cmake -DUSE_BUNDLED_DEPS=ON -DMUSL_OPTIMIZED_BUILD=ON \
+                  -DBUILD_FALCO_MODERN_BPF=ON \
+                  -DCMAKE_BUILD_TYPE=Release /build/src
+                make -j$(nproc) falco
+                cp /build/build/userspace/falco/falco /out/falco-${{ matrix.arch }}
+              '
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: falco-${{ matrix.arch }}
@@ -111,14 +121,22 @@ jobs:
             kernel_arch: aarch64
     steps:
       - uses: actions/checkout@v4
+      - name: Cache VM kernel
+        id: kernel-cache
+        uses: actions/cache@v4
+        with:
+          path: vmlinux-6.12-${{ matrix.arch }}
+          key: vmlinux-6.12.84-${{ matrix.arch }}-${{ hashFiles('scripts/build-vm-kernel.sh') }}
       - name: Install kernel build dependencies
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y flex bison bc libelf-dev libssl-dev dwarves
       - name: Install cross-compiler
-        if: matrix.arch == 'arm64'
+        if: steps.kernel-cache.outputs.cache-hit != 'true' && matrix.arch == 'arm64'
         run: sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user-static
       - name: Build VM kernel
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
         run: ./scripts/build-vm-kernel.sh ${{ matrix.arch }} vmlinux-6.12-${{ matrix.arch }}
       - name: Build rootfs image
         run: |
