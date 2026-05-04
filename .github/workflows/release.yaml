@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: falco-build-${{ matrix.arch }}
-          key: falco-0.43.0-modern-bpf-${{ matrix.arch }}
+          key: falco-0.43.0-modern-bpf-v2-${{ matrix.arch }}
       - name: Build Falco from source (musl)
         run: |
           mkdir -p falco-build-${{ matrix.arch }}
