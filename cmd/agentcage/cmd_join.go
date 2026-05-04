@@ -199,11 +199,11 @@ plugin "raw_exec" {
 Description=Falco Runtime Security (agentcage)
 After=network.target
 [Service]
-ExecStart=%s/falco --modern-bpf --json-output --unbuffered --unix-socket=%s/falco/falco.sock
+ExecStart=%s/falco -o engine.kind=modern_ebpf -o json_output=true -o buffered_outputs=false -o file_output.enabled=true -o file_output.filename=%s/falco/alerts.jsonl -o file_output.keep_alive=true -r %s/falco/rules.d
 Restart=always
 [Install]
 WantedBy=multi-user.target
-`, embedded.BinDir(), embedded.RunDir()),
+`, embedded.BinDir(), embedded.RunDir(), embedded.RunDir()),
 
 		"agentcage-spire-agent": fmt.Sprintf(`[Unit]
 Description=SPIRE Agent (agentcage)
