@@ -1,15 +1,12 @@
 {
   "name": "agent-starter",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@agentcage/sdk": "0.1.0"
+    "@agentcage/sdk": "0.1.0",
+    "typescript": "5.7.3"
   }
 }
