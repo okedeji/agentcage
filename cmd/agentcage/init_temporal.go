@@ -13,6 +13,7 @@ import (
 	taskqueue "go.temporal.io/api/taskqueue/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
+	tlog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
@@ -39,6 +40,7 @@ func connectTemporal(ctx context.Context, cfg *config.Config, secrets identity.S
 	ui.Step("Connecting to Temporal")
 	opts := client.Options{
 		HostPort: temporalAddr,
+		Logger:   &temporalLogAdapter{log: log.WithValues("component", "temporal-sdk")},
 		// SDK metrics through OTel so worker internals land in the
 		// same pipeline as everything else.
 		MetricsHandler: metrics.NewTemporalMetricsHandler(),
@@ -240,4 +242,25 @@ func waitForWorkerReady(ctx context.Context, c client.Client, namespace, taskQue
 		}
 	}
 	return fmt.Errorf("no pollers registered on %s within %s", taskQueueName, timeout)
+}
+
+// temporalLogAdapter routes Temporal SDK logs through our logr logger
+// so they end up in orchestrator.log instead of stderr.
+type temporalLogAdapter struct {
+	log logr.Logger
+}
+
+var _ tlog.Logger = (*temporalLogAdapter)(nil)
+
+func (a *temporalLogAdapter) Debug(msg string, keyvals ...interface{}) {
+	a.log.V(1).Info(msg, keyvals...)
+}
+func (a *temporalLogAdapter) Info(msg string, keyvals ...interface{}) {
+	a.log.Info(msg, keyvals...)
+}
+func (a *temporalLogAdapter) Warn(msg string, keyvals ...interface{}) {
+	a.log.Info("WARN: "+msg, keyvals...)
+}
+func (a *temporalLogAdapter) Error(msg string, keyvals ...interface{}) {
+	a.log.Error(nil, msg, keyvals...)
 }
