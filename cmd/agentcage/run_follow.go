@@ -24,12 +24,14 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 	defer cancel()
 
 	client := pb.NewAssessmentServiceClient(conn)
+	iClient := pb.NewInterventionServiceClient(conn)
 	jsonMode := format == "json"
 	var lastStatus string
 	var lastValidated int32 = -1
 	var lastCandidate int32 = -1
 	var lastCages int32 = -1
 	var consecutiveErrors int
+	seenInterventions := make(map[string]bool)
 	lastChange := time.Now()
 
 	fmt.Println("\nFollowing assessment progress... (Ctrl+C to detach, assessment continues)")
@@ -97,6 +99,28 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 				lastValidated = validated
 				lastCandidate = candidate
 				lastChange = time.Now()
+			}
+		}
+
+		// Check for new interventions affecting this assessment.
+		iCtx, iCancel := context.WithTimeout(ctx, 5*time.Second)
+		iResp, iErr := iClient.ListInterventions(iCtx, &pb.ListInterventionsRequest{
+			AssessmentIdFilter: assessmentID,
+		})
+		iCancel()
+		if iErr == nil {
+			for _, iv := range iResp.GetInterventions() {
+				if seenInterventions[iv.GetInterventionId()] {
+					continue
+				}
+				seenInterventions[iv.GetInterventionId()] = true
+				lastChange = time.Now()
+				if jsonMode {
+					fmt.Printf("{\"intervention\":%q,\"type\":%q,\"priority\":%q,\"description\":%q}\n",
+						iv.GetInterventionId(), iv.GetType().String(), iv.GetPriority().String(), iv.GetDescription())
+				} else {
+					fmt.Printf("  ⚠  Intervention [%s] %s\n", iv.GetPriority().String(), iv.GetDescription())
+				}
 			}
 		}
 
