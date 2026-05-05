@@ -108,6 +108,7 @@ type PackMetadata struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	CagefileContent string                 `protobuf:"bytes,1,opt,name=cagefile_content,json=cagefileContent,proto3" json:"cagefile_content,omitempty"`
 	DirectoryName   string                 `protobuf:"bytes,2,opt,name=directory_name,json=directoryName,proto3" json:"directory_name,omitempty"`
+	Tag             string                 `protobuf:"bytes,3,opt,name=tag,proto3" json:"tag,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -152,6 +153,13 @@ func (x *PackMetadata) GetCagefileContent() string {
 func (x *PackMetadata) GetDirectoryName() string {
 	if x != nil {
 		return x.DirectoryName
+	}
+	return ""
+}
+
+func (x *PackMetadata) GetTag() string {
+	if x != nil {
+		return x.Tag
 	}
 	return ""
 }
@@ -302,7 +310,7 @@ type PackResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BundleRef     string                 `protobuf:"bytes,1,opt,name=bundle_ref,json=bundleRef,proto3" json:"bundle_ref,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
+	Tag           string                 `protobuf:"bytes,3,opt,name=tag,proto3" json:"tag,omitempty"`
 	Runtime       string                 `protobuf:"bytes,4,opt,name=runtime,proto3" json:"runtime,omitempty"`
 	Entrypoint    string                 `protobuf:"bytes,5,opt,name=entrypoint,proto3" json:"entrypoint,omitempty"`
 	SizeBytes     int64                  `protobuf:"varint,6,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
@@ -354,9 +362,9 @@ func (x *PackResult) GetName() string {
 	return ""
 }
 
-func (x *PackResult) GetVersion() string {
+func (x *PackResult) GetTag() string {
 	if x != nil {
-		return x.Version
+		return x.Tag
 	}
 	return ""
 }
@@ -390,10 +398,11 @@ const file_api_proto_pack_proto_rawDesc = "" +
 	"\vPackRequest\x12=\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x1f.agentcage.pack.v1.PackMetadataH\x00R\bmetadata\x12\x16\n" +
 	"\x05chunk\x18\x02 \x01(\fH\x00R\x05chunkB\t\n" +
-	"\apayload\"`\n" +
+	"\apayload\"r\n" +
 	"\fPackMetadata\x12)\n" +
 	"\x10cagefile_content\x18\x01 \x01(\tR\x0fcagefileContent\x12%\n" +
-	"\x0edirectory_name\x18\x02 \x01(\tR\rdirectoryName\"\x91\x01\n" +
+	"\x0edirectory_name\x18\x02 \x01(\tR\rdirectoryName\x12\x10\n" +
+	"\x03tag\x18\x03 \x01(\tR\x03tag\"\x91\x01\n" +
 	"\fPackResponse\x12=\n" +
 	"\bprogress\x18\x01 \x01(\v2\x1f.agentcage.pack.v1.PackProgressH\x00R\bprogress\x127\n" +
 	"\x06result\x18\x02 \x01(\v2\x1d.agentcage.pack.v1.PackResultH\x00R\x06resultB\t\n" +
@@ -401,13 +410,13 @@ const file_api_proto_pack_proto_rawDesc = "" +
 	"\fPackProgress\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x18\n" +
-	"\apercent\x18\x03 \x01(\x05R\apercent\"\xb2\x01\n" +
+	"\apercent\x18\x03 \x01(\x05R\apercent\"\xaa\x01\n" +
 	"\n" +
 	"PackResult\x12\x1d\n" +
 	"\n" +
 	"bundle_ref\x18\x01 \x01(\tR\tbundleRef\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
-	"\aversion\x18\x03 \x01(\tR\aversion\x12\x18\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
+	"\x03tag\x18\x03 \x01(\tR\x03tag\x12\x18\n" +
 	"\aruntime\x18\x04 \x01(\tR\aruntime\x12\x1e\n" +
 	"\n" +
 	"entrypoint\x18\x05 \x01(\tR\n" +

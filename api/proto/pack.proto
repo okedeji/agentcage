@@ -21,6 +21,7 @@ message PackRequest {
 message PackMetadata {
   string cagefile_content = 1;
   string directory_name = 2;
+  string tag = 3;
 }
 
 message PackResponse {
@@ -39,7 +40,7 @@ message PackProgress {
 message PackResult {
   string bundle_ref = 1;
   string name = 2;
-  string version = 3;
+  string tag = 3;
   string runtime = 4;
   string entrypoint = 5;
   int64 size_bytes = 6;

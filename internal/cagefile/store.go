@@ -1,8 +1,11 @@
 package cagefile
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -68,6 +71,70 @@ func (s *BundleStore) Path(ref string) string {
 func (s *BundleStore) Exists(ref string) bool {
 	_, err := os.Stat(s.Path(ref))
 	return err == nil
+}
+
+// Resolve expands a short ref prefix to the full ref. Scans the store
+// directory for a .cage file whose name starts with the prefix.
+func (s *BundleStore) Resolve(prefix string) (string, error) {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return "", fmt.Errorf("reading bundle store: %w", err)
+	}
+
+	var match string
+	for _, e := range entries {
+		name := e.Name()
+		if !hasSuffix(name, ".cage") {
+			continue
+		}
+		ref := name[:len(name)-5]
+		if hasPrefix(ref, prefix) {
+			if match != "" {
+				return "", fmt.Errorf("ambiguous ref %s (matches %s and %s)", prefix, match[:12], ref[:12])
+			}
+			match = ref
+		}
+	}
+	if match == "" {
+		return "", fmt.Errorf("no bundle matches ref %s", prefix)
+	}
+	return match, nil
+}
+
+func hasPrefix(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+}
+
+func hasSuffix(s, suffix string) bool {
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+}
+
+// ReadManifestFromBundle reads manifest.json from a .cage tar.gz
+// without extracting all files. Used for listing agents.
+func ReadManifestFromBundle(r io.Reader) (*BundleManifest, error) {
+	gr, err := gzip.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = gr.Close() }()
+
+	tr := tar.NewReader(gr)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil, fmt.Errorf("manifest.json not found in bundle")
+		}
+		if err != nil {
+			return nil, err
+		}
+		if hdr.Name == "manifest.json" {
+			var m BundleManifest
+			if err := json.NewDecoder(tr).Decode(&m); err != nil {
+				return nil, fmt.Errorf("decoding manifest.json: %w", err)
+			}
+			return &m, nil
+		}
+	}
 }
 
 func hashFile(path string) (string, error) {

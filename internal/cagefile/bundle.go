@@ -19,7 +19,7 @@ import (
 
 type BundleManifest struct {
 	Name       string   `json:"name"`
-	Version    string   `json:"version"`
+	Tag        string   `json:"tag"`
 	Runtime    string   `json:"runtime"`
 	Entrypoint string   `json:"entrypoint"`
 	SystemDeps []string `json:"system_deps,omitempty"`
@@ -72,7 +72,7 @@ func Pack(dir string, version string, w io.Writer, opts *PackOptions) (*BundleMa
 
 	bundleManifest := &BundleManifest{
 		Name:       filepath.Base(dir),
-		Version:    version,
+		Tag:        version,
 		Runtime:    manifest.Runtime,
 		Entrypoint: manifest.Entrypoint,
 		SystemDeps: manifest.SystemDeps,
@@ -319,9 +319,9 @@ func Unpack(r io.Reader, destDir string, opts *UnpackOptions) (*BundleManifest, 
 }
 
 func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
-	bundleMajor, bundleMinor, err := majorMinorVersion(bundle.Version)
+	bundleMajor, bundleMinor, err := majorMinorVersion(bundle.Tag)
 	if err != nil {
-		return fmt.Errorf("invalid bundle version %q: %w", bundle.Version, err)
+		return fmt.Errorf("invalid bundle version %q: %w", bundle.Tag, err)
 	}
 	currentMajor, currentMinor, err := majorMinorVersion(currentVersion)
 	if err != nil {
@@ -329,13 +329,13 @@ func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
 	}
 	if bundleMajor != currentMajor {
 		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d): major version mismatch",
-			bundle.Version, bundleMajor, currentVersion, currentMajor)
+			bundle.Tag, bundleMajor, currentVersion, currentMajor)
 	}
 	// Pre-1.0: minor bumps are breaking per semver. Patch differences
 	// within the same minor are compatible (0.1.0 works with 0.1.5).
 	if bundleMajor == 0 && bundleMinor != currentMinor {
 		return fmt.Errorf("bundle was packed with agentcage v%s but this is v%s: minor version mismatch (pre-1.0 minors are breaking)",
-			bundle.Version, currentVersion)
+			bundle.Tag, currentVersion)
 	}
 	return nil
 }
