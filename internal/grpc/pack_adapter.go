@@ -15,8 +15,9 @@ import (
 
 // PackConfig holds dependencies for the pack service handler.
 type PackConfig struct {
-	BundleStoreDir string
-	SDKTarball     string
+	BundleStoreDir    string
+	SDKTarball        string
+	AgentcageVersion  string
 }
 
 type packAdapter struct {
@@ -131,7 +132,7 @@ func (a *packAdapter) Pack(stream pb.PackService_PackServer) error {
 	if bundleTag == "" {
 		bundleTag = "latest"
 	}
-	bundleManifest, err := cagefile.PackToFile(workDir, bundleTag, outPath, 2<<30, nil)
+	bundleManifest, err := cagefile.PackToFile(workDir, bundleTag, a.config.AgentcageVersion, outPath, 2<<30, nil)
 	if err != nil {
 		return packErr("packing bundle: %v", err)
 	}

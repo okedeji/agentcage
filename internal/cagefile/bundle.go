@@ -20,6 +20,7 @@ import (
 type BundleManifest struct {
 	Name       string   `json:"name"`
 	Tag        string   `json:"tag"`
+	PackedWith string   `json:"packed_with"`
 	Runtime    string   `json:"runtime"`
 	Entrypoint string   `json:"entrypoint"`
 	SystemDeps []string `json:"system_deps,omitempty"`
@@ -48,7 +49,7 @@ type PackOptions struct {
 
 const bundleSignatureFile = "signature.json"
 
-func Pack(dir string, version string, w io.Writer, opts *PackOptions) (*BundleManifest, error) {
+func Pack(dir string, version string, agentcageVersion string, w io.Writer, opts *PackOptions) (*BundleManifest, error) {
 	cagefilePath := filepath.Join(dir, "Cagefile")
 	f, err := os.Open(cagefilePath)
 	if err != nil {
@@ -73,6 +74,7 @@ func Pack(dir string, version string, w io.Writer, opts *PackOptions) (*BundleMa
 	bundleManifest := &BundleManifest{
 		Name:       filepath.Base(dir),
 		Tag:        version,
+		PackedWith: agentcageVersion,
 		Runtime:    manifest.Runtime,
 		Entrypoint: manifest.Entrypoint,
 		SystemDeps: manifest.SystemDeps,
@@ -132,7 +134,7 @@ func sha256Hex(b []byte) string {
 
 const DefaultMaxBundleSize int64 = 2 * 1024 * 1024 * 1024
 
-func PackToFile(dir, version, outPath string, maxSize int64, opts *PackOptions) (*BundleManifest, error) {
+func PackToFile(dir, version, agentcageVersion, outPath string, maxSize int64, opts *PackOptions) (*BundleManifest, error) {
 	if maxSize <= 0 {
 		maxSize = DefaultMaxBundleSize
 	}
@@ -152,7 +154,7 @@ func PackToFile(dir, version, outPath string, maxSize int64, opts *PackOptions) 
 	}
 	defer func() { _ = f.Close() }()
 
-	return Pack(dir, version, f, opts)
+	return Pack(dir, version, agentcageVersion, f, opts)
 }
 
 func DirSize(dir string) (int64, error) {
@@ -319,9 +321,14 @@ func Unpack(r io.Reader, destDir string, opts *UnpackOptions) (*BundleManifest, 
 }
 
 func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
-	bundleMajor, bundleMinor, err := majorMinorVersion(bundle.Tag)
+	// PackedWith records the agentcage version that created the bundle.
+	// Empty means pre-PackedWith bundle; skip check.
+	if bundle.PackedWith == "" {
+		return nil
+	}
+	bundleMajor, bundleMinor, err := majorMinorVersion(bundle.PackedWith)
 	if err != nil {
-		return fmt.Errorf("invalid bundle version %q: %w", bundle.Tag, err)
+		return fmt.Errorf("invalid bundle packed_with version %q: %w", bundle.PackedWith, err)
 	}
 	currentMajor, currentMinor, err := majorMinorVersion(currentVersion)
 	if err != nil {
@@ -329,7 +336,7 @@ func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
 	}
 	if bundleMajor != currentMajor {
 		return fmt.Errorf("bundle was packed with agentcage v%s (major %d) but this is v%s (major %d): major version mismatch",
-			bundle.Tag, bundleMajor, currentVersion, currentMajor)
+			bundle.PackedWith, bundleMajor, currentVersion, currentMajor)
 	}
 	// Pre-1.0: minor bumps are breaking per semver. Patch differences
 	// within the same minor are compatible (0.1.0 works with 0.1.5).
@@ -517,7 +524,13 @@ func hashDir(dir string) (string, error) {
 			if !strings.HasPrefix(resolved, dir) {
 				return fmt.Errorf("symlink %s escapes agent directory (points to %s)", path, resolved)
 			}
-			return nil
+			// Skip directory symlinks (same as tar logic).
+			resolvedInfo, statErr := os.Stat(resolved)
+			if statErr != nil || resolvedInfo.IsDir() {
+				return nil
+			}
+			// Include resolved file symlinks in hash to match
+			// what gets bundled (symlinks are followed in the tar).
 		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
