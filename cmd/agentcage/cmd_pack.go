@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	pb "github.com/okedeji/agentcage/api/proto"
@@ -18,11 +19,14 @@ import (
 )
 
 func cmdPack(args []string) {
-	fs := flag.NewFlagSet("pack", flag.ExitOnError)
-	_ = fs.Parse(args)
+	fs := flag.NewFlagSet("pack", flag.ContinueOnError)
+	tagFlag := fs.String("tag", "latest", "agent tag (e.g. latest, v1.2.0)")
+	if err := fs.Parse(reorderArgs(args)); err != nil {
+		os.Exit(1)
+	}
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: agentcage pack <directory>")
+		fmt.Fprintln(os.Stderr, "usage: agentcage pack [--tag <tag>] <directory>")
 		os.Exit(1)
 	}
 
@@ -80,6 +84,7 @@ func cmdPack(args []string) {
 			Metadata: &pb.PackMetadata{
 				CagefileContent: string(cagefileData),
 				DirectoryName:   resolvedDirName(dir),
+				Tag:             *tagFlag,
 			},
 		},
 	}); err != nil {
@@ -118,14 +123,27 @@ func cmdPack(args []string) {
 			sizeMB := float64(p.Result.SizeBytes) / (1024 * 1024)
 			ref := p.Result.BundleRef
 			shortRef := ref[:12]
+
+			// Tag the bundle in the local tag store.
+			tagName := p.Result.Name + ":" + p.Result.Tag
+			tagStorePath := filepath.Join(config.HomeDir(), "data", "tags.json")
+			ts := cagefile.NewTagStore(tagStorePath)
+			if tagErr := ts.Tag(tagName, ref); tagErr != nil {
+				ui.Fail("tagging bundle: %v", tagErr)
+			}
+
 			fmt.Println()
-			ui.OK("Packed: %s v%s (%.1f MB)", p.Result.Name, p.Result.Version, sizeMB)
+			ui.OK("Packed: %s → %s (%.1f MB)", tagName, shortRef, sizeMB)
 			ui.Info("Runtime", p.Result.Runtime)
 			ui.Info("Entrypoint", p.Result.Entrypoint)
-			ui.Info("Bundle", shortRef)
+			ui.Info("Ref", shortRef)
 			fmt.Println()
-			fmt.Printf("  Run an assessment:\n")
-			fmt.Printf("    agentcage run --bundle %s --target <domain> --customer-id <id>\n", shortRef)
+			fmt.Println("  Next:")
+			fmt.Printf("    # Quick run against a target\n")
+			fmt.Printf("    agentcage run --agent %s --target <domain> --customer-id <id>\n", tagName)
+			fmt.Println()
+			fmt.Printf("    # Repeatable run from a plan file\n")
+			fmt.Printf("    agentcage run --plan plan.yaml\n")
 			fmt.Println()
 		}
 	}
@@ -211,6 +229,24 @@ func streamSourceDir(stream pb.PackService_PackClient, dir string) error {
 		}
 	}
 	return nil
+}
+
+// reorderArgs moves flags (--key val) before positional args so
+// Go's flag package handles them regardless of position.
+func reorderArgs(args []string) []string {
+	var flags, positional []string
+	for i := 0; i < len(args); i++ {
+		if strings.HasPrefix(args[i], "-") {
+			flags = append(flags, args[i])
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				flags = append(flags, args[i+1])
+				i++
+			}
+		} else {
+			positional = append(positional, args[i])
+		}
+	}
+	return append(flags, positional...)
 }
 
 func resolvedDirName(dir string) string {

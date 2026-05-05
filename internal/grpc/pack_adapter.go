@@ -127,7 +127,11 @@ func (a *packAdapter) Pack(stream pb.PackService_PackServer) error {
 	// Phase 6: Bundle into .cage file.
 	sendProgress("bundling", "creating .cage archive", 0)
 	outPath := filepath.Join(os.TempDir(), "agentcage-pack-output.cage")
-	bundleManifest, err := cagefile.PackToFile(workDir, "1.0.0", outPath, 2<<30, nil)
+	bundleTag := meta.GetTag()
+	if bundleTag == "" {
+		bundleTag = "latest"
+	}
+	bundleManifest, err := cagefile.PackToFile(workDir, bundleTag, outPath, 2<<30, nil)
 	if err != nil {
 		return packErr("packing bundle: %v", err)
 	}
@@ -156,7 +160,7 @@ func (a *packAdapter) Pack(stream pb.PackService_PackServer) error {
 			Result: &pb.PackResult{
 				BundleRef:  bundleRef,
 				Name:       bundleManifest.Name,
-				Version:    bundleManifest.Version,
+				Tag:        bundleManifest.Tag,
 				Runtime:    bundleManifest.Runtime,
 				Entrypoint: bundleManifest.Entrypoint,
 				SizeBytes:  sizeBytes,

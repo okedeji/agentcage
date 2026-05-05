@@ -48,7 +48,7 @@ func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	fs.Usage = printRunUsage
 
 	fs.StringVar(&rf.plan, "plan", "", "path to assessment YAML plan file")
-	fs.StringVar(&rf.agent, "agent", "", "path to .cage bundle")
+	fs.StringVar(&rf.agent, "agent", "", "agent name:tag or ref (e.g. agent-starter:latest)")
 	fs.StringVar(&rf.target, "target", "", "target host(s), comma-separated")
 	fs.Var(&rf.ports, "port", "port to include (repeatable)")
 	fs.Var(&rf.paths, "path", "URL path to scope (repeatable)")
@@ -88,16 +88,16 @@ func explicitFlags(fs *flag.FlagSet) map[string]bool {
 }
 
 func printRunUsage() {
-	fmt.Fprintf(os.Stderr, `usage: agentcage run --agent <path> --target <host> [flags]
+	fmt.Fprintf(os.Stderr, `usage: agentcage run --agent <ref> --target <host> [flags]
        agentcage run --plan <assessment.yaml> [flag overrides]
 
 Examples:
-  agentcage run --agent ./my-agent.cage --target example.com
+  agentcage run --agent c9116254345e --target example.com --customer-id cust-1
   agentcage run --plan plans/staging.yaml --follow
-  agentcage run --agent ./my-agent.cage --target api.example.com --focus sqli --require-poc
+  agentcage run --agent c9116254345e --target api.example.com --focus sqli --require-poc
 
 Required (unless in plan file):
-  --agent              .cage bundle (run 'agentcage pack <dir>' first)
+  --agent              agent name:tag or ref (e.g. agent-starter:latest)
   --target             target host(s), comma-separated
   --customer-id        customer identifier
 
