@@ -27,7 +27,7 @@ type LinuxVM struct {
 // Boot creates and starts a Linux VM with the given configuration.
 func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 	bootLoader, err := vz.NewLinuxBootLoader(cfg.KernelPath,
-		vz.WithCommandLine("console=hvc0 root=/dev/vda rw init=/sbin/init-agentcage"),
+		vz.WithCommandLine("console=hvc0 root=/dev/vda rw init=/sbin/init-agentcage loglevel=3"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating boot loader: %w", err)

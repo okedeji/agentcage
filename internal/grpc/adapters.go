@@ -286,6 +286,16 @@ func (a *assessmentAdapter) ListAssessments(ctx context.Context, req *pb.ListAss
 	return &pb.ListAssessmentsResponse{Assessments: pbItems, NextPageToken: nextToken}, nil
 }
 
+func (a *assessmentAdapter) CancelAssessment(ctx context.Context, req *pb.CancelAssessmentRequest) (*pb.CancelAssessmentResponse, error) {
+	if req.GetAssessmentId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "assessment_id is required")
+	}
+	if err := a.server.CancelAssessment(ctx, req.GetAssessmentId()); err != nil {
+		return nil, toGRPCError(err)
+	}
+	return &pb.CancelAssessmentResponse{Cancelled: true}, nil
+}
+
 func (a *assessmentAdapter) GetReport(ctx context.Context, req *pb.GetReportRequest) (*pb.GetReportResponse, error) {
 	if req.GetAssessmentId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "assessment_id is required")

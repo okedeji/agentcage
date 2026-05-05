@@ -11,6 +11,7 @@ service AssessmentService {
   rpc CreateAssessment(CreateAssessmentRequest) returns (CreateAssessmentResponse);
   rpc GetAssessment(GetAssessmentRequest) returns (GetAssessmentResponse);
   rpc ListAssessments(ListAssessmentsRequest) returns (ListAssessmentsResponse);
+  rpc CancelAssessment(CancelAssessmentRequest) returns (CancelAssessmentResponse);
   rpc GetReport(GetReportRequest) returns (GetReportResponse);
 }
 
@@ -137,4 +138,12 @@ message GetReportRequest {
 
 message GetReportResponse {
   bytes report_json = 1;
+}
+
+message CancelAssessmentRequest {
+  string assessment_id = 1;
+}
+
+message CancelAssessmentResponse {
+  bool cancelled = 1;
 }

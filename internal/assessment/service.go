@@ -116,6 +116,11 @@ func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, erro
 	return info, nil
 }
 
+func (s *Service) CancelAssessment(ctx context.Context, assessmentID string) error {
+	workflowID := "assessment-" + assessmentID
+	return s.temporal.CancelWorkflow(ctx, workflowID, "")
+}
+
 func (s *Service) GetAssessment(ctx context.Context, assessmentID string) (*Info, error) {
 	s.mu.RLock()
 	info, ok := s.assessments[assessmentID]

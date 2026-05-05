@@ -13,6 +13,11 @@ import (
 )
 
 func cmdAssessments(args []string) {
+	if len(args) > 0 && args[0] == "cancel" {
+		cmdAssessmentsCancel(args[1:])
+		return
+	}
+
 	fs := flag.NewFlagSet("assessments", flag.ExitOnError)
 	fs.Usage = printAssessmentsUsage
 	id := fs.String("id", "", "assessment ID to show details for")
@@ -148,19 +153,96 @@ func parseAssessmentStatusFilter(s string) (pb.AssessmentStatus, bool) {
 	}
 }
 
+func cmdAssessmentsCancel(args []string) {
+	fs := flag.NewFlagSet("assessments cancel", flag.ExitOnError)
+	all := fs.Bool("all", false, "cancel all running assessments")
+	_ = fs.Parse(args)
+
+	if !*all && fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: agentcage assessments cancel <id>")
+		fmt.Fprintln(os.Stderr, "       agentcage assessments cancel --all")
+		os.Exit(1)
+	}
+
+	cfg := config.Defaults()
+	if resolved := config.Resolve(""); resolved != "" {
+		if override, err := config.Load(resolved); err == nil {
+			cfg = config.Merge(cfg, override)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	conn, err := dialOrchestrator(ctx, cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := pb.NewAssessmentServiceClient(conn)
+
+	var ids []string
+	if *all {
+		resp, err := client.ListAssessments(ctx, &pb.ListAssessmentsRequest{Limit: 500})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error listing assessments: %v\n", err)
+			os.Exit(1)
+		}
+		for _, info := range resp.GetAssessments() {
+			s := info.GetStatus()
+			if s == pb.AssessmentStatus_ASSESSMENT_STATUS_APPROVED ||
+				s == pb.AssessmentStatus_ASSESSMENT_STATUS_REJECTED ||
+				s == pb.AssessmentStatus_ASSESSMENT_STATUS_FAILED {
+				continue
+			}
+			ids = append(ids, info.GetAssessmentId())
+		}
+		if len(ids) == 0 {
+			fmt.Println("No running assessments to cancel.")
+			return
+		}
+		fmt.Printf("Cancel %d running assessment(s)? [y/N] ", len(ids))
+	} else {
+		ids = append(ids, fs.Arg(0))
+		fmt.Printf("Cancel assessment %s? [y/N] ", ids[0])
+	}
+
+	var answer string
+	fmt.Scanln(&answer)
+	if answer != "y" && answer != "Y" {
+		fmt.Println("Aborted.")
+		return
+	}
+
+	for _, id := range ids {
+		_, err := client.CancelAssessment(ctx, &pb.CancelAssessmentRequest{AssessmentId: id})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ✗  %s: %v\n", id, err)
+			continue
+		}
+		fmt.Printf("  ✓  cancelled %s\n", id)
+	}
+}
+
 func printAssessmentsUsage() {
 	fmt.Fprintf(os.Stderr, `usage: agentcage assessments [flags]
+       agentcage assessments cancel <id>
+       agentcage assessments cancel --all
 
-List assessments or show details for one.
+List assessments, show details, or cancel running assessments.
 
 Examples:
   agentcage assessments
   agentcage assessments --status discovery
   agentcage assessments --id <assessment-id>
+  agentcage assessments cancel <assessment-id>
+  agentcage assessments cancel --all
 
 Flags:
   --id          assessment ID to show details for
-  --status      filter by status: discovery, exploitation, validation, pending_review, approved, rejected, failed
+  --status      filter by status
   --limit       max results to return (default 50)
 `)
 }
