@@ -82,6 +82,8 @@ func main() {
 		cmdVault(args)
 	case "sdk":
 		cmdSDK(args)
+	case "agents":
+		cmdAgents(args)
 	case "version":
 		fmt.Printf("agentcage %s\n", version)
 	case "help", "--help", "-h":
@@ -114,6 +116,7 @@ Setup:
 Assess:
   pack <dir>          Bundle an agent directory into a .cage file
   run                 Launch an assessment against a target
+  agents              List, inspect, or remove stored agents
 
 Monitor:
   assessments         List or inspect assessments
