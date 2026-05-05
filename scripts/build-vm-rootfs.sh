@@ -68,7 +68,7 @@ REPOEOF
 sudo chroot "$MOUNTPOINT" /bin/sh -c "
     apk update
     apk add --no-cache postgresql postgresql-client postgresql-timescaledb \
-        nodejs npm python3 py3-pip go
+        nodejs npm python3 py3-pip go iproute2
     adduser -D -H postgres 2>/dev/null || true
 "
 
