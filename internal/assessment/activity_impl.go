@@ -340,8 +340,10 @@ func (a *ActivityImpl) NotifyFleetAssessmentComplete(_ context.Context, assessme
 	if a.fleet == nil {
 		return nil
 	}
-	a.fleet.OnAssessmentComplete(assessmentID)
-	a.log.V(1).Info("fleet notified of assessment completion", "assessment_id", assessmentID)
+	if a.fleet != nil {
+		a.fleet.OnAssessmentComplete(assessmentID)
+		a.log.V(1).Info("fleet notified of assessment completion", "assessment_id", assessmentID)
+	}
 	return nil
 }
 

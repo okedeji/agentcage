@@ -169,24 +169,28 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 	if err != nil {
 		return err
 	}
-	autoscalerLog := log.WithValues("component", "autoscaler")
-	ui.Step("Fleet autoscaler started")
-	go func() {
-		// If the autoscaler dies, fleet scaling stops. Cancel everything
-		// so the operator notices instead of running degraded.
-		if err := fleetSetup.autoscaler.Run(ctx); err != nil {
-			autoscalerLog.Error(err, "autoscaler stopped, triggering orchestrator shutdown")
-		} else {
-			autoscalerLog.Info("autoscaler stopped")
-		}
-		if ctx.Err() == nil {
-			cancel()
-		}
-	}()
+	if fleetSetup.autoscaler != nil {
+		autoscalerLog := log.WithValues("component", "autoscaler")
+		ui.Step("Fleet autoscaler started")
+		go func() {
+			if err := fleetSetup.autoscaler.Run(ctx); err != nil {
+				autoscalerLog.Error(err, "autoscaler stopped, triggering orchestrator shutdown")
+			} else {
+				autoscalerLog.Info("autoscaler stopped")
+			}
+			if ctx.Err() == nil {
+				cancel()
+			}
+		}()
+	}
 
 	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, natsURL, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
 	fleetSvc := fleet.NewService(fleetSetup.pool, fleetSetup.demand, fleetSetup.provisioner, log.WithValues("component", "fleet"))
-	assessmentSvc := assessment.NewService(temporalClient, db, fleetSetup.autoscaler, cfg)
+	var fleetSignaler assessment.FleetSignaler
+	if fleetSetup.autoscaler != nil {
+		fleetSignaler = fleetSetup.autoscaler
+	}
+	assessmentSvc := assessment.NewService(temporalClient, db, fleetSignaler, cfg)
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
@@ -269,7 +273,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 		Findings:      findingStore,
 		Bus:           findingsBus,
 		Coordinator:   findingsCoordinator,
-		Fleet:         fleetSetup.autoscaler,
+		Fleet:         fleetSignaler,
 		Assessments:   assessmentSvc,
 		Tokens:        tokenMeter,
 		LLMClient:     llmClient,
@@ -297,8 +301,9 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 		Findings:         findingStore,
 		Audit:            cageRuntime.auditStore,
 		Pack: agentgrpc.PackConfig{
-			BundleStoreDir: filepath.Join(embedded.DataDir(), "bundles"),
-			SDKTarball:     filepath.Join(embedded.BinDir(), "agentcage-sdk.tgz"),
+			BundleStoreDir:   filepath.Join(embedded.DataDir(), "bundles"),
+			SDKTarball:       filepath.Join(embedded.BinDir(), "agentcage-sdk.tgz"),
+			AgentcageVersion: version,
 		},
 		CageLogDir:       cageLogDir,
 		ConfigYAML:       configYAML,

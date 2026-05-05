@@ -54,19 +54,24 @@ func setupFleet(ctx context.Context, cfg *config.Config, embeddedMgr *embedded.M
 
 	provisioner := buildHostProvisioner(ctx, cfg, secrets, log)
 
-	autoscalerCfg := fleet.AutoscalerConfig{
-		PollInterval:         30 * time.Second,
-		MinBuffer:            0,
-		MaxBuffer:            1,
-		DefaultCageResources: validatorRes,
+	// Autoscaler is only useful when the provisioner can create hosts.
+	// In local mode (single machine), skip it entirely.
+	var autoscaler *fleet.Autoscaler
+	if _, isLocal := provisioner.(*fleet.LocalHostProvisioner); !isLocal {
+		autoscalerCfg := fleet.AutoscalerConfig{
+			PollInterval:         30 * time.Second,
+			MinBuffer:            0,
+			MaxBuffer:            1,
+			DefaultCageResources: validatorRes,
+		}
+		if cfg.Fleet.Autoscaler != nil {
+			autoscalerCfg.MinBuffer = cfg.Fleet.Autoscaler.MinWarmHosts
+			autoscalerCfg.MaxBuffer = cfg.Fleet.Autoscaler.MaxHosts
+			autoscalerCfg.ProvisioningTimeout = cfg.Fleet.Autoscaler.ProvisioningTimeout
+			autoscalerCfg.EmergencyProvisionCount = cfg.Fleet.Autoscaler.EmergencyProvisionCount
+		}
+		autoscaler = fleet.NewAutoscaler(pool, demand, provisioner, alertDispatcher, autoscalerCfg, log.WithValues("component", "autoscaler"))
 	}
-	if cfg.Fleet.Autoscaler != nil {
-		autoscalerCfg.MinBuffer = cfg.Fleet.Autoscaler.MinWarmHosts
-		autoscalerCfg.MaxBuffer = cfg.Fleet.Autoscaler.MaxHosts
-		autoscalerCfg.ProvisioningTimeout = cfg.Fleet.Autoscaler.ProvisioningTimeout
-		autoscalerCfg.EmergencyProvisionCount = cfg.Fleet.Autoscaler.EmergencyProvisionCount
-	}
-	autoscaler := fleet.NewAutoscaler(pool, demand, provisioner, alertDispatcher, autoscalerCfg, log.WithValues("component", "autoscaler"))
 
 	scheduler := buildScheduler(ctx, cfg, embeddedMgr, pool, secrets, log)
 
