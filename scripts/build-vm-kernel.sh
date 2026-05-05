@@ -87,8 +87,9 @@ CONFIG_VIRTIO_PCI=y
 CONFIG_VIRTIO_MMIO=y
 CONFIG_VIRTIO_BALLOON=y
 
-# Virtio block (rootfs disk)
+# Virtio block (rootfs disk) + loop device (cage rootfs assembly)
 CONFIG_BLK_DEV=y
+CONFIG_BLK_DEV_LOOP=y
 CONFIG_VIRTIO_BLK=y
 
 # Virtio network
