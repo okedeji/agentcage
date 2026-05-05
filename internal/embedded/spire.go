@@ -170,7 +170,48 @@ func (s *SPIREService) Start(ctx context.Context) error {
 		return fmt.Errorf("waiting for SPIRE agent socket: %w", err)
 	}
 
+	// Register workload entries so the agent can issue SVIDs.
+	// Without entries, all FetchX509SVID calls return PermissionDenied.
+	if err := s.registerEntries(ctx, socketDir, spireTrustDomain); err != nil {
+		return fmt.Errorf("registering SPIRE entries: %w", err)
+	}
+
 	s.log.Info("spire ready", "server_port", spireServerPort, "agent_socket", s.AgentSocket())
+	return nil
+}
+
+func (s *SPIREService) registerEntries(ctx context.Context, socketDir, trustDomain string) error {
+	serverBin := filepath.Join(BinDir(), "spire-server")
+	serverSocket := filepath.Join(socketDir, "server.sock")
+	parentID := "spiffe://" + trustDomain + "/agent"
+
+	entries := []struct {
+		spiffeID string
+		selector string
+	}{
+		// Orchestrator workload (runs as root in the VM)
+		{"spiffe://" + trustDomain + "/orchestrator", "unix:uid:0"},
+		// Cage workloads (also root inside Firecracker VMs)
+		{"spiffe://" + trustDomain + "/cage", "unix:uid:0"},
+	}
+
+	for _, e := range entries {
+		cmd := exec.CommandContext(ctx, serverBin,
+			"entry", "create",
+			"-socketPath", serverSocket,
+			"-spiffeID", e.spiffeID,
+			"-parentID", parentID,
+			"-selector", e.selector,
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			// "already exists" is fine on restart
+			if !strings.Contains(string(out), "already exists") {
+				return fmt.Errorf("creating entry %s: %w\n%s", e.spiffeID, err, out)
+			}
+		}
+		s.log.Info("spire entry registered", "spiffe_id", e.spiffeID)
+	}
 	return nil
 }
 
