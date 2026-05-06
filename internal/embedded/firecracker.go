@@ -97,11 +97,11 @@ func (f *FirecrackerDownloader) downloadKernel(ctx context.Context) error {
 		return nil
 	}
 
-	arch := archSuffix()
-	url := fmt.Sprintf("https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_guide/%s/kernels/vmlinux.bin",
-		arch)
+	arch := runtime.GOARCH
+	url := fmt.Sprintf("https://github.com/okedeji/agentcage/releases/download/v%s/cage-vmlinux-%s-%s",
+		f.version, kernelVersion, arch)
 
-	f.log.Info("downloading linux kernel", "version", kernelVersion, "arch", arch)
+	f.log.Info("downloading cage kernel", "version", kernelVersion, "arch", arch, "url", url)
 	return downloadBinary(ctx, url, dest)
 }
 

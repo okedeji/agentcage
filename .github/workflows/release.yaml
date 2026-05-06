@@ -155,6 +155,35 @@ jobs:
             vmlinux-6.12-${{ matrix.arch }}
             rootfs-${{ matrix.arch }}.img
 
+  build-cage-kernel:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cage kernel
+        id: cage-kernel-cache
+        uses: actions/cache@v4
+        with:
+          path: cage-vmlinux-6.12-${{ matrix.arch }}
+          key: cage-vmlinux-6.12.84-${{ matrix.arch }}-${{ hashFiles('scripts/build-cage-kernel.sh') }}
+      - name: Install kernel build dependencies
+        if: steps.cage-kernel-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flex bison bc libelf-dev libssl-dev
+      - name: Install cross-compiler
+        if: steps.cage-kernel-cache.outputs.cache-hit != 'true' && matrix.arch == 'arm64'
+        run: sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Build cage kernel
+        if: steps.cage-kernel-cache.outputs.cache-hit != 'true'
+        run: ./scripts/build-cage-kernel.sh ${{ matrix.arch }} cage-vmlinux-6.12-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cage-kernel-${{ matrix.arch }}
+          path: cage-vmlinux-6.12-${{ matrix.arch }}
+
   # Darwin builds happen AFTER linux + rootfs so checksums can be embedded.
   # The darwin binary is what users download on macOS — it must contain the
   # checksums for the VM assets it will fetch at runtime.
@@ -210,7 +239,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [build-linux, build-darwin, build-vm-assets, build-cage-rootfs, build-falco, build-sdk]
+    needs: [build-linux, build-darwin, build-vm-assets, build-cage-rootfs, build-cage-kernel, build-falco, build-sdk]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -227,6 +256,7 @@ jobs:
             vmlinux-*
             rootfs-*.img
             cage-rootfs-*.ext4.gz
+            cage-vmlinux-*
             falco-amd64
             falco-arm64
             agentcage-sdk-*

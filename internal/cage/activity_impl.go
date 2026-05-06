@@ -454,33 +454,51 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, con
 // the stream into the VsockCollector. Runs in a goroutine for the
 // lifetime of MonitorCage; connection errors are logged, not fatal.
 func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string) {
-	conn, err := net.DialTimeout("unix", vsockPath, 5*time.Second)
-	if err != nil {
-		a.log.V(1).Info("vsock log connection failed, logs unavailable", "cage_id", cageID, "error", err.Error())
+	a.log.Info("connecting to cage log stream", "cage_id", cageID)
+
+	// The guest VM needs time to boot and start the directive-sidecar
+	// before its vsock listener is ready. Retry until connected or
+	// the cage exits.
+	var conn net.Conn
+	for attempt := 0; attempt < 30; attempt++ {
+		if ctx.Err() != nil {
+			return
+		}
+		c, err := net.DialTimeout("unix", vsockPath, 2*time.Second)
+		if err != nil {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		connectCmd := fmt.Sprintf("CONNECT %d\n", VsockPortLogs)
+		if _, err := c.Write([]byte(connectCmd)); err != nil {
+			_ = c.Close()
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		buf := make([]byte, 32)
+		n, err := c.Read(buf)
+		if err != nil || n < 2 || string(buf[:2]) != "OK" {
+			_ = c.Close()
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		conn = c
+		break
+	}
+	if conn == nil {
+		a.log.Error(nil, "cage log collection failed: could not connect after 15s", "cage_id", cageID)
 		return
 	}
 
-	// Firecracker vsock host-side protocol: CONNECT <port>
-	connectCmd := fmt.Sprintf("CONNECT %d\n", VsockPortLogs)
-	if _, err := conn.Write([]byte(connectCmd)); err != nil {
-		_ = conn.Close()
-		a.log.V(1).Info("vsock log CONNECT failed", "cage_id", cageID, "error", err.Error())
-		return
-	}
-
-	buf := make([]byte, 32)
-	n, err := conn.Read(buf)
-	if err != nil || n < 2 || string(buf[:2]) != "OK" {
-		_ = conn.Close()
-		a.log.V(1).Info("vsock log CONNECT rejected", "cage_id", cageID)
-		return
-	}
-
+	a.log.Info("cage log stream connected", "cage_id", cageID)
 	a.logCollector.RegisterConn(cageID, conn)
 	defer a.logCollector.StopCollecting(cageID)
 
 	if err := a.logCollector.CollectFromCage(ctx, cageID, conn); err != nil {
-		a.log.V(1).Info("vsock log collection ended", "cage_id", cageID, "error", err.Error())
+		a.log.Info("cage log stream ended", "cage_id", cageID, "error", err.Error())
 	}
 }
 
