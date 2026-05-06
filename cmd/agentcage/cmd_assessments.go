@@ -210,7 +210,7 @@ func cmdAssessmentsCancel(args []string) {
 	}
 
 	var answer string
-	fmt.Scanln(&answer)
+	_, _ = fmt.Scanln(&answer)
 	if answer != "y" && answer != "Y" {
 		fmt.Println("Aborted.")
 		return
