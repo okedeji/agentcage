@@ -98,7 +98,7 @@ func platformInit(args []string) {
 		[]byte(time.Now().UTC().Format("2006-01-02 15:04:05")), 0644)
 
 	ui.Section("Linux VM")
-	ui.Step("VM logs: agentcage logs --service vm --follow")
+	ui.Step("VM logs: agentcage logs vm --follow")
 	cfg := vm.DefaultConfig(home)
 	machine, err := vm.Boot(ctx, cfg)
 	if err != nil {

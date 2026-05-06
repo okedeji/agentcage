@@ -122,7 +122,7 @@ Monitor:
   assessments         List or inspect assessments
   findings            List or inspect findings
   report              Generate or export an assessment report
-  logs                View or stream cage logs
+  logs <source>       View logs from any component (orchestrator, cage, falco, etc.)
 
 Operate:
   interventions       List, inspect, or resolve pending interventions

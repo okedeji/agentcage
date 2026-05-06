@@ -83,7 +83,7 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 	}
 
 	// Serial console — write to a file so the operator can inspect
-	// VM boot output via `agentcage logs --service vm`.
+	// VM boot output via `agentcage logs vm`.
 	consoleLogPath := filepath.Join(cfg.ShareDir, "vm-console.log")
 	consoleLog, err := os.OpenFile(consoleLogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
@@ -227,14 +227,14 @@ func (v *LinuxVM) waitForGRPC(ctx context.Context) error {
 
 		if v.machine.State() == vz.VirtualMachineStateStopped {
 			fmt.Printf("\r     Waiting for VM... stopped                      \n")
-			return fmt.Errorf("VM exited unexpectedly (check: agentcage logs --service vm)")
+			return fmt.Errorf("VM exited unexpectedly (check: agentcage logs vm)")
 		}
 
 		if data, err := os.ReadFile(v.consoleLogPath); err == nil {
 			if bytes.Contains(data, []byte("Kernel panic")) {
 				fmt.Printf("\r     Waiting for VM... crashed                      \n")
 				_ = v.machine.Stop()
-				return fmt.Errorf("VM kernel panic (check: agentcage logs --service vm)")
+				return fmt.Errorf("VM kernel panic (check: agentcage logs vm)")
 			}
 		}
 

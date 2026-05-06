@@ -22,50 +22,39 @@ import (
 	"github.com/okedeji/agentcage/internal/embedded"
 )
 
-var validServices = map[string]bool{
-	"postgres":     true,
-	"temporal":     true,
-	"spire":        true,
-	"vault":        true,
-	"falco":        true,
-	"nats":         true,
-	"vm":           true,
-	"orchestrator": true,
+func cmdLogs(args []string) {
+	if len(args) == 0 {
+		printLogsUsage()
+		os.Exit(1)
+	}
+
+	source := args[0]
+	rest := args[1:]
+
+	switch source {
+	case "orchestrator", "postgres", "temporal", "spire", "vault", "falco", "nats", "vm":
+		cmdLogsService(source, rest)
+	case "cage":
+		cmdLogsCage(rest)
+	case "assessment":
+		cmdLogsAssessment(rest)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown log source: %s\n\n", source)
+		printLogsUsage()
+		os.Exit(1)
+	}
 }
 
-func cmdLogs(args []string) {
-	fs := flag.NewFlagSet("logs", flag.ExitOnError)
-	fs.Usage = printLogsUsage
-	cageID := fs.String("cage", "", "cage ID to stream logs from")
-	service := fs.String("service", "", "service log: postgres, temporal, spire, vault, falco, nats")
-	assessmentID := fs.String("assessment", "", "tail logs for all cages in an assessment")
-	follow := fs.Bool("follow", false, "stream live logs (running cages only)")
-	lines := fs.Int("lines", 0, "show last N lines before streaming")
-	format := fs.String("format", "text", "output format: text (human-readable) or json (raw)")
+func cmdLogsService(service string, args []string) {
+	fs := flag.NewFlagSet("logs "+service, flag.ExitOnError)
+	follow := fs.Bool("follow", false, "stream live")
+	followShort := fs.Bool("f", false, "stream live (short)")
+	lines := fs.Int("lines", 0, "show last N lines")
+	format := fs.String("format", "text", "output format: text or json")
 	_ = fs.Parse(args)
 
-	if *service != "" {
-		tailServiceLog(*service, *follow, *lines, *format)
-		return
-	}
-
-	if *cageID != "" {
-		handleCageLogs(*cageID, *follow, *lines)
-		return
-	}
-
-	if *assessmentID != "" {
-		tailAssessmentLogs(*assessmentID, *follow, *lines)
-		return
-	}
-
-	printLogsUsage()
-}
-
-func tailServiceLog(service string, follow bool, tailLines int, format string) {
-	if !validServices[service] {
-		fmt.Fprintf(os.Stderr, "error: unknown service %q (valid: %s)\n", service, strings.Join(serviceNames(), ", "))
-		os.Exit(1)
+	if *followShort {
+		*follow = true
 	}
 
 	var logFile string
@@ -78,35 +67,28 @@ func tailServiceLog(service string, follow bool, tailLines int, format string) {
 		logFile = filepath.Join(embedded.LogDir(), service+".log")
 	}
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "no log file for service %s\n", service)
-		os.Exit(1)
-	}
-
-	if _, err := exec.LookPath("tail"); err != nil {
-		fmt.Fprintln(os.Stderr, "error: tail not found on PATH")
+		fmt.Fprintf(os.Stderr, "no log file for %s\n", service)
 		os.Exit(1)
 	}
 
 	var tailArgs []string
-	if follow {
+	if *follow {
 		tailArgs = append(tailArgs, "-f")
 	}
-	if tailLines > 0 {
-		tailArgs = append(tailArgs, "-n", fmt.Sprintf("%d", tailLines))
-	} else if !follow {
+	if *lines > 0 {
+		tailArgs = append(tailArgs, "-n", fmt.Sprintf("%d", *lines))
+	} else if !*follow {
 		tailArgs = append(tailArgs, "-n", "+1")
 	}
 	tailArgs = append(tailArgs, logFile)
 
-	fmt.Printf("Tailing %s logs...\n", service)
 	tail := exec.Command("tail", tailArgs...)
 	tail.Stderr = os.Stderr
 	tail.Stdin = os.Stdin
 
-	if format == "json" {
+	if *format == "json" {
 		tail.Stdout = os.Stdout
 	} else {
-		// Pipe through formatter for human-readable output.
 		stdout, err := tail.StdoutPipe()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -121,22 +103,30 @@ func tailServiceLog(service string, follow bool, tailLines int, format string) {
 	}
 }
 
-func handleCageLogs(cageID string, follow bool, tailLines int) {
-	if strings.Contains(cageID, "/") || strings.Contains(cageID, "\\") || strings.Contains(cageID, "..") {
+func cmdLogsCage(args []string) {
+	fs := flag.NewFlagSet("logs cage", flag.ExitOnError)
+	source := fs.String("source", "", "filter by source: agent, cage-init")
+	follow := fs.Bool("follow", false, "stream live")
+	followShort := fs.Bool("f", false, "stream live (short)")
+	lines := fs.Int("lines", 0, "show last N lines")
+	_ = fs.Parse(reorderArgs(args))
+
+	if *followShort {
+		*follow = true
+	}
+
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: agentcage logs cage <id> [--source agent|cage-init] [--follow]")
+		os.Exit(1)
+	}
+	cageID := fs.Arg(0)
+
+	if strings.ContainsAny(cageID, "/\\..") {
 		fmt.Fprintln(os.Stderr, "error: invalid cage ID")
 		os.Exit(1)
 	}
 
-	cfg := config.Defaults()
-	if resolved := config.Resolve(""); resolved != "" {
-		override, err := config.Load(resolved)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: loading config: %v\n", err)
-			os.Exit(1)
-		}
-		cfg = config.Merge(cfg, override)
-	}
-
+	cfg := loadClientConfig()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -150,44 +140,43 @@ func handleCageLogs(cageID string, follow bool, tailLines int) {
 	client := pb.NewCageServiceClient(conn)
 	resp, err := client.GetCageLogs(ctx, &pb.GetCageLogsRequest{
 		CageId:    cageID,
-		TailLines: int32(tailLines),
+		TailLines: int32(*lines),
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	isRunning := resp.GetIsRunning()
-
-	// Print historical/current lines
 	for _, line := range resp.GetLines() {
+		if *source != "" && !strings.Contains(line, "["+*source+"]") {
+			continue
+		}
 		fmt.Println(line)
 	}
 
-	if !follow {
+	if !*follow {
 		return
 	}
 
-	if !isRunning {
+	if !resp.GetIsRunning() {
 		fmt.Fprintln(os.Stderr, "Cage has completed. Logs are static.")
 		return
 	}
 
-	// Live streaming via NATS
 	nc, err := nats.Connect(embedded.NATSURL())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: connecting to NATS for live streaming: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error: connecting to NATS: %v\n", err)
 		os.Exit(1)
 	}
 	defer nc.Close()
 
 	subject := cage.LogSubject(cageID)
-	fmt.Fprintf(os.Stderr, "Streaming live logs for cage %s (Ctrl+C to stop)...\n", cageID)
+	fmt.Fprintf(os.Stderr, "Streaming live logs (Ctrl+C to stop)...\n")
 
 	msgCh := make(chan *nats.Msg, 256)
 	sub, err := nc.ChanSubscribe(subject, msgCh)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: subscribing to %s: %v\n", subject, err)
+		fmt.Fprintf(os.Stderr, "error: subscribing: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = sub.Unsubscribe() }()
@@ -201,7 +190,11 @@ func handleCageLogs(cageID string, follow bool, tailLines int) {
 			if !ok {
 				return
 			}
-			fmt.Println(string(msg.Data))
+			line := string(msg.Data)
+			if *source != "" && !strings.Contains(line, "["+*source+"]") {
+				continue
+			}
+			fmt.Println(line)
 		case <-pollTicker.C:
 			pollCtx, pollCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			checkResp, checkErr := client.GetCageLogs(pollCtx, &pb.GetCageLogsRequest{CageId: cageID, TailLines: 0})
@@ -214,17 +207,24 @@ func handleCageLogs(cageID string, follow bool, tailLines int) {
 	}
 }
 
-func tailAssessmentLogs(assessmentID string, follow bool, tailLines int) {
-	cfg := config.Defaults()
-	if resolved := config.Resolve(""); resolved != "" {
-		override, err := config.Load(resolved)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: loading config: %v\n", err)
-			os.Exit(1)
-		}
-		cfg = config.Merge(cfg, override)
+func cmdLogsAssessment(args []string) {
+	fs := flag.NewFlagSet("logs assessment", flag.ExitOnError)
+	follow := fs.Bool("follow", false, "stream live")
+	followShort := fs.Bool("f", false, "stream live (short)")
+	lines := fs.Int("lines", 0, "show last N lines")
+	_ = fs.Parse(reorderArgs(args))
+
+	if *followShort {
+		*follow = true
 	}
 
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: agentcage logs assessment <id> [--follow]")
+		os.Exit(1)
+	}
+	assessmentID := fs.Arg(0)
+
+	cfg := loadClientConfig()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -258,26 +258,22 @@ func tailAssessmentLogs(assessmentID string, follow bool, tailLines int) {
 	}
 
 	if len(logFiles) == 0 {
-		fmt.Printf("No cage log files found for assessment %s (%d cages, no logs on disk).\n", assessmentID, len(cageIDs))
+		fmt.Printf("No log files for assessment %s (%d cages, no logs on disk).\n", assessmentID, len(cageIDs))
 		return
 	}
 
-	if _, err := exec.LookPath("tail"); err != nil {
-		fmt.Fprintln(os.Stderr, "error: tail not found on PATH")
-		os.Exit(1)
-	}
-
-	fmt.Printf("Tailing %d cage log files for assessment %s...\n", len(logFiles), assessmentID)
 	var tailArgs []string
-	if follow {
+	if *follow {
 		tailArgs = append(tailArgs, "-f")
 	}
-	if tailLines > 0 {
-		tailArgs = append(tailArgs, "-n", fmt.Sprintf("%d", tailLines))
-	} else if !follow {
+	if *lines > 0 {
+		tailArgs = append(tailArgs, "-n", fmt.Sprintf("%d", *lines))
+	} else if !*follow {
 		tailArgs = append(tailArgs, "-n", "+1")
 	}
 	tailArgs = append(tailArgs, logFiles...)
+
+	fmt.Printf("Tailing %d cage log(s) for assessment %s...\n", len(logFiles), assessmentID)
 	tail := exec.Command("tail", tailArgs...)
 	tail.Stdout = os.Stdout
 	tail.Stderr = os.Stderr
@@ -286,6 +282,16 @@ func tailAssessmentLogs(assessmentID string, follow bool, tailLines int) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func loadClientConfig() *config.Config {
+	cfg := config.Defaults()
+	if resolved := config.Resolve(""); resolved != "" {
+		if override, err := config.Load(resolved); err == nil {
+			cfg = config.Merge(cfg, override)
+		}
+	}
+	return cfg
 }
 
 // formatLogLines reads JSON log lines from r and prints them as
@@ -302,18 +308,15 @@ func formatLogLines(r io.Reader) {
 
 		var entry map[string]any
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			// Not JSON — print as-is (UI output, plain text lines).
 			fmt.Println(line)
 			continue
 		}
 
-		// Extract standard fields.
 		ts := extractString(entry, "ts", "time", "timestamp", "T")
 		level := strings.ToUpper(extractString(entry, "level", "L"))
 		msg := extractString(entry, "msg", "message", "M")
 		caller := extractString(entry, "caller")
 
-		// Format timestamp.
 		if tsFloat, ok := entry["ts"].(float64); ok {
 			sec := int64(tsFloat)
 			nsec := int64((tsFloat - float64(sec)) * 1e9)
@@ -323,12 +326,9 @@ func formatLogLines(r io.Reader) {
 		} else if ts != "" {
 			if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
 				ts = t.Local().Format("15:04:05.000")
-			} else if t, err := time.Parse("2006-01-02T15:04:05.000Z", ts); err == nil {
-				ts = t.Local().Format("15:04:05.000")
 			}
 		}
 
-		// Remove already-printed fields.
 		delete(entry, "level")
 		delete(entry, "L")
 		delete(entry, "msg")
@@ -339,7 +339,6 @@ func formatLogLines(r io.Reader) {
 		delete(entry, "T")
 		delete(entry, "caller")
 
-		// Build key=value pairs from remaining fields.
 		var extra []string
 		keys := make([]string, 0, len(entry))
 		for k := range entry {
@@ -347,11 +346,9 @@ func formatLogLines(r io.Reader) {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			v := entry[k]
-			extra = append(extra, fmt.Sprintf("%s=%v", k, v))
+			extra = append(extra, fmt.Sprintf("%s=%v", k, entry[k]))
 		}
 
-		// Color the level.
 		levelColored := level
 		switch level {
 		case "INFO":
@@ -364,7 +361,6 @@ func formatLogLines(r io.Reader) {
 			levelColored = "\033[90mDEBG\033[0m"
 		}
 
-		// Print formatted line.
 		out := fmt.Sprintf("%s %s %s", ts, levelColored, msg)
 		if caller != "" {
 			out += fmt.Sprintf(" \033[90m(%s)\033[0m", caller)
@@ -387,40 +383,38 @@ func extractString(m map[string]any, keys ...string) string {
 	return ""
 }
 
-func serviceNames() []string {
-	names := make([]string, 0, len(validServices))
-	for name := range validServices {
-		names = append(names, name)
-	}
-	return names
-}
-
 func printLogsUsage() {
-	fmt.Fprintf(os.Stderr, `usage: agentcage logs --service <name>
-       agentcage logs --cage <cage-id> [--lines N]
-       agentcage logs --cage <cage-id> --follow [--lines N]
-       agentcage logs --assessment <assessment-id>
+	fmt.Fprintf(os.Stderr, `Usage: agentcage logs <source> [id] [flags]
 
-Stream logs from services or cages.
+View logs from any agentcage component.
 
-For running cages, --follow streams live via NATS.
-For completed cages, logs are read from the orchestrator's local store.
-Use --lines N to show the last N lines before streaming.
+Sources:
+  orchestrator              Orchestrator structured logs
+  postgres                  PostgreSQL subprocess output
+  temporal                  Temporal workflow engine output
+  spire                     SPIRE identity service output
+  vault                     Vault secrets manager output
+  falco                     Falco runtime security output
+  nats                      NATS message broker output
+  vm                        VM console (macOS only)
+  cage <id>                 Cage logs (agent + cage-init)
+  assessment <id>           All cage logs for an assessment
+
+Common flags:
+  --follow, -f              Stream live logs
+  --lines N                 Show last N lines
+  --format text|json        Output format (services only)
+
+Cage-specific flags:
+  --source agent|cage-init  Filter cage logs by source
 
 Examples:
-  agentcage logs --service postgres
-  agentcage logs --cage <cage-id>
-  agentcage logs --cage <cage-id> --lines 100
-  agentcage logs --cage <cage-id> --follow
-  agentcage logs --cage <cage-id> --follow --lines 50
-  agentcage logs --assessment <assessment-id>
-
-Flags:
-  --service      service log: orchestrator, postgres, temporal, spire, vault, falco, nats, vm
-  --cage         cage ID to stream logs from
-  --assessment   tail logs for all cages in an assessment
-  --follow       stream live logs (running cages only)
-  --lines N      show last N lines (0 = all)
-  --format       output format: text (default, human-readable) or json (raw)
+  agentcage logs orchestrator
+  agentcage logs orchestrator -f
+  agentcage logs falco --lines 50
+  agentcage logs cage <id>
+  agentcage logs cage <id> --source agent
+  agentcage logs cage <id> --source agent -f
+  agentcage logs assessment <id>
 `)
 }

@@ -150,7 +150,7 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 				fmt.Printf("{\"result\":\"failed\"}\n")
 			} else {
 				fmt.Printf("\nAssessment failed.\n")
-				fmt.Printf("Run 'agentcage logs --assessment %s' for details.\n", assessmentID)
+				fmt.Printf("Run 'agentcage logs assessment %s' for details.\n", assessmentID)
 			}
 			return
 		case pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW:

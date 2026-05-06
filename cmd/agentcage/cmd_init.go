@@ -78,7 +78,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 	if err != nil {
 		return fmt.Errorf("creating logger: %w", err)
 	}
-	ui.Step("Logs: agentcage logs --service orchestrator --follow")
+	ui.Step("Logs: agentcage logs orchestrator --follow")
 	ui.Step("Or run with --debug to see logs inline")
 	log = log.WithValues("component", "agentcage")
 

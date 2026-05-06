@@ -119,7 +119,7 @@ func (s *StdoutSink) Write(cageID, source string, line []byte) error {
 
 // FileSink writes cage logs to per-cage files under a directory.
 // Each cage gets its own log file: <dir>/<cageID>.log. The CLI
-// command `agentcage logs --cage <id>` tails this file.
+// command `agentcage logs cage <id>` tails this file.
 type FileSink struct {
 	dir    string
 	mu     sync.Mutex
