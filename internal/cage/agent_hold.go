@@ -105,8 +105,7 @@ func (l *AgentHoldListener) listenLoop(ctx context.Context, vmID, cageID, assess
 	// Firecracker needs to know we're listening. Connect to the
 	// vsock UDS and register as a listener for port 53.
 	if regErr := registerVsockHostListener(vsockPath, VsockPortHold); regErr != nil {
-		l.log.Error(regErr, "registering vsock host listener", "vm_id", vmID, "port", VsockPortHold)
-		// Fall back to the UDS listener for guest connections
+		l.log.V(1).Info("vsock host listener unavailable, using UDS fallback", "vm_id", vmID, "error", regErr.Error())
 	}
 
 	l.mu.Lock()
@@ -137,7 +136,24 @@ func (l *AgentHoldListener) listenLoop(ctx context.Context, vmID, cageID, assess
 // registerVsockHostListener tells Firecracker to forward guest-initiated
 // connections on a given port to a host-side UDS. Firecracker expects a
 // listener to connect to the vsock UDS and write "LISTEN <port>\n".
+// registerVsockHostListener tells Firecracker to forward guest-initiated
+// connections on a given port to a host-side UDS. Retries briefly because
+// the vsock interface may not be ready immediately after VM boot.
 func registerVsockHostListener(vsockPath string, port int) error {
+	var lastErr error
+	for attempt := 0; attempt < 15; attempt++ {
+		if attempt > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		lastErr = tryVsockRegister(vsockPath, port)
+		if lastErr == nil {
+			return nil
+		}
+	}
+	return lastErr
+}
+
+func tryVsockRegister(vsockPath string, port int) error {
 	conn, err := net.Dial("unix", vsockPath)
 	if err != nil {
 		return fmt.Errorf("dialing vsock UDS for LISTEN: %w", err)

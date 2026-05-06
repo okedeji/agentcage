@@ -256,6 +256,12 @@ func (a *temporalLogAdapter) Debug(msg string, keyvals ...interface{}) {
 	a.log.V(1).Info(msg, keyvals...)
 }
 func (a *temporalLogAdapter) Info(msg string, keyvals ...interface{}) {
+	// Temporal logs this when a workflow finishes while an activity is
+	// mid-heartbeat. Expected race, not actionable.
+	if msg == "Task processing failed with error" {
+		a.log.V(1).Info(msg, keyvals...)
+		return
+	}
 	a.log.Info(msg, keyvals...)
 }
 func (a *temporalLogAdapter) Warn(msg string, keyvals ...interface{}) {
