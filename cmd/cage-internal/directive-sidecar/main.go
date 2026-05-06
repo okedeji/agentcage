@@ -292,6 +292,10 @@ func serveLogForwarder(socketPath string, logVsockPort uint32) {
 		}
 	}()
 
+	// Readiness file path. cage-init waits for this before starting
+	// the agent, guaranteeing no log lines are lost.
+	readyPath := filepath.Join(filepath.Dir(socketPath), "logs.ready")
+
 	// Accept host connections and forward buffered lines
 	for {
 		hostConn, err := vsockLis.Accept()
@@ -300,7 +304,9 @@ func serveLogForwarder(socketPath string, logVsockPort uint32) {
 			continue
 		}
 		fmt.Println("directive-sidecar: host log collector connected")
+		_ = os.WriteFile(readyPath, []byte("ready\n"), 0644)
 		forwardToHost(hostConn, lines)
+		_ = os.Remove(readyPath)
 		fmt.Println("directive-sidecar: host log collector disconnected")
 	}
 }

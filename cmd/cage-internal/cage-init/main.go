@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -148,9 +149,16 @@ func main() {
 	setEnv("AGENTCAGE_HOLD_SOCKET", socketDir+"/hold.sock")
 	setEnv("AGENTCAGE_LOG_SOCKET", socketDir+"/logs.sock")
 
-	// 6. Exec the agent entrypoint.
-	// This replaces PID 1 with the agent process. When the agent
-	// exits, the VM has no init and shuts down, which is what we want.
+	// 6. Connect to the log socket so agent output reaches the orchestrator.
+	logSocket := socketDir + "/logs.sock"
+	logConn := connectLogSocket(logSocket)
+
+	// 7. Wait for host log collector to connect. The directive-sidecar
+	// writes a readiness file when the host vsock connection is established.
+	// Without this, agent output is lost if it prints before the host connects.
+	waitForLogReady(socketDir + "/logs.ready")
+
+	// 8. Run the agent entrypoint.
 	fmt.Printf("cage-init: exec agent: %s\n", env.Entrypoint)
 
 	parts := strings.Fields(env.Entrypoint)
@@ -163,16 +171,25 @@ func main() {
 	}
 
 	agentCmd := exec.Command(agentBin, parts[1:]...)
-	agentCmd.Stdout = os.Stdout
-	agentCmd.Stderr = os.Stderr
 	agentCmd.Dir = agentDir
 
+	// Pipe agent stdout/stderr through the log socket with source tagging.
+	if logConn != nil {
+		agentCmd.Stdout = newLogWriter(logConn, "agent")
+		agentCmd.Stderr = newLogWriter(logConn, "agent")
+	} else {
+		agentCmd.Stdout = os.Stdout
+		agentCmd.Stderr = os.Stderr
+	}
+
 	if err := agentCmd.Run(); err != nil {
+		writeLog(logConn, "cage-init", fmt.Sprintf("agent exited with error: %v", err))
 		fmt.Printf("cage-init: agent exited with error: %v\n", err)
 		cleanup(sidecar, directiveSidecar, proxy)
 		os.Exit(1)
 	}
 
+	writeLog(logConn, "cage-init", "agent completed successfully")
 	fmt.Println("cage-init: agent completed successfully")
 	cleanup(sidecar, directiveSidecar, proxy)
 }
@@ -241,4 +258,79 @@ func cleanup(procs ...*exec.Cmd) {
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "cage-init: fatal: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+// waitForLogReady polls for the readiness file that the directive-sidecar
+// writes when the host log collector connects via vsock. Gives up after
+// 15s so cages still start even if the host is slow.
+func waitForLogReady(path string) {
+	for i := 0; i < 30; i++ {
+		if _, err := os.Stat(path); err == nil {
+			fmt.Println("cage-init: host log collector ready")
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	fatal("host log collector not ready after 15s — refusing to start agent without logging")
+}
+
+// connectLogSocket connects to the directive-sidecar's log socket.
+// Returns nil if unavailable (logs fall back to stdout).
+func connectLogSocket(path string) net.Conn {
+	for attempt := 0; attempt < 10; attempt++ {
+		conn, err := net.Dial("unix", path)
+		if err == nil {
+			return conn
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	fmt.Fprintf(os.Stderr, "cage-init: warning: log socket unavailable, using stdout\n")
+	return nil
+}
+
+// writeLog sends a single tagged log line over the socket.
+func writeLog(conn net.Conn, source, msg string) {
+	if conn == nil {
+		fmt.Printf("[%s] %s\n", source, msg)
+		return
+	}
+	line := fmt.Sprintf(`{"source":%q,"msg":%q,"ts":%d}`, source, msg, time.Now().Unix())
+	_, _ = conn.Write([]byte(line + "\n"))
+}
+
+// logWriter implements io.Writer and tags each line with a source.
+type logWriter struct {
+	conn   net.Conn
+	source string
+	buf    []byte
+}
+
+func newLogWriter(conn net.Conn, source string) *logWriter {
+	return &logWriter{conn: conn, source: source}
+}
+
+func (w *logWriter) Write(p []byte) (int, error) {
+	w.buf = append(w.buf, p...)
+	for {
+		idx := indexOf(w.buf, '\n')
+		if idx < 0 {
+			break
+		}
+		line := string(w.buf[:idx])
+		w.buf = w.buf[idx+1:]
+		if line == "" {
+			continue
+		}
+		writeLog(w.conn, w.source, line)
+	}
+	return len(p), nil
+}
+
+func indexOf(b []byte, c byte) int {
+	for i, v := range b {
+		if v == c {
+			return i
+		}
+	}
+	return -1
 }
