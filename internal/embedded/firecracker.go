@@ -14,7 +14,7 @@ import (
 
 const (
 	firecrackerVersion = "1.14.1"
-	kernelVersion      = "6.1"
+	kernelVersion      = "6.12"
 )
 
 // FirecrackerDownloader downloads the Firecracker VMM binary and a
