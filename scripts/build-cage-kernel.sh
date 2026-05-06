@@ -8,6 +8,7 @@ set -euo pipefail
 # Usage: ./scripts/build-cage-kernel.sh <arch> [output-path]
 #   arch: arm64 or amd64
 
+# v2: vsock + netfilter for cage host-guest communication
 KERNEL_VERSION="6.12.84"
 KERNEL_MAJOR="6.12"
 
