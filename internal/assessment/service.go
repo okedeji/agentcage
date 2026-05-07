@@ -118,7 +118,46 @@ func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, erro
 
 func (s *Service) CancelAssessment(ctx context.Context, assessmentID string) error {
 	workflowID := "assessment-" + assessmentID
-	return s.temporal.CancelWorkflow(ctx, workflowID, "")
+	err := s.temporal.CancelWorkflow(ctx, workflowID, "")
+	if err != nil {
+		if isWorkflowGone(err) {
+			return s.forceStatus(ctx, assessmentID, StatusFailed)
+		}
+		return err
+	}
+	return s.UpdateStatus(ctx, assessmentID, StatusFailed)
+}
+
+func isWorkflowGone(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "already completed") ||
+		strings.Contains(msg, "already terminated")
+}
+
+// forceStatus sets the status unconditionally, bypassing transition
+// validation. Used when the workflow is gone and the row is orphaned.
+func (s *Service) forceStatus(ctx context.Context, assessmentID string, status Status) error {
+	s.mu.Lock()
+	info, ok := s.assessments[assessmentID]
+	if ok {
+		info.Status = status
+		info.UpdatedAt = time.Now()
+	}
+	s.mu.Unlock()
+
+	if s.db == nil {
+		return nil
+	}
+	now := time.Now()
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE assessments SET status = $1, updated_at = $2 WHERE id = $3`,
+		status.String(), now, assessmentID,
+	)
+	if err != nil {
+		return fmt.Errorf("force-setting assessment %s status to %s: %w", assessmentID, status, err)
+	}
+	return nil
 }
 
 func (s *Service) GetAssessment(ctx context.Context, assessmentID string) (*Info, error) {
@@ -270,6 +309,10 @@ func (s *Service) UpdateStatus(ctx context.Context, assessmentID string, status 
 	s.mu.Lock()
 	info, ok := s.assessments[assessmentID]
 	if ok {
+		if err := ValidateTransition(info.Status, status); err != nil {
+			s.mu.Unlock()
+			return nil
+		}
 		info.Status = status
 		info.UpdatedAt = time.Now()
 	}
@@ -278,9 +321,15 @@ func (s *Service) UpdateStatus(ctx context.Context, assessmentID string, status 
 	if s.db == nil {
 		return nil
 	}
+
+	// Only update if the row isn't already terminal. Prevents a
+	// late-arriving workflow activity from overwriting a cancel.
+	now := time.Now()
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE assessments SET status = $1, updated_at = $2 WHERE id = $3`,
-		status.String(), time.Now(), assessmentID,
+		`UPDATE assessments SET status = $1, updated_at = $2
+		 WHERE id = $3 AND status NOT IN ($4, $5, $6)`,
+		status.String(), now, assessmentID,
+		StatusApproved.String(), StatusRejected.String(), StatusFailed.String(),
 	)
 	if err != nil {
 		return fmt.Errorf("updating assessment %s status to %s: %w", assessmentID, status, err)

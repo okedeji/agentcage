@@ -219,6 +219,10 @@ func cmdAssessmentsCancel(args []string) {
 	for _, id := range ids {
 		_, err := client.CancelAssessment(ctx, &pb.CancelAssessmentRequest{AssessmentId: id})
 		if err != nil {
+			if strings.Contains(err.Error(), "workflow not found") {
+				fmt.Printf("  ✓  %s (already completed)\n", id)
+				continue
+			}
 			fmt.Fprintf(os.Stderr, "  ✗  %s: %v\n", id, err)
 			continue
 		}
