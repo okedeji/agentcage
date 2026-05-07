@@ -109,9 +109,8 @@ type ActivityImpl struct {
 	logDir            string
 	log               logr.Logger
 	allocMu           sync.Mutex
-	allocs            map[string]string       // vmID -> hostID
-	vsockPaths        map[string]string       // vmID -> vsock UDS path
-	logListeners      map[string]net.Listener // vmID -> vsock _54 listener
+	allocs            map[string]string // vmID -> hostID
+	vsockPaths        map[string]string // vmID -> vsock UDS path
 }
 
 type ActivityImplConfig struct {
@@ -193,7 +192,6 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		log:               cfg.Log.WithValues("component", "cage-activities"),
 		allocs:            make(map[string]string),
 		vsockPaths:        make(map[string]string),
-		logListeners:      make(map[string]net.Listener),
 	}
 }
 
@@ -347,22 +345,6 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 	a.vsockPaths[handle.ID] = handle.VsockPath
 	a.allocMu.Unlock()
 
-	// Create the vsock log listener now so it's ready before the
-	// guest's directive-sidecar tries to connect. The listener
-	// survives MonitorCage reschedules; collectLogs just accepts on it.
-	if handle.VsockPath != "" && a.logCollector != nil {
-		lisPath := fmt.Sprintf("%s_%d", handle.VsockPath, VsockPortLogs)
-		_ = os.Remove(lisPath)
-		lis, lisErr := net.Listen("unix", lisPath)
-		if lisErr != nil {
-			a.log.Error(lisErr, "could not create vsock log listener", "cage_id", vmConfig.CageID, "path", lisPath)
-		} else {
-			a.allocMu.Lock()
-			a.logListeners[handle.ID] = lis
-			a.allocMu.Unlock()
-		}
-	}
-
 	if a.payloadHolds != nil {
 		a.payloadHolds.RegisterVM(vmConfig.CageID, handle.IPAddress)
 	}
@@ -394,8 +376,11 @@ func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, sc
 func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, config Config) (StopReason, error) {
 	a.log.Info("monitoring cage", "cage_id", cageID, "vm_id", vmID, "max_duration", config.TimeLimits.MaxDuration)
 
-	if a.logCollector != nil {
-		go a.collectLogs(ctx, cageID, vmID)
+	a.allocMu.Lock()
+	vsockPath := a.vsockPaths[vmID]
+	a.allocMu.Unlock()
+	if vsockPath != "" && a.logCollector != nil {
+		go a.collectLogs(ctx, cageID, vsockPath)
 	}
 
 	deadline := time.After(config.TimeLimits.MaxDuration)
@@ -465,45 +450,47 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, con
 }
 
 // collectLogs accepts a guest-initiated vsock connection on the log
-// listener created during ProvisionVM and feeds the stream into the
-// VsockCollector. The listener is long-lived so it survives Temporal
-// activity reschedules.
-func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vmID string) {
+// collectLogs dials the guest's vsock log port via Firecracker's
+// CONNECT protocol and feeds the stream into the VsockCollector.
+func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string) {
 	a.log.Info("connecting to cage log stream", "cage_id", cageID)
 
-	a.allocMu.Lock()
-	lis := a.logListeners[vmID]
-	a.allocMu.Unlock()
-	if lis == nil {
-		a.log.Error(nil, "cage log collection skipped: no listener", "cage_id", cageID)
-		return
-	}
-
-	type acceptResult struct {
-		conn net.Conn
-		err  error
-	}
-	ch := make(chan acceptResult, 1)
-	go func() {
-		c, err := lis.Accept()
-		ch <- acceptResult{c, err}
-	}()
-
+	// The guest needs time to boot and have directive-sidecar bind
+	// AF_VSOCK port 54. Retry the CONNECT handshake until it
+	// succeeds or the context is cancelled.
 	var conn net.Conn
-	select {
-	case res := <-ch:
-		if res.err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			a.log.Error(res.err, "cage log collection failed: accept error", "cage_id", cageID)
+	for attempt := 0; attempt < 240; attempt++ {
+		if ctx.Err() != nil {
 			return
 		}
-		conn = res.conn
-	case <-ctx.Done():
-		return
-	case <-time.After(120 * time.Second):
-		a.log.Error(nil, "cage log collection failed: guest did not connect within 120s", "cage_id", cageID)
+		c, err := net.DialTimeout("unix", vsockPath, 2*time.Second)
+		if err != nil {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		connectCmd := fmt.Sprintf("CONNECT %d\n", VsockPortLogs)
+		if _, err := c.Write([]byte(connectCmd)); err != nil {
+			_ = c.Close()
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		buf := make([]byte, 32)
+		n, err := c.Read(buf)
+		if err != nil || n < 2 || string(buf[:2]) != "OK" {
+			_ = c.Close()
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		conn = c
+		break
+	}
+	if conn == nil {
+		if ctx.Err() == nil {
+			a.log.Error(nil, "cage log collection failed: could not connect after 120s", "cage_id", cageID, "vsock_path", vsockPath)
+		}
 		return
 	}
 
@@ -696,10 +683,6 @@ func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
 
 	a.allocMu.Lock()
 	delete(a.vsockPaths, vmID)
-	if lis, ok := a.logListeners[vmID]; ok {
-		_ = lis.Close()
-		delete(a.logListeners, vmID)
-	}
 	a.allocMu.Unlock()
 
 	if a.agentHolds != nil {

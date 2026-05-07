@@ -265,37 +265,25 @@ func serveLogForwarder(socketPath string, logVsockPort uint32) {
 	}
 	defer func() { _ = localLis.Close() }()
 
-	fmt.Printf("directive-sidecar: log socket ready at %s, connecting to host on vsock port %d\n", socketPath, logVsockPort)
-
-	// Connect to the host via AF_VSOCK. Firecracker delivers this
-	// to <uds_path>_54 on the host. The host must be listening
-	// before we connect. Retry because MonitorCage may not have
-	// started its listener yet.
-	var hostConn net.Conn
-	for attempt := 0; attempt < 60; attempt++ {
-		c, err := dialVsock(vsockCIDHost, logVsockPort)
-		if err == nil {
-			hostConn = c
-			break
-		}
-		if attempt%10 == 9 {
-			fmt.Fprintf(os.Stderr, "directive-sidecar: retrying host vsock port %d (%v)\n", logVsockPort, err)
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	if hostConn == nil {
-		fmt.Fprintf(os.Stderr, "directive-sidecar: could not connect to host log port %d after 30s\n", logVsockPort)
+	// Listen on AF_VSOCK so the host can CONNECT to us.
+	vsockLis, err := listenVsock(logVsockPort)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "directive-sidecar: listen vsock port %d: %v\n", logVsockPort, err)
 		return
 	}
-	defer func() { _ = hostConn.Close() }()
+	defer func() { _ = vsockLis.Close() }()
 
-	fmt.Println("directive-sidecar: host log collector connected")
-
-	// Readiness file. cage-init waits for this before starting
-	// the agent, guaranteeing no log lines are lost.
+	// Write readiness immediately after binding. cage-init blocks
+	// on this file before starting the agent. The old code waited
+	// for the host to connect first, creating a deadlock: host
+	// retries CONNECT until the guest listens, guest waits for
+	// host to connect before writing ready, cage-init waits for
+	// ready before the agent starts.
 	readyPath := filepath.Join(filepath.Dir(socketPath), "logs.ready")
 	_ = os.WriteFile(readyPath, []byte("ready\n"), 0644)
 	defer func() { _ = os.Remove(readyPath) }()
+
+	fmt.Printf("directive-sidecar: log listener ready on vsock port %d\n", logVsockPort)
 
 	// Buffer lines from local writers and forward to the host.
 	lines := make(chan []byte, 256)
@@ -310,8 +298,17 @@ func serveLogForwarder(socketPath string, logVsockPort uint32) {
 		}
 	}()
 
-	forwardToHost(hostConn, lines)
-	fmt.Println("directive-sidecar: host log collector disconnected")
+	// Accept host connections and forward buffered lines.
+	for {
+		hostConn, err := vsockLis.Accept()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "directive-sidecar: accept vsock log conn: %v\n", err)
+			continue
+		}
+		fmt.Println("directive-sidecar: host log collector connected")
+		forwardToHost(hostConn, lines)
+		fmt.Println("directive-sidecar: host log collector disconnected")
+	}
 }
 
 func collectLocal(conn net.Conn, out chan<- []byte) {
