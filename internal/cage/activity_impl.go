@@ -456,11 +456,11 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, con
 func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string) {
 	a.log.Info("connecting to cage log stream", "cage_id", cageID)
 
-	// The guest VM needs time to boot and start the directive-sidecar
-	// before its vsock listener is ready. Retry until connected or
-	// the cage exits.
+	// The guest VM needs time to boot, mount the rootfs, start
+	// cage-init, and have directive-sidecar bind AF_VSOCK port 54.
+	// 60s is generous but cage rootfs can be 2GB.
 	var conn net.Conn
-	for attempt := 0; attempt < 30; attempt++ {
+	for attempt := 0; attempt < 120; attempt++ {
 		if ctx.Err() != nil {
 			return
 		}
@@ -489,7 +489,7 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 		break
 	}
 	if conn == nil {
-		a.log.Error(nil, "cage log collection failed: could not connect after 15s", "cage_id", cageID)
+		a.log.Error(nil, "cage log collection failed: could not connect after 60s", "cage_id", cageID)
 		return
 	}
 
