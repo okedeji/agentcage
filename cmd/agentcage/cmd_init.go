@@ -412,6 +412,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		ui.ReadyWithElapsed(elapsed)
 	}
 	ui.Info("gRPC", lis.Addr().String())
+	ui.Info("Logs", "agentcage logs orchestrator")
 	ui.Info("Data", embedded.DataDir())
 	fmt.Println()
 	ui.Step("Press Ctrl+C to stop.")

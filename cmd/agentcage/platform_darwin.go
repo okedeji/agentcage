@@ -212,6 +212,7 @@ func platformInit(args []string) {
 
 	ui.Info("gRPC", *grpcAddr)
 	ui.Info("Postgres", "localhost:15432")
+	ui.Info("Logs", "agentcage logs orchestrator")
 	ui.Info("Data", home)
 	fmt.Println()
 	ui.Step("Press Ctrl+C to stop.")

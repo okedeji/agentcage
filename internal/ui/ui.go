@@ -23,7 +23,7 @@ var (
 	valStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 )
 
-var verbose bool
+var verbose = true
 
 // SetVerbose controls whether Step, OK, and Section produce output.
 // Fail and Warn always print regardless of this setting.

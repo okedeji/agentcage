@@ -460,18 +460,21 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 	// cage-init, and have directive-sidecar bind AF_VSOCK port 54.
 	// 60s is generous but cage rootfs can be 2GB.
 	var conn net.Conn
+	var lastErr string
 	for attempt := 0; attempt < 120; attempt++ {
 		if ctx.Err() != nil {
 			return
 		}
 		c, err := net.DialTimeout("unix", vsockPath, 2*time.Second)
 		if err != nil {
+			lastErr = fmt.Sprintf("dial: %v", err)
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
 
 		connectCmd := fmt.Sprintf("CONNECT %d\n", VsockPortLogs)
 		if _, err := c.Write([]byte(connectCmd)); err != nil {
+			lastErr = fmt.Sprintf("write CONNECT: %v", err)
 			_ = c.Close()
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -479,7 +482,15 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 
 		buf := make([]byte, 32)
 		n, err := c.Read(buf)
-		if err != nil || n < 2 || string(buf[:2]) != "OK" {
+		if err != nil {
+			lastErr = fmt.Sprintf("read response: %v", err)
+			_ = c.Close()
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		resp := string(buf[:n])
+		if n < 2 || resp[:2] != "OK" {
+			lastErr = fmt.Sprintf("unexpected response: %q", resp)
 			_ = c.Close()
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -489,7 +500,7 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 		break
 	}
 	if conn == nil {
-		a.log.Error(nil, "cage log collection failed: could not connect after 60s", "cage_id", cageID)
+		a.log.Error(nil, "cage log collection failed: could not connect after 60s", "cage_id", cageID, "last_error", lastErr, "vsock_path", vsockPath)
 		return
 	}
 

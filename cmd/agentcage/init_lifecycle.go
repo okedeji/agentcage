@@ -95,8 +95,10 @@ func detachProcess(args []string) {
 
 	progress.Done()
 	fmt.Println()
-	ui.Info("PID", fmt.Sprintf("%d", pid))
+	ui.Info("gRPC", addr)
+	ui.Info("Postgres", "localhost:15432")
 	ui.Info("Logs", "agentcage logs orchestrator")
+	ui.Info("PID", fmt.Sprintf("%d", pid))
 	ui.Info("Stop", "agentcage stop")
 	os.Exit(0)
 }

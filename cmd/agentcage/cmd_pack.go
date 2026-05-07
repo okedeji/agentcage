@@ -21,9 +21,11 @@ import (
 func cmdPack(args []string) {
 	fs := flag.NewFlagSet("pack", flag.ContinueOnError)
 	tagFlag := fs.String("tag", "latest", "agent tag (e.g. latest, v1.2.0)")
+	verboseFlag := fs.Bool("verbose", false, "show step-by-step progress")
 	if err := fs.Parse(reorderArgs(args)); err != nil {
 		os.Exit(1)
 	}
+	ui.SetVerbose(*verboseFlag)
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: agentcage pack [--tag <tag>] <directory>")
@@ -44,14 +46,17 @@ func cmdPack(args []string) {
 		ui.Fail("reading Cagefile: %v", err)
 		os.Exit(1)
 	}
-	manifest, err := cagefile.ParseString(string(cagefileData))
+	_, err = cagefile.ParseString(string(cagefileData))
 	if err != nil {
 		ui.Fail("invalid Cagefile: %v", err)
 		os.Exit(1)
 	}
 
-	ui.Section("Pack")
-	ui.Step("Agent: %s (%s, %s)", filepath.Base(dir), manifest.Runtime, manifest.Entrypoint)
+	tagName := resolvedDirName(dir) + ":" + *tagFlag
+	var progress *ui.ProgressLine
+	if !ui.IsVerbose() {
+		progress = ui.Progress("Packing " + tagName)
+	}
 
 	// Load config and connect to orchestrator.
 	cfg := config.Defaults()
@@ -92,9 +97,11 @@ func cmdPack(args []string) {
 		os.Exit(1)
 	}
 
-	// Tar and stream the source directory.
-	ui.Step("Uploading source...")
+	ui.Step("Uploading source")
 	if err := streamSourceDir(stream, dir); err != nil {
+		if progress != nil {
+			progress.Fail()
+		}
 		ui.Fail("uploading source: %v", err)
 		os.Exit(1)
 	}
@@ -118,33 +125,30 @@ func cmdPack(args []string) {
 
 		switch p := resp.Payload.(type) {
 		case *pb.PackResponse_Progress:
-			ui.Step("[%s] %s", p.Progress.Stage, p.Progress.Message)
+			ui.Step("%s", p.Progress.Message)
 		case *pb.PackResponse_Result:
-			sizeMB := float64(p.Result.SizeBytes) / (1024 * 1024)
 			ref := p.Result.BundleRef
 			shortRef := ref[:12]
 
-			// Tag the bundle in the local tag store.
-			tagName := p.Result.Name + ":" + p.Result.Tag
+			resultTag := p.Result.Name + ":" + p.Result.Tag
 			tagStorePath := filepath.Join(config.HomeDir(), "data", "tags.json")
 			ts := cagefile.NewTagStore(tagStorePath)
-			if tagErr := ts.Tag(tagName, ref); tagErr != nil {
+			if tagErr := ts.Tag(resultTag, ref); tagErr != nil {
 				ui.Fail("tagging bundle: %v", tagErr)
 			}
 
+			if progress != nil {
+				progress.Done()
+			}
+
 			fmt.Println()
-			ui.OK("Packed: %s → %s (%.1f MB)", tagName, shortRef, sizeMB)
 			ui.Info("Runtime", p.Result.Runtime)
 			ui.Info("Entrypoint", p.Result.Entrypoint)
 			ui.Info("Ref", shortRef)
 			fmt.Println()
 			fmt.Println("  Next:")
-			fmt.Printf("    # Quick run against a target\n")
-			fmt.Printf("    agentcage run --agent %s --target <domain> --customer-id <id>\n", tagName)
-			fmt.Println()
-			fmt.Printf("    # Repeatable run from a plan file\n")
+			fmt.Printf("    agentcage run --agent %s --target <domain> --customer-id <id>\n", resultTag)
 			fmt.Printf("    agentcage run --plan plan.yaml\n")
-			fmt.Println()
 		}
 	}
 }
