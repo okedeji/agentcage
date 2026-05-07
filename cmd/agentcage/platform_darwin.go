@@ -32,12 +32,15 @@ func platformInit(args []string) {
 	configFile := fs.String("config", "", "path to config YAML override file")
 	secretsFile := fs.String("secrets", "", "path to secrets file (KEY=VALUE lines, seeded into Vault on first boot)")
 	grpcAddr := fs.String("grpc-addr", "127.0.0.1:9090", "host-side gRPC proxy address")
+	verboseFlag := fs.Bool("verbose", false, "show step-by-step startup progress")
 	detach := fs.Bool("detach", false, "run in background")
 	_ = fs.Parse(args)
 
 	if *detach {
 		detachProcess(append([]string{"init"}, args...))
 	}
+
+	ui.SetVerbose(*verboseFlag)
 
 	// VM reads from this directory via VirtioFS, so it has to exist
 	// before we boot.
@@ -56,7 +59,7 @@ func platformInit(args []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ui.Banner(version, "")
+	ui.Header(version)
 
 	if err := vm.EnsureAssets(ctx, version); err != nil {
 		ui.Fail("%v", err)
@@ -98,17 +101,24 @@ func platformInit(args []string) {
 
 	vmCfg := vm.DefaultConfig(home)
 	consoleLogPath := filepath.Join(home, "vm-console.log")
-	startTime := time.Now()
 
-	// Stream service progress from the VM console to the host
-	// terminal. The goroutine tails vm-console.log and forwards
-	// progress lines, hiding the VM's own banner and init preamble.
-	streamDone := make(chan struct{})
-	go streamVMProgress(ctx, consoleLogPath, streamDone)
+	var progress *ui.ProgressLine
+	var streamDone chan struct{}
+	if ui.IsVerbose() {
+		streamDone = make(chan struct{})
+		go streamVMProgress(ctx, consoleLogPath, streamDone)
+	} else {
+		progress = ui.Progress("Starting")
+	}
 
 	machine, err := vm.Boot(ctx, vmCfg)
 	if err != nil {
-		close(streamDone)
+		if streamDone != nil {
+			close(streamDone)
+		}
+		if progress != nil {
+			progress.Fail()
+		}
 		ui.Fail("failed to start: %v", err)
 		os.Exit(1)
 	}
@@ -116,7 +126,12 @@ func platformInit(args []string) {
 	// os.Exit skips defers, so any error path that needs to tear the
 	// VM down and remove the PID file has to do it explicitly here.
 	fatalf := func(format string, args ...any) {
-		close(streamDone)
+		if streamDone != nil {
+			close(streamDone)
+		}
+		if progress != nil {
+			progress.Fail()
+		}
 		ui.Fail(format, args...)
 		_ = os.Remove(pidFile)
 		_ = machine.Shutdown(context.Background())
@@ -165,13 +180,18 @@ func platformInit(args []string) {
 		fatalf("services did not become ready: %v", err)
 	}
 
-	close(streamDone)
+	if streamDone != nil {
+		close(streamDone)
+	}
+	if progress != nil {
+		progress.Done()
+	}
 
-	elapsed := time.Since(startTime).Truncate(time.Second)
-	ui.ReadyWithElapsed(elapsed)
+	fmt.Println()
 	ui.Info("gRPC", *grpcAddr)
 	ui.Info("Postgres", "localhost:15432")
 	ui.Info("Data", home)
+	fmt.Println()
 	ui.Step("Press Ctrl+C to stop.")
 
 	sigCh := make(chan os.Signal, 1)
@@ -182,9 +202,8 @@ func platformInit(args []string) {
 	case <-ctx.Done():
 	}
 
-	ui.Shutdown()
-
-	ui.Step("Stopping services")
+	fmt.Println()
+	stopProgress := ui.Progress("Stopping")
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stopCancel()
 
@@ -203,65 +222,35 @@ func platformInit(args []string) {
 		fmt.Fprintf(os.Stderr, "warning: shutdown error: %v\n", err)
 	}
 
-	ui.Stopped()
+	stopProgress.Done()
 }
 
 func platformStop(_ []string) {
 	pidFile := filepath.Join(embedded.RunDir(), "agentcage.pid")
 
-	if stopViaGRPC() {
-		_ = os.Remove(pidFile)
-		return
-	}
-
-	fmt.Println("gRPC unreachable, falling back to process signal...")
+	// On macOS the gRPC server is inside a VM behind a TCP proxy.
+	// The proxy keeps localhost:9090 alive until the host process
+	// dies, so polling for "unreachable" always times out. Instead:
+	// send the Stop RPC (tells the VM orchestrator to shut down),
+	// then SIGTERM the host process (triggers VM shutdown + cleanup).
+	sendStopRPC()
 	stopViaPID(pidFile)
 }
 
-// Returns true only once the gRPC server is confirmed unreachable.
-func stopViaGRPC() bool {
+func sendStopRPC() {
 	conn, err := grpc.NewClient(config.DefaultGRPCAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		return false
+		return
 	}
 	defer func() { _ = conn.Close() }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	client := pb.NewControlServiceClient(conn)
-	pingResp, err := client.Ping(ctx, &pb.PingRequest{})
-	if err != nil {
-		return false
-	}
-	if pingResp.GetStatus() != "running" {
-		fmt.Fprintf(os.Stderr, "service on :9090 is not agentcage (status=%s).\n", pingResp.GetStatus())
-		os.Exit(1)
-	}
-
-	fmt.Println("Stopping agentcage...")
-	if _, err := client.Stop(ctx, &pb.StopRequest{}); err != nil {
-		fmt.Fprintf(os.Stderr, "error sending stop: %v\n", err)
-		return false
-	}
-
-	fmt.Println("Waiting for shutdown...")
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		checkCtx, checkCancel := context.WithTimeout(context.Background(), 1*time.Second)
-		_, pingErr := client.Ping(checkCtx, &pb.PingRequest{})
-		checkCancel()
-		if pingErr != nil {
-			ui.Stopped()
-			return true
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	fmt.Fprintln(os.Stderr, "gRPC still reachable after 15s.")
-	return false
+	_, _ = client.Stop(ctx, &pb.StopRequest{})
 }
 
 func stopViaPID(pidFile string) {
@@ -279,37 +268,38 @@ func stopViaPID(pidFile string) {
 
 	proc, err := os.FindProcess(pid)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "process %d not found: %v\n", pid, err)
 		_ = os.Remove(pidFile)
+		fmt.Fprintln(os.Stderr, "agentcage is not running.")
 		os.Exit(1)
 	}
 
 	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		fmt.Fprintln(os.Stderr, "agentcage is not running (stale PID file).")
 		_ = os.Remove(pidFile)
+		fmt.Fprintln(os.Stderr, "agentcage is not running.")
 		os.Exit(1)
 	}
 
-	fmt.Printf("Stopping agentcage (pid %d)...\n", pid)
+	progress := ui.Progress("Stopping")
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to stop agentcage (pid %d): %v\n", pid, err)
+		progress.Fail()
+		ui.Fail("failed to stop (pid %d): %v", pid, err)
 		os.Exit(1)
 	}
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := proc.Signal(syscall.Signal(0)); err != nil {
-			ui.Stopped()
+			progress.Done()
 			_ = os.Remove(pidFile)
 			return
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
 
-	fmt.Fprintf(os.Stderr, "agentcage did not stop within 10s, sending SIGKILL...\n")
+	progress.Fail()
+	ui.Warn("did not stop within 15s, sending SIGKILL")
 	_ = proc.Signal(syscall.SIGKILL)
 	_ = os.Remove(pidFile)
-	fmt.Println("agentcage killed.")
 }
 
 func tcpProxyFromListener(ctx context.Context, ln net.Listener, targetAddr string) error {
