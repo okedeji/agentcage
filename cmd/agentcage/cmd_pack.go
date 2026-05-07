@@ -142,6 +142,7 @@ func cmdPack(args []string) {
 			}
 
 			fmt.Println()
+			ui.Info("Tag", resultTag)
 			ui.Info("Runtime", p.Result.Runtime)
 			ui.Info("Entrypoint", p.Result.Entrypoint)
 			ui.Info("Ref", shortRef)
