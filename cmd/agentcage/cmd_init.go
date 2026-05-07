@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -78,14 +79,15 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 	if err != nil {
 		return fmt.Errorf("creating logger: %w", err)
 	}
-	ui.Step("Logs: agentcage logs orchestrator --follow")
-	ui.Step("Or run with --debug to see logs inline")
 	log = log.WithValues("component", "agentcage")
 
-	ui.Banner(version, "linux")
+	ui.Banner(version, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	startTime := time.Now()
+	ui.Section("Starting")
 
 	// Falco rules go to disk before the daemon starts. Otherwise it
 	// misses the first batch of cage events.
@@ -95,11 +97,9 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 	}
 
 	embeddedMgr := embedded.NewManager(cfg, log, version)
-	ui.Section("Dependencies")
 	if err := embeddedMgr.Download(ctx); err != nil {
 		return fmt.Errorf("downloading dependencies: %w", err)
 	}
-	ui.Section("Services")
 	if err := embeddedMgr.Start(ctx); err != nil {
 		return fmt.Errorf("starting local services: %w", err)
 	}
@@ -171,7 +171,6 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 	}
 	if fleetSetup.autoscaler != nil {
 		autoscalerLog := log.WithValues("component", "autoscaler")
-		ui.Step("Fleet autoscaler started")
 		go func() {
 			if err := fleetSetup.autoscaler.Run(ctx); err != nil {
 				autoscalerLog.Error(err, "autoscaler stopped, triggering orchestrator shutdown")
@@ -385,12 +384,10 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 		}
 	}()
 
-	// lis.Addr() resolves the real port for ephemeral binds (`:0`).
-	ui.Ready()
+	elapsed := time.Since(startTime).Truncate(time.Second)
+	ui.ReadyWithElapsed(elapsed)
 	ui.Info("gRPC", lis.Addr().String())
-	ui.Info("Temporal", resolveTemporalAddr(cfg))
 	ui.Info("Data", embedded.DataDir())
-	fmt.Println()
 	ui.Step("Press Ctrl+C to stop.")
 
 	sigCh := waitForShutdown(ctx, log)
@@ -467,7 +464,7 @@ func seedSecrets(ctx context.Context, reader identity.SecretReader, path string)
 	}
 	defer func() { _ = f.Close() }()
 
-	ui.Step("Seeding secrets from %s", path)
+	ui.Step("Seeding secrets")
 	var seeded int
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {

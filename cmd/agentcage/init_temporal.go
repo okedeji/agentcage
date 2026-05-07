@@ -144,7 +144,7 @@ func buildTemporalWorkers(
 	cageIdentity := fmt.Sprintf("agentcage-%s-%s-cage", version, hostname)
 	assessmentIdentity := fmt.Sprintf("agentcage-%s-%s-assessment", version, hostname)
 
-	ui.Step("Registering Temporal workers")
+	ui.Step("Starting workers")
 	cageWorkerLog := log.WithValues("component", "cage-worker")
 	cageWorker := worker.New(temporal, cage.TaskQueue, worker.Options{
 		Identity:                           cageIdentity,
@@ -197,7 +197,6 @@ func startTemporalWorkers(
 	cageWorker, assessmentWorker worker.Worker,
 	log logr.Logger,
 ) error {
-	ui.Step("Starting Temporal workers")
 	if err := cageWorker.Start(); err != nil {
 		return fmt.Errorf("starting cage worker: %w", err)
 	}

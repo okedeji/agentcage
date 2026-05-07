@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -79,6 +80,13 @@ func Info(key, value string) {
 func Ready() {
 	fmt.Println()
 	fmt.Println(green.Bold(true).Render("  ● ready"))
+	fmt.Println()
+}
+
+// ReadyWithElapsed prints the ready banner with elapsed time.
+func ReadyWithElapsed(d time.Duration) {
+	fmt.Println()
+	fmt.Println(green.Bold(true).Render("  ● ready") + subtle.Render(fmt.Sprintf(" (%s)", d)))
 	fmt.Println()
 }
 

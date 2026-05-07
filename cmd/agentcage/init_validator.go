@@ -8,13 +8,11 @@ import (
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/enforcement"
-	"github.com/okedeji/agentcage/internal/ui"
 	"github.com/okedeji/agentcage/internal/intervention"
 )
 
 // Compiled once at startup so per-request eval stays fast.
 func buildPolicyEngine(cfg *config.Config) (*enforcement.OPAEngine, error) {
-	ui.Step("Configuring policy engine")
 	modules := enforcement.GenerateRegoModules(cfg)
 	engine, err := enforcement.NewOPAEngineFromModules(modules)
 	if err != nil {

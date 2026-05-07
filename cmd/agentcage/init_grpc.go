@@ -95,7 +95,7 @@ func buildGRPCServer(
 }
 
 func startGRPCListener(grpcAddr string, cfg *config.Config, log logr.Logger) (net.Listener, bool, error) {
-	ui.Step("Starting gRPC server on %s", grpcAddr)
+	ui.Step("Starting gRPC server")
 	if isGlobalBind(grpcAddr) && !cfg.GRPC.TLSEnabled() && cfg.Posture == config.PostureStrict {
 		return nil, false, fmt.Errorf("refusing to bind gRPC on %s without TLS in strict posture: configure grpc.tls or set posture=dev", grpcAddr)
 	}
