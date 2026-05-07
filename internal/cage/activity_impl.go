@@ -459,18 +459,23 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 	// AF_VSOCK port 54. Retry the CONNECT handshake until it
 	// succeeds or the context is cancelled.
 	var conn net.Conn
+	var lastPhase, lastDetail string
 	for attempt := 0; attempt < 240; attempt++ {
 		if ctx.Err() != nil {
 			return
 		}
 		c, err := net.DialTimeout("unix", vsockPath, 2*time.Second)
 		if err != nil {
+			lastPhase = "dial"
+			lastDetail = err.Error()
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
 
 		connectCmd := fmt.Sprintf("CONNECT %d\n", VsockPortLogs)
 		if _, err := c.Write([]byte(connectCmd)); err != nil {
+			lastPhase = "write"
+			lastDetail = err.Error()
 			_ = c.Close()
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -478,7 +483,16 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 
 		buf := make([]byte, 32)
 		n, err := c.Read(buf)
-		if err != nil || n < 2 || string(buf[:2]) != "OK" {
+		if err != nil {
+			lastPhase = "read"
+			lastDetail = err.Error()
+			_ = c.Close()
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		if n < 2 || string(buf[:2]) != "OK" {
+			lastPhase = "response"
+			lastDetail = string(buf[:n])
 			_ = c.Close()
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -489,7 +503,9 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 	}
 	if conn == nil {
 		if ctx.Err() == nil {
-			a.log.Error(nil, "cage log collection failed: could not connect after 120s", "cage_id", cageID, "vsock_path", vsockPath)
+			a.log.Error(nil, "cage log collection failed", "cage_id", cageID, "vsock_path", vsockPath, "last_phase", lastPhase, "last_detail", lastDetail)
+		} else {
+			a.log.Info("cage log collection cancelled", "cage_id", cageID, "last_phase", lastPhase, "last_detail", lastDetail)
 		}
 		return
 	}
