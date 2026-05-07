@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -55,9 +56,8 @@ func platformInit(args []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ui.Banner(version, "macOS")
+	ui.Banner(version, "")
 
-	ui.Section("VM Assets")
 	if err := vm.EnsureAssets(ctx, version); err != nil {
 		ui.Fail("%v", err)
 		os.Exit(1)
@@ -76,7 +76,6 @@ func platformInit(args []string) {
 			ui.Fail("writing config to shared dir: %v", err)
 			os.Exit(1)
 		}
-		ui.OK("Config copied to %s", dest)
 	}
 
 	if *secretsFile != "" {
@@ -97,18 +96,27 @@ func platformInit(args []string) {
 	_ = os.WriteFile(filepath.Join(home, ".vm-clock"),
 		[]byte(time.Now().UTC().Format("2006-01-02 15:04:05")), 0644)
 
-	ui.Section("Linux VM")
-	ui.Step("VM logs: agentcage logs vm --follow")
-	cfg := vm.DefaultConfig(home)
-	machine, err := vm.Boot(ctx, cfg)
+	vmCfg := vm.DefaultConfig(home)
+	consoleLogPath := filepath.Join(home, "vm-console.log")
+	startTime := time.Now()
+
+	// Stream service progress from the VM console to the host
+	// terminal. The goroutine tails vm-console.log and forwards
+	// progress lines, hiding the VM's own banner and init preamble.
+	streamDone := make(chan struct{})
+	go streamVMProgress(ctx, consoleLogPath, streamDone)
+
+	machine, err := vm.Boot(ctx, vmCfg)
 	if err != nil {
-		ui.Fail("booting VM: %v", err)
+		close(streamDone)
+		ui.Fail("failed to start: %v", err)
 		os.Exit(1)
 	}
 
 	// os.Exit skips defers, so any error path that needs to tear the
 	// VM down and remove the PID file has to do it explicitly here.
 	fatalf := func(format string, args ...any) {
+		close(streamDone)
 		ui.Fail(format, args...)
 		_ = os.Remove(pidFile)
 		_ = machine.Shutdown(context.Background())
@@ -124,19 +132,18 @@ func platformInit(args []string) {
 	// stable localhost interface for the CLI and operators.
 	vmIP := machine.IP()
 	if vmIP == "" {
-		fatalf("agentcage init: VM booted but reported no IP address\n")
+		fatalf("services started but reported no network address")
 	}
 
-	// Bind eagerly so a port conflict fails fast with a clear error
-	// instead of timing out in waitForGRPCReady with a misleading one.
+	// Bind eagerly so a port conflict fails fast with a clear error.
 	grpcLn, err := net.Listen("tcp", *grpcAddr)
 	if err != nil {
-		fatalf("port %s already in use. Is another agentcage running?\n  Check: lsof -i :%s\n", *grpcAddr, portFromAddr(*grpcAddr))
+		fatalf("port %s already in use. Is another agentcage running?\n  Check: lsof -i :%s", *grpcAddr, portFromAddr(*grpcAddr))
 	}
 	pgLn, err := net.Listen("tcp", "127.0.0.1:15432")
 	if err != nil {
 		_ = grpcLn.Close()
-		fatalf("agentcage init: port 15432 already in use\n  Check: lsof -i :15432\n")
+		fatalf("port 15432 already in use\n  Check: lsof -i :15432")
 	}
 
 	go func() {
@@ -152,19 +159,18 @@ func platformInit(args []string) {
 		}
 	}()
 
-	// waitForGRPC already confirmed TCP connectivity on port 9090.
-	// Do a quick gRPC Ping to verify the server is dispatching RPCs.
-	ui.Step("Verifying gRPC readiness")
 	readyCtx, readyCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer readyCancel()
 	if err := agentgrpc.WaitForReady(readyCtx, machine.GRPCAddr()); err != nil {
-		fatalf("gRPC server not responding: %v\n", err)
+		fatalf("services did not become ready: %v", err)
 	}
 
-	ui.Ready()
+	close(streamDone)
+
+	elapsed := time.Since(startTime).Truncate(time.Second)
+	ui.ReadyWithElapsed(elapsed)
 	ui.Info("gRPC", *grpcAddr)
 	ui.Info("Postgres", "localhost:15432")
-	ui.Info("VM", fmt.Sprintf("Apple Virtualization.framework (%s)", runtime.GOARCH))
 	ui.Info("Data", home)
 	ui.Step("Press Ctrl+C to stop.")
 
@@ -178,7 +184,7 @@ func platformInit(args []string) {
 
 	ui.Shutdown()
 
-	ui.Step("Stopping services inside VM")
+	ui.Step("Stopping services")
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stopCancel()
 
@@ -191,11 +197,10 @@ func platformInit(args []string) {
 		_ = conn.Close()
 	}
 
-	ui.Step("Shutting down VM")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 	if err := machine.Shutdown(shutdownCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: VM shutdown error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "warning: shutdown error: %v\n", err)
 	}
 
 	ui.Stopped()
@@ -335,6 +340,84 @@ func tcpProxyFromListener(ctx context.Context, ln net.Listener, targetAddr strin
 			_, _ = io.Copy(clientConn, targetConn)
 			<-done
 		}()
+	}
+}
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// streamVMProgress tails the VM console log and prints service
+// startup progress to the host terminal. Skips the VM's banner
+// and init-script preamble. Stops when done is closed.
+func streamVMProgress(ctx context.Context, logPath string, done <-chan struct{}) {
+	var f *os.File
+	for {
+		var err error
+		f, err = os.Open(logPath)
+		if err == nil {
+			break
+		}
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	defer func() { _ = f.Close() }()
+
+	buf := make([]byte, 0, 4096)
+	pastBanner := false
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		tmp := make([]byte, 1024)
+		n, _ := f.Read(tmp)
+		if n == 0 {
+			select {
+			case <-done:
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+			continue
+		}
+
+		buf = append(buf, tmp[:n]...)
+
+		for {
+			idx := bytes.IndexByte(buf, '\n')
+			if idx < 0 {
+				break
+			}
+			line := string(buf[:idx])
+			buf = buf[idx+1:]
+
+			plain := ansiRe.ReplaceAllString(line, "")
+
+			if !pastBanner {
+				if strings.HasPrefix(plain, "  >> ") || strings.HasPrefix(plain, "     Generating") {
+					pastBanner = true
+				} else {
+					continue
+				}
+			}
+
+			if strings.Contains(plain, "● ready") {
+				return
+			}
+
+			line = strings.ReplaceAll(line, "/mnt/agentcage/", "")
+			line = strings.Replace(line, " on 0.0.0.0:9090", "", 1)
+
+			fmt.Println(line)
+		}
 	}
 }
 

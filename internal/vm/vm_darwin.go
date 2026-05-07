@@ -117,19 +117,17 @@ func Boot(ctx context.Context, cfg Config) (*LinuxVM, error) {
 
 	// Nested virtualization: enables /dev/kvm inside the guest so
 	// Firecracker can run cage microVMs. Requires M3+ and macOS 15+.
-	if vz.IsNestedVirtualizationSupported() {
-		platform, err := vz.NewGenericPlatformConfiguration()
-		if err != nil {
-			return nil, fmt.Errorf("creating platform config: %w", err)
-		}
-		if err := platform.SetNestedVirtualizationEnabled(true); err != nil {
-			return nil, fmt.Errorf("enabling nested virtualization: %w", err)
-		}
-		vmCfg.SetPlatformVirtualMachineConfiguration(platform)
-		fmt.Println("     Nested virtualization enabled (/dev/kvm available in VM)")
-	} else {
+	if !vz.IsNestedVirtualizationSupported() {
 		return nil, fmt.Errorf("nested virtualization not supported on this hardware (requires M3+ chip with macOS 15+)")
 	}
+	platform, err := vz.NewGenericPlatformConfiguration()
+	if err != nil {
+		return nil, fmt.Errorf("creating platform config: %w", err)
+	}
+	if err := platform.SetNestedVirtualizationEnabled(true); err != nil {
+		return nil, fmt.Errorf("enabling nested virtualization: %w", err)
+	}
+	vmCfg.SetPlatformVirtualMachineConfiguration(platform)
 
 	validated, err := vmCfg.Validate()
 	if err != nil {
@@ -213,43 +211,37 @@ func (v *LinuxVM) GRPCAddr() string {
 // range in parallel rather than guessing a handful of candidates.
 func (v *LinuxVM) waitForGRPC(ctx context.Context) error {
 	port := fmt.Sprintf("%d", grpcPort)
-	start := time.Now()
 
 	for {
 		if ip, ok := v.scanSubnet(ctx, port); ok {
 			v.mu.Lock()
 			v.ip = ip
 			v.mu.Unlock()
-			elapsed := int(time.Since(start).Seconds())
-			fmt.Printf("\r     Waiting for VM... ready at %s (%ds)          \n", ip, elapsed)
 			return nil
 		}
 
 		if v.machine.State() == vz.VirtualMachineStateStopped {
-			fmt.Printf("\r     Waiting for VM... stopped                      \n")
-			return fmt.Errorf("VM exited unexpectedly (check: agentcage logs vm)")
+			return fmt.Errorf("services exited unexpectedly (run 'agentcage logs orchestrator' for details)")
 		}
 
 		if data, err := os.ReadFile(v.consoleLogPath); err == nil {
 			if bytes.Contains(data, []byte("Kernel panic")) {
-				fmt.Printf("\r     Waiting for VM... crashed                      \n")
 				_ = v.machine.Stop()
-				return fmt.Errorf("VM kernel panic (check: agentcage logs vm)")
+				return fmt.Errorf("failed to start: kernel error (run 'agentcage logs --debug' for details)")
 			}
 		}
 
-		elapsed := int(time.Since(start).Seconds())
-		min := elapsed / 60
-		sec := elapsed % 60
-		fmt.Printf("\r     Waiting for VM... %dm%02ds", min, sec)
-
 		select {
 		case <-ctx.Done():
-			fmt.Println()
 			return ctx.Err()
 		case <-time.After(2 * time.Second):
 		}
 	}
+}
+
+// ConsoleLogPath returns the path to the VM's serial console log.
+func (v *LinuxVM) ConsoleLogPath() string {
+	return v.consoleLogPath
 }
 
 // scanSubnet tries every host in 192.168.64.2-254 concurrently.
