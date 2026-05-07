@@ -65,9 +65,11 @@ func detachProcess(args []string) {
 	pid := proc.Pid
 	_ = proc.Release()
 
+	ui.Header(version)
+
 	// Wait for gRPC to become reachable before reporting success.
 	// This ensures `agentcage stop` works immediately after detach returns.
-	ui.Step("Starting (pid %d)...", pid)
+	progress := ui.Progress("Starting")
 	readyCtx, readyCancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer readyCancel()
 	addr := "127.0.0.1:9090"
@@ -77,22 +79,25 @@ func detachProcess(args []string) {
 			_ = conn.Close()
 			break
 		}
-		// Check if process died.
 		if err := syscall.Kill(pid, 0); err != nil {
+			progress.Fail()
 			ui.Fail("agentcage exited before becoming ready. Check: %s", logPath)
 			os.Exit(1)
 		}
 		select {
 		case <-readyCtx.Done():
+			progress.Fail()
 			ui.Fail("timed out waiting for agentcage to start. Check: %s", logPath)
 			os.Exit(1)
 		case <-time.After(1 * time.Second):
 		}
 	}
 
-	ui.OK("agentcage running (pid %d)", pid)
-	ui.Step("Output: %s", logPath)
-	ui.Step("Stop:   agentcage stop")
+	progress.Done()
+	fmt.Println()
+	ui.Info("PID", fmt.Sprintf("%d", pid))
+	ui.Info("Logs", "agentcage logs orchestrator")
+	ui.Info("Stop", "agentcage stop")
 	os.Exit(0)
 }
 
@@ -153,7 +158,8 @@ func shutdownSequence(
 		go forceExitOnSecondSignal(sigCh)
 	}
 
-	ui.Shutdown()
+	fmt.Println()
+	stopProgress := ui.Progress("Stopping")
 
 	// Hard deadline on the whole sequence. Every step is bounded
 	// individually, but a future addition could still hang. Force-exit
@@ -177,7 +183,7 @@ func shutdownSequence(
 
 	stopEmbeddedBounded(deps.embeddedMgr, log)
 
-	ui.Stopped()
+	stopProgress.Done()
 }
 
 // SIGHUP is ignored here because operators occasionally send it by

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -21,6 +22,22 @@ var (
 	keyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Width(12)
 	valStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 )
+
+var verbose bool
+
+// SetVerbose controls whether Step, OK, and Section produce output.
+// Fail and Warn always print regardless of this setting.
+func SetVerbose(v bool) { verbose = v }
+
+// IsVerbose returns the current verbose state.
+func IsVerbose() bool { return verbose }
+
+// Header prints a single-line version header.
+func Header(version string) {
+	fmt.Println()
+	fmt.Println("  " + bold.Render("agentcage") + subtle.Render(" v"+version))
+	fmt.Println()
+}
 
 const banner = `
                         __
@@ -42,48 +59,57 @@ func Banner(version, platform string) {
 	fmt.Println()
 }
 
-// Section prints a section header for a boot phase.
+// Section prints a section header. No-op in quiet mode.
 func Section(name string) {
+	if !verbose {
+		return
+	}
 	fmt.Println(magenta.Render("  >> ") + bold.Render(name))
 }
 
-// Step prints an in-progress step within a section.
+// Step prints an in-progress step. No-op in quiet mode.
 func Step(format string, args ...any) {
+	if !verbose {
+		return
+	}
 	msg := fmt.Sprintf(format, args...)
 	fmt.Println(subtle.Render("     ") + msg)
 }
 
-// OK prints a completed step.
+// OK prints a completed step. No-op in quiet mode.
 func OK(format string, args ...any) {
+	if !verbose {
+		return
+	}
 	msg := fmt.Sprintf(format, args...)
 	fmt.Println(green.Render("  ✓  ") + msg)
 }
 
-// Warn prints a warning.
+// Warn prints a warning. Always prints.
 func Warn(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Println(yellow.Render("  !  ") + msg)
 }
 
-// Fail prints an error.
+// Fail prints an error. Always prints.
 func Fail(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintln(os.Stderr, red.Render("  ✗  ")+msg)
 }
 
-// Info prints a key-value pair in the ready banner.
+// Info prints a key-value pair in the ready block.
 func Info(key, value string) {
-	fmt.Println("     " + keyStyle.Render(key) + valStyle.Render(value))
+	fmt.Println("  " + keyStyle.Render(key) + valStyle.Render(value))
 }
 
-// Ready prints the final ready banner.
+// Ready prints the final ready indicator.
 func Ready() {
 	fmt.Println()
 	fmt.Println(green.Bold(true).Render("  ● ready"))
 	fmt.Println()
 }
 
-// ReadyWithElapsed prints the ready banner with elapsed time.
+// ReadyWithElapsed prints the ready indicator with elapsed time.
 func ReadyWithElapsed(d time.Duration) {
 	fmt.Println()
 	fmt.Println(green.Bold(true).Render("  ● ready") + subtle.Render(fmt.Sprintf(" (%s)", d)))
@@ -103,5 +129,62 @@ func Divider() {
 // Shutdown prints the shutdown header.
 func Shutdown() {
 	fmt.Println()
-	Section("Shutting down")
+	if verbose {
+		Section("Shutting down")
+	}
+}
+
+// ProgressLine shows an in-place progress indicator that updates
+// with growing dots and elapsed time. Call Done or Fail to finish.
+type ProgressLine struct {
+	label string
+	start time.Time
+	mu    sync.Mutex
+	done  chan struct{}
+}
+
+// Progress starts a progress line that updates in-place.
+func Progress(label string) *ProgressLine {
+	p := &ProgressLine{
+		label: label,
+		start: time.Now(),
+		done:  make(chan struct{}),
+	}
+	fmt.Printf("  %s ", label)
+	go p.run()
+	return p
+}
+
+func (p *ProgressLine) run() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-p.done:
+			return
+		case <-ticker.C:
+			elapsed := int(time.Since(p.start).Seconds())
+			p.mu.Lock()
+			fmt.Printf("\r  %s %s", p.label, subtle.Render(fmt.Sprintf("(%ds)", elapsed)))
+			p.mu.Unlock()
+		}
+	}
+}
+
+// Done finishes the progress line with success.
+func (p *ProgressLine) Done() {
+	close(p.done)
+	elapsed := time.Since(p.start).Truncate(time.Second)
+	p.mu.Lock()
+	// Trailing spaces overwrite leftover dots from the progress updates.
+	fmt.Printf("\r  %s %s                              \n", p.label, subtle.Render(fmt.Sprintf("done (%s)", elapsed)))
+	p.mu.Unlock()
+}
+
+// Fail finishes the progress line with an error.
+func (p *ProgressLine) Fail() {
+	close(p.done)
+	p.mu.Lock()
+	fmt.Printf("\r  %s %s                              \n", p.label, red.Render("failed"))
+	p.mu.Unlock()
 }

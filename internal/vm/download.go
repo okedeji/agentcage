@@ -46,7 +46,6 @@ func EnsureAssets(ctx context.Context, agentcageVersion string) error {
 		}
 	}
 	if needed == 0 {
-		fmt.Println("     All assets cached")
 		return nil
 	}
 

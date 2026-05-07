@@ -38,6 +38,7 @@ func cmdInit(args []string) {
 	grpcAddr := fs.String("grpc-addr", "", "override gRPC listen address (e.g. 0.0.0.0:9090)")
 	secretsFile := fs.String("secrets", "", "path to secrets file (KEY=VALUE lines, seeded into Vault on first boot)")
 	debug := fs.Bool("debug", false, "show structured logs on stderr in addition to log file")
+	verboseFlag := fs.Bool("verbose", false, "show step-by-step startup progress")
 	detach := fs.Bool("detach", false, "run in background")
 	_ = fs.Parse(args)
 
@@ -45,13 +46,15 @@ func cmdInit(args []string) {
 		detachProcess(append([]string{"init"}, args...))
 	}
 
+	ui.SetVerbose(*verboseFlag || *debug)
+
 	if err := runInit(*configFile, *grpcAddr, *secretsFile, *debug); err != nil {
 		ui.Fail("%v", err)
 		os.Exit(1)
 	}
 }
 
-func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
+func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr error) {
 	defaultPath := config.DefaultPath()
 	created, err := config.WriteDefaults(defaultPath)
 	if err != nil {
@@ -81,13 +84,21 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 	}
 	log = log.WithValues("component", "agentcage")
 
-	ui.Banner(version, "")
+	ui.Header(version)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	startTime := time.Now()
-	ui.Section("Starting")
+	var progress *ui.ProgressLine
+	if !ui.IsVerbose() {
+		progress = ui.Progress("Starting")
+	}
+	defer func() {
+		if initErr != nil && progress != nil {
+			progress.Fail()
+		}
+	}()
 
 	// Falco rules go to disk before the daemon starts. Otherwise it
 	// misses the first batch of cage events.
@@ -384,10 +395,16 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) error {
 		}
 	}()
 
-	elapsed := time.Since(startTime).Truncate(time.Second)
-	ui.ReadyWithElapsed(elapsed)
+	if progress != nil {
+		progress.Done()
+	} else {
+		elapsed := time.Since(startTime).Truncate(time.Second)
+		ui.ReadyWithElapsed(elapsed)
+	}
+	fmt.Println()
 	ui.Info("gRPC", lis.Addr().String())
 	ui.Info("Data", embedded.DataDir())
+	fmt.Println()
 	ui.Step("Press Ctrl+C to stop.")
 
 	sigCh := waitForShutdown(ctx, log)
@@ -464,7 +481,6 @@ func seedSecrets(ctx context.Context, reader identity.SecretReader, path string)
 	}
 	defer func() { _ = f.Close() }()
 
-	ui.Step("Seeding secrets")
 	var seeded int
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -487,7 +503,6 @@ func seedSecrets(ctx context.Context, reader identity.SecretReader, path string)
 		if err := reader.WriteSecret(ctx, vaultPath, map[string]any{"value": value}); err != nil {
 			return fmt.Errorf("writing %s: %w", key, err)
 		}
-		ui.OK("Seeded %s", key)
 		seeded++
 	}
 	if err := scanner.Err(); err != nil {
@@ -495,6 +510,8 @@ func seedSecrets(ctx context.Context, reader identity.SecretReader, path string)
 	}
 	if seeded == 0 {
 		ui.Warn("No recognized secrets found in %s", path)
+	} else {
+		ui.Step("Seeding secrets (%d keys)", seeded)
 	}
 	return nil
 }
