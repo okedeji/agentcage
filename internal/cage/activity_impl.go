@@ -459,48 +459,42 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID, vsockPath string
 	// The guest VM needs time to boot, mount the rootfs, start
 	// cage-init, and have directive-sidecar bind AF_VSOCK port 54.
 	// 60s is generous but cage rootfs can be 2GB.
+	// Firecracker delivers guest-initiated vsock connections to
+	// <uds_path>_<port>. Listen before the guest connects so the
+	// directive-sidecar finds us when it dials CID 2, port 54.
+	lisPath := fmt.Sprintf("%s_%d", vsockPath, VsockPortLogs)
+	_ = os.Remove(lisPath)
+	lis, err := net.Listen("unix", lisPath)
+	if err != nil {
+		a.log.Error(err, "cage log collection failed: could not listen", "cage_id", cageID, "path", lisPath)
+		return
+	}
+	defer func() { _ = lis.Close(); _ = os.Remove(lisPath) }()
+
+	// Accept with a deadline so we don't block forever if the
+	// directive-sidecar never connects (cage crashed during boot).
+	type acceptResult struct {
+		conn net.Conn
+		err  error
+	}
+	ch := make(chan acceptResult, 1)
+	go func() {
+		c, err := lis.Accept()
+		ch <- acceptResult{c, err}
+	}()
+
 	var conn net.Conn
-	var lastErr string
-	for attempt := 0; attempt < 120; attempt++ {
-		if ctx.Err() != nil {
+	select {
+	case res := <-ch:
+		if res.err != nil {
+			a.log.Error(res.err, "cage log collection failed: accept error", "cage_id", cageID)
 			return
 		}
-		c, err := net.DialTimeout("unix", vsockPath, 2*time.Second)
-		if err != nil {
-			lastErr = fmt.Sprintf("dial: %v", err)
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-
-		connectCmd := fmt.Sprintf("CONNECT %d\n", VsockPortLogs)
-		if _, err := c.Write([]byte(connectCmd)); err != nil {
-			lastErr = fmt.Sprintf("write CONNECT: %v", err)
-			_ = c.Close()
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-
-		buf := make([]byte, 32)
-		n, err := c.Read(buf)
-		if err != nil {
-			lastErr = fmt.Sprintf("read response: %v", err)
-			_ = c.Close()
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-		resp := string(buf[:n])
-		if n < 2 || resp[:2] != "OK" {
-			lastErr = fmt.Sprintf("unexpected response: %q", resp)
-			_ = c.Close()
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-
-		conn = c
-		break
-	}
-	if conn == nil {
-		a.log.Error(nil, "cage log collection failed: could not connect after 60s", "cage_id", cageID, "last_error", lastErr, "vsock_path", vsockPath)
+		conn = res.conn
+	case <-ctx.Done():
+		return
+	case <-time.After(120 * time.Second):
+		a.log.Error(nil, "cage log collection failed: guest did not connect within 120s", "cage_id", cageID, "path", lisPath)
 		return
 	}
 
