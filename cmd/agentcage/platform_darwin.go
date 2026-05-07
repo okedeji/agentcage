@@ -102,6 +102,22 @@ func platformInit(args []string) {
 	vmCfg := vm.DefaultConfig(home)
 	consoleLogPath := filepath.Join(home, "vm-console.log")
 
+	// Remove stale console log so the stream goroutine opens a
+	// fresh file created by Boot, avoiding a read-position race
+	// where old data pushes the offset past new content.
+	_ = os.Remove(consoleLogPath)
+
+	// Signal the VM binary to run verbose via a marker file on
+	// VirtioFS. The init script doesn't pass --verbose, so the
+	// VM binary checks for this file instead.
+	verboseMarker := filepath.Join(home, ".init-verbose")
+	if ui.IsVerbose() {
+		_ = os.WriteFile(verboseMarker, []byte("1"), 0644)
+	} else {
+		_ = os.Remove(verboseMarker)
+	}
+
+	startTime := time.Now()
 	var progress *ui.ProgressLine
 	var streamDone chan struct{}
 	if ui.IsVerbose() {
@@ -181,13 +197,19 @@ func platformInit(args []string) {
 	}
 
 	if streamDone != nil {
+		// Let the goroutine drain remaining lines from the console
+		// log before closing. The VM wrote everything before gRPC
+		// became ready; we just need the reader to catch up.
+		time.Sleep(500 * time.Millisecond)
 		close(streamDone)
+		elapsed := time.Since(startTime).Truncate(time.Second)
+		ui.ReadyWithElapsed(elapsed)
 	}
 	if progress != nil {
 		progress.Done()
+		fmt.Println()
 	}
 
-	fmt.Println()
 	ui.Info("gRPC", *grpcAddr)
 	ui.Info("Postgres", "localhost:15432")
 	ui.Info("Data", home)
@@ -391,20 +413,22 @@ func streamVMProgress(ctx context.Context, logPath string, done <-chan struct{})
 
 			plain := ansiRe.ReplaceAllString(line, "")
 
+			// Skip the init-script preamble and agentcage header.
+			// Start printing at the first indented step line.
 			if !pastBanner {
-				if strings.HasPrefix(plain, "  >> ") || strings.HasPrefix(plain, "     Generating") {
-					pastBanner = true
-				} else {
+				trimmed := strings.TrimSpace(plain)
+				if trimmed == "" || strings.HasPrefix(plain, "  agentcage") || !strings.HasPrefix(plain, "  ") {
 					continue
 				}
+				pastBanner = true
 			}
 
-			if strings.Contains(plain, "● ready") {
+			// Stop before the VM's own ready block.
+			if strings.Contains(plain, "● ready") || strings.Contains(plain, "Starting done") {
 				return
 			}
 
 			line = strings.ReplaceAll(line, "/mnt/agentcage/", "")
-			line = strings.Replace(line, " on 0.0.0.0:9090", "", 1)
 
 			fmt.Println(line)
 		}

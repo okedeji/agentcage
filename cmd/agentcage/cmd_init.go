@@ -84,6 +84,15 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 	}
 	log = log.WithValues("component", "agentcage")
 
+	// On macOS the host writes a marker file to VirtioFS when
+	// --verbose is requested. The init script can't pass flags,
+	// so the VM binary checks for the marker instead.
+	verboseMarker := filepath.Join(config.HomeDir(), ".init-verbose")
+	if _, err := os.Stat(verboseMarker); err == nil {
+		ui.SetVerbose(true)
+		_ = os.Remove(verboseMarker)
+	}
+
 	ui.Header(version)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -397,11 +406,11 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 
 	if progress != nil {
 		progress.Done()
+		fmt.Println()
 	} else {
 		elapsed := time.Since(startTime).Truncate(time.Second)
 		ui.ReadyWithElapsed(elapsed)
 	}
-	fmt.Println()
 	ui.Info("gRPC", lis.Addr().String())
 	ui.Info("Data", embedded.DataDir())
 	fmt.Println()
