@@ -255,6 +255,12 @@ func writeHoldError(conn net.Conn, msg string) {
 // local Unix socket and forwards them to the host over vsock port 54.
 // Cage-init and sidecars write JSON log lines to the log socket.
 // The host-side VsockCollector reads them for operator visibility.
+//
+// The host pre-creates a Unix listener at <vsockPath>_54 during
+// ProvisionVM, before this guest boots. We dial CID 2 (host) on the
+// log port; Firecracker bridges the connection to that listener.
+// This eliminates the CONNECT race where the host probes before the
+// guest is listening.
 func serveLogForwarder(socketPath string, logVsockPort uint32) {
 	_ = os.Remove(socketPath)
 
@@ -265,25 +271,8 @@ func serveLogForwarder(socketPath string, logVsockPort uint32) {
 	}
 	defer func() { _ = localLis.Close() }()
 
-	// Listen on AF_VSOCK so the host can CONNECT to us.
-	vsockLis, err := listenVsock(logVsockPort)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "directive-sidecar: listen vsock port %d: %v\n", logVsockPort, err)
-		return
-	}
-	defer func() { _ = vsockLis.Close() }()
-
-	// Write readiness immediately after binding. cage-init blocks
-	// on this file before starting the agent. The old code waited
-	// for the host to connect first, creating a deadlock: host
-	// retries CONNECT until the guest listens, guest waits for
-	// host to connect before writing ready, cage-init waits for
-	// ready before the agent starts.
 	readyPath := filepath.Join(filepath.Dir(socketPath), "logs.ready")
-	_ = os.WriteFile(readyPath, []byte("ready\n"), 0644)
 	defer func() { _ = os.Remove(readyPath) }()
-
-	fmt.Printf("directive-sidecar: log listener ready on vsock port %d\n", logVsockPort)
 
 	// Buffer lines from local writers and forward to the host.
 	lines := make(chan []byte, 256)
@@ -298,17 +287,42 @@ func serveLogForwarder(socketPath string, logVsockPort uint32) {
 		}
 	}()
 
-	// Accept host connections and forward buffered lines.
+	firstConnect := true
 	for {
-		hostConn, err := vsockLis.Accept()
+		conn, err := dialVsockRetry(logVsockPort)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "directive-sidecar: accept vsock log conn: %v\n", err)
-			continue
+			fmt.Fprintf(os.Stderr, "directive-sidecar: log vsock connect failed after retries: %v\n", err)
+			return
 		}
-		fmt.Println("directive-sidecar: host log collector connected")
-		forwardToHost(hostConn, lines)
-		fmt.Println("directive-sidecar: host log collector disconnected")
+
+		if firstConnect {
+			_ = os.WriteFile(readyPath, []byte("ready\n"), 0644)
+			fmt.Printf("directive-sidecar: log stream connected to host on vsock port %d\n", logVsockPort)
+			firstConnect = false
+		} else {
+			fmt.Printf("directive-sidecar: log stream reconnected to host\n")
+		}
+
+		forwardToHost(conn, lines)
+		fmt.Println("directive-sidecar: host log collector disconnected, reconnecting")
 	}
+}
+
+// dialVsockRetry connects to the host on the given vsock port,
+// retrying for up to 30 seconds. The host listener is created in
+// ProvisionVM before the guest boots, so this usually succeeds on
+// the first or second attempt.
+func dialVsockRetry(port uint32) (net.Conn, error) {
+	var lastErr error
+	for attempt := 0; attempt < 60; attempt++ {
+		conn, err := dialVsock(vsockCIDHost, port)
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil, lastErr
 }
 
 func collectLocal(conn net.Conn, out chan<- []byte) {

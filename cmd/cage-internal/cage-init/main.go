@@ -153,9 +153,9 @@ func main() {
 	logSocket := socketDir + "/logs.sock"
 	logConn := connectLogSocket(logSocket)
 
-	// 7. Wait for host log collector to connect. The directive-sidecar
-	// writes a readiness file when the host vsock connection is established.
-	// Without this, agent output is lost if it prints before the host connects.
+	// 7. Wait for log pipe to be established. The directive-sidecar
+	// writes a readiness file after connecting to the host via vsock.
+	// Without this, agent output is lost if it prints before the pipe is up.
 	waitForLogReady(socketDir + "/logs.ready")
 
 	// 8. Run the agent entrypoint.
@@ -261,8 +261,8 @@ func fatal(format string, args ...any) {
 }
 
 // waitForLogReady polls for the readiness file that the directive-sidecar
-// writes when the host log collector connects via vsock. Gives up after
-// 15s so cages still start even if the host is slow.
+// writes after connecting to the host via vsock. The file confirms the
+// log pipe is working end-to-end. Refuses to start the agent without it.
 func waitForLogReady(path string) {
 	for i := 0; i < 30; i++ {
 		if _, err := os.Stat(path); err == nil {

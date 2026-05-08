@@ -127,12 +127,6 @@ func (l *AgentHoldListener) listenLoop(ctx context.Context, vmID, cageID, assess
 	}
 }
 
-// registerVsockHostListener tells Firecracker to forward guest-initiated
-// connections on a given port to a host-side UDS. Firecracker expects a
-// listener to connect to the vsock UDS and write "LISTEN <port>\n".
-// registerVsockHostListener tells Firecracker to forward guest-initiated
-// connections on a given port to a host-side UDS. Retries briefly because
-// the vsock interface may not be ready immediately after VM boot.
 func (l *AgentHoldListener) handleHoldConn(ctx context.Context, conn net.Conn, cageID, assessmentID string) {
 	defer func() { _ = conn.Close() }()
 
