@@ -132,17 +132,23 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	}
 
 	// Start Firecracker process
-	cmd := exec.CommandContext(ctx, p.binPath,
-		"--api-sock", socketPath,
-	)
 	// Write to shared log directory so the operator can read it
 	// from the host via `agentcage logs firecracker`.
 	logDir := filepath.Join(os.TempDir(), "firecracker")
 	if p.logDir != "" {
 		logDir = p.logDir
 	}
-	logFile := filepath.Join(logDir, "firecracker.log")
-	if f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+	fcLogFile := filepath.Join(logDir, "firecracker-vmm.log")
+	serialFile := filepath.Join(logDir, "firecracker.log")
+
+	cmd := exec.CommandContext(ctx, p.binPath,
+		"--api-sock", socketPath,
+		"--log-path", fcLogFile,
+		"--level", "Trace",
+		"--show-level",
+		"--show-log-origin",
+	)
+	if f, err := os.OpenFile(serialFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
 		cmd.Stdout = f
 		cmd.Stderr = f
 	} else {
@@ -301,7 +307,7 @@ func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernel
 	// Set boot source
 	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off"
 	if runtime.GOARCH == "arm64" {
-		bootArgs = "earlycon=uart,mmio,0x40002000 keep_bootcon " + bootArgs
+		bootArgs = "earlycon=ns16550a,mmio32,0x40002000 " + bootArgs
 	}
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,

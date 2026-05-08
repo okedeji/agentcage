@@ -51,6 +51,7 @@ func cmdLogsService(service string, args []string) {
 	followShort := fs.Bool("f", false, "stream live (short)")
 	lines := fs.Int("lines", 0, "show last N lines")
 	format := fs.String("format", "text", "output format: text or json")
+	vmm := fs.Bool("vmm", false, "show VMM trace log instead of serial output (firecracker only)")
 	_ = fs.Parse(args)
 
 	if *followShort {
@@ -64,7 +65,11 @@ func cmdLogsService(service string, args []string) {
 	case "orchestrator":
 		logFile = filepath.Join(embedded.LogDir(), "orchestrator.log")
 	case "firecracker":
-		logFile = filepath.Join(embedded.LogDir(), "firecracker.log")
+		if *vmm {
+			logFile = filepath.Join(embedded.LogDir(), "firecracker-vmm.log")
+		} else {
+			logFile = filepath.Join(embedded.LogDir(), "firecracker.log")
+		}
 	default:
 		logFile = filepath.Join(embedded.LogDir(), service+".log")
 	}
