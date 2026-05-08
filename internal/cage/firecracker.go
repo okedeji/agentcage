@@ -26,6 +26,7 @@ type FirecrackerProvisioner struct {
 	byCageID   map[string]string
 	binPath    string
 	kernelPath string
+	logDir     string
 	log        logr.Logger
 }
 
@@ -39,6 +40,7 @@ type firecrackerVM struct {
 type FirecrackerConfig struct {
 	BinPath    string // path to firecracker binary
 	KernelPath string // path to vmlinux kernel
+	LogDir     string // shared directory for cage console logs (readable from host)
 }
 
 func NewFirecrackerProvisioner(cfg FirecrackerConfig, log logr.Logger) *FirecrackerProvisioner {
@@ -47,6 +49,7 @@ func NewFirecrackerProvisioner(cfg FirecrackerConfig, log logr.Logger) *Firecrac
 		byCageID:   make(map[string]string),
 		binPath:    cfg.BinPath,
 		kernelPath: cfg.KernelPath,
+		logDir:     cfg.LogDir,
 		log:        log.WithValues("component", "firecracker-provisioner"),
 	}
 }
@@ -131,8 +134,14 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	cmd := exec.CommandContext(ctx, p.binPath,
 		"--api-sock", socketPath,
 	)
-	logFile := filepath.Join(os.TempDir(), "firecracker", vmID+".log")
-	if f, err := os.Create(logFile); err == nil {
+	// Write to shared log directory so the operator can read it
+	// from the host via `agentcage logs firecracker`.
+	logDir := filepath.Join(os.TempDir(), "firecracker")
+	if p.logDir != "" {
+		logDir = p.logDir
+	}
+	logFile := filepath.Join(logDir, "firecracker.log")
+	if f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
 		cmd.Stdout = f
 		cmd.Stderr = f
 	} else {
