@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -298,9 +299,13 @@ func (p *FirecrackerProvisioner) ResumeVM(ctx context.Context, vmID string) erro
 // to the Firecracker API.
 func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernelPath, rootfsPath string, cfg VMConfig, tapName string) error {
 	// Set boot source
+	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off"
+	if runtime.GOARCH == "arm64" {
+		bootArgs = "earlycon=uart,mmio,0x40002000 keep_bootcon " + bootArgs
+	}
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
-		"boot_args":         "console=ttyS0 reboot=k panic=1 pci=off",
+		"boot_args":         bootArgs,
 	}
 	if err := firecrackerAPI(ctx, socket, "PUT", "/boot-source", bootSource); err != nil {
 		return fmt.Errorf("setting boot source: %w", err)
