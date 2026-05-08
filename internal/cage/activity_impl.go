@@ -453,6 +453,7 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, con
 			}
 
 		case <-ticker.C:
+			activity.RecordHeartbeat(ctx, nil)
 			if a.provisioner == nil {
 				continue
 			}
@@ -489,6 +490,14 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID string, lis net.L
 	var conn net.Conn
 	select {
 	case <-ctx.Done():
+		// Drain any connection that Accept returned after cancellation.
+		select {
+		case res := <-ch:
+			if res.conn != nil {
+				_ = res.conn.Close()
+			}
+		default:
+		}
 		a.log.Info("cage log collection cancelled before guest connected", "cage_id", cageID)
 		return
 	case <-time.After(120 * time.Second):
