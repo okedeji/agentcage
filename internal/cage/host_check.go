@@ -107,9 +107,20 @@ func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logge
 	// Log KVM mode and kernel cmdline for nested virt diagnostics.
 	if mode, err := os.ReadFile("/sys/module/kvm/parameters/mode"); err == nil {
 		log.Info("KVM mode", "mode", strings.TrimSpace(string(mode)))
+	} else {
+		log.Info("KVM mode sysfs not available", "error", err.Error())
 	}
 	if cmdline, err := os.ReadFile("/proc/cmdline"); err == nil {
 		log.Info("VM kernel cmdline", "cmdline", strings.TrimSpace(string(cmdline)))
+	}
+	// Check dmesg for nested virt status
+	if out, err := exec.CommandContext(ctx, "dmesg").Output(); err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			lower := strings.ToLower(line)
+			if strings.Contains(lower, "kvm") || strings.Contains(lower, "nested") || strings.Contains(lower, "nv2") || strings.Contains(lower, "feat_nv") {
+				log.Info("dmesg(kvm)", "line", strings.TrimSpace(line))
+			}
+		}
 	}
 
 	provisioner := NewFirecrackerProvisioner(FirecrackerConfig{
