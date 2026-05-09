@@ -307,7 +307,12 @@ func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernel
 	// Set boot source
 	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off"
 	if runtime.GOARCH == "arm64" {
-		bootArgs = "earlycon=uart,mmio,0x40002000 " + bootArgs
+		// ARM64 has no keyboard controller; reboot=k hangs on panic
+		// instead of exiting. Let PSCI handle reboot so Firecracker
+		// exits and the orchestrator detects the crash. Try both
+		// serial and virtio-console in case serial MMIO doesn't work
+		// in nested KVM.
+		bootArgs = "console=ttyS0 console=hvc0 panic=1 pci=off"
 	}
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
