@@ -65,6 +65,9 @@ CONFIG_USER_NS=y
 CONFIG_UTS_NS=y
 CONFIG_IPC_NS=y
 
+# Interrupt controller (Firecracker uses GICv3 on ARM64)
+CONFIG_IRQCHIP=y
+
 # TTY / Console
 CONFIG_TTY=y
 CONFIG_SERIAL_8250=y
@@ -152,9 +155,14 @@ CONFIG_INOTIFY_USER=y
 # CONFIG_VIRTUALIZATION is not set
 KCONFIG
 
-# ARM64: 8250 UART is MMIO-mapped via device tree, not ISA.
+# ARM64: GICv3 for interrupts, PSCI for CPU lifecycle, serial
+# via device tree. Without GICv3 the kernel hangs immediately
+# because no interrupts fire (no timer, no scheduler).
 if [ "$LINUX_ARCH" = "arm64" ]; then
     cat >> "$SRCDIR/.config" << 'ARM64_KCONFIG'
+CONFIG_ARM_GIC=y
+CONFIG_ARM_GIC_V3=y
+CONFIG_ARM_PSCI_FW=y
 CONFIG_SERIAL_EARLYCON=y
 CONFIG_SERIAL_OF_PLATFORM=y
 ARM64_KCONFIG
@@ -166,7 +174,7 @@ make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" olddefconfig
 # Verify required configs survived olddefconfig
 REQUIRED_CONFIGS="VIRTIO_MMIO VIRTIO_BLK VIRTIO_NET VSOCKETS VIRTIO_VSOCKETS NETFILTER NF_TABLES IP_NF_IPTABLES"
 if [ "$LINUX_ARCH" = "arm64" ]; then
-    REQUIRED_CONFIGS="$REQUIRED_CONFIGS SERIAL_OF_PLATFORM SERIAL_EARLYCON"
+    REQUIRED_CONFIGS="$REQUIRED_CONFIGS ARM_GIC_V3 ARM_PSCI_FW SERIAL_OF_PLATFORM SERIAL_EARLYCON"
 fi
 for cfg in $REQUIRED_CONFIGS; do
     if ! grep -q "CONFIG_${cfg}=y" "$SRCDIR/.config"; then
