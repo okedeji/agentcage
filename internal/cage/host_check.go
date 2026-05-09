@@ -104,6 +104,14 @@ func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logge
 		log.Info("firecracker binary OK (version probe failed)", "bin", cfg.FirecrackerBin, "kernel", cfg.KernelPath, "error", err.Error())
 	}
 
+	// Log KVM mode and kernel cmdline for nested virt diagnostics.
+	if mode, err := os.ReadFile("/sys/module/kvm/parameters/mode"); err == nil {
+		log.Info("KVM mode", "mode", strings.TrimSpace(string(mode)))
+	}
+	if cmdline, err := os.ReadFile("/proc/cmdline"); err == nil {
+		log.Info("VM kernel cmdline", "cmdline", strings.TrimSpace(string(cmdline)))
+	}
+
 	provisioner := NewFirecrackerProvisioner(FirecrackerConfig{
 		BinPath:    cfg.FirecrackerBin,
 		KernelPath: cfg.KernelPath,
