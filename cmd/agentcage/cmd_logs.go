@@ -32,7 +32,7 @@ func cmdLogs(args []string) {
 	rest := args[1:]
 
 	switch source {
-	case "orchestrator", "postgres", "temporal", "spire", "vault", "falco", "nats", "vm", "firecracker":
+	case "orchestrator", "postgres", "temporal", "spire", "vault", "falco", "nats", "firecracker":
 		cmdLogsService(source, rest)
 	case "cage":
 		cmdLogsCage(rest)
@@ -60,8 +60,6 @@ func cmdLogsService(service string, args []string) {
 
 	var logFile string
 	switch service {
-	case "vm":
-		logFile = filepath.Join(config.HomeDir(), "vm-console.log")
 	case "orchestrator":
 		logFile = filepath.Join(embedded.LogDir(), "orchestrator.log")
 	case "firecracker":
@@ -404,7 +402,6 @@ Sources:
   falco                     Falco runtime security output
   nats                      NATS message broker output
   firecracker               Firecracker VM output (kernel boot, cage-init, sidecars)
-  vm                        VM console (macOS only)
   cage <id>                 Cage logs (agent + cage-init)
   assessment <id>           All cage logs for an assessment
 

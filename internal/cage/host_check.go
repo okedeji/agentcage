@@ -90,37 +90,16 @@ type HostRuntimeConfig struct {
 }
 
 // BuildProvisioner constructs the VM provisioner used by the cage
-// activity layer. Requires /dev/kvm and the Firecracker binary.
-// On macOS, nested virtualization (M3+, macOS 15+) provides KVM
-// inside the Apple VZ VM. On Linux, KVM is native.
+// activity layer. Requires Linux with /dev/kvm and the Firecracker binary.
 func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logger) (VMProvisioner, bool, error) {
 	if reason := checkFirecrackerHost(cfg.FirecrackerBin, cfg.KernelPath); reason != "" {
-		return nil, false, fmt.Errorf("cage provisioner requires hardware virtualization: %s\n  Linux: ensure /dev/kvm exists and is accessible\n  macOS: requires M3+ chip with macOS 15+ (nested virtualization)", reason)
+		return nil, false, fmt.Errorf("cage provisioner requires Linux with /dev/kvm: %s", reason)
 	}
 
 	if version, err := firecrackerVersion(ctx, cfg.FirecrackerBin); err == nil {
 		log.Info("firecracker binary OK", "bin", cfg.FirecrackerBin, "version", version, "kernel", cfg.KernelPath)
 	} else {
 		log.Info("firecracker binary OK (version probe failed)", "bin", cfg.FirecrackerBin, "kernel", cfg.KernelPath, "error", err.Error())
-	}
-
-	// Log KVM mode and kernel cmdline for nested virt diagnostics.
-	if mode, err := os.ReadFile("/sys/module/kvm/parameters/mode"); err == nil {
-		log.Info("KVM mode", "mode", strings.TrimSpace(string(mode)))
-	} else {
-		log.Info("KVM mode sysfs not available", "error", err.Error())
-	}
-	if cmdline, err := os.ReadFile("/proc/cmdline"); err == nil {
-		log.Info("VM kernel cmdline", "cmdline", strings.TrimSpace(string(cmdline)))
-	}
-	// Check dmesg for nested virt status
-	if out, err := exec.CommandContext(ctx, "dmesg").Output(); err == nil {
-		for _, line := range strings.Split(string(out), "\n") {
-			lower := strings.ToLower(line)
-			if strings.Contains(lower, "kvm") || strings.Contains(lower, "nested") || strings.Contains(lower, "nv2") || strings.Contains(lower, "feat_nv") {
-				log.Info("dmesg(kvm)", "line", strings.TrimSpace(line))
-			}
-		}
 	}
 
 	provisioner := NewFirecrackerProvisioner(FirecrackerConfig{

@@ -29,8 +29,6 @@ import (
 	"github.com/okedeji/agentcage/internal/ui"
 )
 
-// Keeps darwin builds happy; cmdInit is dispatched from platform_linux.go.
-var _ = cmdInit
 
 func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
@@ -83,15 +81,6 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		return fmt.Errorf("creating logger: %w", err)
 	}
 	log = log.WithValues("component", "agentcage")
-
-	// On macOS the host writes a marker file to VirtioFS when
-	// --verbose is requested. The init script can't pass flags,
-	// so the VM binary checks for the marker instead.
-	verboseMarker := filepath.Join(config.HomeDir(), ".init-verbose")
-	if _, err := os.Stat(verboseMarker); err == nil {
-		ui.SetVerbose(true)
-		_ = os.Remove(verboseMarker)
-	}
 
 	ui.Header(version)
 

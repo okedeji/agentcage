@@ -53,8 +53,6 @@ func VMDir() string {
 
 // RunDir returns the directory for runtime state (PID files, sockets).
 // RunDir returns the directory for runtime state (PID files, sockets).
-// Inside the VM (running as root), VirtioFS doesn't support Unix
-// sockets so we use a local filesystem path instead.
 func RunDir() string {
 	if os.Getuid() == 0 {
 		return "/run/agentcage"

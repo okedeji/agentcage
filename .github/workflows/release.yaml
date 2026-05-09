@@ -109,52 +109,6 @@ jobs:
           name: falco-${{ matrix.arch }}
           path: falco-${{ matrix.arch }}
 
-  build-vm-assets:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
-        include:
-          - arch: amd64
-            kernel_arch: x86_64
-          - arch: arm64
-            kernel_arch: aarch64
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache VM kernel
-        id: kernel-cache
-        uses: actions/cache@v4
-        with:
-          path: vmlinux-6.12-${{ matrix.arch }}
-          key: vmlinux-6.12.84-${{ matrix.arch }}-${{ hashFiles('scripts/build-vm-kernel.sh') }}
-      - name: Install kernel build dependencies
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y flex bison bc libelf-dev libssl-dev dwarves
-      - name: Install cross-compiler
-        if: steps.kernel-cache.outputs.cache-hit != 'true' && matrix.arch == 'arm64'
-        run: sudo apt-get install -y gcc-aarch64-linux-gnu
-      - name: Install QEMU for cross-arch chroot
-        if: matrix.arch == 'arm64'
-        run: |
-          if ! command -v qemu-aarch64-static &>/dev/null; then
-            sudo apt-get update || true
-            sudo apt-get install -y qemu-user-static
-          fi
-      - name: Build VM kernel
-        if: steps.kernel-cache.outputs.cache-hit != 'true'
-        run: ./scripts/build-vm-kernel.sh ${{ matrix.arch }} vmlinux-6.12-${{ matrix.arch }}
-      - name: Build rootfs image
-        run: |
-          sudo ./scripts/build-vm-rootfs.sh ${{ matrix.arch }} rootfs-${{ matrix.arch }}.img
-      - uses: actions/upload-artifact@v4
-        with:
-          name: vm-assets-${{ matrix.arch }}
-          path: |
-            vmlinux-6.12-${{ matrix.arch }}
-            rootfs-${{ matrix.arch }}.img
-
   build-cage-kernel:
     runs-on: ubuntu-latest
     strategy:
@@ -184,40 +138,6 @@ jobs:
           name: cage-kernel-${{ matrix.arch }}
           path: cage-vmlinux-6.12-${{ matrix.arch }}
 
-  # Darwin builds happen AFTER linux + rootfs so checksums can be embedded.
-  # The darwin binary is what users download on macOS — it must contain the
-  # checksums for the VM assets it will fetch at runtime.
-  build-darwin:
-    runs-on: macos-latest
-    needs: [build-linux, build-vm-assets]
-    strategy:
-      matrix:
-        goarch: [amd64, arm64]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-      - uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          merge-multiple: true
-      - name: Embed asset checksums into source
-        run: ./scripts/embed-checksums.sh release-assets
-      - name: Verify checksums match assets
-        run: go run scripts/check_checksums.go release-assets
-      - name: Build agentcage binary
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          CGO_ENABLED=1 GOOS=darwin GOARCH=${{ matrix.goarch }} \
-            go build -trimpath -ldflags "-X main.version=${VERSION}" -o agentcage-darwin-${{ matrix.goarch }} ./cmd/agentcage/
-      - name: Sign with virtualization entitlement
-        run: codesign --entitlements entitlements.plist --force -s - agentcage-darwin-${{ matrix.goarch }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: darwin-${{ matrix.goarch }}
-          path: agentcage-darwin-${{ matrix.goarch }}
-
   build-sdk:
     runs-on: ubuntu-latest
     steps:
@@ -239,7 +159,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [build-linux, build-darwin, build-vm-assets, build-cage-rootfs, build-cage-kernel, build-falco, build-sdk]
+    needs: [build-linux, build-cage-rootfs, build-cage-kernel, build-falco, build-sdk]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -250,11 +170,7 @@ jobs:
           files: |
             agentcage-linux-amd64
             agentcage-linux-arm64
-            agentcage-darwin-amd64
-            agentcage-darwin-arm64
             cage-internal-*
-            vmlinux-*
-            rootfs-*.img
             cage-rootfs-*.ext4.gz
             cage-vmlinux-*
             falco-amd64

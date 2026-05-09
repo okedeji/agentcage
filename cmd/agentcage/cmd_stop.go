@@ -13,22 +13,6 @@ import (
 
 var _ = cmdStop
 
-func isProcessRunning(pidFile string) bool {
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		return false
-	}
-	var pid int
-	if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); err != nil {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
-}
-
 // Embedded services write their own PID files. If the orchestrator
 // was SIGKILLed those children are still running with no parent to
 // stop them.

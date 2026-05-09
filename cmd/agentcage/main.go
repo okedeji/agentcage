@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/okedeji/agentcage/internal/config"
@@ -43,11 +44,13 @@ func main() {
 
 	switch cmd {
 	case "init":
-		platformInit(args)
+		requireLinux()
+		cmdInit(args)
 	case "join":
 		cmdJoin(args)
 	case "stop":
-		platformStop(args)
+		requireLinux()
+		cmdStop(args)
 	case "pack":
 		cmdPack(args)
 	case "run":
@@ -91,6 +94,13 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", cmd)
 		printUsage()
+		os.Exit(1)
+	}
+}
+
+func requireLinux() {
+	if runtime.GOOS != "linux" {
+		fmt.Fprintf(os.Stderr, "agentcage init/stop requires Linux with /dev/kvm.\n\nCLI commands (run, logs, assessments, findings) work on any platform\nagainst a remote orchestrator. Use 'agentcage connect <addr>' to point\nat a Linux host running the orchestrator.\n")
 		os.Exit(1)
 	}
 }

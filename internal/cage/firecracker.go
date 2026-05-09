@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -132,23 +131,18 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	}
 
 	// Start Firecracker process
-	// Write to shared log directory so the operator can read it
-	// from the host via `agentcage logs firecracker`.
+	// Write Firecracker serial output to the log directory so the
+	// operator can read it via `agentcage logs firecracker`.
 	logDir := filepath.Join(os.TempDir(), "firecracker")
 	if p.logDir != "" {
 		logDir = p.logDir
 	}
-	fcLogFile := filepath.Join(logDir, "firecracker-vmm.log")
-	serialFile := filepath.Join(logDir, "firecracker.log")
+	logFile := filepath.Join(logDir, "firecracker.log")
 
 	cmd := exec.CommandContext(ctx, p.binPath,
 		"--api-sock", socketPath,
-		"--log-path", fcLogFile,
-		"--level", "Trace",
-		"--show-level",
-		"--show-log-origin",
 	)
-	if f, err := os.OpenFile(serialFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+	if f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
 		cmd.Stdout = f
 		cmd.Stderr = f
 	} else {
@@ -305,18 +299,9 @@ func (p *FirecrackerProvisioner) ResumeVM(ctx context.Context, vmID string) erro
 // to the Firecracker API.
 func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernelPath, rootfsPath string, cfg VMConfig, tapName string) error {
 	// Set boot source
-	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off"
-	if runtime.GOARCH == "arm64" {
-		// ARM64 has no keyboard controller; reboot=k hangs on panic
-		// instead of exiting. Let PSCI handle reboot so Firecracker
-		// exits and the orchestrator detects the crash. Try both
-		// serial and virtio-console in case serial MMIO doesn't work
-		// in nested KVM.
-		bootArgs = "console=ttyS0 console=hvc0 panic=1 pci=off"
-	}
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
-		"boot_args":         bootArgs,
+		"boot_args":         "console=ttyS0 reboot=k panic=1 pci=off",
 	}
 	if err := firecrackerAPI(ctx, socket, "PUT", "/boot-source", bootSource); err != nil {
 		return fmt.Errorf("setting boot source: %w", err)
