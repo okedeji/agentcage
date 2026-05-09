@@ -59,6 +59,18 @@ func main() {
 
 	fmt.Printf("cage-init: cage=%s assessment=%s type=%s\n", env.CageID, env.AssessmentID, env.CageType)
 
+	// Boot marker on the persistent rootfs so the operator can
+	// verify cage-init started even when serial console is unavailable.
+	// Read via: debugfs rootfs.ext4 -R 'cat /cage-boot.log'
+	bootLog, _ := os.OpenFile("/cage-boot.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	writeBootLog := func(msg string) {
+		if bootLog != nil {
+			_, _ = fmt.Fprintf(bootLog, "%d %s\n", time.Now().Unix(), msg)
+			_ = bootLog.Sync()
+		}
+	}
+	writeBootLog("cage-init started")
+
 	// Ensure socket directory exists before starting sidecars.
 	if err := os.MkdirAll(socketDir, 0755); err != nil {
 		fatal("creating socket directory: %v", err)
@@ -73,6 +85,8 @@ func main() {
 		"-cage-id", env.CageID,
 	)
 
+	writeBootLog("findings-sidecar started")
+
 	// 2. Start directive-sidecar
 	directiveSidecar := startService("directive-sidecar",
 		sidecarDir+"/directive-sidecar",
@@ -80,6 +94,7 @@ func main() {
 		"-hold-socket", socketDir+"/hold.sock",
 		"-log-socket", socketDir+"/logs.sock",
 	)
+	writeBootLog("directive-sidecar started")
 
 	// 3. Start payload-proxy
 	var proxy *exec.Cmd
@@ -149,6 +164,8 @@ func main() {
 	setEnv("AGENTCAGE_HOLD_SOCKET", socketDir+"/hold.sock")
 	setEnv("AGENTCAGE_LOG_SOCKET", socketDir+"/logs.sock")
 
+	writeBootLog("env exported, connecting log socket")
+
 	// 6. Connect to the log socket so agent output reaches the orchestrator.
 	logSocket := socketDir + "/logs.sock"
 	logConn := connectLogSocket(logSocket)
@@ -157,6 +174,8 @@ func main() {
 	// writes a readiness file after connecting to the host via vsock.
 	// Without this, agent output is lost if it prints before the pipe is up.
 	waitForLogReady(socketDir + "/logs.ready")
+
+	writeBootLog("log ready, starting agent")
 
 	// 8. Run the agent entrypoint.
 	fmt.Printf("cage-init: exec agent: %s\n", env.Entrypoint)
