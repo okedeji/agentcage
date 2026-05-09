@@ -307,7 +307,7 @@ func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernel
 	// Set boot source
 	bootArgs := "console=ttyS0 reboot=k panic=1 pci=off"
 	if runtime.GOARCH == "arm64" {
-		bootArgs = "earlycon=ns16550a,mmio32,0x40002000 " + bootArgs
+		bootArgs = "earlycon=uart,mmio,0x40002000 " + bootArgs
 	}
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
