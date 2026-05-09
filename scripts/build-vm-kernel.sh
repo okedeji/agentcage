@@ -165,7 +165,6 @@ CONFIG_MEMORY_BALLOON=y
 # KVM (nested virtualization — Firecracker runs inside this VM)
 CONFIG_VIRTUALIZATION=y
 CONFIG_KVM=y
-CONFIG_KVM_ARM_HOST=y
 
 # BPF + tracing (Falco modern eBPF uses BPF_PROG_TYPE_TRACING with raw tracepoints)
 CONFIG_BPF=y
