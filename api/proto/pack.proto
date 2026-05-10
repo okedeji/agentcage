@@ -8,6 +8,9 @@ service PackService {
   // Pack accepts a bidirectional stream: the client sends source files,
   // the server streams progress updates and returns the final bundle ref.
   rpc Pack(stream PackRequest) returns (stream PackResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc InspectAgent(InspectAgentRequest) returns (InspectAgentResponse);
+  rpc RemoveAgent(RemoveAgentRequest) returns (RemoveAgentResponse);
 }
 
 message PackRequest {
@@ -44,4 +47,36 @@ message PackResult {
   string runtime = 4;
   string entrypoint = 5;
   int64 size_bytes = 6;
+}
+
+message ListAgentsRequest {}
+
+message ListAgentsResponse {
+  repeated AgentInfo agents = 1;
+}
+
+message AgentInfo {
+  string ref = 1;
+  string name = 2;
+  repeated string tags = 3;
+  string runtime = 4;
+  string entrypoint = 5;
+  int64 size_bytes = 6;
+  string files_hash = 7;
+}
+
+message InspectAgentRequest {
+  string query = 1;
+}
+
+message InspectAgentResponse {
+  AgentInfo agent = 1;
+}
+
+message RemoveAgentRequest {
+  string query = 1;
+}
+
+message RemoveAgentResponse {
+  string ref = 1;
 }

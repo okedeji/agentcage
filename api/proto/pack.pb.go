@@ -390,6 +390,354 @@ func (x *PackResult) GetSizeBytes() int64 {
 	return 0
 }
 
+type ListAgentsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentsRequest) Reset() {
+	*x = ListAgentsRequest{}
+	mi := &file_api_proto_pack_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentsRequest) ProtoMessage() {}
+
+func (x *ListAgentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_pack_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentsRequest.ProtoReflect.Descriptor instead.
+func (*ListAgentsRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_pack_proto_rawDescGZIP(), []int{5}
+}
+
+type ListAgentsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Agents        []*AgentInfo           `protobuf:"bytes,1,rep,name=agents,proto3" json:"agents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentsResponse) Reset() {
+	*x = ListAgentsResponse{}
+	mi := &file_api_proto_pack_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentsResponse) ProtoMessage() {}
+
+func (x *ListAgentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_pack_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentsResponse.ProtoReflect.Descriptor instead.
+func (*ListAgentsResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_pack_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListAgentsResponse) GetAgents() []*AgentInfo {
+	if x != nil {
+		return x.Agents
+	}
+	return nil
+}
+
+type AgentInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ref           string                 `protobuf:"bytes,1,opt,name=ref,proto3" json:"ref,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Tags          []string               `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`
+	Runtime       string                 `protobuf:"bytes,4,opt,name=runtime,proto3" json:"runtime,omitempty"`
+	Entrypoint    string                 `protobuf:"bytes,5,opt,name=entrypoint,proto3" json:"entrypoint,omitempty"`
+	SizeBytes     int64                  `protobuf:"varint,6,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	FilesHash     string                 `protobuf:"bytes,7,opt,name=files_hash,json=filesHash,proto3" json:"files_hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentInfo) Reset() {
+	*x = AgentInfo{}
+	mi := &file_api_proto_pack_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentInfo) ProtoMessage() {}
+
+func (x *AgentInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_pack_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentInfo.ProtoReflect.Descriptor instead.
+func (*AgentInfo) Descriptor() ([]byte, []int) {
+	return file_api_proto_pack_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *AgentInfo) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+func (x *AgentInfo) GetRuntime() string {
+	if x != nil {
+		return x.Runtime
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetEntrypoint() string {
+	if x != nil {
+		return x.Entrypoint
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *AgentInfo) GetFilesHash() string {
+	if x != nil {
+		return x.FilesHash
+	}
+	return ""
+}
+
+type InspectAgentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectAgentRequest) Reset() {
+	*x = InspectAgentRequest{}
+	mi := &file_api_proto_pack_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectAgentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectAgentRequest) ProtoMessage() {}
+
+func (x *InspectAgentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_pack_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectAgentRequest.ProtoReflect.Descriptor instead.
+func (*InspectAgentRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_pack_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *InspectAgentRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+type InspectAgentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Agent         *AgentInfo             `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectAgentResponse) Reset() {
+	*x = InspectAgentResponse{}
+	mi := &file_api_proto_pack_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectAgentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectAgentResponse) ProtoMessage() {}
+
+func (x *InspectAgentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_pack_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectAgentResponse.ProtoReflect.Descriptor instead.
+func (*InspectAgentResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_pack_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *InspectAgentResponse) GetAgent() *AgentInfo {
+	if x != nil {
+		return x.Agent
+	}
+	return nil
+}
+
+type RemoveAgentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveAgentRequest) Reset() {
+	*x = RemoveAgentRequest{}
+	mi := &file_api_proto_pack_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveAgentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveAgentRequest) ProtoMessage() {}
+
+func (x *RemoveAgentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_pack_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveAgentRequest.ProtoReflect.Descriptor instead.
+func (*RemoveAgentRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_pack_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *RemoveAgentRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+type RemoveAgentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ref           string                 `protobuf:"bytes,1,opt,name=ref,proto3" json:"ref,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveAgentResponse) Reset() {
+	*x = RemoveAgentResponse{}
+	mi := &file_api_proto_pack_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveAgentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveAgentResponse) ProtoMessage() {}
+
+func (x *RemoveAgentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_pack_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveAgentResponse.ProtoReflect.Descriptor instead.
+func (*RemoveAgentResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_pack_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RemoveAgentResponse) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
 var File_api_proto_pack_proto protoreflect.FileDescriptor
 
 const file_api_proto_pack_proto_rawDesc = "" +
@@ -422,9 +770,36 @@ const file_api_proto_pack_proto_rawDesc = "" +
 	"entrypoint\x18\x05 \x01(\tR\n" +
 	"entrypoint\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x06 \x01(\x03R\tsizeBytes2Z\n" +
+	"size_bytes\x18\x06 \x01(\x03R\tsizeBytes\"\x13\n" +
+	"\x11ListAgentsRequest\"J\n" +
+	"\x12ListAgentsResponse\x124\n" +
+	"\x06agents\x18\x01 \x03(\v2\x1c.agentcage.pack.v1.AgentInfoR\x06agents\"\xbd\x01\n" +
+	"\tAgentInfo\x12\x10\n" +
+	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04tags\x18\x03 \x03(\tR\x04tags\x12\x18\n" +
+	"\aruntime\x18\x04 \x01(\tR\aruntime\x12\x1e\n" +
+	"\n" +
+	"entrypoint\x18\x05 \x01(\tR\n" +
+	"entrypoint\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x06 \x01(\x03R\tsizeBytes\x12\x1d\n" +
+	"\n" +
+	"files_hash\x18\a \x01(\tR\tfilesHash\"+\n" +
+	"\x13InspectAgentRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\"J\n" +
+	"\x14InspectAgentResponse\x122\n" +
+	"\x05agent\x18\x01 \x01(\v2\x1c.agentcage.pack.v1.AgentInfoR\x05agent\"*\n" +
+	"\x12RemoveAgentRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\"'\n" +
+	"\x13RemoveAgentResponse\x12\x10\n" +
+	"\x03ref\x18\x01 \x01(\tR\x03ref2\xf4\x02\n" +
 	"\vPackService\x12K\n" +
-	"\x04Pack\x12\x1e.agentcage.pack.v1.PackRequest\x1a\x1f.agentcage.pack.v1.PackResponse(\x010\x01B(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
+	"\x04Pack\x12\x1e.agentcage.pack.v1.PackRequest\x1a\x1f.agentcage.pack.v1.PackResponse(\x010\x01\x12Y\n" +
+	"\n" +
+	"ListAgents\x12$.agentcage.pack.v1.ListAgentsRequest\x1a%.agentcage.pack.v1.ListAgentsResponse\x12_\n" +
+	"\fInspectAgent\x12&.agentcage.pack.v1.InspectAgentRequest\x1a'.agentcage.pack.v1.InspectAgentResponse\x12\\\n" +
+	"\vRemoveAgent\x12%.agentcage.pack.v1.RemoveAgentRequest\x1a&.agentcage.pack.v1.RemoveAgentResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
 
 var (
 	file_api_proto_pack_proto_rawDescOnce sync.Once
@@ -438,25 +813,40 @@ func file_api_proto_pack_proto_rawDescGZIP() []byte {
 	return file_api_proto_pack_proto_rawDescData
 }
 
-var file_api_proto_pack_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_api_proto_pack_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_api_proto_pack_proto_goTypes = []any{
-	(*PackRequest)(nil),  // 0: agentcage.pack.v1.PackRequest
-	(*PackMetadata)(nil), // 1: agentcage.pack.v1.PackMetadata
-	(*PackResponse)(nil), // 2: agentcage.pack.v1.PackResponse
-	(*PackProgress)(nil), // 3: agentcage.pack.v1.PackProgress
-	(*PackResult)(nil),   // 4: agentcage.pack.v1.PackResult
+	(*PackRequest)(nil),          // 0: agentcage.pack.v1.PackRequest
+	(*PackMetadata)(nil),         // 1: agentcage.pack.v1.PackMetadata
+	(*PackResponse)(nil),         // 2: agentcage.pack.v1.PackResponse
+	(*PackProgress)(nil),         // 3: agentcage.pack.v1.PackProgress
+	(*PackResult)(nil),           // 4: agentcage.pack.v1.PackResult
+	(*ListAgentsRequest)(nil),    // 5: agentcage.pack.v1.ListAgentsRequest
+	(*ListAgentsResponse)(nil),   // 6: agentcage.pack.v1.ListAgentsResponse
+	(*AgentInfo)(nil),            // 7: agentcage.pack.v1.AgentInfo
+	(*InspectAgentRequest)(nil),  // 8: agentcage.pack.v1.InspectAgentRequest
+	(*InspectAgentResponse)(nil), // 9: agentcage.pack.v1.InspectAgentResponse
+	(*RemoveAgentRequest)(nil),   // 10: agentcage.pack.v1.RemoveAgentRequest
+	(*RemoveAgentResponse)(nil),  // 11: agentcage.pack.v1.RemoveAgentResponse
 }
 var file_api_proto_pack_proto_depIdxs = []int32{
-	1, // 0: agentcage.pack.v1.PackRequest.metadata:type_name -> agentcage.pack.v1.PackMetadata
-	3, // 1: agentcage.pack.v1.PackResponse.progress:type_name -> agentcage.pack.v1.PackProgress
-	4, // 2: agentcage.pack.v1.PackResponse.result:type_name -> agentcage.pack.v1.PackResult
-	0, // 3: agentcage.pack.v1.PackService.Pack:input_type -> agentcage.pack.v1.PackRequest
-	2, // 4: agentcage.pack.v1.PackService.Pack:output_type -> agentcage.pack.v1.PackResponse
-	4, // [4:5] is the sub-list for method output_type
-	3, // [3:4] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	1,  // 0: agentcage.pack.v1.PackRequest.metadata:type_name -> agentcage.pack.v1.PackMetadata
+	3,  // 1: agentcage.pack.v1.PackResponse.progress:type_name -> agentcage.pack.v1.PackProgress
+	4,  // 2: agentcage.pack.v1.PackResponse.result:type_name -> agentcage.pack.v1.PackResult
+	7,  // 3: agentcage.pack.v1.ListAgentsResponse.agents:type_name -> agentcage.pack.v1.AgentInfo
+	7,  // 4: agentcage.pack.v1.InspectAgentResponse.agent:type_name -> agentcage.pack.v1.AgentInfo
+	0,  // 5: agentcage.pack.v1.PackService.Pack:input_type -> agentcage.pack.v1.PackRequest
+	5,  // 6: agentcage.pack.v1.PackService.ListAgents:input_type -> agentcage.pack.v1.ListAgentsRequest
+	8,  // 7: agentcage.pack.v1.PackService.InspectAgent:input_type -> agentcage.pack.v1.InspectAgentRequest
+	10, // 8: agentcage.pack.v1.PackService.RemoveAgent:input_type -> agentcage.pack.v1.RemoveAgentRequest
+	2,  // 9: agentcage.pack.v1.PackService.Pack:output_type -> agentcage.pack.v1.PackResponse
+	6,  // 10: agentcage.pack.v1.PackService.ListAgents:output_type -> agentcage.pack.v1.ListAgentsResponse
+	9,  // 11: agentcage.pack.v1.PackService.InspectAgent:output_type -> agentcage.pack.v1.InspectAgentResponse
+	11, // 12: agentcage.pack.v1.PackService.RemoveAgent:output_type -> agentcage.pack.v1.RemoveAgentResponse
+	9,  // [9:13] is the sub-list for method output_type
+	5,  // [5:9] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_pack_proto_init() }
@@ -478,7 +868,7 @@ func file_api_proto_pack_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_pack_proto_rawDesc), len(file_api_proto_pack_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

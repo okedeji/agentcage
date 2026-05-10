@@ -3,6 +3,7 @@ package grpc
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,8 @@ import (
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/cagefile"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // PackConfig holds dependencies for the pack service handler.
@@ -221,4 +224,124 @@ func extractTarGz(src, destDir string) error {
 		}
 	}
 	return nil
+}
+
+func (a *packAdapter) ListAgents(_ context.Context, _ *pb.ListAgentsRequest) (*pb.ListAgentsResponse, error) {
+	dir := a.config.BundleStoreDir
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &pb.ListAgentsResponse{}, nil
+		}
+		return nil, status.Errorf(codes.Internal, "reading bundle store: %v", err)
+	}
+
+	ts := cagefile.NewTagStore(filepath.Join(filepath.Dir(dir), "tags.json"))
+	var agents []*pb.AgentInfo
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cage") {
+			continue
+		}
+		ref := strings.TrimSuffix(e.Name(), ".cage")
+		info, _ := e.Info()
+		agent := &pb.AgentInfo{
+			Ref:       ref,
+			Tags:      ts.TagsForRef(ref),
+			SizeBytes: info.Size(),
+		}
+		if f, err := os.Open(filepath.Join(dir, e.Name())); err == nil {
+			if m, mErr := cagefile.ReadManifestFromBundle(f); mErr == nil {
+				agent.Name = m.Name
+				agent.Runtime = m.Runtime
+				agent.Entrypoint = m.Entrypoint
+				agent.FilesHash = m.FilesHash
+			}
+			_ = f.Close()
+		}
+		agents = append(agents, agent)
+	}
+	return &pb.ListAgentsResponse{Agents: agents}, nil
+}
+
+func (a *packAdapter) InspectAgent(_ context.Context, req *pb.InspectAgentRequest) (*pb.InspectAgentResponse, error) {
+	if req.GetQuery() == "" {
+		return nil, status.Error(codes.InvalidArgument, "query is required")
+	}
+
+	store, err := cagefile.NewBundleStore(a.config.BundleStoreDir)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "%v", err)
+	}
+
+	ts := cagefile.NewTagStore(filepath.Join(filepath.Dir(a.config.BundleStoreDir), "tags.json"))
+	fullRef, err := resolveQuery(store, ts, req.GetQuery())
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "%v", err)
+	}
+
+	f, err := os.Open(store.Path(fullRef))
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "%v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	manifest, err := cagefile.ReadManifestFromBundle(f)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "reading manifest: %v", err)
+	}
+
+	info, _ := os.Stat(store.Path(fullRef))
+	return &pb.InspectAgentResponse{
+		Agent: &pb.AgentInfo{
+			Ref:        fullRef,
+			Name:       manifest.Name,
+			Tags:       ts.TagsForRef(fullRef),
+			Runtime:    manifest.Runtime,
+			Entrypoint: manifest.Entrypoint,
+			SizeBytes:  info.Size(),
+			FilesHash:  manifest.FilesHash,
+		},
+	}, nil
+}
+
+func (a *packAdapter) RemoveAgent(_ context.Context, req *pb.RemoveAgentRequest) (*pb.RemoveAgentResponse, error) {
+	if req.GetQuery() == "" {
+		return nil, status.Error(codes.InvalidArgument, "query is required")
+	}
+
+	store, err := cagefile.NewBundleStore(a.config.BundleStoreDir)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "%v", err)
+	}
+
+	ts := cagefile.NewTagStore(filepath.Join(filepath.Dir(a.config.BundleStoreDir), "tags.json"))
+	fullRef, err := resolveQuery(store, ts, req.GetQuery())
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "%v", err)
+	}
+
+	for _, tag := range ts.TagsForRef(fullRef) {
+		_ = ts.Untag(tag)
+	}
+	if err := os.Remove(store.Path(fullRef)); err != nil {
+		return nil, status.Errorf(codes.Internal, "removing bundle: %v", err)
+	}
+	return &pb.RemoveAgentResponse{Ref: fullRef}, nil
+}
+
+func resolveQuery(store *cagefile.BundleStore, ts *cagefile.TagStore, query string) (string, error) {
+	if strings.Contains(query, ":") {
+		if ref, err := ts.Resolve(query); err == nil {
+			return ref, nil
+		}
+	}
+	if ref, err := store.Resolve(query); err == nil {
+		return ref, nil
+	}
+	if !strings.Contains(query, ":") {
+		if ref, err := ts.Resolve(query + ":latest"); err == nil {
+			return ref, nil
+		}
+	}
+	return "", fmt.Errorf("agent '%s' not found", query)
 }

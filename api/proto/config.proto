@@ -1,0 +1,41 @@
+syntax = "proto3";
+package agentcage.config.v1;
+option go_package = "github.com/okedeji/agentcage/api/proto";
+
+service ConfigService {
+  rpc ExportConfig(ExportConfigRequest) returns (ExportConfigResponse);
+  rpc GetConfigValue(GetConfigValueRequest) returns (GetConfigValueResponse);
+  rpc SetConfigValue(SetConfigValueRequest) returns (SetConfigValueResponse);
+  rpc ImportConfig(ImportConfigRequest) returns (ImportConfigResponse);
+}
+
+message ExportConfigRequest {}
+
+message ExportConfigResponse {
+  bytes config_yaml = 1;
+}
+
+message GetConfigValueRequest {
+  string path = 1;
+}
+
+message GetConfigValueResponse {
+  string value = 1;
+}
+
+message SetConfigValueRequest {
+  string path = 1;
+  string value = 2;
+}
+
+message SetConfigValueResponse {
+  bool restart_required = 1;
+}
+
+message ImportConfigRequest {
+  bytes config_yaml = 1;
+}
+
+message ImportConfigResponse {
+  bool restart_required = 1;
+}

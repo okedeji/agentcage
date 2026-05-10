@@ -83,6 +83,16 @@ func (s *Server) ResetConfig(_ context.Context) error {
 	return nil
 }
 
+// Import replaces the entire override config. The base config is
+// preserved; the imported config is merged on top.
+func (s *Server) Import(_ context.Context, cfg *Config) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.override = cfg
+	s.current = Merge(s.base, cfg)
+}
+
 func configToYAMLMap(cfg *Config) (map[string]any, error) {
 	raw, err := yaml.Marshal(cfg)
 	if err != nil {

@@ -13,8 +13,10 @@ import (
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/audit"
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/fleet"
+	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/internal/intervention"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -31,6 +33,8 @@ type Services struct {
 	Findings      *findings.PGStore
 	Audit         *audit.PGStore
 	Pack              PackConfig
+	SecretReader      identity.SecretReader
+	ConfigServer      *config.Server
 	CageLogDir        string
 	ConfigYAML        []byte
 	CACert            []byte
@@ -59,6 +63,12 @@ func Register(srv *grpc.Server, svc Services) {
 		pb.RegisterAuditServiceServer(srv, &auditAdapter{store: svc.Audit})
 	}
 	pb.RegisterPackServiceServer(srv, &packAdapter{config: svc.Pack})
+	if svc.SecretReader != nil {
+		pb.RegisterVaultServiceServer(srv, &vaultAdapter{reader: svc.SecretReader})
+	}
+	if svc.ConfigServer != nil {
+		pb.RegisterConfigServiceServer(srv, &configAdapter{server: svc.ConfigServer})
+	}
 }
 
 type controlAdapter struct {

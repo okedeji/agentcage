@@ -313,6 +313,8 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 			SDKTarball:       filepath.Join(embedded.BinDir(), "agentcage-sdk.tgz"),
 			AgentcageVersion: version,
 		},
+		SecretReader:     secretReader,
+		ConfigServer:     config.NewServer(cfg),
 		CageLogDir:       cageLogDir,
 		ConfigYAML:       configYAML,
 		ServiceEndpoints: endpoints,

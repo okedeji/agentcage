@@ -12,9 +12,26 @@ import (
 	"strings"
 	"time"
 
+	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/identity"
 )
+
+// tryRemoteVault returns a gRPC vault client if a remote orchestrator
+// is configured via `agentcage connect`. Returns nil if local.
+func tryRemoteVault() pb.VaultServiceClient {
+	cfg := loadClientConfig()
+	if cfg.ServerAddress() == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := dialOrchestrator(ctx, cfg)
+	if err != nil {
+		return nil
+	}
+	return pb.NewVaultServiceClient(conn)
+}
 
 func cmdVault(args []string) {
 	if len(args) < 1 {
@@ -82,22 +99,35 @@ func vaultWriteSecret(scope, key, rawValue, verb string) {
 		value = strings.TrimSpace(string(data))
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if remote := tryRemoteVault(); remote != nil {
+		_, err := remote.PutSecret(ctx, &pb.PutSecretRequest{
+			Scope: scope,
+			Key:   key,
+			Value: []byte(value),
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s %s/%s\n", verb, scope, key)
+		return
+	}
+
 	reader := mustBuildVaultCLIClient()
 	path := mustResolvePath(scope, key)
 
 	var secretData map[string]any
 	if strings.HasPrefix(strings.TrimSpace(value), "{") {
 		if err := json.Unmarshal([]byte(value), &secretData); err == nil {
-			// Valid JSON — store as-is (target credentials).
 		} else {
 			secretData = map[string]any{"value": value}
 		}
 	} else {
 		secretData = map[string]any{"value": value}
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	if err := reader.WriteSecret(ctx, path, secretData); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -118,11 +148,25 @@ func cmdVaultGet(args []string) {
 	}
 	scope, key := remaining[0], remaining[1]
 
-	reader := mustBuildVaultCLIClient()
-	path := mustResolvePath(scope, key)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	if remote := tryRemoteVault(); remote != nil {
+		resp, err := remote.GetSecret(ctx, &pb.GetSecretRequest{Scope: scope, Key: key})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if *reveal {
+			fmt.Println(string(resp.GetValue()))
+		} else {
+			fmt.Printf("%s: ***REDACTED***\n", key)
+		}
+		return
+	}
+
+	reader := mustBuildVaultCLIClient()
+	path := mustResolvePath(scope, key)
 
 	data, err := reader.ReadSecret(ctx, path)
 	if err != nil {
@@ -149,15 +193,31 @@ func cmdVaultList(args []string) {
 	}
 	scope := args[0]
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if remote := tryRemoteVault(); remote != nil {
+		resp, err := remote.ListSecrets(ctx, &pb.ListSecretsRequest{Scope: scope})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if len(resp.GetKeys()) == 0 {
+			fmt.Printf("no secrets in %s scope\n", scope)
+			return
+		}
+		for _, k := range resp.GetKeys() {
+			fmt.Println(k)
+		}
+		return
+	}
+
 	reader := mustBuildVaultCLIClient()
 	prefix, err := identity.ScopeMetadataPrefix(scope)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	keys, err := reader.ListSecrets(ctx, prefix)
 	if err != nil {
@@ -195,11 +255,20 @@ func cmdVaultDelete(args []string) {
 		}
 	}
 
-	reader := mustBuildVaultCLIClient()
-	path := mustResolvePath(scope, key)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	if remote := tryRemoteVault(); remote != nil {
+		if _, err := remote.DeleteSecret(ctx, &pb.DeleteSecretRequest{Scope: scope, Key: key}); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("deleted %s/%s\n", scope, key)
+		return
+	}
+
+	reader := mustBuildVaultCLIClient()
+	path := mustResolvePath(scope, key)
 
 	if err := reader.DeleteSecret(ctx, path); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

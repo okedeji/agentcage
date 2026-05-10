@@ -1,15 +1,32 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 )
+
+func tryRemotePack() pb.PackServiceClient {
+	cfg := loadClientConfig()
+	if cfg.ServerAddress() == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := dialOrchestrator(ctx, cfg)
+	if err != nil {
+		return nil
+	}
+	return pb.NewPackServiceClient(conn)
+}
 
 func cmdAgents(args []string) {
 	if len(args) == 0 {
@@ -36,6 +53,34 @@ func cmdAgents(args []string) {
 }
 
 func cmdAgentsList() {
+	if remote := tryRemotePack(); remote != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		resp, err := remote.ListAgents(ctx, &pb.ListAgentsRequest{})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if len(resp.GetAgents()) == 0 {
+			fmt.Println("No agents stored. Run 'agentcage pack <dir>' to create one.")
+			return
+		}
+		for _, a := range resp.GetAgents() {
+			sizeMB := float64(a.GetSizeBytes()) / (1024 * 1024)
+			ref := a.GetRef()
+			if len(ref) > 12 {
+				ref = ref[:12]
+			}
+			tagStr := ""
+			if len(a.GetTags()) > 0 {
+				tagStr = "[" + strings.Join(a.GetTags(), ", ") + "]"
+			}
+			fmt.Printf("  %s  %-20s  %.1f MB  %s\n", ref, a.GetName(), sizeMB, tagStr)
+		}
+		fmt.Printf("\n  %d agent(s)\n", len(resp.GetAgents()))
+		return
+	}
+
 	dir := bundleStoreDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -81,6 +126,29 @@ func cmdAgentsInspect(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "usage: agentcage agents inspect <ref|name:tag>")
 		os.Exit(1)
+	}
+
+	if remote := tryRemotePack(); remote != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		resp, err := remote.InspectAgent(ctx, &pb.InspectAgentRequest{Query: args[0]})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		a := resp.GetAgent()
+		ref := a.GetRef()
+		fmt.Printf("  Ref         %s\n", ref[:12])
+		fmt.Printf("  Full ref    %s\n", ref)
+		fmt.Printf("  Name        %s\n", a.GetName())
+		if len(a.GetTags()) > 0 {
+			fmt.Printf("  Tags        %s\n", strings.Join(a.GetTags(), ", "))
+		}
+		fmt.Printf("  Runtime     %s\n", a.GetRuntime())
+		fmt.Printf("  Entrypoint  %s\n", a.GetEntrypoint())
+		fmt.Printf("  Size        %.1f MB\n", float64(a.GetSizeBytes())/(1024*1024))
+		fmt.Printf("  Hash        %s\n", a.GetFilesHash())
+		return
 	}
 
 	store, err := cagefile.NewBundleStore(bundleStoreDir())
@@ -133,6 +201,29 @@ func cmdAgentsRemove(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "usage: agentcage agents rm <ref|name:tag> [...]")
 		os.Exit(1)
+	}
+
+	if remote := tryRemotePack(); remote != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		hasError := false
+		for _, query := range args {
+			resp, err := remote.RemoveAgent(ctx, &pb.RemoveAgentRequest{Query: query})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  ✗  %s: %v\n", query, err)
+				hasError = true
+				continue
+			}
+			ref := resp.GetRef()
+			if len(ref) > 12 {
+				ref = ref[:12]
+			}
+			fmt.Printf("  ✓  removed %s\n", ref)
+		}
+		if hasError {
+			os.Exit(1)
+		}
+		return
 	}
 
 	store, err := cagefile.NewBundleStore(bundleStoreDir())

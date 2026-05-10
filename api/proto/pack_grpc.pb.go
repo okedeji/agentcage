@@ -19,7 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PackService_Pack_FullMethodName = "/agentcage.pack.v1.PackService/Pack"
+	PackService_Pack_FullMethodName         = "/agentcage.pack.v1.PackService/Pack"
+	PackService_ListAgents_FullMethodName   = "/agentcage.pack.v1.PackService/ListAgents"
+	PackService_InspectAgent_FullMethodName = "/agentcage.pack.v1.PackService/InspectAgent"
+	PackService_RemoveAgent_FullMethodName  = "/agentcage.pack.v1.PackService/RemoveAgent"
 )
 
 // PackServiceClient is the client API for PackService service.
@@ -29,6 +32,9 @@ type PackServiceClient interface {
 	// Pack accepts a bidirectional stream: the client sends source files,
 	// the server streams progress updates and returns the final bundle ref.
 	Pack(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[PackRequest, PackResponse], error)
+	ListAgents(ctx context.Context, in *ListAgentsRequest, opts ...grpc.CallOption) (*ListAgentsResponse, error)
+	InspectAgent(ctx context.Context, in *InspectAgentRequest, opts ...grpc.CallOption) (*InspectAgentResponse, error)
+	RemoveAgent(ctx context.Context, in *RemoveAgentRequest, opts ...grpc.CallOption) (*RemoveAgentResponse, error)
 }
 
 type packServiceClient struct {
@@ -52,6 +58,36 @@ func (c *packServiceClient) Pack(ctx context.Context, opts ...grpc.CallOption) (
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type PackService_PackClient = grpc.BidiStreamingClient[PackRequest, PackResponse]
 
+func (c *packServiceClient) ListAgents(ctx context.Context, in *ListAgentsRequest, opts ...grpc.CallOption) (*ListAgentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAgentsResponse)
+	err := c.cc.Invoke(ctx, PackService_ListAgents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *packServiceClient) InspectAgent(ctx context.Context, in *InspectAgentRequest, opts ...grpc.CallOption) (*InspectAgentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InspectAgentResponse)
+	err := c.cc.Invoke(ctx, PackService_InspectAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *packServiceClient) RemoveAgent(ctx context.Context, in *RemoveAgentRequest, opts ...grpc.CallOption) (*RemoveAgentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveAgentResponse)
+	err := c.cc.Invoke(ctx, PackService_RemoveAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PackServiceServer is the server API for PackService service.
 // All implementations must embed UnimplementedPackServiceServer
 // for forward compatibility.
@@ -59,6 +95,9 @@ type PackServiceServer interface {
 	// Pack accepts a bidirectional stream: the client sends source files,
 	// the server streams progress updates and returns the final bundle ref.
 	Pack(grpc.BidiStreamingServer[PackRequest, PackResponse]) error
+	ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error)
+	InspectAgent(context.Context, *InspectAgentRequest) (*InspectAgentResponse, error)
+	RemoveAgent(context.Context, *RemoveAgentRequest) (*RemoveAgentResponse, error)
 	mustEmbedUnimplementedPackServiceServer()
 }
 
@@ -71,6 +110,15 @@ type UnimplementedPackServiceServer struct{}
 
 func (UnimplementedPackServiceServer) Pack(grpc.BidiStreamingServer[PackRequest, PackResponse]) error {
 	return status.Error(codes.Unimplemented, "method Pack not implemented")
+}
+func (UnimplementedPackServiceServer) ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAgents not implemented")
+}
+func (UnimplementedPackServiceServer) InspectAgent(context.Context, *InspectAgentRequest) (*InspectAgentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectAgent not implemented")
+}
+func (UnimplementedPackServiceServer) RemoveAgent(context.Context, *RemoveAgentRequest) (*RemoveAgentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveAgent not implemented")
 }
 func (UnimplementedPackServiceServer) mustEmbedUnimplementedPackServiceServer() {}
 func (UnimplementedPackServiceServer) testEmbeddedByValue()                     {}
@@ -100,13 +148,80 @@ func _PackService_Pack_Handler(srv interface{}, stream grpc.ServerStream) error 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type PackService_PackServer = grpc.BidiStreamingServer[PackRequest, PackResponse]
 
+func _PackService_ListAgents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAgentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PackServiceServer).ListAgents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PackService_ListAgents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PackServiceServer).ListAgents(ctx, req.(*ListAgentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PackService_InspectAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InspectAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PackServiceServer).InspectAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PackService_InspectAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PackServiceServer).InspectAgent(ctx, req.(*InspectAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PackService_RemoveAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PackServiceServer).RemoveAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PackService_RemoveAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PackServiceServer).RemoveAgent(ctx, req.(*RemoveAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PackService_ServiceDesc is the grpc.ServiceDesc for PackService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var PackService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "agentcage.pack.v1.PackService",
 	HandlerType: (*PackServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListAgents",
+			Handler:    _PackService_ListAgents_Handler,
+		},
+		{
+			MethodName: "InspectAgent",
+			Handler:    _PackService_InspectAgent_Handler,
+		},
+		{
+			MethodName: "RemoveAgent",
+			Handler:    _PackService_RemoveAgent_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Pack",
