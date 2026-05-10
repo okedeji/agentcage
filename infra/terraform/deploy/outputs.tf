@@ -18,11 +18,6 @@ output "connect_command" {
   value = module.agentcage.connect_command
 }
 
-output "packer_role_arn" {
-  description = "Set as vars.PACKER_ROLE_ARN in GitHub repo Settings > Actions > Variables"
-  value       = aws_iam_role.packer.arn
-}
-
 output "pause_command" {
   description = "Stop the instance (keeps disk, no compute cost)"
   value       = module.agentcage.instance_id != "" ? "aws ec2 stop-instances --instance-ids ${module.agentcage.instance_id}" : ""
