@@ -37,9 +37,12 @@ Thumbs.db
 
 # Terraform
 .terraform/
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfvars
+infra/terraform/deploy/config.yaml
+infra/terraform/deploy/secrets.env
 
 # Generated
 api/gateway/
