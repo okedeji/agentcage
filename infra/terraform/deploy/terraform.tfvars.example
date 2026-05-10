@@ -1,9 +1,8 @@
 agentcage_version = "0.1.0"
 instance_type     = "m8i.large"
 spot              = false       # set true for cheapest throwaway testing
-enable_ssh        = true
-key_name          = ""          # your AWS key pair name
-my_ip             = ""          # your IP: curl -s ifconfig.me/32
+enable_ssh        = true        # auto-generates SSH key at agentcage-ssh.pem
+my_ip             = "0.0.0.0/0" # restrict to your IP if static, or leave open
 
 # spot = false: use pause/resume to save costs (~$2.40/month when stopped)
 #   terraform output pause_command   -> stops instance, runs agentcage stop

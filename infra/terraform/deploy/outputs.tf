@@ -11,7 +11,7 @@ output "grpc_addr" {
 }
 
 output "ssh_command" {
-  value = module.agentcage.ssh_command
+  value = var.enable_ssh ? "ssh -i ${path.module}/agentcage-ssh.pem ubuntu@${module.agentcage.public_ip}" : ""
 }
 
 output "connect_command" {

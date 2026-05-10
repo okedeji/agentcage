@@ -28,11 +28,6 @@ variable "enable_ssh" {
   default = false
 }
 
-variable "key_name" {
-  type    = string
-  default = ""
-}
-
 variable "my_ip" {
   description = "Your IP for SSH and gRPC access (e.g. 1.2.3.4/32)"
   type        = string
