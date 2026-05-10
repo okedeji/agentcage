@@ -9,7 +9,10 @@ echo "=== agentcage host setup (v$${VERSION}) ==="
 
 # Dependencies
 apt-get update -qq
-apt-get install -y -qq curl jq
+apt-get install -y -qq curl jq postgresql-common postgresql
+# Stop the system postgres — agentcage manages its own instance
+systemctl stop postgresql || true
+systemctl disable postgresql || true
 
 # Verify KVM is available
 if [ ! -e /dev/kvm ]; then

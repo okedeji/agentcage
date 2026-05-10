@@ -13,8 +13,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -156,8 +158,10 @@ func (p *PostgresService) Start(ctx context.Context) error {
 		if os.Getuid() == 0 {
 			_ = os.MkdirAll(pgData, 0700)
 			_ = exec.Command("chown", "-R", "postgres:postgres", p.dataDir).Run()
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				Credential: &syscall.Credential{Uid: 70, Gid: 70},
+			if uid, gid, ok := lookupPostgresUser(); ok {
+				cmd.SysProcAttr = &syscall.SysProcAttr{
+					Credential: &syscall.Credential{Uid: uid, Gid: gid},
+				}
 			}
 		}
 		out, err := cmd.CombinedOutput()
@@ -458,4 +462,23 @@ func readPassword() (string, error) {
 		return "", fmt.Errorf("password file is empty")
 	}
 	return pw, nil
+}
+
+// lookupPostgresUser returns the uid and gid of the system "postgres"
+// user. Alpine uses 70, Ubuntu uses 111, others vary. Returns false
+// if the user doesn't exist.
+func lookupPostgresUser() (uint32, uint32, bool) {
+	u, err := user.Lookup("postgres")
+	if err != nil {
+		return 0, 0, false
+	}
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		return 0, 0, false
+	}
+	gid, err := strconv.ParseUint(u.Gid, 10, 32)
+	if err != nil {
+		return 0, 0, false
+	}
+	return uint32(uid), uint32(gid), true
 }

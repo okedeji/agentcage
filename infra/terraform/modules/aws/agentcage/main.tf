@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    aws = { source = "hashicorp/aws", version = ">= 5.0" }
+    aws = { source = "hashicorp/aws", version = ">= 6.33" }
   }
 }
 
@@ -105,6 +105,10 @@ resource "aws_instance" "agentcage" {
 
   vpc_security_group_ids = [aws_security_group.agentcage.id]
   iam_instance_profile   = aws_iam_instance_profile.agentcage.name
+
+  cpu_options {
+    nested_virtualization = "enabled"
+  }
 
   dynamic "instance_market_options" {
     for_each = var.spot ? [1] : []
