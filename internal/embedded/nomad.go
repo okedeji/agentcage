@@ -79,6 +79,7 @@ func extractNomadBinary(zipPath, dest string) error {
 	}
 	defer func() { _ = zr.Close() }()
 
+	tmp := dest + ".tmp"
 	for _, f := range zr.File {
 		if filepath.Base(f.Name) != "nomad" {
 			continue
@@ -87,16 +88,23 @@ func extractNomadBinary(zipPath, dest string) error {
 		if err != nil {
 			return fmt.Errorf("opening nomad in zip: %w", err)
 		}
-		defer func() { _ = rc.Close() }()
 
-		out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 		if err != nil {
-			return fmt.Errorf("creating %s: %w", dest, err)
+			_ = rc.Close()
+			return fmt.Errorf("creating %s: %w", tmp, err)
 		}
-		defer func() { _ = out.Close() }()
 
-		if _, err := io.Copy(out, rc); err != nil {
-			return fmt.Errorf("writing nomad binary: %w", err)
+		_, copyErr := io.Copy(out, rc)
+		_ = rc.Close()
+		_ = out.Close()
+		if copyErr != nil {
+			_ = os.Remove(tmp)
+			return fmt.Errorf("writing nomad binary: %w", copyErr)
+		}
+		if err := os.Rename(tmp, dest); err != nil {
+			_ = os.Remove(tmp)
+			return fmt.Errorf("finalizing nomad binary: %w", err)
 		}
 		return nil
 	}

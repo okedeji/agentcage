@@ -143,17 +143,22 @@ func decompressGzipFile(src, dest string) error {
 	}
 	defer func() { _ = gr.Close() }()
 
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	tmp := dest + ".tmp"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
 
 	if _, err := io.Copy(out, gr); err != nil {
 		_ = out.Close()
-		_ = os.Remove(dest)
+		_ = os.Remove(tmp)
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, dest)
 }
 
 // Start is a no-op. Firecracker is started per-cage, not as a daemon.

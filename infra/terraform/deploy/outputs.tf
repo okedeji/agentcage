@@ -11,19 +11,24 @@ output "grpc_addr" {
 }
 
 output "ssh_command" {
-  value = var.enable_ssh ? "ssh -i ${path.module}/agentcage-ssh.pem ubuntu@${module.agentcage.public_ip}" : ""
+  value = var.enable_ssh && module.agentcage.public_ip != "" ? "ssh -i ${path.module}/agentcage-ssh.pem ubuntu@${module.agentcage.public_ip}" : ""
 }
 
 output "connect_command" {
   value = module.agentcage.connect_command
 }
 
+output "packer_role_arn" {
+  description = "Set as vars.PACKER_ROLE_ARN in GitHub repo Settings > Actions > Variables"
+  value       = aws_iam_role.packer.arn
+}
+
 output "pause_command" {
   description = "Stop the instance (keeps disk, no compute cost)"
-  value       = "aws ec2 stop-instances --instance-ids ${module.agentcage.instance_id}"
+  value       = module.agentcage.instance_id != "" ? "aws ec2 stop-instances --instance-ids ${module.agentcage.instance_id}" : ""
 }
 
 output "resume_command" {
   description = "Start the instance back up"
-  value       = "aws ec2 start-instances --instance-ids ${module.agentcage.instance_id}"
+  value       = module.agentcage.instance_id != "" ? "aws ec2 start-instances --instance-ids ${module.agentcage.instance_id}" : ""
 }

@@ -9,6 +9,7 @@ terraform {
 # ---------------------------------------------------------------------
 
 data "aws_ami" "agentcage" {
+  count       = var.create_instance ? 1 : 0
   most_recent = true
   owners      = ["self"]
 
@@ -103,7 +104,8 @@ resource "aws_security_group_rule" "ssh" {
 # ---------------------------------------------------------------------
 
 resource "aws_instance" "agentcage" {
-  ami           = data.aws_ami.agentcage.id
+  count         = var.create_instance ? 1 : 0
+  ami           = data.aws_ami.agentcage[0].id
   instance_type = var.instance_type
   subnet_id     = var.subnet_id
   key_name      = var.enable_ssh ? var.key_name : null

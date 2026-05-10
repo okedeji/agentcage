@@ -14,6 +14,12 @@ variable "agentcage_version_override" {
   default     = ""
 }
 
+variable "create_instance" {
+  description = "Set false on first run before AMI is built"
+  type        = bool
+  default     = true
+}
+
 variable "instance_type" {
   type    = string
   default = "m8i.large"
