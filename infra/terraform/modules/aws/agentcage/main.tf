@@ -106,11 +106,6 @@ resource "aws_instance" "agentcage" {
   vpc_security_group_ids = [aws_security_group.agentcage.id]
   iam_instance_profile   = aws_iam_instance_profile.agentcage.name
 
-  # Nested virtualization for Firecracker KVM guests.
-  cpu_options {
-    amd_sev_snp = "disabled"
-  }
-
   dynamic "instance_market_options" {
     for_each = var.spot ? [1] : []
     content {
