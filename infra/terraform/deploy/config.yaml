@@ -1,3 +1,5 @@
 posture: dev
 llm:
   endpoint: "https://api.openai.com/v1"
+grpc:
+  address: "0.0.0.0:9090"

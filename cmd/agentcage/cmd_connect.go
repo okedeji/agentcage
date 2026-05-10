@@ -19,10 +19,23 @@ import (
 )
 
 func cmdConnect(args []string) {
+	// Reorder args so flags after the address are parsed correctly.
+	// "connect addr --insecure" → "--insecure addr"
+	var reordered []string
+	var positional []string
+	for _, a := range args {
+		if len(a) > 0 && a[0] == '-' {
+			reordered = append(reordered, a)
+		} else {
+			positional = append(positional, a)
+		}
+	}
+	reordered = append(reordered, positional...)
+
 	fs := flag.NewFlagSet("connect", flag.ExitOnError)
 	apiKey := fs.String("api-key", "", "API key for authentication (required)")
 	insecureFlag := fs.Bool("insecure", false, "skip TLS (localhost/dev only)")
-	_ = fs.Parse(args)
+	_ = fs.Parse(reordered)
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: agentcage connect <address> --api-key <key>")
@@ -34,8 +47,8 @@ func cmdConnect(args []string) {
 
 	addr := fs.Arg(0)
 
-	if *apiKey == "" {
-		fmt.Fprintln(os.Stderr, "error: --api-key is required")
+	if *apiKey == "" && !*insecureFlag {
+		fmt.Fprintln(os.Stderr, "error: --api-key is required (use --insecure to connect without auth in dev mode)")
 		os.Exit(1)
 	}
 
