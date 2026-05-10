@@ -55,6 +55,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/agentcage $${INIT_ARGS}
+ExecStop=/usr/local/bin/agentcage stop
+TimeoutStopSec=120
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
