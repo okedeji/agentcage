@@ -8,6 +8,7 @@ service ControlService {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
   rpc GetServiceLog(GetServiceLogRequest) returns (GetServiceLogResponse);
+  rpc StreamServiceLog(StreamServiceLogRequest) returns (stream StreamServiceLogResponse);
 }
 
 message PingRequest {}
@@ -44,4 +45,13 @@ message GetServiceLogRequest {
 
 message GetServiceLogResponse {
   repeated string lines = 1;
+}
+
+message StreamServiceLogRequest {
+  string service = 1;
+  int32 tail_lines = 2;
+}
+
+message StreamServiceLogResponse {
+  string line = 1;
 }

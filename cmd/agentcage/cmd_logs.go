@@ -58,10 +58,10 @@ func cmdLogsService(service string, args []string) {
 		*follow = true
 	}
 
-	// Remote: fetch logs via gRPC.
+	// Remote: fetch or stream logs via gRPC.
 	cfg := loadClientConfig()
-	if cfg.ServerAddress() != "" && !*follow {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if cfg.ServerAddress() != "" {
+		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		conn, err := dialOrchestrator(ctx, cfg)
 		if err != nil {
@@ -81,6 +81,30 @@ func cmdLogsService(service string, args []string) {
 		}
 
 		client := pb.NewControlServiceClient(conn)
+
+		if *follow {
+			stream, err := client.StreamServiceLog(ctx, &pb.StreamServiceLogRequest{
+				Service:   svcName,
+				TailLines: tailLines,
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+			for {
+				resp, err := stream.Recv()
+				if err != nil {
+					return
+				}
+				if *format == "json" {
+					fmt.Println(resp.GetLine())
+				} else {
+					r := strings.NewReader(resp.GetLine() + "\n")
+					formatLogLines(r)
+				}
+			}
+		}
+
 		resp, err := client.GetServiceLog(ctx, &pb.GetServiceLogRequest{
 			Service:   svcName,
 			TailLines: tailLines,

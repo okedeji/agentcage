@@ -513,6 +513,102 @@ func (x *GetServiceLogResponse) GetLines() []string {
 	return nil
 }
 
+type StreamServiceLogRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Service       string                 `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	TailLines     int32                  `protobuf:"varint,2,opt,name=tail_lines,json=tailLines,proto3" json:"tail_lines,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamServiceLogRequest) Reset() {
+	*x = StreamServiceLogRequest{}
+	mi := &file_api_proto_control_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamServiceLogRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamServiceLogRequest) ProtoMessage() {}
+
+func (x *StreamServiceLogRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_control_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamServiceLogRequest.ProtoReflect.Descriptor instead.
+func (*StreamServiceLogRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_control_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *StreamServiceLogRequest) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *StreamServiceLogRequest) GetTailLines() int32 {
+	if x != nil {
+		return x.TailLines
+	}
+	return 0
+}
+
+type StreamServiceLogResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Line          string                 `protobuf:"bytes,1,opt,name=line,proto3" json:"line,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamServiceLogResponse) Reset() {
+	*x = StreamServiceLogResponse{}
+	mi := &file_api_proto_control_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamServiceLogResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamServiceLogResponse) ProtoMessage() {}
+
+func (x *StreamServiceLogResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_control_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamServiceLogResponse.ProtoReflect.Descriptor instead.
+func (*StreamServiceLogResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_control_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *StreamServiceLogResponse) GetLine() string {
+	if x != nil {
+		return x.Line
+	}
+	return ""
+}
+
 var File_api_proto_control_proto protoreflect.FileDescriptor
 
 const file_api_proto_control_proto_rawDesc = "" +
@@ -546,13 +642,20 @@ const file_api_proto_control_proto_rawDesc = "" +
 	"\n" +
 	"tail_lines\x18\x02 \x01(\x05R\ttailLines\"-\n" +
 	"\x15GetServiceLogResponse\x12\x14\n" +
-	"\x05lines\x18\x01 \x03(\tR\x05lines2\xcb\x03\n" +
+	"\x05lines\x18\x01 \x03(\tR\x05lines\"R\n" +
+	"\x17StreamServiceLogRequest\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12\x1d\n" +
+	"\n" +
+	"tail_lines\x18\x02 \x01(\x05R\ttailLines\".\n" +
+	"\x18StreamServiceLogResponse\x12\x12\n" +
+	"\x04line\x18\x01 \x01(\tR\x04line2\xc0\x04\n" +
 	"\x0eControlService\x12M\n" +
 	"\x04Ping\x12!.agentcage.control.v1.PingRequest\x1a\".agentcage.control.v1.PingResponse\x12M\n" +
 	"\x04Stop\x12!.agentcage.control.v1.StopRequest\x1a\".agentcage.control.v1.StopResponse\x12S\n" +
 	"\x06Health\x12#.agentcage.control.v1.HealthRequest\x1a$.agentcage.control.v1.HealthResponse\x12\\\n" +
 	"\tGetConfig\x12&.agentcage.control.v1.GetConfigRequest\x1a'.agentcage.control.v1.GetConfigResponse\x12h\n" +
-	"\rGetServiceLog\x12*.agentcage.control.v1.GetServiceLogRequest\x1a+.agentcage.control.v1.GetServiceLogResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
+	"\rGetServiceLog\x12*.agentcage.control.v1.GetServiceLogRequest\x1a+.agentcage.control.v1.GetServiceLogResponse\x12s\n" +
+	"\x10StreamServiceLog\x12-.agentcage.control.v1.StreamServiceLogRequest\x1a..agentcage.control.v1.StreamServiceLogResponse0\x01B(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
 
 var (
 	file_api_proto_control_proto_rawDescOnce sync.Once
@@ -566,36 +669,40 @@ func file_api_proto_control_proto_rawDescGZIP() []byte {
 	return file_api_proto_control_proto_rawDescData
 }
 
-var file_api_proto_control_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_api_proto_control_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_api_proto_control_proto_goTypes = []any{
-	(*PingRequest)(nil),           // 0: agentcage.control.v1.PingRequest
-	(*PingResponse)(nil),          // 1: agentcage.control.v1.PingResponse
-	(*StopRequest)(nil),           // 2: agentcage.control.v1.StopRequest
-	(*StopResponse)(nil),          // 3: agentcage.control.v1.StopResponse
-	(*HealthRequest)(nil),         // 4: agentcage.control.v1.HealthRequest
-	(*HealthResponse)(nil),        // 5: agentcage.control.v1.HealthResponse
-	(*GetConfigRequest)(nil),      // 6: agentcage.control.v1.GetConfigRequest
-	(*GetConfigResponse)(nil),     // 7: agentcage.control.v1.GetConfigResponse
-	(*ServiceEndpoints)(nil),      // 8: agentcage.control.v1.ServiceEndpoints
-	(*GetServiceLogRequest)(nil),  // 9: agentcage.control.v1.GetServiceLogRequest
-	(*GetServiceLogResponse)(nil), // 10: agentcage.control.v1.GetServiceLogResponse
-	nil,                           // 11: agentcage.control.v1.HealthResponse.ServicesEntry
+	(*PingRequest)(nil),              // 0: agentcage.control.v1.PingRequest
+	(*PingResponse)(nil),             // 1: agentcage.control.v1.PingResponse
+	(*StopRequest)(nil),              // 2: agentcage.control.v1.StopRequest
+	(*StopResponse)(nil),             // 3: agentcage.control.v1.StopResponse
+	(*HealthRequest)(nil),            // 4: agentcage.control.v1.HealthRequest
+	(*HealthResponse)(nil),           // 5: agentcage.control.v1.HealthResponse
+	(*GetConfigRequest)(nil),         // 6: agentcage.control.v1.GetConfigRequest
+	(*GetConfigResponse)(nil),        // 7: agentcage.control.v1.GetConfigResponse
+	(*ServiceEndpoints)(nil),         // 8: agentcage.control.v1.ServiceEndpoints
+	(*GetServiceLogRequest)(nil),     // 9: agentcage.control.v1.GetServiceLogRequest
+	(*GetServiceLogResponse)(nil),    // 10: agentcage.control.v1.GetServiceLogResponse
+	(*StreamServiceLogRequest)(nil),  // 11: agentcage.control.v1.StreamServiceLogRequest
+	(*StreamServiceLogResponse)(nil), // 12: agentcage.control.v1.StreamServiceLogResponse
+	nil,                              // 13: agentcage.control.v1.HealthResponse.ServicesEntry
 }
 var file_api_proto_control_proto_depIdxs = []int32{
-	11, // 0: agentcage.control.v1.HealthResponse.services:type_name -> agentcage.control.v1.HealthResponse.ServicesEntry
+	13, // 0: agentcage.control.v1.HealthResponse.services:type_name -> agentcage.control.v1.HealthResponse.ServicesEntry
 	8,  // 1: agentcage.control.v1.GetConfigResponse.service_endpoints:type_name -> agentcage.control.v1.ServiceEndpoints
 	0,  // 2: agentcage.control.v1.ControlService.Ping:input_type -> agentcage.control.v1.PingRequest
 	2,  // 3: agentcage.control.v1.ControlService.Stop:input_type -> agentcage.control.v1.StopRequest
 	4,  // 4: agentcage.control.v1.ControlService.Health:input_type -> agentcage.control.v1.HealthRequest
 	6,  // 5: agentcage.control.v1.ControlService.GetConfig:input_type -> agentcage.control.v1.GetConfigRequest
 	9,  // 6: agentcage.control.v1.ControlService.GetServiceLog:input_type -> agentcage.control.v1.GetServiceLogRequest
-	1,  // 7: agentcage.control.v1.ControlService.Ping:output_type -> agentcage.control.v1.PingResponse
-	3,  // 8: agentcage.control.v1.ControlService.Stop:output_type -> agentcage.control.v1.StopResponse
-	5,  // 9: agentcage.control.v1.ControlService.Health:output_type -> agentcage.control.v1.HealthResponse
-	7,  // 10: agentcage.control.v1.ControlService.GetConfig:output_type -> agentcage.control.v1.GetConfigResponse
-	10, // 11: agentcage.control.v1.ControlService.GetServiceLog:output_type -> agentcage.control.v1.GetServiceLogResponse
-	7,  // [7:12] is the sub-list for method output_type
-	2,  // [2:7] is the sub-list for method input_type
+	11, // 7: agentcage.control.v1.ControlService.StreamServiceLog:input_type -> agentcage.control.v1.StreamServiceLogRequest
+	1,  // 8: agentcage.control.v1.ControlService.Ping:output_type -> agentcage.control.v1.PingResponse
+	3,  // 9: agentcage.control.v1.ControlService.Stop:output_type -> agentcage.control.v1.StopResponse
+	5,  // 10: agentcage.control.v1.ControlService.Health:output_type -> agentcage.control.v1.HealthResponse
+	7,  // 11: agentcage.control.v1.ControlService.GetConfig:output_type -> agentcage.control.v1.GetConfigResponse
+	10, // 12: agentcage.control.v1.ControlService.GetServiceLog:output_type -> agentcage.control.v1.GetServiceLogResponse
+	12, // 13: agentcage.control.v1.ControlService.StreamServiceLog:output_type -> agentcage.control.v1.StreamServiceLogResponse
+	8,  // [8:14] is the sub-list for method output_type
+	2,  // [2:8] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -612,7 +719,7 @@ func file_api_proto_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_control_proto_rawDesc), len(file_api_proto_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

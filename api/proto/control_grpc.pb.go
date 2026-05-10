@@ -19,11 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ControlService_Ping_FullMethodName          = "/agentcage.control.v1.ControlService/Ping"
-	ControlService_Stop_FullMethodName          = "/agentcage.control.v1.ControlService/Stop"
-	ControlService_Health_FullMethodName        = "/agentcage.control.v1.ControlService/Health"
-	ControlService_GetConfig_FullMethodName     = "/agentcage.control.v1.ControlService/GetConfig"
-	ControlService_GetServiceLog_FullMethodName = "/agentcage.control.v1.ControlService/GetServiceLog"
+	ControlService_Ping_FullMethodName             = "/agentcage.control.v1.ControlService/Ping"
+	ControlService_Stop_FullMethodName             = "/agentcage.control.v1.ControlService/Stop"
+	ControlService_Health_FullMethodName           = "/agentcage.control.v1.ControlService/Health"
+	ControlService_GetConfig_FullMethodName        = "/agentcage.control.v1.ControlService/GetConfig"
+	ControlService_GetServiceLog_FullMethodName    = "/agentcage.control.v1.ControlService/GetServiceLog"
+	ControlService_StreamServiceLog_FullMethodName = "/agentcage.control.v1.ControlService/StreamServiceLog"
 )
 
 // ControlServiceClient is the client API for ControlService service.
@@ -35,6 +36,7 @@ type ControlServiceClient interface {
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 	GetConfig(ctx context.Context, in *GetConfigRequest, opts ...grpc.CallOption) (*GetConfigResponse, error)
 	GetServiceLog(ctx context.Context, in *GetServiceLogRequest, opts ...grpc.CallOption) (*GetServiceLogResponse, error)
+	StreamServiceLog(ctx context.Context, in *StreamServiceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamServiceLogResponse], error)
 }
 
 type controlServiceClient struct {
@@ -95,6 +97,25 @@ func (c *controlServiceClient) GetServiceLog(ctx context.Context, in *GetService
 	return out, nil
 }
 
+func (c *controlServiceClient) StreamServiceLog(ctx context.Context, in *StreamServiceLogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamServiceLogResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ControlService_ServiceDesc.Streams[0], ControlService_StreamServiceLog_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamServiceLogRequest, StreamServiceLogResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlService_StreamServiceLogClient = grpc.ServerStreamingClient[StreamServiceLogResponse]
+
 // ControlServiceServer is the server API for ControlService service.
 // All implementations must embed UnimplementedControlServiceServer
 // for forward compatibility.
@@ -104,6 +125,7 @@ type ControlServiceServer interface {
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error)
 	GetServiceLog(context.Context, *GetServiceLogRequest) (*GetServiceLogResponse, error)
+	StreamServiceLog(*StreamServiceLogRequest, grpc.ServerStreamingServer[StreamServiceLogResponse]) error
 	mustEmbedUnimplementedControlServiceServer()
 }
 
@@ -128,6 +150,9 @@ func (UnimplementedControlServiceServer) GetConfig(context.Context, *GetConfigRe
 }
 func (UnimplementedControlServiceServer) GetServiceLog(context.Context, *GetServiceLogRequest) (*GetServiceLogResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetServiceLog not implemented")
+}
+func (UnimplementedControlServiceServer) StreamServiceLog(*StreamServiceLogRequest, grpc.ServerStreamingServer[StreamServiceLogResponse]) error {
+	return status.Error(codes.Unimplemented, "method StreamServiceLog not implemented")
 }
 func (UnimplementedControlServiceServer) mustEmbedUnimplementedControlServiceServer() {}
 func (UnimplementedControlServiceServer) testEmbeddedByValue()                        {}
@@ -240,6 +265,17 @@ func _ControlService_GetServiceLog_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControlService_StreamServiceLog_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamServiceLogRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ControlServiceServer).StreamServiceLog(m, &grpc.GenericServerStream[StreamServiceLogRequest, StreamServiceLogResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlService_StreamServiceLogServer = grpc.ServerStreamingServer[StreamServiceLogResponse]
+
 // ControlService_ServiceDesc is the grpc.ServiceDesc for ControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -268,6 +304,12 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ControlService_GetServiceLog_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamServiceLog",
+			Handler:       _ControlService_StreamServiceLog_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "api/proto/control.proto",
 }

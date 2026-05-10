@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
@@ -117,6 +118,77 @@ func (a *controlAdapter) GetServiceLog(_ context.Context, req *pb.GetServiceLogR
 		return &pb.GetServiceLogResponse{}, nil
 	}
 	return &pb.GetServiceLogResponse{Lines: lines}, nil
+}
+
+func (a *controlAdapter) StreamServiceLog(req *pb.StreamServiceLogRequest, stream pb.ControlService_StreamServiceLogServer) error {
+	service := req.GetService()
+	if service == "" {
+		return status.Error(codes.InvalidArgument, "service is required")
+	}
+	if strings.Contains(service, "/") || strings.Contains(service, "\\") || strings.Contains(service, "..") {
+		return status.Error(codes.InvalidArgument, "invalid service name")
+	}
+
+	logFile := filepath.Join(a.logDir, service+".log")
+
+	// Send tail lines first.
+	tailLines := int(req.GetTailLines())
+	if tailLines <= 0 {
+		tailLines = 20
+	}
+	if lines, err := readLogFile(logFile, tailLines); err == nil {
+		for _, line := range lines {
+			if err := stream.Send(&pb.StreamServiceLogResponse{Line: line}); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Follow: poll for new lines every second.
+	f, err := os.Open(logFile)
+	if err != nil {
+		return status.Errorf(codes.NotFound, "log file not found: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	// Seek to end.
+	offset, _ := f.Seek(0, io.SeekEnd)
+
+	buf := make([]byte, 64*1024)
+	var partial string
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		default:
+		}
+
+		n, readErr := f.ReadAt(buf, offset)
+		if n > 0 {
+			chunk := partial + string(buf[:n])
+			partial = ""
+			lines := strings.Split(chunk, "\n")
+			// Last element may be partial (no trailing newline yet).
+			if !strings.HasSuffix(chunk, "\n") {
+				partial = lines[len(lines)-1]
+				lines = lines[:len(lines)-1]
+			}
+			for _, line := range lines {
+				if line == "" {
+					continue
+				}
+				if err := stream.Send(&pb.StreamServiceLogResponse{Line: line}); err != nil {
+					return err
+				}
+			}
+			offset += int64(n)
+		}
+		if readErr != nil && readErr != io.EOF {
+			return nil
+		}
+
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func (a *controlAdapter) GetConfig(_ context.Context, _ *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {
