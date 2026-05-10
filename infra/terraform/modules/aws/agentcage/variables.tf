@@ -3,12 +3,6 @@ variable "name" {
   default = "agentcage"
 }
 
-variable "create_instance" {
-  description = "Set false to skip instance creation (e.g. when AMI hasn't been built yet)"
-  type        = bool
-  default     = true
-}
-
 variable "agentcage_version_override" {
   description = "Override the AMI's baked-in agentcage version (dev only, leave empty for prod)"
   type        = string

@@ -1,26 +1,26 @@
 output "instance_id" {
-  value = var.create_instance ? aws_instance.agentcage[0].id : ""
+  value = aws_instance.agentcage.id
 }
 
 output "public_ip" {
-  value = var.create_instance ? aws_instance.agentcage[0].public_ip : ""
+  value = aws_instance.agentcage.public_ip
 }
 
 output "private_ip" {
-  value = var.create_instance ? aws_instance.agentcage[0].private_ip : ""
+  value = aws_instance.agentcage.private_ip
 }
 
 output "grpc_addr" {
   description = "Use with: agentcage connect <this value>"
-  value       = var.create_instance ? "${aws_instance.agentcage[0].public_ip}:9090" : ""
+  value       = "${aws_instance.agentcage.public_ip}:9090"
 }
 
 output "ssh_command" {
-  value = var.create_instance && var.enable_ssh ? "ssh ubuntu@${aws_instance.agentcage[0].public_ip}" : ""
+  value = var.enable_ssh ? "ssh ubuntu@${aws_instance.agentcage.public_ip}" : ""
 }
 
 output "connect_command" {
-  value = var.create_instance ? "agentcage connect ${aws_instance.agentcage[0].public_ip}:9090" : ""
+  value = "agentcage connect ${aws_instance.agentcage.public_ip}:9090"
 }
 
 output "security_group_id" {

@@ -64,7 +64,6 @@ module "agentcage" {
   source = "../modules/aws/agentcage"
 
   name                       = var.name
-  create_instance            = var.create_instance
   agentcage_version_override = var.agentcage_version_override
   instance_type              = var.instance_type
   spot                       = var.spot

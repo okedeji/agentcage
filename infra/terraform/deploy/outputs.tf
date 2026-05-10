@@ -11,7 +11,7 @@ output "grpc_addr" {
 }
 
 output "ssh_command" {
-  value = var.enable_ssh && module.agentcage.public_ip != "" ? "ssh -i ${path.module}/agentcage-ssh.pem ubuntu@${module.agentcage.public_ip}" : ""
+  value = var.enable_ssh ? "ssh -i ${path.module}/agentcage-ssh.pem ubuntu@${module.agentcage.public_ip}" : ""
 }
 
 output "connect_command" {
@@ -20,10 +20,10 @@ output "connect_command" {
 
 output "pause_command" {
   description = "Stop the instance (keeps disk, no compute cost)"
-  value       = module.agentcage.instance_id != "" ? "aws ec2 stop-instances --instance-ids ${module.agentcage.instance_id}" : ""
+  value       = "aws ec2 stop-instances --instance-ids ${module.agentcage.instance_id}"
 }
 
 output "resume_command" {
   description = "Start the instance back up"
-  value       = module.agentcage.instance_id != "" ? "aws ec2 start-instances --instance-ids ${module.agentcage.instance_id}" : ""
+  value       = "aws ec2 start-instances --instance-ids ${module.agentcage.instance_id}"
 }
