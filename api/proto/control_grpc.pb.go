@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ControlService_Ping_FullMethodName      = "/agentcage.control.v1.ControlService/Ping"
-	ControlService_Stop_FullMethodName      = "/agentcage.control.v1.ControlService/Stop"
-	ControlService_Health_FullMethodName    = "/agentcage.control.v1.ControlService/Health"
-	ControlService_GetConfig_FullMethodName = "/agentcage.control.v1.ControlService/GetConfig"
+	ControlService_Ping_FullMethodName          = "/agentcage.control.v1.ControlService/Ping"
+	ControlService_Stop_FullMethodName          = "/agentcage.control.v1.ControlService/Stop"
+	ControlService_Health_FullMethodName        = "/agentcage.control.v1.ControlService/Health"
+	ControlService_GetConfig_FullMethodName     = "/agentcage.control.v1.ControlService/GetConfig"
+	ControlService_GetServiceLog_FullMethodName = "/agentcage.control.v1.ControlService/GetServiceLog"
 )
 
 // ControlServiceClient is the client API for ControlService service.
@@ -33,6 +34,7 @@ type ControlServiceClient interface {
 	Stop(ctx context.Context, in *StopRequest, opts ...grpc.CallOption) (*StopResponse, error)
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 	GetConfig(ctx context.Context, in *GetConfigRequest, opts ...grpc.CallOption) (*GetConfigResponse, error)
+	GetServiceLog(ctx context.Context, in *GetServiceLogRequest, opts ...grpc.CallOption) (*GetServiceLogResponse, error)
 }
 
 type controlServiceClient struct {
@@ -83,6 +85,16 @@ func (c *controlServiceClient) GetConfig(ctx context.Context, in *GetConfigReque
 	return out, nil
 }
 
+func (c *controlServiceClient) GetServiceLog(ctx context.Context, in *GetServiceLogRequest, opts ...grpc.CallOption) (*GetServiceLogResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetServiceLogResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetServiceLog_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ControlServiceServer is the server API for ControlService service.
 // All implementations must embed UnimplementedControlServiceServer
 // for forward compatibility.
@@ -91,6 +103,7 @@ type ControlServiceServer interface {
 	Stop(context.Context, *StopRequest) (*StopResponse, error)
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error)
+	GetServiceLog(context.Context, *GetServiceLogRequest) (*GetServiceLogResponse, error)
 	mustEmbedUnimplementedControlServiceServer()
 }
 
@@ -112,6 +125,9 @@ func (UnimplementedControlServiceServer) Health(context.Context, *HealthRequest)
 }
 func (UnimplementedControlServiceServer) GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetConfig not implemented")
+}
+func (UnimplementedControlServiceServer) GetServiceLog(context.Context, *GetServiceLogRequest) (*GetServiceLogResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetServiceLog not implemented")
 }
 func (UnimplementedControlServiceServer) mustEmbedUnimplementedControlServiceServer() {}
 func (UnimplementedControlServiceServer) testEmbeddedByValue()                        {}
@@ -206,6 +222,24 @@ func _ControlService_GetConfig_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControlService_GetServiceLog_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetServiceLogRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetServiceLog(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetServiceLog_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetServiceLog(ctx, req.(*GetServiceLogRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ControlService_ServiceDesc is the grpc.ServiceDesc for ControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +262,10 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetConfig",
 			Handler:    _ControlService_GetConfig_Handler,
+		},
+		{
+			MethodName: "GetServiceLog",
+			Handler:    _ControlService_GetServiceLog_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

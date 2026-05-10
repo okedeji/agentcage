@@ -58,6 +58,50 @@ func cmdLogsService(service string, args []string) {
 		*follow = true
 	}
 
+	// Remote: fetch logs via gRPC.
+	cfg := loadClientConfig()
+	if cfg.ServerAddress() != "" && !*follow {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		conn, err := dialOrchestrator(ctx, cfg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() { _ = conn.Close() }()
+
+		svcName := service
+		if service == "firecracker" && *vmm {
+			svcName = "firecracker-vmm"
+		}
+
+		tailLines := int32(200)
+		if *lines > 0 {
+			tailLines = int32(*lines)
+		}
+
+		client := pb.NewControlServiceClient(conn)
+		resp, err := client.GetServiceLog(ctx, &pb.GetServiceLogRequest{
+			Service:   svcName,
+			TailLines: tailLines,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+
+		if *format == "json" {
+			for _, line := range resp.GetLines() {
+				fmt.Println(line)
+			}
+		} else {
+			r := strings.NewReader(strings.Join(resp.GetLines(), "\n") + "\n")
+			formatLogLines(r)
+		}
+		return
+	}
+
+	// Local: tail the log file directly.
 	var logFile string
 	switch service {
 	case "orchestrator":

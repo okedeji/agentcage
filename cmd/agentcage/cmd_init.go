@@ -316,6 +316,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		SecretReader:     secretReader,
 		ConfigServer:     config.NewServer(cfg),
 		CageLogDir:       cageLogDir,
+		ServiceLogDir:    embedded.LogDir(),
 		ConfigYAML:       configYAML,
 		ServiceEndpoints: endpoints,
 		Cancel:           cancel,

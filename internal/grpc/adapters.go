@@ -36,6 +36,7 @@ type Services struct {
 	SecretReader      identity.SecretReader
 	ConfigServer      *config.Server
 	CageLogDir        string
+	ServiceLogDir     string
 	ConfigYAML        []byte
 	CACert            []byte
 	ServiceEndpoints  *pb.ServiceEndpoints
@@ -51,6 +52,7 @@ func Register(srv *grpc.Server, svc Services) {
 		configYAML:       svc.ConfigYAML,
 		caCert:           svc.CACert,
 		serviceEndpoints: svc.ServiceEndpoints,
+		logDir:           svc.ServiceLogDir,
 	})
 	pb.RegisterCageServiceServer(srv, &cageAdapter{server: svc.Cages, logDir: svc.CageLogDir})
 	pb.RegisterAssessmentServiceServer(srv, &assessmentAdapter{server: svc.Assessments})
@@ -78,6 +80,7 @@ type controlAdapter struct {
 	configYAML       []byte
 	caCert           []byte
 	serviceEndpoints *pb.ServiceEndpoints
+	logDir           string
 }
 
 func (a *controlAdapter) Ping(_ context.Context, _ *pb.PingRequest) (*pb.PingResponse, error) {
@@ -91,6 +94,29 @@ func (a *controlAdapter) Stop(_ context.Context, _ *pb.StopRequest) (*pb.StopRes
 
 func (a *controlAdapter) Health(_ context.Context, _ *pb.HealthRequest) (*pb.HealthResponse, error) {
 	return &pb.HealthResponse{Services: map[string]string{"status": "ok"}}, nil
+}
+
+func (a *controlAdapter) GetServiceLog(_ context.Context, req *pb.GetServiceLogRequest) (*pb.GetServiceLogResponse, error) {
+	service := req.GetService()
+	if service == "" {
+		return nil, status.Error(codes.InvalidArgument, "service is required")
+	}
+	// Prevent path traversal.
+	if strings.Contains(service, "/") || strings.Contains(service, "\\") || strings.Contains(service, "..") {
+		return nil, status.Error(codes.InvalidArgument, "invalid service name")
+	}
+
+	logFile := filepath.Join(a.logDir, service+".log")
+	tailLines := int(req.GetTailLines())
+	if tailLines <= 0 {
+		tailLines = 200
+	}
+
+	lines, err := readLogFile(logFile, tailLines)
+	if err != nil {
+		return &pb.GetServiceLogResponse{}, nil
+	}
+	return &pb.GetServiceLogResponse{Lines: lines}, nil
 }
 
 func (a *controlAdapter) GetConfig(_ context.Context, _ *pb.GetConfigRequest) (*pb.GetConfigResponse, error) {

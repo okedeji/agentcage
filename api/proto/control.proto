@@ -7,6 +7,7 @@ service ControlService {
   rpc Stop(StopRequest) returns (StopResponse);
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc GetServiceLog(GetServiceLogRequest) returns (GetServiceLogResponse);
 }
 
 message PingRequest {}
@@ -34,4 +35,13 @@ message ServiceEndpoints {
   string spire_server = 1;
   string nomad_server = 2;
   string rootfs_url = 3;
+}
+
+message GetServiceLogRequest {
+  string service = 1;
+  int32 tail_lines = 2;
+}
+
+message GetServiceLogResponse {
+  repeated string lines = 1;
 }
