@@ -63,16 +63,16 @@ module "network" {
 module "agentcage" {
   source = "../modules/aws/agentcage"
 
-  name              = var.name
-  agentcage_version = var.agentcage_version
-  instance_type     = var.instance_type
-  spot              = var.spot
-  enable_ssh        = var.enable_ssh
-  key_name          = var.enable_ssh ? aws_key_pair.ssh[0].key_name : ""
-  vpc_id            = module.network.vpc_id
-  subnet_id         = module.network.public_subnet_id
-  allowed_cidrs     = [var.my_ip]
-  ssh_cidrs         = [var.my_ip]
-  config            = fileexists(var.config_file) ? file(var.config_file) : ""
-  secrets           = fileexists(var.secrets_file) ? file(var.secrets_file) : ""
+  name                       = var.name
+  agentcage_version_override = var.agentcage_version_override
+  instance_type              = var.instance_type
+  spot                       = var.spot
+  enable_ssh                 = var.enable_ssh
+  key_name                   = var.enable_ssh ? aws_key_pair.ssh[0].key_name : ""
+  vpc_id                     = module.network.vpc_id
+  subnet_id                  = module.network.public_subnet_id
+  allowed_cidrs              = [var.my_ip]
+  ssh_cidrs                  = [var.my_ip]
+  config                     = fileexists(var.config_file) ? file(var.config_file) : ""
+  secrets                    = fileexists(var.secrets_file) ? file(var.secrets_file) : ""
 }

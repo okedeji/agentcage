@@ -8,18 +8,23 @@ terraform {
 # AMI
 # ---------------------------------------------------------------------
 
-data "aws_ami" "ubuntu" {
+data "aws_ami" "agentcage" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical
+  owners      = ["self"]
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-*"]
+    values = ["agentcage-*"]
   }
 
   filter {
-    name   = "architecture"
-    values = ["x86_64"]
+    name   = "tag:ManagedBy"
+    values = ["packer"]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
   }
 }
 
@@ -98,7 +103,7 @@ resource "aws_security_group_rule" "ssh" {
 # ---------------------------------------------------------------------
 
 resource "aws_instance" "agentcage" {
-  ami           = data.aws_ami.ubuntu.id
+  ami           = data.aws_ami.agentcage.id
   instance_type = var.instance_type
   subnet_id     = var.subnet_id
   key_name      = var.enable_ssh ? var.key_name : null
@@ -132,9 +137,9 @@ resource "aws_instance" "agentcage" {
 
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/userdata.sh.tpl", {
-    agentcage_version = var.agentcage_version
-    config            = var.config
-    secrets           = var.secrets
+    agentcage_version_override = var.agentcage_version_override
+    config                     = var.config
+    secrets                    = var.secrets
   })
 
   tags = {

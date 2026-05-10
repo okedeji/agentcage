@@ -32,7 +32,7 @@ func HomeDir() string {
 	return filepath.Join(home, ".agentcage")
 }
 
-const DefaultGRPCAddr = "localhost:9090"
+const DefaultGRPCAddr = "0.0.0.0:9090"
 
 // Config is the single source of truth for all agentcage platform configuration.
 // One file in, everything else (Rego policies, Falco rules, SPIRE config) generated at startup.

@@ -3,9 +3,10 @@ variable "name" {
   default = "agentcage"
 }
 
-variable "agentcage_version" {
-  description = "Release version to install (e.g. 0.1.0)"
+variable "agentcage_version_override" {
+  description = "Override the AMI's baked-in agentcage version (dev only, leave empty for prod)"
   type        = string
+  default     = ""
 }
 
 variable "instance_type" {

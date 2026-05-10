@@ -1,0 +1,51 @@
+name: Build AMI
+
+on:
+  push:
+    tags: ["v*"]
+    paths:
+      - "infra/packer/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "agentcage version to bake (e.g. 0.1.0)"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-ami:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.PACKER_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: "1.11.2"
+
+      - name: Packer Init
+        run: packer init infra/packer/agentcage.pkr.hcl
+
+      - name: Packer Validate
+        run: packer validate -var "agentcage_version=${{ steps.version.outputs.version }}" infra/packer/agentcage.pkr.hcl
+
+      - name: Packer Build
+        run: packer build -var "agentcage_version=${{ steps.version.outputs.version }}" infra/packer/agentcage.pkr.hcl

@@ -8,9 +8,10 @@ variable "region" {
   default = "us-east-1"
 }
 
-variable "agentcage_version" {
-  description = "Release version to deploy"
+variable "agentcage_version_override" {
+  description = "Override the AMI's baked-in agentcage version (dev only, leave empty for prod)"
   type        = string
+  default     = ""
 }
 
 variable "instance_type" {
