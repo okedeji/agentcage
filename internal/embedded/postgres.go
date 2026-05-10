@@ -194,8 +194,10 @@ func (p *PostgresService) Start(ctx context.Context) error {
 		"-c", "shared_preload_libraries=timescaledb",
 	)
 	if os.Getuid() == 0 {
-		p.proc.cmd.SysProcAttr = &syscall.SysProcAttr{
-			Credential: &syscall.Credential{Uid: 70, Gid: 70},
+		if uid, gid, ok := lookupPostgresUser(); ok {
+			p.proc.cmd.SysProcAttr = &syscall.SysProcAttr{
+				Credential: &syscall.Credential{Uid: uid, Gid: gid},
+			}
 		}
 	}
 

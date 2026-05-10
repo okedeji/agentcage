@@ -10,6 +10,13 @@ echo "=== agentcage host setup (v$${VERSION}) ==="
 # Dependencies
 apt-get update -qq
 apt-get install -y -qq curl jq postgresql-common postgresql
+
+# TimescaleDB — agentcage requires it for time-series metrics
+echo "deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/timescaledb.list
+curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey | gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg
+apt-get update -qq
+apt-get install -y -qq timescaledb-2-postgresql-16
+
 # Stop the system postgres — agentcage manages its own instance
 systemctl stop postgresql || true
 systemctl disable postgresql || true
