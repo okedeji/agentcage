@@ -34,7 +34,7 @@ func buildGRPCServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainUnaryInterceptor(
 			agentgrpc.RecoveryUnaryInterceptor(log.WithValues("component", "grpc")),
-			agentgrpc.AuthUnaryInterceptor(cfg.Access, false, log.WithValues("component", "grpc-auth")),
+			agentgrpc.AuthUnaryInterceptor(services.ConfigServer, false, log.WithValues("component", "grpc-auth")),
 			agentgrpc.LoggingUnaryInterceptor(log.WithValues("component", "grpc")),
 		),
 		grpc.MaxRecvMsgSize(32 * 1024 * 1024),

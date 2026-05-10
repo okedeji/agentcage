@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
+	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/config"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"gopkg.in/yaml.v3"
@@ -51,23 +54,29 @@ func cmdAccessCreateKey(args []string) {
 	key := hex.EncodeToString(keyBytes)
 	hash := agentgrpc.HashAPIKey(key)
 
-	cfg, path := loadOrCreateConfig()
-
-	for _, existing := range cfg.Access.APIKeys {
-		if existing.Name == *name {
-			fmt.Fprintf(os.Stderr, "error: key with name %q already exists. Revoke it first.\n", *name)
+	if remote := tryRemoteConfig(); remote != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := remote.CreateAPIKey(ctx, &pb.CreateAPIKeyRequest{Name: *name, KeyHash: hash}); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
-	}
-
-	cfg.Access.APIKeys = append(cfg.Access.APIKeys, config.APIKeyEntry{
-		Name:    *name,
-		KeyHash: hash,
-	})
-
-	if err := saveConfig(cfg, path); err != nil {
-		fmt.Fprintf(os.Stderr, "error saving config: %v\n", err)
-		os.Exit(1)
+	} else {
+		cfg, path := loadOrCreateConfig()
+		for _, existing := range cfg.Access.APIKeys {
+			if existing.Name == *name {
+				fmt.Fprintf(os.Stderr, "error: key with name %q already exists. Revoke it first.\n", *name)
+				os.Exit(1)
+			}
+		}
+		cfg.Access.APIKeys = append(cfg.Access.APIKeys, config.APIKeyEntry{
+			Name:    *name,
+			KeyHash: hash,
+		})
+		if err := saveConfig(cfg, path); err != nil {
+			fmt.Fprintf(os.Stderr, "error saving config: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	fmt.Printf("API key created for %q.\n", *name)
@@ -77,6 +86,25 @@ func cmdAccessCreateKey(args []string) {
 }
 
 func cmdAccessListKeys(_ []string) {
+	if remote := tryRemoteConfig(); remote != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		resp, err := remote.ListAPIKeys(ctx, &pb.ListAPIKeysRequest{})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if len(resp.GetKeys()) == 0 {
+			fmt.Println("No API keys configured.")
+			return
+		}
+		fmt.Println("API keys:")
+		for _, k := range resp.GetKeys() {
+			fmt.Printf("  %-20s %s\n", k.GetName(), k.GetKeyHashPrefix())
+		}
+		return
+	}
+
 	cfg, _ := loadOrCreateConfig()
 
 	if len(cfg.Access.APIKeys) == 0 {
@@ -102,6 +130,17 @@ func cmdAccessRevokeKey(args []string) {
 	if *name == "" {
 		fmt.Fprintln(os.Stderr, "usage: agentcage access revoke-key --name <name>")
 		os.Exit(1)
+	}
+
+	if remote := tryRemoteConfig(); remote != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := remote.RevokeAPIKey(ctx, &pb.RevokeAPIKeyRequest{Name: *name}); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("API key %q revoked.\n", *name)
+		return
 	}
 
 	cfg, path := loadOrCreateConfig()

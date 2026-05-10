@@ -23,6 +23,9 @@ const (
 	ConfigService_GetConfigValue_FullMethodName = "/agentcage.config.v1.ConfigService/GetConfigValue"
 	ConfigService_SetConfigValue_FullMethodName = "/agentcage.config.v1.ConfigService/SetConfigValue"
 	ConfigService_ImportConfig_FullMethodName   = "/agentcage.config.v1.ConfigService/ImportConfig"
+	ConfigService_CreateAPIKey_FullMethodName   = "/agentcage.config.v1.ConfigService/CreateAPIKey"
+	ConfigService_ListAPIKeys_FullMethodName    = "/agentcage.config.v1.ConfigService/ListAPIKeys"
+	ConfigService_RevokeAPIKey_FullMethodName   = "/agentcage.config.v1.ConfigService/RevokeAPIKey"
 )
 
 // ConfigServiceClient is the client API for ConfigService service.
@@ -33,6 +36,9 @@ type ConfigServiceClient interface {
 	GetConfigValue(ctx context.Context, in *GetConfigValueRequest, opts ...grpc.CallOption) (*GetConfigValueResponse, error)
 	SetConfigValue(ctx context.Context, in *SetConfigValueRequest, opts ...grpc.CallOption) (*SetConfigValueResponse, error)
 	ImportConfig(ctx context.Context, in *ImportConfigRequest, opts ...grpc.CallOption) (*ImportConfigResponse, error)
+	CreateAPIKey(ctx context.Context, in *CreateAPIKeyRequest, opts ...grpc.CallOption) (*CreateAPIKeyResponse, error)
+	ListAPIKeys(ctx context.Context, in *ListAPIKeysRequest, opts ...grpc.CallOption) (*ListAPIKeysResponse, error)
+	RevokeAPIKey(ctx context.Context, in *RevokeAPIKeyRequest, opts ...grpc.CallOption) (*RevokeAPIKeyResponse, error)
 }
 
 type configServiceClient struct {
@@ -83,6 +89,36 @@ func (c *configServiceClient) ImportConfig(ctx context.Context, in *ImportConfig
 	return out, nil
 }
 
+func (c *configServiceClient) CreateAPIKey(ctx context.Context, in *CreateAPIKeyRequest, opts ...grpc.CallOption) (*CreateAPIKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateAPIKeyResponse)
+	err := c.cc.Invoke(ctx, ConfigService_CreateAPIKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *configServiceClient) ListAPIKeys(ctx context.Context, in *ListAPIKeysRequest, opts ...grpc.CallOption) (*ListAPIKeysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAPIKeysResponse)
+	err := c.cc.Invoke(ctx, ConfigService_ListAPIKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *configServiceClient) RevokeAPIKey(ctx context.Context, in *RevokeAPIKeyRequest, opts ...grpc.CallOption) (*RevokeAPIKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeAPIKeyResponse)
+	err := c.cc.Invoke(ctx, ConfigService_RevokeAPIKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConfigServiceServer is the server API for ConfigService service.
 // All implementations must embed UnimplementedConfigServiceServer
 // for forward compatibility.
@@ -91,6 +127,9 @@ type ConfigServiceServer interface {
 	GetConfigValue(context.Context, *GetConfigValueRequest) (*GetConfigValueResponse, error)
 	SetConfigValue(context.Context, *SetConfigValueRequest) (*SetConfigValueResponse, error)
 	ImportConfig(context.Context, *ImportConfigRequest) (*ImportConfigResponse, error)
+	CreateAPIKey(context.Context, *CreateAPIKeyRequest) (*CreateAPIKeyResponse, error)
+	ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error)
+	RevokeAPIKey(context.Context, *RevokeAPIKeyRequest) (*RevokeAPIKeyResponse, error)
 	mustEmbedUnimplementedConfigServiceServer()
 }
 
@@ -112,6 +151,15 @@ func (UnimplementedConfigServiceServer) SetConfigValue(context.Context, *SetConf
 }
 func (UnimplementedConfigServiceServer) ImportConfig(context.Context, *ImportConfigRequest) (*ImportConfigResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ImportConfig not implemented")
+}
+func (UnimplementedConfigServiceServer) CreateAPIKey(context.Context, *CreateAPIKeyRequest) (*CreateAPIKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateAPIKey not implemented")
+}
+func (UnimplementedConfigServiceServer) ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAPIKeys not implemented")
+}
+func (UnimplementedConfigServiceServer) RevokeAPIKey(context.Context, *RevokeAPIKeyRequest) (*RevokeAPIKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeAPIKey not implemented")
 }
 func (UnimplementedConfigServiceServer) mustEmbedUnimplementedConfigServiceServer() {}
 func (UnimplementedConfigServiceServer) testEmbeddedByValue()                       {}
@@ -206,6 +254,60 @@ func _ConfigService_ImportConfig_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConfigService_CreateAPIKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateAPIKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigServiceServer).CreateAPIKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigService_CreateAPIKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigServiceServer).CreateAPIKey(ctx, req.(*CreateAPIKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConfigService_ListAPIKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAPIKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigServiceServer).ListAPIKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigService_ListAPIKeys_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigServiceServer).ListAPIKeys(ctx, req.(*ListAPIKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ConfigService_RevokeAPIKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeAPIKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigServiceServer).RevokeAPIKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ConfigService_RevokeAPIKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigServiceServer).RevokeAPIKey(ctx, req.(*RevokeAPIKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConfigService_ServiceDesc is the grpc.ServiceDesc for ConfigService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +330,18 @@ var ConfigService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ImportConfig",
 			Handler:    _ConfigService_ImportConfig_Handler,
+		},
+		{
+			MethodName: "CreateAPIKey",
+			Handler:    _ConfigService_CreateAPIKey_Handler,
+		},
+		{
+			MethodName: "ListAPIKeys",
+			Handler:    _ConfigService_ListAPIKeys_Handler,
+		},
+		{
+			MethodName: "RevokeAPIKey",
+			Handler:    _ConfigService_RevokeAPIKey_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

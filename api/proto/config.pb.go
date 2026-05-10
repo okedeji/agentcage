@@ -373,6 +373,306 @@ func (x *ImportConfigResponse) GetRestartRequired() bool {
 	return false
 }
 
+type CreateAPIKeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	KeyHash       string                 `protobuf:"bytes,2,opt,name=key_hash,json=keyHash,proto3" json:"key_hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateAPIKeyRequest) Reset() {
+	*x = CreateAPIKeyRequest{}
+	mi := &file_api_proto_config_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateAPIKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateAPIKeyRequest) ProtoMessage() {}
+
+func (x *CreateAPIKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_config_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateAPIKeyRequest.ProtoReflect.Descriptor instead.
+func (*CreateAPIKeyRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_config_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CreateAPIKeyRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateAPIKeyRequest) GetKeyHash() string {
+	if x != nil {
+		return x.KeyHash
+	}
+	return ""
+}
+
+type CreateAPIKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateAPIKeyResponse) Reset() {
+	*x = CreateAPIKeyResponse{}
+	mi := &file_api_proto_config_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateAPIKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateAPIKeyResponse) ProtoMessage() {}
+
+func (x *CreateAPIKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_config_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateAPIKeyResponse.ProtoReflect.Descriptor instead.
+func (*CreateAPIKeyResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_config_proto_rawDescGZIP(), []int{9}
+}
+
+type ListAPIKeysRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAPIKeysRequest) Reset() {
+	*x = ListAPIKeysRequest{}
+	mi := &file_api_proto_config_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAPIKeysRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAPIKeysRequest) ProtoMessage() {}
+
+func (x *ListAPIKeysRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_config_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAPIKeysRequest.ProtoReflect.Descriptor instead.
+func (*ListAPIKeysRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_config_proto_rawDescGZIP(), []int{10}
+}
+
+type ListAPIKeysResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keys          []*APIKeyInfo          `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAPIKeysResponse) Reset() {
+	*x = ListAPIKeysResponse{}
+	mi := &file_api_proto_config_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAPIKeysResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAPIKeysResponse) ProtoMessage() {}
+
+func (x *ListAPIKeysResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_config_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAPIKeysResponse.ProtoReflect.Descriptor instead.
+func (*ListAPIKeysResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_config_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListAPIKeysResponse) GetKeys() []*APIKeyInfo {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+type APIKeyInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	KeyHashPrefix string                 `protobuf:"bytes,2,opt,name=key_hash_prefix,json=keyHashPrefix,proto3" json:"key_hash_prefix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *APIKeyInfo) Reset() {
+	*x = APIKeyInfo{}
+	mi := &file_api_proto_config_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APIKeyInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APIKeyInfo) ProtoMessage() {}
+
+func (x *APIKeyInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_config_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APIKeyInfo.ProtoReflect.Descriptor instead.
+func (*APIKeyInfo) Descriptor() ([]byte, []int) {
+	return file_api_proto_config_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *APIKeyInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *APIKeyInfo) GetKeyHashPrefix() string {
+	if x != nil {
+		return x.KeyHashPrefix
+	}
+	return ""
+}
+
+type RevokeAPIKeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeAPIKeyRequest) Reset() {
+	*x = RevokeAPIKeyRequest{}
+	mi := &file_api_proto_config_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeAPIKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeAPIKeyRequest) ProtoMessage() {}
+
+func (x *RevokeAPIKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_config_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeAPIKeyRequest.ProtoReflect.Descriptor instead.
+func (*RevokeAPIKeyRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_config_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *RevokeAPIKeyRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type RevokeAPIKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeAPIKeyResponse) Reset() {
+	*x = RevokeAPIKeyResponse{}
+	mi := &file_api_proto_config_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeAPIKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeAPIKeyResponse) ProtoMessage() {}
+
+func (x *RevokeAPIKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_config_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeAPIKeyResponse.ProtoReflect.Descriptor instead.
+func (*RevokeAPIKeyResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_config_proto_rawDescGZIP(), []int{14}
+}
+
 var File_api_proto_config_proto protoreflect.FileDescriptor
 
 const file_api_proto_config_proto_rawDesc = "" +
@@ -395,12 +695,29 @@ const file_api_proto_config_proto_rawDesc = "" +
 	"\vconfig_yaml\x18\x01 \x01(\fR\n" +
 	"configYaml\"A\n" +
 	"\x14ImportConfigResponse\x12)\n" +
-	"\x10restart_required\x18\x01 \x01(\bR\x0frestartRequired2\xaf\x03\n" +
+	"\x10restart_required\x18\x01 \x01(\bR\x0frestartRequired\"D\n" +
+	"\x13CreateAPIKeyRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
+	"\bkey_hash\x18\x02 \x01(\tR\akeyHash\"\x16\n" +
+	"\x14CreateAPIKeyResponse\"\x14\n" +
+	"\x12ListAPIKeysRequest\"J\n" +
+	"\x13ListAPIKeysResponse\x123\n" +
+	"\x04keys\x18\x01 \x03(\v2\x1f.agentcage.config.v1.APIKeyInfoR\x04keys\"H\n" +
+	"\n" +
+	"APIKeyInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12&\n" +
+	"\x0fkey_hash_prefix\x18\x02 \x01(\tR\rkeyHashPrefix\")\n" +
+	"\x13RevokeAPIKeyRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
+	"\x14RevokeAPIKeyResponse2\xdb\x05\n" +
 	"\rConfigService\x12c\n" +
 	"\fExportConfig\x12(.agentcage.config.v1.ExportConfigRequest\x1a).agentcage.config.v1.ExportConfigResponse\x12i\n" +
 	"\x0eGetConfigValue\x12*.agentcage.config.v1.GetConfigValueRequest\x1a+.agentcage.config.v1.GetConfigValueResponse\x12i\n" +
 	"\x0eSetConfigValue\x12*.agentcage.config.v1.SetConfigValueRequest\x1a+.agentcage.config.v1.SetConfigValueResponse\x12c\n" +
-	"\fImportConfig\x12(.agentcage.config.v1.ImportConfigRequest\x1a).agentcage.config.v1.ImportConfigResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
+	"\fImportConfig\x12(.agentcage.config.v1.ImportConfigRequest\x1a).agentcage.config.v1.ImportConfigResponse\x12c\n" +
+	"\fCreateAPIKey\x12(.agentcage.config.v1.CreateAPIKeyRequest\x1a).agentcage.config.v1.CreateAPIKeyResponse\x12`\n" +
+	"\vListAPIKeys\x12'.agentcage.config.v1.ListAPIKeysRequest\x1a(.agentcage.config.v1.ListAPIKeysResponse\x12c\n" +
+	"\fRevokeAPIKey\x12(.agentcage.config.v1.RevokeAPIKeyRequest\x1a).agentcage.config.v1.RevokeAPIKeyResponseB(Z&github.com/okedeji/agentcage/api/protob\x06proto3"
 
 var (
 	file_api_proto_config_proto_rawDescOnce sync.Once
@@ -414,7 +731,7 @@ func file_api_proto_config_proto_rawDescGZIP() []byte {
 	return file_api_proto_config_proto_rawDescData
 }
 
-var file_api_proto_config_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_api_proto_config_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_api_proto_config_proto_goTypes = []any{
 	(*ExportConfigRequest)(nil),    // 0: agentcage.config.v1.ExportConfigRequest
 	(*ExportConfigResponse)(nil),   // 1: agentcage.config.v1.ExportConfigResponse
@@ -424,21 +741,35 @@ var file_api_proto_config_proto_goTypes = []any{
 	(*SetConfigValueResponse)(nil), // 5: agentcage.config.v1.SetConfigValueResponse
 	(*ImportConfigRequest)(nil),    // 6: agentcage.config.v1.ImportConfigRequest
 	(*ImportConfigResponse)(nil),   // 7: agentcage.config.v1.ImportConfigResponse
+	(*CreateAPIKeyRequest)(nil),    // 8: agentcage.config.v1.CreateAPIKeyRequest
+	(*CreateAPIKeyResponse)(nil),   // 9: agentcage.config.v1.CreateAPIKeyResponse
+	(*ListAPIKeysRequest)(nil),     // 10: agentcage.config.v1.ListAPIKeysRequest
+	(*ListAPIKeysResponse)(nil),    // 11: agentcage.config.v1.ListAPIKeysResponse
+	(*APIKeyInfo)(nil),             // 12: agentcage.config.v1.APIKeyInfo
+	(*RevokeAPIKeyRequest)(nil),    // 13: agentcage.config.v1.RevokeAPIKeyRequest
+	(*RevokeAPIKeyResponse)(nil),   // 14: agentcage.config.v1.RevokeAPIKeyResponse
 }
 var file_api_proto_config_proto_depIdxs = []int32{
-	0, // 0: agentcage.config.v1.ConfigService.ExportConfig:input_type -> agentcage.config.v1.ExportConfigRequest
-	2, // 1: agentcage.config.v1.ConfigService.GetConfigValue:input_type -> agentcage.config.v1.GetConfigValueRequest
-	4, // 2: agentcage.config.v1.ConfigService.SetConfigValue:input_type -> agentcage.config.v1.SetConfigValueRequest
-	6, // 3: agentcage.config.v1.ConfigService.ImportConfig:input_type -> agentcage.config.v1.ImportConfigRequest
-	1, // 4: agentcage.config.v1.ConfigService.ExportConfig:output_type -> agentcage.config.v1.ExportConfigResponse
-	3, // 5: agentcage.config.v1.ConfigService.GetConfigValue:output_type -> agentcage.config.v1.GetConfigValueResponse
-	5, // 6: agentcage.config.v1.ConfigService.SetConfigValue:output_type -> agentcage.config.v1.SetConfigValueResponse
-	7, // 7: agentcage.config.v1.ConfigService.ImportConfig:output_type -> agentcage.config.v1.ImportConfigResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	12, // 0: agentcage.config.v1.ListAPIKeysResponse.keys:type_name -> agentcage.config.v1.APIKeyInfo
+	0,  // 1: agentcage.config.v1.ConfigService.ExportConfig:input_type -> agentcage.config.v1.ExportConfigRequest
+	2,  // 2: agentcage.config.v1.ConfigService.GetConfigValue:input_type -> agentcage.config.v1.GetConfigValueRequest
+	4,  // 3: agentcage.config.v1.ConfigService.SetConfigValue:input_type -> agentcage.config.v1.SetConfigValueRequest
+	6,  // 4: agentcage.config.v1.ConfigService.ImportConfig:input_type -> agentcage.config.v1.ImportConfigRequest
+	8,  // 5: agentcage.config.v1.ConfigService.CreateAPIKey:input_type -> agentcage.config.v1.CreateAPIKeyRequest
+	10, // 6: agentcage.config.v1.ConfigService.ListAPIKeys:input_type -> agentcage.config.v1.ListAPIKeysRequest
+	13, // 7: agentcage.config.v1.ConfigService.RevokeAPIKey:input_type -> agentcage.config.v1.RevokeAPIKeyRequest
+	1,  // 8: agentcage.config.v1.ConfigService.ExportConfig:output_type -> agentcage.config.v1.ExportConfigResponse
+	3,  // 9: agentcage.config.v1.ConfigService.GetConfigValue:output_type -> agentcage.config.v1.GetConfigValueResponse
+	5,  // 10: agentcage.config.v1.ConfigService.SetConfigValue:output_type -> agentcage.config.v1.SetConfigValueResponse
+	7,  // 11: agentcage.config.v1.ConfigService.ImportConfig:output_type -> agentcage.config.v1.ImportConfigResponse
+	9,  // 12: agentcage.config.v1.ConfigService.CreateAPIKey:output_type -> agentcage.config.v1.CreateAPIKeyResponse
+	11, // 13: agentcage.config.v1.ConfigService.ListAPIKeys:output_type -> agentcage.config.v1.ListAPIKeysResponse
+	14, // 14: agentcage.config.v1.ConfigService.RevokeAPIKey:output_type -> agentcage.config.v1.RevokeAPIKeyResponse
+	8,  // [8:15] is the sub-list for method output_type
+	1,  // [1:8] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_config_proto_init() }
@@ -452,7 +783,7 @@ func file_api_proto_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_config_proto_rawDesc), len(file_api_proto_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

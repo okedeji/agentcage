@@ -93,6 +93,42 @@ func (s *Server) Import(_ context.Context, cfg *Config) {
 	s.current = Merge(s.base, cfg)
 }
 
+// AddAPIKey appends an API key entry to the live config.
+func (s *Server) AddAPIKey(_ context.Context, entry APIKeyEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, k := range s.current.Access.APIKeys {
+		if k.Name == entry.Name {
+			return fmt.Errorf("key with name %q already exists", entry.Name)
+		}
+	}
+
+	s.current.Access.APIKeys = append(s.current.Access.APIKeys, entry)
+	return nil
+}
+
+// RemoveAPIKey removes an API key by name from the live config.
+func (s *Server) RemoveAPIKey(_ context.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var remaining []APIKeyEntry
+	found := false
+	for _, k := range s.current.Access.APIKeys {
+		if k.Name == name {
+			found = true
+			continue
+		}
+		remaining = append(remaining, k)
+	}
+	if !found {
+		return fmt.Errorf("no key found with name %q", name)
+	}
+	s.current.Access.APIKeys = remaining
+	return nil
+}
+
 func configToYAMLMap(cfg *Config) (map[string]any, error) {
 	raw, err := yaml.Marshal(cfg)
 	if err != nil {
