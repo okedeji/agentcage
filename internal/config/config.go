@@ -23,11 +23,16 @@ func SetHome(dir string) { homeOverride = dir }
 // SetHome, or defaults to ~/.agentcage.
 func HomeDir() string {
 	if homeOverride != "" {
+		abs, err := filepath.Abs(homeOverride)
+		if err == nil {
+			return abs
+		}
 		return homeOverride
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".agentcage"
+		abs, _ := filepath.Abs(".agentcage")
+		return abs
 	}
 	return filepath.Join(home, ".agentcage")
 }

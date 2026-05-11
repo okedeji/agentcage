@@ -69,7 +69,8 @@ Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
 
-# Pick up config and secrets if present
+# systemd doesn't set HOME; agentcage needs it for ~/.agentcage
+Environment=HOME=/root
 Environment=AGENTCAGE_CONFIG=/etc/agentcage/config.yaml
 Environment=AGENTCAGE_SECRETS=/etc/agentcage/secrets.env
 
