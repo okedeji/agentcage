@@ -22,7 +22,7 @@ case "$TARGET_ARCH" in
     amd64|x86_64)
         LINUX_ARCH="x86_64"
         CROSS_COMPILE=""
-        IMAGE_NAME="bzImage"
+        IMAGE_NAME="vmlinux"
         ;;
     *) echo "unsupported architecture: $TARGET_ARCH"; exit 1 ;;
 esac
@@ -193,6 +193,11 @@ if ! make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" "$IMAGE
     exit 1
 fi
 
-cp "$SRCDIR/arch/${LINUX_ARCH}/boot/${IMAGE_NAME}" "$OUTPUT"
+# vmlinux (x86_64 ELF) is in the source root; Image (ARM64) is under arch/.../boot/
+if [ "$IMAGE_NAME" = "vmlinux" ]; then
+    cp "$SRCDIR/vmlinux" "$OUTPUT"
+else
+    cp "$SRCDIR/arch/${LINUX_ARCH}/boot/${IMAGE_NAME}" "$OUTPUT"
+fi
 echo
 echo "Cage kernel built: ${OUTPUT} ($(du -h "$OUTPUT" | awk '{print $1}'))"
