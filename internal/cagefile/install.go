@@ -129,7 +129,8 @@ func rewriteSDKDep(agentDir, sdkTarball string) error {
 		return nil
 	}
 
-	deps["@agentcage/sdk"] = "file:" + sdkTarball
+	absTarball, _ := filepath.Abs(sdkTarball)
+	deps["@agentcage/sdk"] = "file:" + absTarball
 	pkg["dependencies"] = deps
 	out, err := json.MarshalIndent(pkg, "", "  ")
 	if err != nil {
