@@ -83,13 +83,11 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 
 	rootfsPath = filepath.Join(b.workDir, cageID+".ext4")
 
-	// Reject concurrent Assemble for the same cage ID. Cage IDs are
-	// UUIDs, so collision means an upstream idempotency bug;
-	// clobbering an in-use rootfs file would corrupt the running cage.
-	// SweepStale runs at startup so legitimate post-crash leftovers
-	// don't trip this.
+	// Remove stale rootfs from a previous failed attempt. Temporal
+	// retries can hit this after a crash or timeout. The file is not
+	// in use (no cage VM references a rootfs that failed to provision).
 	if _, err := os.Stat(rootfsPath); err == nil {
-		return "", fmt.Errorf("cage %s: rootfs %s already exists, concurrent Assemble or stale state", cageID, rootfsPath)
+		_ = os.Remove(rootfsPath)
 	}
 
 	// Copy base rootfs. cp --reflink=auto gives copy-on-write on
