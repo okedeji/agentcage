@@ -45,7 +45,8 @@ source "amazon-ebs" "agentcage" {
 
   ssh_username = "ubuntu"
 
-  force_deregister      = true
+  force_deregister       = true
+  force_delete_snapshot  = true
   force_delete_snapshot = true
 
   tags = {
