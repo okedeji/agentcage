@@ -65,13 +65,24 @@ CONFIG_USER_NS=y
 CONFIG_UTS_NS=y
 CONFIG_IPC_NS=y
 
+# KVM guest support (mandatory for Firecracker — provides kvmclock
+# for timekeeping; without it the kernel hangs at timer calibration)
+CONFIG_HYPERVISOR_GUEST=y
+CONFIG_PARAVIRT=y
+CONFIG_KVM_GUEST=y
+
 # Interrupt controller (Firecracker uses GICv3 on ARM64)
 CONFIG_IRQCHIP=y
+
+# ACPI and PCI (required for x86_64 block device boot)
+CONFIG_ACPI=y
+CONFIG_PCI=y
 
 # TTY / Console
 CONFIG_TTY=y
 CONFIG_SERIAL_8250=y
 CONFIG_SERIAL_8250_CONSOLE=y
+CONFIG_EARLY_PRINTK=y
 
 # Virtio (Firecracker uses virtio-mmio)
 CONFIG_VIRTIO=y
@@ -173,6 +184,9 @@ make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" olddefconfig
 
 # Verify required configs survived olddefconfig
 REQUIRED_CONFIGS="VIRTIO_MMIO VIRTIO_BLK VIRTIO_NET VSOCKETS VIRTIO_VSOCKETS NETFILTER NF_TABLES IP_NF_IPTABLES"
+if [ "$LINUX_ARCH" = "x86_64" ]; then
+    REQUIRED_CONFIGS="$REQUIRED_CONFIGS KVM_GUEST PARAVIRT HYPERVISOR_GUEST EARLY_PRINTK"
+fi
 if [ "$LINUX_ARCH" = "arm64" ]; then
     REQUIRED_CONFIGS="$REQUIRED_CONFIGS ARM_GIC_V3 ARM_PSCI_FW SERIAL_OF_PLATFORM SERIAL_EARLYCON"
 fi
