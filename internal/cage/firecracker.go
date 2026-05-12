@@ -127,10 +127,11 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		kernelPath = p.kernelPath
 	}
 
-	// Start Firecracker process. Serial output goes to /dev/null;
-	// debug cage boot issues by running Firecracker manually on the
-	// host and inspecting stdout.
-	cmd := exec.CommandContext(ctx, p.binPath,
+	// Start Firecracker process. The process outlives the activity
+	// that provisions it; termination is handled by Terminate().
+	// Using context.Background() so the activity context cancellation
+	// does not kill the VM.
+	cmd := exec.Command(p.binPath,
 		"--api-sock", socketPath,
 	)
 
