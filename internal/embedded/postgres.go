@@ -157,6 +157,11 @@ func (p *PostgresService) Start(ctx context.Context) error {
 		)
 		if os.Getuid() == 0 {
 			_ = os.MkdirAll(pgData, 0700)
+			// postgres needs execute on each ancestor to traverse
+			// into the data directory. /root is typically 700.
+			for dir := p.dataDir; dir != "/" && dir != "."; dir = filepath.Dir(dir) {
+				_ = os.Chmod(dir, 0711)
+			}
 			_ = exec.Command("chown", "-R", "postgres:postgres", p.dataDir).Run()
 			if uid, gid, ok := lookupPostgresUser(); ok {
 				cmd.SysProcAttr = &syscall.SysProcAttr{
