@@ -162,14 +162,23 @@ func GenerateNFTRules(rule EgressRule) string {
 	b.WriteString("    oifname lo accept\n\n")
 
 	// Per-IP rules, scoped to allowed ports when specified.
+	// IPv4 uses "ip daddr", IPv6 uses "ip6 daddr".
 	if len(rule.AllowPorts) > 0 {
 		ports := strings.Join(rule.AllowPorts, ", ")
 		for _, cidr := range rule.AllowIPs {
-			fmt.Fprintf(&b, "    ip daddr %s tcp dport { %s } accept\n", cidr, ports)
+			family := "ip"
+			if strings.Contains(cidr, ":") {
+				family = "ip6"
+			}
+			fmt.Fprintf(&b, "    %s daddr %s tcp dport { %s } accept\n", family, cidr, ports)
 		}
 	} else {
 		for _, cidr := range rule.AllowIPs {
-			fmt.Fprintf(&b, "    ip daddr %s accept\n", cidr)
+			family := "ip"
+			if strings.Contains(cidr, ":") {
+				family = "ip6"
+			}
+			fmt.Fprintf(&b, "    %s daddr %s accept\n", family, cidr)
 		}
 	}
 
