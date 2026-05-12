@@ -50,6 +50,9 @@ Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
 
+# systemd doesn't set HOME; agentcage needs it for ~/.agentcage
+Environment=HOME=/root
+
 [Install]
 WantedBy=multi-user.target
 SVCEOF
