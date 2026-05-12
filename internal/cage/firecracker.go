@@ -73,7 +73,7 @@ func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
 			continue
 		}
 		name := e.Name()
-		if strings.HasSuffix(name, ".vsock") {
+		if strings.HasSuffix(name, ".vsock") || strings.HasSuffix(name, ".log") {
 			_ = os.Remove(filepath.Join(socketDir, name))
 			continue
 		}
@@ -137,7 +137,7 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	if p.logDir != "" {
 		logDir = p.logDir
 	}
-	logFile := filepath.Join(logDir, "firecracker.log")
+	logFile := filepath.Join(logDir, vmID+".log")
 
 	cmd := exec.CommandContext(ctx, p.binPath,
 		"--api-sock", socketPath,
@@ -239,9 +239,14 @@ func (p *FirecrackerProvisioner) Terminate(ctx context.Context, vmID string) err
 		errs = append(errs, fmt.Errorf("tearing down TAP device: %w", err))
 	}
 
-	// Clean up sockets
+	// Clean up sockets and serial log
 	_ = os.Remove(vm.handle.SocketPath)
 	_ = os.Remove(vm.handle.VsockPath)
+	logDir := filepath.Join(os.TempDir(), "firecracker")
+	if p.logDir != "" {
+		logDir = p.logDir
+	}
+	_ = os.Remove(filepath.Join(logDir, vmID+".log"))
 
 	p.log.Info("cage VM terminated", "vm_id", vmID, "cage_id", vm.handle.CageID)
 
