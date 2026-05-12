@@ -86,7 +86,6 @@ func CheckNomadHealth(ctx context.Context, addr string) string {
 type HostRuntimeConfig struct {
 	FirecrackerBin string
 	KernelPath     string
-	LogDir         string // shared directory for cage console logs
 }
 
 // BuildProvisioner constructs the VM provisioner used by the cage
@@ -105,7 +104,6 @@ func BuildProvisioner(ctx context.Context, cfg HostRuntimeConfig, log logr.Logge
 	provisioner := NewFirecrackerProvisioner(FirecrackerConfig{
 		BinPath:    cfg.FirecrackerBin,
 		KernelPath: cfg.KernelPath,
-		LogDir:     cfg.LogDir,
 	}, log)
 
 	if err := provisioner.SweepStale(ctx); err != nil {

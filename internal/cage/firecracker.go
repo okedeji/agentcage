@@ -26,7 +26,6 @@ type FirecrackerProvisioner struct {
 	byCageID   map[string]string
 	binPath    string
 	kernelPath string
-	logDir     string
 	log        logr.Logger
 }
 
@@ -40,7 +39,6 @@ type firecrackerVM struct {
 type FirecrackerConfig struct {
 	BinPath    string // path to firecracker binary
 	KernelPath string // path to vmlinux kernel
-	LogDir     string // shared directory for cage console logs (readable from host)
 }
 
 func NewFirecrackerProvisioner(cfg FirecrackerConfig, log logr.Logger) *FirecrackerProvisioner {
@@ -49,7 +47,6 @@ func NewFirecrackerProvisioner(cfg FirecrackerConfig, log logr.Logger) *Firecrac
 		byCageID:   make(map[string]string),
 		binPath:    cfg.BinPath,
 		kernelPath: cfg.KernelPath,
-		logDir:     cfg.LogDir,
 		log:        log.WithValues("component", "firecracker-provisioner"),
 	}
 }
@@ -73,7 +70,7 @@ func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
 			continue
 		}
 		name := e.Name()
-		if strings.HasSuffix(name, ".vsock") || strings.HasSuffix(name, ".log") {
+		if strings.HasSuffix(name, ".vsock") {
 			_ = os.Remove(filepath.Join(socketDir, name))
 			continue
 		}
@@ -130,25 +127,12 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		kernelPath = p.kernelPath
 	}
 
-	// Start Firecracker process
-	// Write Firecracker serial output to the log directory so the
-	// operator can read it via `agentcage logs firecracker`.
-	logDir := filepath.Join(os.TempDir(), "firecracker")
-	if p.logDir != "" {
-		logDir = p.logDir
-	}
-	logFile := filepath.Join(logDir, vmID+".log")
-
+	// Start Firecracker process. Serial output goes to /dev/null;
+	// debug cage boot issues by running Firecracker manually on the
+	// host and inspecting stdout.
 	cmd := exec.CommandContext(ctx, p.binPath,
 		"--api-sock", socketPath,
 	)
-	if f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
-		cmd.Stdout = f
-		cmd.Stderr = f
-	} else {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	}
 
 	p.log.Info("starting firecracker",
 		"cage_id", config.CageID,
@@ -239,14 +223,9 @@ func (p *FirecrackerProvisioner) Terminate(ctx context.Context, vmID string) err
 		errs = append(errs, fmt.Errorf("tearing down TAP device: %w", err))
 	}
 
-	// Clean up sockets and serial log
+	// Clean up sockets
 	_ = os.Remove(vm.handle.SocketPath)
 	_ = os.Remove(vm.handle.VsockPath)
-	logDir := filepath.Join(os.TempDir(), "firecracker")
-	if p.logDir != "" {
-		logDir = p.logDir
-	}
-	_ = os.Remove(filepath.Join(logDir, vmID+".log"))
 
 	p.log.Info("cage VM terminated", "vm_id", vmID, "cage_id", vm.handle.CageID)
 

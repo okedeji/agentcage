@@ -32,7 +32,7 @@ func cmdLogs(args []string) {
 	rest := args[1:]
 
 	switch source {
-	case "orchestrator", "postgres", "temporal", "spire", "vault", "falco", "nats", "firecracker":
+	case "orchestrator", "postgres", "temporal", "spire", "vault", "falco", "nats":
 		cmdLogsService(source, rest)
 	case "cage":
 		cmdLogsCage(rest)
@@ -51,7 +51,6 @@ func cmdLogsService(service string, args []string) {
 	followShort := fs.Bool("f", false, "stream live (short)")
 	lines := fs.Int("lines", 0, "show last N lines")
 	format := fs.String("format", "text", "output format: text or json")
-	vmm := fs.Bool("vmm", false, "show VMM trace log instead of serial output (firecracker only)")
 	_ = fs.Parse(args)
 
 	if *followShort {
@@ -71,9 +70,6 @@ func cmdLogsService(service string, args []string) {
 		defer func() { _ = conn.Close() }()
 
 		svcName := service
-		if service == "firecracker" && *vmm {
-			svcName = "firecracker-vmm"
-		}
 
 		tailLines := int32(200)
 		if *lines > 0 {
@@ -130,12 +126,6 @@ func cmdLogsService(service string, args []string) {
 	switch service {
 	case "orchestrator":
 		logFile = filepath.Join(embedded.LogDir(), "orchestrator.log")
-	case "firecracker":
-		if *vmm {
-			logFile = filepath.Join(embedded.LogDir(), "firecracker-vmm.log")
-		} else {
-			logFile = filepath.Join(embedded.LogDir(), "firecracker.log")
-		}
 	default:
 		logFile = filepath.Join(embedded.LogDir(), service+".log")
 	}
@@ -469,7 +459,6 @@ Sources:
   vault                     Vault secrets manager output
   falco                     Falco runtime security output
   nats                      NATS message broker output
-  firecracker               Firecracker VM output (kernel boot, cage-init, sidecars)
   cage <id>                 Cage logs (agent + cage-init)
   assessment <id>           All cage logs for an assessment
 

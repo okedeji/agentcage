@@ -48,7 +48,6 @@ func setupCageRuntime(ctx context.Context, cfg *config.Config, db *sql.DB, log l
 	provisioner, _, err := cage.BuildProvisioner(ctx, cage.HostRuntimeConfig{
 		FirecrackerBin: firecrackerBin,
 		KernelPath:     kernelBin,
-		LogDir:         embedded.LogDir(),
 	}, log)
 	if err != nil {
 		return nil, fmt.Errorf("setting up cage provisioner: %w", err)
