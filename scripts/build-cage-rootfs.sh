@@ -143,6 +143,8 @@ for svc in cage-init payload-proxy findings-sidecar directive-sidecar; do
 done
 
 # Write init script. cage-init becomes PID 1 and manages the cage lifecycle.
+# Remove the busybox symlink first so tee creates a new file.
+sudo rm -f "$MOUNTPOINT/sbin/init"
 sudo tee "$MOUNTPOINT/sbin/init" > /dev/null << 'INITEOF'
 #!/bin/sh
 mount -t proc proc /proc
