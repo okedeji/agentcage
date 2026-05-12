@@ -14,7 +14,12 @@ import (
 
 const (
 	firecrackerVersion = "1.14.1"
-	kernelVersion      = "6.12"
+
+	// CI kernel: pre-built by the Firecracker team, tested against
+	// each Firecracker release. Hosted on S3 at
+	// spec.ccfc.min/firecracker-ci/v{major.minor}/{arch}/vmlinux-{version}.
+	ciKernelVersion = "6.1.155"
+	ciKernelFCMinor = "1.14"
 )
 
 // FirecrackerDownloader downloads the Firecracker VMM binary and a
@@ -97,11 +102,11 @@ func (f *FirecrackerDownloader) downloadKernel(ctx context.Context) error {
 		return nil
 	}
 
-	arch := runtime.GOARCH
-	url := fmt.Sprintf("https://github.com/okedeji/agentcage/releases/download/v%s/cage-vmlinux-%s-%s",
-		f.version, kernelVersion, arch)
+	arch := archSuffix()
+	url := fmt.Sprintf("https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v%s/%s/vmlinux-%s",
+		ciKernelFCMinor, arch, ciKernelVersion)
 
-	f.log.Info("downloading cage kernel", "version", kernelVersion, "arch", arch, "url", url)
+	f.log.Info("downloading cage kernel", "version", ciKernelVersion, "arch", arch, "url", url)
 	return downloadBinary(ctx, url, dest)
 }
 
