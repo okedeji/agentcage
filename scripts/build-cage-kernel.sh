@@ -179,13 +179,26 @@ CONFIG_SERIAL_OF_PLATFORM=y
 ARM64_KCONFIG
 fi
 
+# x86_64: earlycon and PnP serial discovery. Without SERIAL_EARLYCON
+# the earlycon= boot param is silently ignored and any panic before the
+# full 8250 driver loads produces zero output. Without SERIAL_8250_PNP
+# the 8250 driver may not discover the port via ACPI enumeration.
+if [ "$LINUX_ARCH" = "x86_64" ]; then
+    cat >> "$SRCDIR/.config" << 'X86_KCONFIG'
+CONFIG_SERIAL_EARLYCON=y
+CONFIG_SERIAL_8250_PNP=y
+CONFIG_PRINTK=y
+CONFIG_FIX_EARLYCON_MEM=y
+X86_KCONFIG
+fi
+
 echo "Configuring kernel..."
 make -C "$SRCDIR" ARCH="$LINUX_ARCH" CROSS_COMPILE="$CROSS_COMPILE" olddefconfig -j"$(nproc)"
 
 # Verify required configs survived olddefconfig
 REQUIRED_CONFIGS="VIRTIO_MMIO VIRTIO_BLK VIRTIO_NET VSOCKETS VIRTIO_VSOCKETS NETFILTER NF_TABLES IP_NF_IPTABLES"
 if [ "$LINUX_ARCH" = "x86_64" ]; then
-    REQUIRED_CONFIGS="$REQUIRED_CONFIGS KVM_GUEST PARAVIRT HYPERVISOR_GUEST EARLY_PRINTK"
+    REQUIRED_CONFIGS="$REQUIRED_CONFIGS KVM_GUEST PARAVIRT HYPERVISOR_GUEST EARLY_PRINTK SERIAL_EARLYCON SERIAL_8250_PNP"
 fi
 if [ "$LINUX_ARCH" = "arm64" ]; then
     REQUIRED_CONFIGS="$REQUIRED_CONFIGS ARM_GIC_V3 ARM_PSCI_FW SERIAL_OF_PLATFORM SERIAL_EARLYCON"
