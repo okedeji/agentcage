@@ -890,7 +890,7 @@ func defaultTimeouts() ActivityTimeoutsConfig {
 		RevokeSVID:           5 * time.Second,
 		RevokeVaultToken:     5 * time.Second,
 		VerifyCleanup:        10 * time.Second,
-		HeartbeatProvisionVM: 10 * time.Second,
+		HeartbeatProvisionVM: 60 * time.Second,
 		HeartbeatMonitorCage: 30 * time.Second,
 		SuspendAgent:         10 * time.Second,
 		ResumeAgent:          10 * time.Second,

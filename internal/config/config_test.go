@@ -62,7 +62,7 @@ func TestDefaults_HasAllActivityTimeouts(t *testing.T) {
 	assert.Equal(t, 5*time.Second, at.RevokeSVID)
 	assert.Equal(t, 5*time.Second, at.RevokeVaultToken)
 	assert.Equal(t, 10*time.Second, at.VerifyCleanup)
-	assert.Equal(t, 10*time.Second, at.HeartbeatProvisionVM)
+	assert.Equal(t, 60*time.Second, at.HeartbeatProvisionVM)
 	assert.Equal(t, 30*time.Second, at.HeartbeatMonitorCage)
 	assert.Equal(t, 10*time.Second, at.SuspendAgent)
 	assert.Equal(t, 10*time.Second, at.ResumeAgent)
