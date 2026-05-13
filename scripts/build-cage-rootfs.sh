@@ -147,6 +147,7 @@ done
 sudo rm -f "$MOUNTPOINT/sbin/init"
 sudo tee "$MOUNTPOINT/sbin/init" > /dev/null << 'INITEOF'
 #!/bin/sh
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
 mount -t proc proc /proc
 mount -t sysfs sys /sys
 mount -t devtmpfs dev /dev
