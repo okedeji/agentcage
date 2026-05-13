@@ -17,7 +17,7 @@ func buildLLMClient(ctx context.Context, cfg *config.Config, secrets identity.Se
 	budgetEnforcer := gateway.NewBudgetEnforcer(meter)
 
 	if cfg.LLM.Endpoint == "" {
-		return nil, nil, "", fmt.Errorf("llm.endpoint is required: the assessment coordinator and discovery cages cannot run without an LLM\n  Set it in config: llm:\n                      endpoint: \"https://api.anthropic.com/v1\"\n  Then store the key: agentcage vault put orchestrator llm-api-key <key>")
+		return nil, nil, "", fmt.Errorf("llm.endpoint is required: the assessment coordinator and discovery cages cannot run without an LLM\n  Set it in config: llm:\n                      endpoint: \"https://your-llm-endpoint/v1\"\n  Then store the key: agentcage vault put orchestrator llm-api-key <key>")
 	}
 
 	var apiKey string

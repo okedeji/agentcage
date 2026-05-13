@@ -49,7 +49,7 @@ Next steps:
 {{- end }}
 
    # LLM endpoint (your provider):
-   llm.endpoint: https://api.anthropic.com/v1
+   llm.endpoint: https://your-llm-endpoint/v1
 
 3. Initialize:
 

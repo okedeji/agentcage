@@ -299,12 +299,12 @@ func TestMerge_LLMOverride(t *testing.T) {
 	base := Defaults()
 	override := &Config{
 		LLM: LLMConfig{
-			Endpoint: "https://api.anthropic.com/v1",
+			Endpoint: "https://llm.example.com/v1",
 		},
 	}
 
 	result := Merge(base, override)
-	assert.Equal(t, "https://api.anthropic.com/v1", result.LLM.Endpoint)
+	assert.Equal(t, "https://llm.example.com/v1", result.LLM.Endpoint)
 	assert.Equal(t, 30*time.Second, result.LLM.Timeout, "default timeout preserved")
 }
 
