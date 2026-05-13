@@ -19,6 +19,7 @@ import (
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/internal/intervention"
+	"github.com/nats-io/nats.go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -37,6 +38,7 @@ type Services struct {
 	SecretReader      identity.SecretReader
 	ConfigServer      *config.Server
 	CageLogDir        string
+	NATSConn          *nats.Conn
 	ServiceLogDir     string
 	ConfigYAML        []byte
 	CACert            []byte
@@ -55,7 +57,7 @@ func Register(srv *grpc.Server, svc Services) {
 		serviceEndpoints: svc.ServiceEndpoints,
 		logDir:           svc.ServiceLogDir,
 	})
-	pb.RegisterCageServiceServer(srv, &cageAdapter{server: svc.Cages, logDir: svc.CageLogDir})
+	pb.RegisterCageServiceServer(srv, &cageAdapter{server: svc.Cages, logDir: svc.CageLogDir, natsConn: svc.NATSConn})
 	pb.RegisterAssessmentServiceServer(srv, &assessmentAdapter{server: svc.Assessments})
 	pb.RegisterInterventionServiceServer(srv, &interventionAdapter{server: svc.Interventions})
 	pb.RegisterFleetServiceServer(srv, &fleetAdapter{server: svc.Fleet})
@@ -201,8 +203,9 @@ func (a *controlAdapter) GetConfig(_ context.Context, _ *pb.GetConfigRequest) (*
 
 type cageAdapter struct {
 	pb.UnimplementedCageServiceServer
-	server *cage.Service
-	logDir string
+	server   *cage.Service
+	logDir   string
+	natsConn *nats.Conn
 }
 
 func (a *cageAdapter) CreateCage(ctx context.Context, req *pb.CreateCageRequest) (*pb.CreateCageResponse, error) {
@@ -316,6 +319,134 @@ func readLogFile(path string, tailLines int) ([]string, error) {
 		allLines = allLines[len(allLines)-tailLines:]
 	}
 	return allLines, nil
+}
+
+func (a *cageAdapter) StreamCageLogs(req *pb.StreamCageLogsRequest, stream pb.CageService_StreamCageLogsServer) error {
+	cageID := req.GetCageId()
+	if cageID == "" {
+		return status.Error(codes.InvalidArgument, "cage_id is required")
+	}
+	if strings.ContainsAny(cageID, "/\\..") {
+		return status.Error(codes.InvalidArgument, "invalid cage_id")
+	}
+
+	info, err := a.server.GetCage(stream.Context(), cageID)
+	if err != nil {
+		return toGRPCError(err)
+	}
+
+	isActive := info.State == cage.StateRunning || info.State == cage.StatePending ||
+		info.State == cage.StateProvisioning || info.State == cage.StatePaused
+
+	// Send historical tail lines.
+	tailLines := int(req.GetTailLines())
+	if tailLines <= 0 {
+		tailLines = 200
+	}
+	logFile := filepath.Join(a.logDir, cageID+".log")
+	lines, _ := readLogFile(logFile, tailLines)
+	sourceFilter := req.GetSourceFilter()
+	for _, line := range lines {
+		if sourceFilter != "" && !strings.Contains(line, `"source":"`+sourceFilter+`"`) {
+			continue
+		}
+		if err := stream.Send(&pb.StreamCageLogsResponse{Line: line}); err != nil {
+			return err
+		}
+	}
+
+	if !isActive {
+		_ = stream.Send(&pb.StreamCageLogsResponse{Completed: true, CageState: info.State.String()})
+		return nil
+	}
+
+	// Live streaming via NATS subscription.
+	if a.natsConn != nil {
+		return a.streamViaNATS(cageID, sourceFilter, stream)
+	}
+
+	// Fallback: poll the log file.
+	return a.streamViaPolling(cageID, sourceFilter, stream, int32(len(lines)))
+}
+
+func (a *cageAdapter) streamViaNATS(cageID, sourceFilter string, stream pb.CageService_StreamCageLogsServer) error {
+	ch := make(chan string, 256)
+	sub, err := a.natsConn.Subscribe(cage.LogSubject(cageID), func(msg *nats.Msg) {
+		select {
+		case ch <- string(msg.Data):
+		default:
+		}
+	})
+	if err != nil {
+		return a.streamViaPolling(cageID, sourceFilter, stream, 0)
+	}
+	defer func() { _ = sub.Unsubscribe() }()
+
+	stateTicker := time.NewTicker(5 * time.Second)
+	defer stateTicker.Stop()
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case line := <-ch:
+			if sourceFilter != "" && !strings.Contains(line, `"source":"`+sourceFilter+`"`) {
+				continue
+			}
+			if err := stream.Send(&pb.StreamCageLogsResponse{Line: line}); err != nil {
+				return err
+			}
+		case <-stateTicker.C:
+			info, err := a.server.GetCage(stream.Context(), cageID)
+			if err != nil {
+				continue
+			}
+			if info.State == cage.StateCompleted || info.State == cage.StateFailed {
+				_ = stream.Send(&pb.StreamCageLogsResponse{Completed: true, CageState: info.State.String()})
+				return nil
+			}
+		}
+	}
+}
+
+func (a *cageAdapter) streamViaPolling(cageID, sourceFilter string, stream pb.CageService_StreamCageLogsServer, lastCount int32) error {
+	logFile := filepath.Join(a.logDir, cageID+".log")
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	stateTicker := time.NewTicker(5 * time.Second)
+	defer stateTicker.Stop()
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case <-ticker.C:
+			lines, err := readLogFile(logFile, 0)
+			if err != nil {
+				continue
+			}
+			for i := lastCount; i < int32(len(lines)); i++ {
+				line := lines[i]
+				if sourceFilter != "" && !strings.Contains(line, `"source":"`+sourceFilter+`"`) {
+					continue
+				}
+				if err := stream.Send(&pb.StreamCageLogsResponse{Line: line}); err != nil {
+					return err
+				}
+			}
+			lastCount = int32(len(lines))
+		case <-stateTicker.C:
+			info, err := a.server.GetCage(stream.Context(), cageID)
+			if err != nil {
+				continue
+			}
+			if info.State == cage.StateCompleted || info.State == cage.StateFailed {
+				_ = stream.Send(&pb.StreamCageLogsResponse{Completed: true, CageState: info.State.String()})
+				return nil
+			}
+		}
+	}
 }
 
 func (a *cageAdapter) DestroyCage(ctx context.Context, req *pb.DestroyCageRequest) (*pb.DestroyCageResponse, error) {

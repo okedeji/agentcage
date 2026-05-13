@@ -57,3 +57,10 @@ func connectFindingsBus(ctx context.Context, cfg *config.Config, natsURL string,
 	log.Info("findings bus connected", "url", natsURL)
 	return bus, store, coordinator, nil
 }
+
+func natsConnForGRPC(bus findings.Bus) *nats.Conn {
+	if nb, ok := bus.(*findings.NATSBus); ok {
+		return nb.Conn()
+	}
+	return nil
+}

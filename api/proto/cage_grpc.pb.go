@@ -24,6 +24,7 @@ const (
 	CageService_ListCagesByAssessment_FullMethodName = "/agentcage.cage.v1.CageService/ListCagesByAssessment"
 	CageService_DestroyCage_FullMethodName           = "/agentcage.cage.v1.CageService/DestroyCage"
 	CageService_GetCageLogs_FullMethodName           = "/agentcage.cage.v1.CageService/GetCageLogs"
+	CageService_StreamCageLogs_FullMethodName        = "/agentcage.cage.v1.CageService/StreamCageLogs"
 )
 
 // CageServiceClient is the client API for CageService service.
@@ -35,6 +36,7 @@ type CageServiceClient interface {
 	ListCagesByAssessment(ctx context.Context, in *ListCagesByAssessmentRequest, opts ...grpc.CallOption) (*ListCagesByAssessmentResponse, error)
 	DestroyCage(ctx context.Context, in *DestroyCageRequest, opts ...grpc.CallOption) (*DestroyCageResponse, error)
 	GetCageLogs(ctx context.Context, in *GetCageLogsRequest, opts ...grpc.CallOption) (*GetCageLogsResponse, error)
+	StreamCageLogs(ctx context.Context, in *StreamCageLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamCageLogsResponse], error)
 }
 
 type cageServiceClient struct {
@@ -95,6 +97,25 @@ func (c *cageServiceClient) GetCageLogs(ctx context.Context, in *GetCageLogsRequ
 	return out, nil
 }
 
+func (c *cageServiceClient) StreamCageLogs(ctx context.Context, in *StreamCageLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamCageLogsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &CageService_ServiceDesc.Streams[0], CageService_StreamCageLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamCageLogsRequest, StreamCageLogsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type CageService_StreamCageLogsClient = grpc.ServerStreamingClient[StreamCageLogsResponse]
+
 // CageServiceServer is the server API for CageService service.
 // All implementations must embed UnimplementedCageServiceServer
 // for forward compatibility.
@@ -104,6 +125,7 @@ type CageServiceServer interface {
 	ListCagesByAssessment(context.Context, *ListCagesByAssessmentRequest) (*ListCagesByAssessmentResponse, error)
 	DestroyCage(context.Context, *DestroyCageRequest) (*DestroyCageResponse, error)
 	GetCageLogs(context.Context, *GetCageLogsRequest) (*GetCageLogsResponse, error)
+	StreamCageLogs(*StreamCageLogsRequest, grpc.ServerStreamingServer[StreamCageLogsResponse]) error
 	mustEmbedUnimplementedCageServiceServer()
 }
 
@@ -128,6 +150,9 @@ func (UnimplementedCageServiceServer) DestroyCage(context.Context, *DestroyCageR
 }
 func (UnimplementedCageServiceServer) GetCageLogs(context.Context, *GetCageLogsRequest) (*GetCageLogsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetCageLogs not implemented")
+}
+func (UnimplementedCageServiceServer) StreamCageLogs(*StreamCageLogsRequest, grpc.ServerStreamingServer[StreamCageLogsResponse]) error {
+	return status.Error(codes.Unimplemented, "method StreamCageLogs not implemented")
 }
 func (UnimplementedCageServiceServer) mustEmbedUnimplementedCageServiceServer() {}
 func (UnimplementedCageServiceServer) testEmbeddedByValue()                     {}
@@ -240,6 +265,17 @@ func _CageService_GetCageLogs_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CageService_StreamCageLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamCageLogsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(CageServiceServer).StreamCageLogs(m, &grpc.GenericServerStream[StreamCageLogsRequest, StreamCageLogsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type CageService_StreamCageLogsServer = grpc.ServerStreamingServer[StreamCageLogsResponse]
+
 // CageService_ServiceDesc is the grpc.ServiceDesc for CageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -268,6 +304,12 @@ var CageService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CageService_GetCageLogs_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamCageLogs",
+			Handler:       _CageService_StreamCageLogs_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "api/proto/cage.proto",
 }

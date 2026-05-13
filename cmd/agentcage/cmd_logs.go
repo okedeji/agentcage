@@ -17,6 +17,8 @@ import (
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func cmdLogs(args []string) {
@@ -223,27 +225,67 @@ func cmdLogsCage(args []string) {
 		return
 	}
 
-	// Poll GetCageLogs for new lines until the cage completes.
-	fmt.Fprintf(os.Stderr, "Following cage logs (Ctrl+C to stop)...\n")
-	lastLineCount := int32(len(resp.GetLines()))
+	// Stream via the server-streaming RPC. Falls back to polling
+	// if the server is too old to support StreamCageLogs.
+	fmt.Fprintf(os.Stderr, "Streaming live logs (Ctrl+C to stop)...\n")
+
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	defer streamCancel()
+
+	stream, err := client.StreamCageLogs(streamCtx, &pb.StreamCageLogsRequest{
+		CageId:       cageID,
+		TailLines:    0, // historical already printed above
+		SourceFilter: *source,
+	})
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			pollCageLogs(client, cageID, *source, int32(len(resp.GetLines())))
+			return
+		}
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			if streamCtx.Err() != nil {
+				return
+			}
+			fmt.Fprintf(os.Stderr, "\nstream error: %v\n", err)
+			return
+		}
+		if msg.GetCompleted() {
+			fmt.Fprintf(os.Stderr, "\nCage %s.\n", msg.GetCageState())
+			return
+		}
+		fmt.Println(msg.GetLine())
+	}
+}
+
+// pollCageLogs is the fallback for servers that don't support StreamCageLogs.
+func pollCageLogs(client pb.CageServiceClient, cageID, source string, lastCount int32) {
 	for {
 		time.Sleep(3 * time.Second)
 		pollCtx, pollCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		pollResp, pollErr := client.GetCageLogs(pollCtx, &pb.GetCageLogsRequest{CageId: cageID, TailLines: 0})
+		resp, err := client.GetCageLogs(pollCtx, &pb.GetCageLogsRequest{CageId: cageID, TailLines: 0})
 		pollCancel()
-		if pollErr != nil {
+		if err != nil {
 			continue
 		}
-		lines := pollResp.GetLines()
-		for i := lastLineCount; i < int32(len(lines)); i++ {
+		lines := resp.GetLines()
+		for i := lastCount; i < int32(len(lines)); i++ {
 			line := lines[i]
-			if *source != "" && !strings.Contains(line, `"source":"`+*source+`"`) {
+			if source != "" && !strings.Contains(line, `"source":"`+source+`"`) {
 				continue
 			}
 			fmt.Println(line)
 		}
-		lastLineCount = int32(len(lines))
-		if !pollResp.GetIsRunning() {
+		lastCount = int32(len(lines))
+		if !resp.GetIsRunning() {
 			fmt.Fprintln(os.Stderr, "\nCage completed.")
 			return
 		}
