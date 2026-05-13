@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"strings"
 	"sync"
 	"time"
@@ -245,9 +246,17 @@ func (p *FirecrackerProvisioner) Status(_ context.Context, vmID string) (VMStatu
 		return VMStatusStopped, nil
 	}
 
-	// Check if process is still alive
-	if vm.cmd != nil && vm.cmd.ProcessState != nil && vm.cmd.ProcessState.Exited() {
-		return VMStatusStopped, nil
+	// Check if process is still alive. ProcessState is only populated
+	// after Wait(), so also probe with Signal(0) to detect zombies.
+	if vm.cmd != nil {
+		if vm.cmd.ProcessState != nil && vm.cmd.ProcessState.Exited() {
+			return VMStatusStopped, nil
+		}
+		if vm.cmd.Process != nil {
+			if err := vm.cmd.Process.Signal(syscall.Signal(0)); err != nil {
+				return VMStatusStopped, nil
+			}
+		}
 	}
 	return VMStatusRunning, nil
 }

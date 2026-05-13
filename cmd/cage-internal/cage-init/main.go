@@ -72,6 +72,7 @@ func main() {
 			_, _ = fmt.Fprintf(bootLog, "%d %s\n", time.Now().Unix(), msg)
 			_ = bootLog.Sync()
 		}
+		writeLog(nil, "system", msg)
 	}
 	writeBootLog("cage-init started")
 
