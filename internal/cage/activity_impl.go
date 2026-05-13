@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -864,21 +866,62 @@ func (a *ActivityImpl) VerifyCleanup(ctx context.Context, cageID, vmID string) e
 	return nil
 }
 
-// CollectCageLogs ensures the cage's log file is available on the
-// orchestrator's local disk. In single-machine mode the file is already
-// local (written by the vsock collector). In fleet mode this activity
-// would fetch the file from the remote host via the host control channel.
+// CollectCageLogs reads the persistent cage log from the rootfs and
+// writes it to the orchestrator's log directory. cage-init writes every
+// log line (agent stdout/stderr + system events) to /var/log/cage.log
+// with fsync, so it survives VM death. This is the authoritative source;
+// vsock-delivered logs are best-effort for live streaming.
 func (a *ActivityImpl) CollectCageLogs(ctx context.Context, cageID string) error {
-	if a.logDir == "" {
+	if a.logDir == "" || a.rootfs == nil {
 		return nil
 	}
+
+	rootfsPath := filepath.Join(a.rootfs.WorkDir(), cageID+".ext4")
+	if _, err := os.Stat(rootfsPath); err != nil {
+		a.log.Info("cage rootfs not found, no logs to collect", "cage_id", cageID)
+		return nil
+	}
+
+	// Try the full agent+system log first, fall back to boot log.
+	data, err := readFileFromExt4(ctx, rootfsPath, "/var/log/cage.log")
+	if err != nil || len(data) == 0 {
+		data, _ = readFileFromExt4(ctx, rootfsPath, "/cage-boot.log")
+		if len(data) > 0 {
+			// Boot log is plain text, convert to JSON lines.
+			var jsonLines []byte
+			for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+				if line == "" {
+					continue
+				}
+				jsonLines = append(jsonLines, []byte(fmt.Sprintf(`{"source":"system","msg":%q,"ts":%d}`+"\n", line, time.Now().Unix()))...)
+			}
+			data = jsonLines
+		}
+	}
+
+	if len(data) == 0 {
+		a.log.Info("no logs found in cage rootfs", "cage_id", cageID)
+		return nil
+	}
+
 	logFile := filepath.Join(a.logDir, cageID+".log")
-	if _, err := os.Stat(logFile); err == nil {
-		a.log.V(1).Info("cage log file already local", "cage_id", cageID, "path", logFile)
-		return nil
+	if err := os.WriteFile(logFile, data, 0644); err != nil {
+		return fmt.Errorf("writing cage log %s: %w", logFile, err)
 	}
-	a.log.Info("cage log file not found locally, skipping collection", "cage_id", cageID)
+
+	lineCount := strings.Count(string(data), "\n")
+	a.log.Info("cage logs collected from rootfs", "cage_id", cageID, "lines", lineCount)
 	return nil
+}
+
+// readFileFromExt4 reads a file from an ext4 image using debugfs.
+func readFileFromExt4(_ context.Context, imagePath, filePath string) ([]byte, error) {
+	cmd := exec.Command("debugfs", "-R", "cat "+filePath, imagePath)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("debugfs cat %s from %s: %w", filePath, imagePath, err)
+	}
+	return out, nil
 }
 
 func (a *ActivityImpl) EmitRCA(_ context.Context, cageID, assessmentID, reason string) error {

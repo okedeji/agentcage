@@ -14,10 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nats-io/nats.go"
-
 	pb "github.com/okedeji/agentcage/api/proto"
-	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 )
@@ -226,46 +223,29 @@ func cmdLogsCage(args []string) {
 		return
 	}
 
-	nc, err := nats.Connect(embedded.NATSURL())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: connecting to NATS: %v\n", err)
-		os.Exit(1)
-	}
-	defer nc.Close()
-
-	subject := cage.LogSubject(cageID)
-	fmt.Fprintf(os.Stderr, "Streaming live logs (Ctrl+C to stop)...\n")
-
-	msgCh := make(chan *nats.Msg, 256)
-	sub, err := nc.ChanSubscribe(subject, msgCh)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: subscribing: %v\n", err)
-		os.Exit(1)
-	}
-	defer func() { _ = sub.Unsubscribe() }()
-
-	pollTicker := time.NewTicker(5 * time.Second)
-	defer pollTicker.Stop()
-
+	// Poll GetCageLogs for new lines until the cage completes.
+	fmt.Fprintf(os.Stderr, "Following cage logs (Ctrl+C to stop)...\n")
+	lastLineCount := int32(len(resp.GetLines()))
 	for {
-		select {
-		case msg, ok := <-msgCh:
-			if !ok {
-				return
-			}
-			line := string(msg.Data)
-			if *source != "" && !strings.Contains(line, "["+*source+"]") {
+		time.Sleep(3 * time.Second)
+		pollCtx, pollCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		pollResp, pollErr := client.GetCageLogs(pollCtx, &pb.GetCageLogsRequest{CageId: cageID, TailLines: 0})
+		pollCancel()
+		if pollErr != nil {
+			continue
+		}
+		lines := pollResp.GetLines()
+		for i := lastLineCount; i < int32(len(lines)); i++ {
+			line := lines[i]
+			if *source != "" && !strings.Contains(line, `"source":"`+*source+`"`) {
 				continue
 			}
 			fmt.Println(line)
-		case <-pollTicker.C:
-			pollCtx, pollCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			checkResp, checkErr := client.GetCageLogs(pollCtx, &pb.GetCageLogsRequest{CageId: cageID, TailLines: 0})
-			pollCancel()
-			if checkErr == nil && !checkResp.GetIsRunning() {
-				fmt.Fprintln(os.Stderr, "\nCage completed. Stream ended.")
-				return
-			}
+		}
+		lastLineCount = int32(len(lines))
+		if !pollResp.GetIsRunning() {
+			fmt.Fprintln(os.Stderr, "\nCage completed.")
+			return
 		}
 	}
 }

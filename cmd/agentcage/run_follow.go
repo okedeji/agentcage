@@ -151,7 +151,7 @@ func pollCages(ctx context.Context, client pb.CageServiceClient, assessmentID st
 
 		if !seen {
 			emitTimestamp(s, "Cage %s (%s) started", short, cageType)
-			fmt.Printf("           Logs: agentcage logs cage %s --follow\n", short)
+			fmt.Printf("           Logs: agentcage logs cage %s\n", cageID)
 			s.seenCages[cageID] = state
 			s.lastChange = time.Now()
 		} else if state != prevState {

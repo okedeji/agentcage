@@ -52,6 +52,8 @@ type RootfsBuilder struct {
 	version        string
 }
 
+func (b *RootfsBuilder) WorkDir() string { return b.workDir }
+
 func NewRootfsBuilder(baseRootfsPath, workDir, version string) *RootfsBuilder {
 	return &RootfsBuilder{
 		baseRootfsPath: baseRootfsPath,

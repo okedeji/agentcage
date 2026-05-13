@@ -171,12 +171,19 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		}
 	}
 
+	// Collect logs from rootfs BEFORE cleanup deletes the ext4 image.
+	v := workflow.GetVersion(ctx, "collect-logs-before-cleanup", workflow.DefaultVersion, 1)
+	if v == 1 {
+		_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "CollectCageLogs", input.CageID)
+	}
+
 	if tErr := execActivity(withTimeout(ctx, t.VerifyCleanup), "VerifyCleanup", input.CageID, vmHandle.ID); tErr != nil {
 		teardownErrs = append(teardownErrs, fmt.Errorf("verifying cleanup: %w", tErr))
 	}
 
-	// Best-effort: collect log file to orchestrator for later retrieval.
-	_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "CollectCageLogs", input.CageID)
+	if v == workflow.DefaultVersion {
+		_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "CollectCageLogs", input.CageID)
+	}
 
 	if stopReason.RequiresRCA() || result.Error != "" {
 		reason := stopReason.String()
