@@ -60,9 +60,12 @@ func main() {
 
 	fmt.Printf("cage-init: cage=%s assessment=%s type=%s\n", env.CageID, env.AssessmentID, env.CageType)
 
-	// Boot marker on the persistent rootfs so the operator can
-	// verify cage-init started even when serial console is unavailable.
-	// Read via: debugfs rootfs.ext4 -R 'cat /cage-boot.log'
+	// Persistent log on the rootfs. Every writeLog() call writes here
+	// with Sync(), so agent stdout/stderr survives VM death. The
+	// orchestrator reads this via debugfs after the cage terminates.
+	initCageLog()
+
+	// Boot marker for quick checks without parsing the full log.
 	bootLog, _ := os.OpenFile("/cage-boot.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	writeBootLog := func(msg string) {
 		if bootLog != nil {
@@ -272,20 +275,36 @@ func setEnv(key, value string) {
 }
 
 func drainAndExit(logConn net.Conn, procs []*exec.Cmd, code int) {
+	// Close the log socket so directive-sidecar knows no more lines
+	// are coming and can flush its buffer through vsock.
 	if logConn != nil {
 		_ = logConn.Close()
 	}
-	time.Sleep(2 * time.Second)
+	// Give directive-sidecar time to forward buffered lines to the
+	// host. The rootfs log is the authoritative source regardless,
+	// but this improves the live-streaming experience.
+	time.Sleep(3 * time.Second)
 	for _, cmd := range procs {
 		if cmd != nil && cmd.Process != nil {
 			_ = cmd.Process.Signal(syscall.SIGTERM)
 		}
 	}
+	if cageLog != nil {
+		_ = cageLog.Close()
+	}
 	os.Exit(code)
 }
 
 func fatal(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "cage-init: fatal: "+format+"\n", args...)
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(os.Stderr, "cage-init: fatal: %s\n", msg)
+	// Write to rootfs log so the orchestrator can recover the error.
+	if cageLog != nil {
+		line := fmt.Sprintf(`{"source":"system","msg":"fatal: %s","ts":%d}`, msg, time.Now().Unix())
+		_, _ = cageLog.WriteString(line + "\n")
+		_ = cageLog.Sync()
+		_ = cageLog.Close()
+	}
 	os.Exit(1)
 }
 
@@ -317,14 +336,32 @@ func connectLogSocket(path string) net.Conn {
 	return nil
 }
 
-// writeLog sends a single tagged log line over the socket.
-func writeLog(conn net.Conn, source, msg string) {
-	if conn == nil {
-		fmt.Printf("[%s] %s\n", source, msg)
+// cageLog persists every log line to the rootfs so the orchestrator
+// can recover them via debugfs after the VM dies.
+var cageLog *os.File
+
+func initCageLog() {
+	_ = os.MkdirAll("/var/log", 0755)
+	f, err := os.OpenFile("/var/log/cage.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
 		return
 	}
+	cageLog = f
+}
+
+// writeLog sends a tagged JSON log line to the vsock-forwarded socket
+// (best effort) and to the persistent rootfs log (reliable).
+func writeLog(conn net.Conn, source, msg string) {
 	line := fmt.Sprintf(`{"source":%q,"msg":%q,"ts":%d}`, source, msg, time.Now().Unix())
-	_, _ = conn.Write([]byte(line + "\n"))
+	if cageLog != nil {
+		_, _ = cageLog.WriteString(line + "\n")
+		_ = cageLog.Sync()
+	}
+	if conn != nil {
+		_, _ = conn.Write([]byte(line + "\n"))
+	} else {
+		fmt.Printf("[%s] %s\n", source, msg)
+	}
 }
 
 // logWriter implements io.Writer and tags each line with a source.
