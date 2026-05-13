@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	pb "github.com/okedeji/agentcage/api/proto"
@@ -19,26 +20,45 @@ const (
 	followHardTimeout          = 5 * time.Hour
 )
 
+type followState struct {
+	lastStatus  string
+	lastChange  time.Time
+	startTime   time.Time
+	seenCages   map[string]string // cage_id -> last state
+	seenFindings map[string]bool
+	seenInterventions map[string]string // intervention_id -> last status
+	jsonMode    bool
+}
+
 func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessmentID, format string) {
 	ctx, cancel := context.WithTimeout(parentCtx, followHardTimeout)
 	defer cancel()
 
-	client := pb.NewAssessmentServiceClient(conn)
+	aClient := pb.NewAssessmentServiceClient(conn)
+	cClient := pb.NewCageServiceClient(conn)
+	fClient := pb.NewFindingsServiceClient(conn)
 	iClient := pb.NewInterventionServiceClient(conn)
-	jsonMode := format == "json"
-	var lastStatus string
-	var lastValidated int32 = -1
-	var lastCandidate int32 = -1
-	var lastCages int32 = -1
-	var consecutiveErrors int
-	seenInterventions := make(map[string]bool)
-	lastChange := time.Now()
 
-	fmt.Println("\nFollowing assessment progress... (Ctrl+C to detach, assessment continues)")
+	s := &followState{
+		startTime:         time.Now(),
+		lastChange:        time.Now(),
+		seenCages:         make(map[string]string),
+		seenFindings:      make(map[string]bool),
+		seenInterventions: make(map[string]string),
+		jsonMode:          format == "json",
+	}
+
+	shortID := assessmentID
+	if len(shortID) > 8 {
+		shortID = shortID[:8]
+	}
+	fmt.Printf("\nFollowing assessment %s... (Ctrl+C to detach)\n\n", shortID)
+
+	var consecutiveErrors int
 
 	for {
 		pollCtx, pollCancel := context.WithTimeout(ctx, 5*time.Second)
-		resp, err := client.GetAssessment(pollCtx, &pb.GetAssessmentRequest{AssessmentId: assessmentID})
+		resp, err := aClient.GetAssessment(pollCtx, &pb.GetAssessmentRequest{AssessmentId: assessmentID})
 		pollCancel()
 
 		if ctx.Err() != nil {
@@ -48,10 +68,9 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 
 		if err != nil {
 			consecutiveErrors++
-			fmt.Fprintf(os.Stderr, "  poll error (%d/%d): %v\n", consecutiveErrors, followMaxConsecutiveErrors, err)
 			if consecutiveErrors >= followMaxConsecutiveErrors {
-				fmt.Fprintf(os.Stderr, "\nToo many consecutive poll errors. Detaching.\n")
-				fmt.Fprintf(os.Stderr, "Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
+				fmt.Fprintf(os.Stderr, "\nToo many poll errors. Detaching.\n")
+				printDetachMessage(assessmentID)
 				return
 			}
 			backoff := min(followBaseBackoff*time.Duration(1<<min(consecutiveErrors-1, 4)), followMaxBackoff)
@@ -64,117 +83,39 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 		consecutiveErrors = 0
 
 		info := resp.GetAssessment()
+
+		// Phase changes
 		status := info.GetStatus().String()
+		if status != s.lastStatus {
+			emitTimestamp(s, "Phase: %s", friendlyStatus(status))
+			s.lastStatus = status
+			s.lastChange = time.Now()
+		}
+
+		// Cage events
+		pollCages(ctx, cClient, assessmentID, s)
+
+		// Finding events
 		stats := info.GetStats()
-
-		if status != lastStatus {
-			if jsonMode {
-				fmt.Printf("{\"phase\":%q,\"assessment_id\":%q}\n", status, assessmentID)
-			} else {
-				fmt.Printf("  Phase: %s\n", status)
-			}
-			lastStatus = status
-			lastChange = time.Now()
-		}
-
 		if stats != nil {
-			if stats.GetActiveCages() != lastCages {
-				lastCages = stats.GetActiveCages()
-				lastChange = time.Now()
-				if !jsonMode {
-					fmt.Printf("  Cages: %d active, %d total\n", lastCages, stats.GetTotalCages())
-				}
-			}
-
-			validated := stats.GetFindingsValidated()
-			candidate := stats.GetFindingsCandidate()
-			if validated != lastValidated || candidate != lastCandidate {
-				if jsonMode {
-					fmt.Printf("{\"findings_candidate\":%d,\"findings_validated\":%d,\"findings_rejected\":%d,\"tokens_consumed\":%d}\n",
-						candidate, validated, stats.GetFindingsRejected(), stats.GetTokensConsumed())
-				} else {
-					fmt.Printf("  Findings: %d candidate, %d validated, %d rejected\n",
-						candidate, validated, stats.GetFindingsRejected())
-				}
-				lastValidated = validated
-				lastCandidate = candidate
-				lastChange = time.Now()
+			totalFindings := stats.GetFindingsCandidate() + stats.GetFindingsValidated() + stats.GetFindingsRejected()
+			if int(totalFindings) > len(s.seenFindings) {
+				pollFindings(ctx, fClient, assessmentID, s)
 			}
 		}
 
-		// Check for new interventions affecting this assessment.
-		iCtx, iCancel := context.WithTimeout(ctx, 5*time.Second)
-		iResp, iErr := iClient.ListInterventions(iCtx, &pb.ListInterventionsRequest{
-			AssessmentIdFilter: assessmentID,
-		})
-		iCancel()
-		if iErr == nil {
-			for _, iv := range iResp.GetInterventions() {
-				if seenInterventions[iv.GetInterventionId()] {
-					continue
-				}
-				seenInterventions[iv.GetInterventionId()] = true
-				lastChange = time.Now()
-				if jsonMode {
-					fmt.Printf("{\"intervention\":%q,\"type\":%q,\"priority\":%q,\"description\":%q}\n",
-						iv.GetInterventionId(), iv.GetType().String(), iv.GetPriority().String(), iv.GetDescription())
-				} else {
-					fmt.Printf("  ⚠  Intervention [%s] %s\n", iv.GetPriority().String(), iv.GetDescription())
-				}
-			}
-		}
+		// Intervention events
+		pollInterventions(ctx, iClient, assessmentID, s)
 
-		switch info.GetStatus() {
-		case pb.AssessmentStatus_ASSESSMENT_STATUS_APPROVED:
-			var v int32
-			if stats != nil {
-				v = stats.GetFindingsValidated()
-			}
-			if jsonMode {
-				fmt.Printf("{\"result\":\"approved\",\"findings_validated\":%d}\n", v)
-			} else {
-				fmt.Printf("\nAssessment approved. %d validated findings.\n", v)
-				fmt.Printf("Run 'agentcage report --assessment %s' for full report.\n", assessmentID)
-			}
-			return
-		case pb.AssessmentStatus_ASSESSMENT_STATUS_REJECTED:
-			if jsonMode {
-				fmt.Printf("{\"result\":\"rejected\"}\n")
-			} else {
-				fmt.Printf("\nAssessment rejected.\n")
-				fmt.Printf("Run 'agentcage report --assessment %s' for details.\n", assessmentID)
-			}
-			return
-		case pb.AssessmentStatus_ASSESSMENT_STATUS_FAILED:
-			if jsonMode {
-				fmt.Printf("{\"result\":\"failed\"}\n")
-			} else {
-				fmt.Printf("\nAssessment failed.\n")
-				fmt.Printf("Run 'agentcage logs assessment %s' for details.\n", assessmentID)
-			}
-			return
-		case pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW:
-			if jsonMode {
-				fmt.Printf("{\"result\":\"pending_review\",\"assessment_id\":%q}\n", assessmentID)
-			} else {
-				fmt.Printf("\nAssessment awaiting human review.\n")
-				fmt.Printf("Run 'agentcage interventions' to see pending decisions.\n")
-			}
-			return
-		case pb.AssessmentStatus_ASSESSMENT_STATUS_UNSPECIFIED:
-			if jsonMode {
-				fmt.Printf("{\"result\":\"error\",\"detail\":\"server returned unspecified status\"}\n")
-			} else {
-				fmt.Fprintf(os.Stderr, "\nServer returned unspecified status for assessment %s.\n", assessmentID)
-				fmt.Fprintf(os.Stderr, "Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
-			}
+		// Terminal states
+		if isTerminal(info.GetStatus()) {
+			printTerminalSummary(info, s, assessmentID)
 			return
 		}
 
-		if time.Since(lastChange) > followStaleTimeout {
-			fmt.Fprintf(os.Stderr, "\nNo status change for %s. Detaching.\n", followStaleTimeout)
-			fmt.Fprintf(os.Stderr, "Assessment %s may be stuck in %s. Check 'agentcage interventions' for pending decisions.\n", assessmentID, lastStatus)
-			fmt.Fprintf(os.Stderr, "Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
+		if time.Since(s.lastChange) > followStaleTimeout {
+			fmt.Fprintf(os.Stderr, "\nNo changes for %s. Detaching.\n", followStaleTimeout)
+			printDetachMessage(assessmentID)
 			return
 		}
 
@@ -185,12 +126,209 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 	}
 }
 
-func printDetachMessage(assessmentID string) {
-	fmt.Printf("\nDetached. Assessment %s continues on the server.\n", assessmentID)
-	fmt.Printf("Run 'agentcage assessments --id %s' to check progress.\n", assessmentID)
+func pollCages(ctx context.Context, client pb.CageServiceClient, assessmentID string, s *followState) {
+	pollCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	listResp, err := client.ListCagesByAssessment(pollCtx, &pb.ListCagesByAssessmentRequest{AssessmentId: assessmentID})
+	if err != nil {
+		return
+	}
+
+	for _, cageID := range listResp.GetCageIds() {
+		getCtx, getCancel := context.WithTimeout(ctx, 3*time.Second)
+		cageResp, err := client.GetCage(getCtx, &pb.GetCageRequest{CageId: cageID})
+		getCancel()
+		if err != nil {
+			continue
+		}
+
+		cage := cageResp.GetCage()
+		state := cage.GetState().String()
+		prevState, seen := s.seenCages[cageID]
+		short := shortID(cageID)
+		cageType := friendlyCageType(cage.GetType().String())
+
+		if !seen {
+			emitTimestamp(s, "Cage %s (%s) started", short, cageType)
+			fmt.Printf("           Logs: agentcage logs cage %s --follow\n", short)
+			s.seenCages[cageID] = state
+			s.lastChange = time.Now()
+		} else if state != prevState {
+			switch {
+			case strings.Contains(state, "COMPLETED"):
+				emitTimestamp(s, "Cage %s completed", short)
+			case strings.Contains(state, "FAILED"):
+				emitTimestamp(s, "Cage %s failed", short)
+			case strings.Contains(state, "PAUSED"):
+				emitTimestamp(s, "Cage %s paused (intervention required)", short)
+			}
+			s.seenCages[cageID] = state
+			s.lastChange = time.Now()
+		}
+	}
 }
 
-// Returns false if the context was cancelled during the sleep.
+func pollFindings(ctx context.Context, client pb.FindingsServiceClient, assessmentID string, s *followState) {
+	pollCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := client.ListFindings(pollCtx, &pb.ListFindingsRequest{AssessmentId: assessmentID})
+	if err != nil {
+		return
+	}
+
+	for _, f := range resp.GetFindings() {
+		fID := f.GetFindingId()
+		if s.seenFindings[fID] {
+			continue
+		}
+		s.seenFindings[fID] = true
+		s.lastChange = time.Now()
+
+		severity := friendlySeverity(f.GetSeverity().String())
+		short := shortID(f.GetCageId())
+		status := f.GetStatus().String()
+
+		if strings.Contains(status, "VALIDATED") {
+			cwe := f.GetCwe()
+			cvss := f.GetCvssScore()
+			if cwe != "" && cvss > 0 {
+				emitTimestamp(s, "Finding validated: %s %s (%s, CVSS %.1f)", severity, f.GetTitle(), cwe, cvss)
+			} else {
+				emitTimestamp(s, "Finding validated: %s %s", severity, f.GetTitle())
+			}
+		} else {
+			emitTimestamp(s, "Finding: %s %s (cage %s)", severity, f.GetTitle(), short)
+		}
+	}
+}
+
+func pollInterventions(ctx context.Context, client pb.InterventionServiceClient, assessmentID string, s *followState) {
+	pollCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	resp, err := client.ListInterventions(pollCtx, &pb.ListInterventionsRequest{AssessmentIdFilter: assessmentID})
+	if err != nil {
+		return
+	}
+
+	for _, iv := range resp.GetInterventions() {
+		id := iv.GetInterventionId()
+		status := iv.GetStatus().String()
+		prevStatus, seen := s.seenInterventions[id]
+
+		if !seen {
+			s.seenInterventions[id] = status
+			s.lastChange = time.Now()
+			emitTimestamp(s, "Intervention: %s", iv.GetDescription())
+			printInterventionCommand(iv)
+		} else if status != prevStatus && strings.Contains(status, "RESOLVED") {
+			s.seenInterventions[id] = status
+			s.lastChange = time.Now()
+			emitTimestamp(s, "Intervention resolved: %s", iv.GetDescription())
+		}
+	}
+}
+
+func printInterventionCommand(iv *pb.InterventionInfo) {
+	id := shortID(iv.GetInterventionId())
+	switch {
+	case strings.Contains(iv.GetType().String(), "PROOF_GAP"):
+		fmt.Printf("           Run: agentcage intervention resolve %s --retry\n", id)
+	case strings.Contains(iv.GetType().String(), "TRIPWIRE"):
+		fmt.Printf("           Run: agentcage intervention resolve %s --resume  (or --kill)\n", id)
+	case strings.Contains(iv.GetType().String(), "REPORT_REVIEW"):
+		fmt.Printf("           Run: agentcage intervention resolve %s --approve\n", id)
+	default:
+		fmt.Printf("           Run: agentcage interventions\n")
+	}
+}
+
+func isTerminal(status pb.AssessmentStatus) bool {
+	switch status {
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_APPROVED,
+		pb.AssessmentStatus_ASSESSMENT_STATUS_REJECTED,
+		pb.AssessmentStatus_ASSESSMENT_STATUS_FAILED,
+		pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW:
+		return true
+	}
+	return false
+}
+
+func printTerminalSummary(info *pb.AssessmentInfo, s *followState, assessmentID string) {
+	stats := info.GetStats()
+	duration := time.Since(s.startTime).Round(time.Second)
+	status := info.GetStatus()
+
+	fmt.Println()
+	switch status {
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_APPROVED:
+		fmt.Println("Assessment approved.")
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_REJECTED:
+		fmt.Println("Assessment rejected.")
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_FAILED:
+		fmt.Println("Assessment failed.")
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW:
+		fmt.Println("Assessment awaiting review.")
+	}
+
+	if stats != nil {
+		fmt.Printf("  Duration:  %s\n", duration)
+		fmt.Printf("  Cages:     %d total\n", stats.GetTotalCages())
+		fmt.Printf("  Findings:  %d validated, %d rejected, %d candidate\n",
+			stats.GetFindingsValidated(), stats.GetFindingsRejected(), stats.GetFindingsCandidate())
+		if stats.GetTokensConsumed() > 0 {
+			fmt.Printf("  Budget:    %dk tokens\n", stats.GetTokensConsumed()/1000)
+		}
+	}
+
+	fmt.Println()
+	switch status {
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW:
+		fmt.Printf("Run: agentcage interventions\n")
+	default:
+		fmt.Printf("Run: agentcage report --assessment %s\n", assessmentID)
+	}
+}
+
+func printDetachMessage(assessmentID string) {
+	fmt.Printf("\nDetached. Assessment continues on the server.\n")
+	fmt.Printf("Reconnect: agentcage assessments --id %s --follow\n", assessmentID)
+}
+
+func emitTimestamp(s *followState, format string, args ...any) {
+	ts := time.Now().Format("15:04:05")
+	msg := fmt.Sprintf(format, args...)
+	if s.jsonMode {
+		fmt.Printf("{\"ts\":%q,\"msg\":%q}\n", ts, msg)
+	} else {
+		fmt.Printf("[%s] %s\n", ts, msg)
+	}
+}
+
+func shortID(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
+
+func friendlyStatus(s string) string {
+	s = strings.TrimPrefix(s, "ASSESSMENT_STATUS_")
+	return strings.ToLower(strings.ReplaceAll(s, "_", " "))
+}
+
+func friendlyCageType(s string) string {
+	s = strings.TrimPrefix(s, "CAGE_TYPE_")
+	return strings.ToLower(s)
+}
+
+func friendlySeverity(s string) string {
+	s = strings.TrimPrefix(s, "FINDING_SEVERITY_")
+	return strings.ToUpper(s)
+}
+
 func sleepCtx(ctx context.Context, d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()

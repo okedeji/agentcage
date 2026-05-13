@@ -126,10 +126,12 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		CageID:   discoveryCageID,
 		CageType: "discovery",
 	})
+	syncStats(ctx, input.AssessmentID, result, 1)
 
 	if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
 		return failResult(result, "waiting for surface mapping cage: %v", err), nil
 	}
+	syncStats(ctx, input.AssessmentID, result, 0)
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusExploitation); err != nil {
 		return failResult(result, "updating status to testing: %v", err), nil
@@ -195,13 +197,15 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		result.TotalCages += spawned
 		cagesCompleted = append(cagesCompleted, completedSummaries...)
 		coverage = UpdateCoverage(coverage, decision.Actions)
+		syncStats(ctx, input.AssessmentID, result, spawned)
 
 		if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
 			return failResult(result, "waiting for cages (iteration %d): %v", iteration, err), nil
 		}
+		syncStats(ctx, input.AssessmentID, result, 0)
 	}
 
-	syncStats(ctx, input.AssessmentID, result)
+	syncStats(ctx, input.AssessmentID, result, 0)
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusValidation); err != nil {
 		return failResult(result, "updating status to validating: %v", err), nil
@@ -298,7 +302,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		result.FinalStatus = StatusRejected
 	}
 
-	syncStats(ctx, input.AssessmentID, result)
+	syncStats(ctx, input.AssessmentID, result, 0)
 
 	// Best-effort notifications. Failure should not fail the assessment.
 	_ = workflow.ExecuteActivity(
@@ -327,13 +331,14 @@ func withActivityTimeout(ctx workflow.Context, timeout time.Duration) workflow.C
 	return workflow.WithActivityOptions(ctx, assessmentActivityOptions(timeout))
 }
 
-func syncStats(ctx workflow.Context, assessmentID string, result AssessmentWorkflowResult) {
+func syncStats(ctx workflow.Context, assessmentID string, result AssessmentWorkflowResult, activeCages int32) {
 	var counts findings.StatusCounts
 	countCtx := withActivityTimeout(ctx, TimeoutGetFindings)
 	_ = workflow.ExecuteActivity(countCtx, "CountFindings", assessmentID).Get(ctx, &counts)
 
 	stats := Stats{
 		TotalCages:        result.TotalCages,
+		ActiveCages:       activeCages,
 		FindingsCandidate: counts.Candidate,
 		FindingsValidated: counts.Validated,
 		FindingsRejected:  counts.Rejected,
