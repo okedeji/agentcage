@@ -180,6 +180,8 @@ func main() {
 	waitForLogReady(socketDir + "/logs.ready")
 
 	writeBootLog("log ready, starting agent")
+	writeLog(logConn, "system", fmt.Sprintf("cage=%s type=%s target=%s", env.CageID, env.CageType, strings.Join(env.ScopeHosts, ",")))
+	writeLog(logConn, "system", fmt.Sprintf("starting agent: %s", env.Entrypoint))
 
 	// 8. Run the agent entrypoint.
 	fmt.Printf("cage-init: exec agent: %s\n", env.Entrypoint)
