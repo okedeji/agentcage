@@ -10,6 +10,7 @@ import (
 
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/config"
+	"google.golang.org/grpc"
 )
 
 func cmdAssessments(args []string) {
@@ -21,9 +22,16 @@ func cmdAssessments(args []string) {
 	fs := flag.NewFlagSet("assessments", flag.ExitOnError)
 	fs.Usage = printAssessmentsUsage
 	id := fs.String("id", "", "assessment ID to show details for")
+	follow := fs.Bool("follow", false, "follow live progress")
+	followShort := fs.Bool("f", false, "follow live progress (short)")
+	format := fs.String("format", "", "output format: json")
 	statusFilter := fs.String("status", "", "filter by status: discovery, exploitation, validation, pending_review, approved, rejected, failed")
 	limit := fs.Int("limit", 50, "max results to return")
 	_ = fs.Parse(args)
+
+	if *followShort {
+		*follow = true
+	}
 
 	cfg := config.Defaults()
 	if resolved := config.Resolve(""); resolved != "" {
@@ -35,7 +43,7 @@ func cmdAssessments(args []string) {
 		cfg = config.Merge(cfg, override)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), followHardTimeout)
 	defer cancel()
 
 	conn, err := dialOrchestrator(ctx, cfg)
@@ -52,38 +60,154 @@ func cmdAssessments(args []string) {
 			fmt.Fprintln(os.Stderr, "error: --status cannot be used with --id")
 			os.Exit(1)
 		}
-		showAssessment(ctx, client, *id)
+		if *follow {
+			printCatchUpSummary(ctx, client, conn, *id)
+			followAssessment(ctx, conn, *id, *format)
+		} else {
+			showAssessment(ctx, conn, *id)
+		}
 		return
 	}
 
 	listAssessments(ctx, client, *statusFilter, int32(*limit))
 }
 
-func showAssessment(ctx context.Context, client pb.AssessmentServiceClient, id string) {
-	resp, err := client.GetAssessment(ctx, &pb.GetAssessmentRequest{AssessmentId: id})
+func showAssessment(ctx context.Context, conn *grpc.ClientConn, id string) {
+	aClient := pb.NewAssessmentServiceClient(conn)
+	cClient := pb.NewCageServiceClient(conn)
+	fClient := pb.NewFindingsServiceClient(conn)
+	iClient := pb.NewInterventionServiceClient(conn)
+
+	resp, err := aClient.GetAssessment(ctx, &pb.GetAssessmentRequest{AssessmentId: id})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 	info := resp.GetAssessment()
+	stats := info.GetStats()
+
+	// Header
 	fmt.Printf("Assessment %s\n", info.GetAssessmentId())
-	if name := info.GetConfig().GetName(); name != "" {
-		fmt.Printf("  Name:     %s\n", name)
-	}
-	fmt.Printf("  Status:   %s\n", info.GetStatus())
-	fmt.Printf("  Customer: %s\n", info.GetCustomerId())
+	fmt.Printf("  Status:    %s\n", friendlyStatus(info.GetStatus().String()))
 	if scope := info.GetConfig().GetScope(); scope != nil && len(scope.GetHosts()) > 0 {
-		fmt.Printf("  Target:   %s\n", strings.Join(scope.GetHosts(), ", "))
+		fmt.Printf("  Target:    %s\n", strings.Join(scope.GetHosts(), ", "))
+	}
+	fmt.Printf("  Customer:  %s\n", info.GetCustomerId())
+	if info.GetCreatedAt() != nil {
+		fmt.Printf("  Created:   %s\n", info.GetCreatedAt().AsTime().Format(time.RFC3339))
+		elapsed := time.Since(info.GetCreatedAt().AsTime()).Round(time.Second)
+		fmt.Printf("  Duration:  %s elapsed\n", elapsed)
+	}
+
+	// Budget
+	if stats != nil {
+		fmt.Println()
+		fmt.Println("Budget:")
+		tokenBudget := info.GetConfig().GetTotalTokenBudget()
+		if tokenBudget > 0 {
+			pct := float64(stats.GetTokensConsumed()) / float64(tokenBudget) * 100
+			fmt.Printf("  Tokens:    %d / %d (%.0f%%)\n", stats.GetTokensConsumed(), tokenBudget, pct)
+		} else {
+			fmt.Printf("  Tokens:    %d consumed\n", stats.GetTokensConsumed())
+		}
+	}
+
+	// Cages
+	fmt.Println()
+	fmt.Println("Cages:")
+	if stats != nil {
+		fmt.Printf("  Total: %d  |  Active: %d\n", stats.GetTotalCages(), stats.GetActiveCages())
+	}
+
+	cageResp, cageErr := cClient.ListCagesByAssessment(ctx, &pb.ListCagesByAssessmentRequest{AssessmentId: id})
+	if cageErr == nil && len(cageResp.GetCageIds()) > 0 {
+		for _, cageID := range cageResp.GetCageIds() {
+			getCtx, getCancel := context.WithTimeout(ctx, 3*time.Second)
+			cr, err := cClient.GetCage(getCtx, &pb.GetCageRequest{CageId: cageID})
+			getCancel()
+			if err != nil {
+				fmt.Printf("  %s  (unavailable)\n", shortID(cageID))
+				continue
+			}
+			cage := cr.GetCage()
+			cType := friendlyCageType(cage.GetType().String())
+			cState := strings.TrimPrefix(cage.GetState().String(), "CAGE_STATE_")
+			cState = strings.ToLower(cState)
+			fmt.Printf("  %s  %-10s  %s\n", shortID(cageID), cType, cState)
+		}
+	} else if stats == nil || stats.GetTotalCages() == 0 {
+		fmt.Println("  (none)")
+	}
+
+	// Findings
+	fmt.Println()
+	fmt.Println("Findings:")
+	if stats != nil {
+		fmt.Printf("  %d candidate  |  %d validated  |  %d rejected\n",
+			stats.GetFindingsCandidate(), stats.GetFindingsValidated(), stats.GetFindingsRejected())
+	}
+	findingsResp, fErr := fClient.ListFindings(ctx, &pb.ListFindingsRequest{AssessmentId: id, Limit: 20})
+	if fErr == nil {
+		for _, f := range findingsResp.GetFindings() {
+			sev := friendlySeverity(f.GetSeverity().String())
+			status := strings.TrimPrefix(f.GetStatus().String(), "FINDING_STATUS_")
+			status = strings.ToLower(status)
+			fmt.Printf("  %-8s %-40s (%s)\n", sev, f.GetTitle(), status)
+		}
+	}
+	if stats != nil && stats.GetFindingsCandidate()+stats.GetFindingsValidated()+stats.GetFindingsRejected() == 0 {
+		fmt.Println("  (none)")
+	}
+
+	// Interventions
+	fmt.Println()
+	fmt.Println("Interventions:")
+	iResp, iErr := iClient.ListInterventions(ctx, &pb.ListInterventionsRequest{AssessmentIdFilter: id})
+	pending := 0
+	if iErr == nil {
+		for _, iv := range iResp.GetInterventions() {
+			if strings.Contains(iv.GetStatus().String(), "PENDING") {
+				pending++
+				fmt.Printf("  [%s] %s\n", iv.GetPriority().String(), iv.GetDescription())
+				printInterventionCommand(iv)
+			}
+		}
+	}
+	if pending == 0 {
+		fmt.Println("  (none pending)")
+	}
+
+	// Footer
+	if !isTerminal(info.GetStatus()) {
+		fmt.Printf("\nFollow live: agentcage assessments --id %s --follow\n", id)
+	} else {
+		fmt.Printf("\nReport: agentcage report --assessment %s\n", id)
+	}
+}
+
+func printCatchUpSummary(ctx context.Context, client pb.AssessmentServiceClient, conn *grpc.ClientConn, id string) {
+	resp, err := client.GetAssessment(ctx, &pb.GetAssessmentRequest{AssessmentId: id})
+	if err != nil {
+		return
+	}
+	info := resp.GetAssessment()
+	stats := info.GetStats()
+
+	status := friendlyStatus(info.GetStatus().String())
+	fmt.Printf("Assessment %s — %s\n", shortID(id), status)
+	if stats != nil {
+		fmt.Printf("  Cages: %d total, %d active  |  Findings: %d candidate, %d validated\n",
+			stats.GetTotalCages(), stats.GetActiveCages(),
+			stats.GetFindingsCandidate(), stats.GetFindingsValidated())
+		if stats.GetTokensConsumed() > 0 {
+			fmt.Printf("  Budget: %dk tokens\n", stats.GetTokensConsumed()/1000)
+		}
 	}
 	if info.GetCreatedAt() != nil {
-		fmt.Printf("  Created:  %s\n", info.GetCreatedAt().AsTime().Format(time.RFC3339))
+		elapsed := time.Since(info.GetCreatedAt().AsTime()).Round(time.Second)
+		fmt.Printf("  Duration: %s\n", elapsed)
 	}
-	if stats := info.GetStats(); stats != nil {
-		fmt.Printf("  Cages:    %d total, %d active\n", stats.GetTotalCages(), stats.GetActiveCages())
-		fmt.Printf("  Findings: %d candidate, %d validated, %d rejected\n",
-			stats.GetFindingsCandidate(), stats.GetFindingsValidated(), stats.GetFindingsRejected())
-		fmt.Printf("  Tokens:   %d consumed\n", stats.GetTokensConsumed())
-	}
+	fmt.Println("\nReconnected. Following live...")
 }
 
 func listAssessments(ctx context.Context, client pb.AssessmentServiceClient, statusFilter string, limit int32) {
@@ -241,11 +365,13 @@ Examples:
   agentcage assessments
   agentcage assessments --status discovery
   agentcage assessments --id <assessment-id>
+  agentcage assessments --id <assessment-id> --follow
   agentcage assessments cancel <assessment-id>
   agentcage assessments cancel --all
 
 Flags:
   --id          assessment ID to show details for
+  --follow, -f  follow live progress (requires --id)
   --status      filter by status
   --limit       max results to return (default 50)
 `)
