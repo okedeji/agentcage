@@ -14,6 +14,7 @@ const (
 	VsockPortDirective = 52 // host → guest: post-resume instructions
 	VsockPortHold      = 53 // guest → host: agent-initiated holds
 	VsockPortLogs      = 54 // guest → host: structured log stream
+	VsockPortFindings  = 55 // guest → host: validated findings
 )
 
 // DirectiveType classifies an instruction delivered to the agent after

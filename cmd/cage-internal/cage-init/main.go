@@ -76,11 +76,11 @@ func main() {
 		fatal("creating socket directory: %v", err)
 	}
 
-	// 1. Start findings-sidecar
+	// 1. Start findings-sidecar (forwards findings to host via vsock)
 	sidecar := startService("findings-sidecar",
 		sidecarDir+"/findings-sidecar",
 		"-socket", socketDir+"/findings.sock",
-		"-nats", env.NATSAddr,
+		"-vsock-port", "55",
 		"-assessment-id", env.AssessmentID,
 		"-cage-id", env.CageID,
 	)

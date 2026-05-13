@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,39 +9,31 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-logr/logr"
-
 	"github.com/okedeji/agentcage/internal/findings"
-	proxylog "github.com/okedeji/agentcage/internal/log"
 )
 
 func main() {
 	socketPath := flag.String("socket", "/var/run/agentcage/findings.sock", "Unix socket path")
-	natsURL := flag.String("nats", "", "NATS server URL")
-	assessmentID := flag.String("assessment-id", "", "assessment ID for NATS subject")
+	vsockPort := flag.Int("vsock-port", 55, "vsock port for forwarding findings to host")
+	assessmentID := flag.String("assessment-id", "", "assessment ID for finding attribution")
 	cageID := flag.String("cage-id", "", "cage ID for finding attribution")
 	flag.Parse()
 
-	if *natsURL == "" || *assessmentID == "" || *cageID == "" {
-		fmt.Fprintln(os.Stderr, "error: -nats, -assessment-id, and -cage-id are required")
+	if *assessmentID == "" || *cageID == "" {
+		fmt.Fprintln(os.Stderr, "error: -assessment-id and -cage-id are required")
 		os.Exit(1)
 	}
 
-	logger, err := proxylog.New()
+	hostConn, err := dialVsockRetry(uint32(*vsockPort))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: creating logger: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error: connecting to host vsock port %d: %v\n", *vsockPort, err)
 		os.Exit(1)
 	}
-	logger = logger.WithValues("component", "findings-sidecar", "cage_id", *cageID, "assessment_id", *assessmentID)
+	defer func() { _ = hostConn.Close() }()
 
-	bus, err := findings.NewNATSBus(*natsURL)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: connecting to NATS: %v\n", err)
-		os.Exit(1)
-	}
-	defer bus.Close()
+	fmt.Printf("findings-sidecar: connected to host on vsock port %d\n", *vsockPort)
 
-	_ = os.Remove(*socketPath) // best-effort cleanup of stale socket
+	_ = os.Remove(*socketPath)
 	listener, err := net.Listen("unix", *socketPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: listening on %s: %v\n", *socketPath, err)
@@ -50,19 +41,19 @@ func main() {
 	}
 	defer func() { _ = listener.Close() }()
 
-	logger.Info("findings sidecar started", "socket", *socketPath)
+	fmt.Printf("findings-sidecar: listening on %s\n", *socketPath)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			logger.Error(err, "accepting connection")
+			fmt.Fprintf(os.Stderr, "findings-sidecar: accept: %v\n", err)
 			continue
 		}
-		go handleConnection(conn, bus, *assessmentID, *cageID, logger)
+		go handleConnection(conn, hostConn, *assessmentID, *cageID)
 	}
 }
 
-func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID string, logger logr.Logger) {
+func handleConnection(conn net.Conn, hostConn net.Conn, assessmentID, cageID string) {
 	defer func() { _ = conn.Close() }()
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -72,13 +63,10 @@ func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID stri
 
 		var finding findings.Finding
 		if err := json.Unmarshal(line, &finding); err != nil {
-			logger.Error(err, "invalid JSON from agent")
+			fmt.Fprintf(os.Stderr, "findings-sidecar: invalid JSON from agent: %v\n", err)
 			continue
 		}
 
-		// Cap large byte fields. The scanner already limits lines to
-		// 1MB, but individual fields can still be large enough to
-		// cause memory pressure when hundreds of findings arrive.
 		const maxFieldBytes = 256 * 1024
 		if len(finding.Evidence.Request) > maxFieldBytes {
 			finding.Evidence.Request = finding.Evidence.Request[:maxFieldBytes]
@@ -101,7 +89,7 @@ func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID stri
 		}
 
 		if err := findings.ValidateFinding(finding); err != nil {
-			logger.Error(err, "invalid finding from agent", "finding_id", finding.ID)
+			fmt.Fprintf(os.Stderr, "findings-sidecar: invalid finding %s: %v\n", finding.ID, err)
 			_, _ = fmt.Fprintf(conn, "error: invalid finding %s: %v\n", finding.ID, err)
 			continue
 		}
@@ -112,25 +100,23 @@ func handleConnection(conn net.Conn, bus findings.Bus, assessmentID, cageID stri
 			SchemaVersion: findings.CurrentSchemaVersion,
 			Finding:       finding,
 		}
-		var published bool
-		for attempt := 0; attempt < 3; attempt++ {
-			if err := bus.Publish(context.Background(), assessmentID, msg); err != nil {
-				logger.Error(err, "publishing finding to NATS, retrying", "finding_id", finding.ID, "attempt", attempt+1)
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
-				continue
-			}
-			published = true
-			break
-		}
-		if !published {
-			logger.Error(nil, "finding dropped after 3 publish attempts", "finding_id", finding.ID)
+		data, err := json.Marshal(msg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "findings-sidecar: marshaling finding %s: %v\n", finding.ID, err)
 			continue
 		}
 
-		logger.Info("finding forwarded", "finding_id", finding.ID, "vuln_class", finding.VulnClass)
+		data = append(data, '\n')
+		_ = hostConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if _, err := hostConn.Write(data); err != nil {
+			fmt.Fprintf(os.Stderr, "findings-sidecar: writing finding %s to host: %v\n", finding.ID, err)
+			continue
+		}
+
+		fmt.Printf("findings-sidecar: finding forwarded (id=%s vuln_class=%s)\n", finding.ID, finding.VulnClass)
 	}
 
 	if err := scanner.Err(); err != nil {
-		logger.Error(err, "reading from agent connection")
+		fmt.Fprintf(os.Stderr, "findings-sidecar: reading from agent: %v\n", err)
 	}
 }

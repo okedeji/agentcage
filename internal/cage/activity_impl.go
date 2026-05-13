@@ -1,7 +1,9 @@
 package cage
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/audit"
 	"github.com/okedeji/agentcage/internal/cagefile"
+	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/identity"
 	agentmetrics "github.com/okedeji/agentcage/internal/metrics"
 	"github.com/okedeji/agentcage/internal/rca"
@@ -104,14 +107,16 @@ type ActivityImpl struct {
 	payloadHolds      *PayloadHoldHandler
 	agentHolds        *AgentHoldListener
 	targetCreds       TargetCredentialReader
-	directiveWriter   *DirectiveWriter
-	logCollector      *VsockCollector
-	logDir            string
-	log               logr.Logger
-	allocMu           sync.Mutex
-	allocs            map[string]string      // vmID -> hostID
-	vsockPaths        map[string]string      // vmID -> vsock UDS path
-	logListeners      map[string]net.Listener // vmID -> pre-created log listener
+	directiveWriter    *DirectiveWriter
+	logCollector       *VsockCollector
+	findingsBus        findings.Bus
+	logDir             string
+	log                logr.Logger
+	allocMu            sync.Mutex
+	allocs             map[string]string      // vmID -> hostID
+	vsockPaths         map[string]string      // vmID -> vsock UDS path
+	logListeners       map[string]net.Listener // vmID -> pre-created log listener
+	findingsListeners  map[string]net.Listener // vmID -> pre-created findings listener
 }
 
 type ActivityImplConfig struct {
@@ -131,6 +136,7 @@ type ActivityImplConfig struct {
 	AgentHolds        *AgentHoldListener
 	TargetCreds       TargetCredentialReader
 	LogCollector      *VsockCollector
+	FindingsBus       findings.Bus
 	LogDir            string
 	BundleStoreDir    string
 	Log               logr.Logger
@@ -189,11 +195,13 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		targetCreds:       cfg.TargetCreds,
 		directiveWriter:   NewDirectiveWriter(),
 		logCollector:      cfg.LogCollector,
+		findingsBus:       cfg.FindingsBus,
 		logDir:            cfg.LogDir,
 		log:               cfg.Log.WithValues("component", "cage-activities"),
 		allocs:            make(map[string]string),
 		vsockPaths:        make(map[string]string),
 		logListeners:      make(map[string]net.Listener),
+		findingsListeners: make(map[string]net.Listener),
 	}
 }
 
@@ -365,6 +373,19 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 		}
 	}
 
+	if a.findingsBus != nil {
+		lisPath := fmt.Sprintf("%s_%d", handle.VsockPath, VsockPortFindings)
+		_ = os.Remove(lisPath)
+		fLis, fErr := net.Listen("unix", lisPath)
+		if fErr != nil {
+			a.log.Error(fErr, "creating findings listener", "cage_id", vmConfig.CageID, "path", lisPath)
+		} else {
+			a.allocMu.Lock()
+			a.findingsListeners[handle.ID] = fLis
+			a.allocMu.Unlock()
+		}
+	}
+
 	if a.payloadHolds != nil {
 		a.payloadHolds.RegisterVM(vmConfig.CageID, handle.IPAddress)
 	}
@@ -398,9 +419,13 @@ func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, con
 
 	a.allocMu.Lock()
 	logLis := a.logListeners[vmID]
+	findingsLis := a.findingsListeners[vmID]
 	a.allocMu.Unlock()
 	if logLis != nil && a.logCollector != nil {
 		go a.collectLogs(ctx, cageID, logLis)
+	}
+	if findingsLis != nil && a.findingsBus != nil {
+		go a.collectFindings(ctx, cageID, findingsLis)
 	}
 
 	deadline := time.After(config.TimeLimits.MaxDuration)
@@ -517,6 +542,54 @@ func (a *ActivityImpl) collectLogs(ctx context.Context, cageID string, lis net.L
 
 	if err := a.logCollector.CollectFromCage(ctx, cageID, conn); err != nil {
 		a.log.Info("cage log stream ended", "cage_id", cageID, "error", err.Error())
+	}
+}
+
+// collectFindings accepts a vsock connection from the findings-sidecar
+// and bridges received findings into the host-side NATS bus.
+func (a *ActivityImpl) collectFindings(ctx context.Context, cageID string, lis net.Listener) {
+	type acceptResult struct {
+		conn net.Conn
+		err  error
+	}
+	ch := make(chan acceptResult, 1)
+	go func() {
+		c, err := lis.Accept()
+		ch <- acceptResult{c, err}
+	}()
+
+	var conn net.Conn
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(120 * time.Second):
+		a.log.Info("findings listener timed out waiting for guest", "cage_id", cageID)
+		return
+	case res := <-ch:
+		if res.err != nil {
+			a.log.Error(res.err, "accepting findings connection", "cage_id", cageID)
+			return
+		}
+		conn = res.conn
+	}
+	defer func() { _ = conn.Close() }()
+
+	a.log.Info("findings stream connected", "cage_id", cageID)
+
+	scanner := bufio.NewScanner(conn)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		var msg findings.Message
+		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+			a.log.Error(err, "invalid finding JSON from cage", "cage_id", cageID)
+			continue
+		}
+		if err := a.findingsBus.Publish(ctx, msg.Finding.AssessmentID, msg); err != nil {
+			a.log.Error(err, "publishing finding to NATS", "cage_id", cageID, "finding_id", msg.Finding.ID)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		a.log.Info("findings stream ended", "cage_id", cageID, "error", err.Error())
 	}
 }
 
@@ -703,6 +776,10 @@ func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
 	if logLis, ok := a.logListeners[vmID]; ok {
 		_ = logLis.Close()
 		delete(a.logListeners, vmID)
+	}
+	if fLis, ok := a.findingsListeners[vmID]; ok {
+		_ = fLis.Close()
+		delete(a.findingsListeners, vmID)
 	}
 	a.allocMu.Unlock()
 

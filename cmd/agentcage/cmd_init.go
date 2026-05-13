@@ -272,6 +272,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		PayloadHolds:      payloadHoldHandler,
 		AgentHolds:        agentHoldListener,
 		LogCollector:      logCollector,
+		FindingsBus:       findingsBus,
 		LogDir:            cageLogDir,
 		Log:               log,
 	})
