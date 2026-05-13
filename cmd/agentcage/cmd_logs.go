@@ -168,7 +168,7 @@ func cmdLogsService(service string, args []string) {
 
 func cmdLogsCage(args []string) {
 	fs := flag.NewFlagSet("logs cage", flag.ExitOnError)
-	source := fs.String("source", "", "filter by source: agent, cage-init")
+	source := fs.String("source", "", "filter by source: agent, system")
 	follow := fs.Bool("follow", false, "stream live")
 	followShort := fs.Bool("f", false, "stream live (short)")
 	lines := fs.Int("lines", 0, "show last N lines")
@@ -179,7 +179,7 @@ func cmdLogsCage(args []string) {
 	}
 
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: agentcage logs cage <id> [--source agent|cage-init] [--follow]")
+		fmt.Fprintln(os.Stderr, "usage: agentcage logs cage <id> [--source agent|system] [--follow]")
 		os.Exit(1)
 	}
 	cageID := fs.Arg(0)
@@ -459,7 +459,7 @@ Sources:
   vault                     Vault secrets manager output
   falco                     Falco runtime security output
   nats                      NATS message broker output
-  cage <id>                 Cage logs (agent + cage-init)
+  cage <id>                 Cage logs (agent + system)
   assessment <id>           All cage logs for an assessment
 
 Common flags:
@@ -468,7 +468,7 @@ Common flags:
   --format text|json        Output format (services only)
 
 Cage-specific flags:
-  --source agent|cage-init  Filter cage logs by source
+  --source agent|system  Filter cage logs by source
 
 Examples:
   agentcage logs orchestrator

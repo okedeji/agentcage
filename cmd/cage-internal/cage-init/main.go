@@ -202,13 +202,13 @@ func main() {
 	}
 
 	if err := agentCmd.Run(); err != nil {
-		writeLog(logConn, "cage-init", fmt.Sprintf("agent exited with error: %v", err))
+		writeLog(logConn, "system", fmt.Sprintf("agent exited with error: %v", err))
 		fmt.Printf("cage-init: agent exited with error: %v\n", err)
 		cleanup(sidecar, directiveSidecar, proxy)
 		os.Exit(1)
 	}
 
-	writeLog(logConn, "cage-init", "agent completed successfully")
+	writeLog(logConn, "system", "agent completed successfully")
 	fmt.Println("cage-init: agent completed successfully")
 	cleanup(sidecar, directiveSidecar, proxy)
 }
