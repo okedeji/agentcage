@@ -192,7 +192,12 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		}()
 	}
 
-	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, natsURL, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
+	llmClient, tokenMeter, llmAPIKey, err := buildLLMClient(ctx, cfg, secretReader, alertDispatcher, log)
+	if err != nil {
+		return err
+	}
+
+	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, llmAPIKey, natsURL, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
 	fleetSvc := fleet.NewService(fleetSetup.pool, fleetSetup.demand, fleetSetup.provisioner, log.WithValues("component", "fleet"))
 	var fleetSignaler assessment.FleetSignaler
 	if fleetSetup.autoscaler != nil {
@@ -202,11 +207,6 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
-
-	llmClient, tokenMeter, err := buildLLMClient(ctx, cfg, secretReader, alertDispatcher, log)
-	if err != nil {
-		return err
-	}
 
 	proofLib, err := loadProofLibrary(cfg, log)
 	if err != nil {

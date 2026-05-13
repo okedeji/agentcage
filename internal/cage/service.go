@@ -26,6 +26,7 @@ type Service struct {
 	validate             ConfigValidator
 	db                   *sql.DB
 	llmEndpoint          string
+	llmAPIKey            string
 	natsAddr             string
 	hostControlAddr      string
 	timeouts             Timeouts
@@ -34,12 +35,13 @@ type Service struct {
 	cages                map[string]*Info
 }
 
-func NewService(temporal client.Client, validate ConfigValidator, db *sql.DB, llmEndpoint, natsAddr, hostControlAddr string, timeouts Timeouts, interventionTimeout time.Duration) *Service {
+func NewService(temporal client.Client, validate ConfigValidator, db *sql.DB, llmEndpoint, llmAPIKey, natsAddr, hostControlAddr string, timeouts Timeouts, interventionTimeout time.Duration) *Service {
 	return &Service{
 		temporal:            temporal,
 		validate:            validate,
 		db:                  db,
 		llmEndpoint:         llmEndpoint,
+		llmAPIKey:           llmAPIKey,
 		natsAddr:            natsAddr,
 		hostControlAddr:     hostControlAddr,
 		timeouts:            timeouts,
@@ -81,6 +83,7 @@ func (s *Service) CreateCage(ctx context.Context, config Config) (*Info, error) 
 		CageID:              cageID,
 		Config:              config,
 		LLMEndpoint:         s.llmEndpoint,
+		LLMAPIKey:           s.llmAPIKey,
 		NATSAddr:            s.natsAddr,
 		HostControlAddr:     s.hostControlAddr,
 		Timeouts:            s.timeouts,

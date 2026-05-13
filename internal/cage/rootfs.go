@@ -23,6 +23,7 @@ type Env struct {
 	Entrypoint   string          `json:"entrypoint"`
 	Objective    string          `json:"objective,omitempty"`
 	LLMEndpoint  string          `json:"llm_endpoint,omitempty"`
+	LLMAPIKey    string          `json:"llm_api_key,omitempty"`
 	NATSAddr     string          `json:"nats_addr,omitempty"`
 	ScopeHosts   []string        `json:"scope_hosts"`
 	ScopePorts   []string        `json:"scope_ports,omitempty"`
@@ -39,6 +40,9 @@ type Env struct {
 	ProofThreshold   float64         `json:"proof_threshold,omitempty"`
 	Guidance json.RawMessage `json:"guidance,omitempty"`
 }
+
+func (e Env) String() string   { return fmt.Sprintf("Env{cage=%s}", e.CageID) }
+func (e Env) GoString() string { return e.String() }
 
 // RootfsBuilder assembles a Firecracker-bootable ext4 rootfs from a base
 // image and a .cage bundle.

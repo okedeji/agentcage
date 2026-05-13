@@ -20,6 +20,7 @@ type CageEnv struct {
 	Entrypoint   string   `json:"entrypoint"`
 	Objective    string   `json:"objective,omitempty"`
 	LLMEndpoint  string   `json:"llm_endpoint,omitempty"`
+	LLMAPIKey    string   `json:"llm_api_key,omitempty"`
 	NATSAddr     string   `json:"nats_addr,omitempty"`
 	ScopeHosts   []string `json:"scope_hosts"`
 	ScopePorts   []string `json:"scope_ports,omitempty"`
@@ -147,6 +148,9 @@ func main() {
 	setEnv("AGENTCAGE_FINDINGS_SOCKET", socketDir+"/findings.sock")
 	if env.LLMEndpoint != "" {
 		setEnv("AGENTCAGE_LLM_ENDPOINT", env.LLMEndpoint)
+	}
+	if env.LLMAPIKey != "" {
+		setEnv("AGENTCAGE_LLM_API_KEY", env.LLMAPIKey)
 	}
 	if env.TokenBudget > 0 {
 		setEnv("AGENTCAGE_TOKEN_BUDGET", fmt.Sprintf("%d", env.TokenBudget))
