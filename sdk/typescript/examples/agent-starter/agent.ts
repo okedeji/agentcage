@@ -24,6 +24,7 @@ const targets = (process.env.AGENTCAGE_SCOPE ?? '').split(',').filter(Boolean);
 const cageType = process.env.AGENTCAGE_CAGE_TYPE ?? 'discovery';
 const objective = process.env.AGENTCAGE_OBJECTIVE ?? '';
 const llmEndpoint = process.env.AGENTCAGE_LLM_ENDPOINT ?? '';
+const llmAPIKey = process.env.AGENTCAGE_LLM_API_KEY ?? '';
 const proofThreshold = parseFloat(process.env.AGENTCAGE_PROOF_THRESHOLD ?? '0.9');
 const credentials = process.env.AGENTCAGE_TARGET_CREDENTIALS
   ? JSON.parse(process.env.AGENTCAGE_TARGET_CREDENTIALS)
@@ -84,9 +85,14 @@ interface LLMMessage {
 }
 
 async function askLLM(messages: LLMMessage[]): Promise<string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (llmAPIKey) {
+    headers['Authorization'] = `Bearer ${llmAPIKey}`;
+  }
+
   const resp = await fetch(llmEndpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       model: 'default',
       messages,
