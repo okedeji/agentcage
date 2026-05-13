@@ -210,13 +210,12 @@ func main() {
 	if err := agentCmd.Run(); err != nil {
 		writeLog(logConn, "system", fmt.Sprintf("agent exited with error: %v", err))
 		fmt.Printf("cage-init: agent exited with error: %v\n", err)
-		cleanup(sidecar, directiveSidecar, proxy)
-		os.Exit(1)
+		drainAndExit(logConn, []*exec.Cmd{sidecar, directiveSidecar, proxy}, 1)
 	}
 
 	writeLog(logConn, "system", "agent completed successfully")
 	fmt.Println("cage-init: agent completed successfully")
-	cleanup(sidecar, directiveSidecar, proxy)
+	drainAndExit(logConn, []*exec.Cmd{sidecar, directiveSidecar, proxy}, 0)
 }
 
 func loadConfig() (*CageEnv, error) {
@@ -272,12 +271,17 @@ func setEnv(key, value string) {
 	os.Setenv(key, value) //nolint:errcheck
 }
 
-func cleanup(procs ...*exec.Cmd) {
+func drainAndExit(logConn net.Conn, procs []*exec.Cmd, code int) {
+	if logConn != nil {
+		_ = logConn.Close()
+	}
+	time.Sleep(2 * time.Second)
 	for _, cmd := range procs {
 		if cmd != nil && cmd.Process != nil {
 			_ = cmd.Process.Signal(syscall.SIGTERM)
 		}
 	}
+	os.Exit(code)
 }
 
 func fatal(format string, args ...any) {
