@@ -353,7 +353,7 @@ func (p *FirecrackerProvisioner) ResumeVM(ctx context.Context, vmID string) erro
 func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernelPath, rootfsPath string, cfg VMConfig, tapName, hostIP string) error {
 	// Derive guest IP from the host TAP IP. Both sit on a /30;
 	// the guest gets host - 1 so they're adjacent.
-	guestIP := decrementIP(hostIP)
+	guestIP := incrementIP(hostIP)
 
 	// Set boot source. The ip= parameter configures guest eth0
 	// at boot without DHCP. Format: ip=<client>::<gw>:<mask>::<dev>:off
@@ -516,17 +516,17 @@ func (p *FirecrackerProvisioner) allocateIP() (string, error) {
 	return fmt.Sprintf("172.20.%d.%d", third, fourth), nil
 }
 
-// decrementIP subtracts 1 from the last octet of an IPv4 address.
-func decrementIP(ip string) string {
+// incrementIP adds 1 to the last octet of an IPv4 address.
+// The guest IP must be in the same /30 as the host TAP IP.
+// Host gets the base of the /30 block; guest gets base + 1.
+func incrementIP(ip string) string {
 	parts := strings.Split(ip, ".")
 	if len(parts) != 4 {
 		return ip
 	}
 	last := 0
 	_, _ = fmt.Sscanf(parts[3], "%d", &last)
-	if last > 0 {
-		last--
-	}
+	last++
 	return fmt.Sprintf("%s.%s.%s.%d", parts[0], parts[1], parts[2], last)
 }
 
