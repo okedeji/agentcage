@@ -33,7 +33,7 @@ type ScopeValidator interface {
 // NetworkPolicy manages network isolation for cages.
 // Defined here to avoid a circular dependency with the enforcement package.
 type NetworkPolicy interface {
-	Apply(ctx context.Context, cageID string, scope Scope, extras []string) error
+	Apply(ctx context.Context, cageID string, scope Scope, extras []string, tapDevice string) error
 	Remove(ctx context.Context, cageID string) error
 }
 
@@ -118,6 +118,7 @@ type ActivityImpl struct {
 	allocMu            sync.Mutex
 	allocs             map[string]string      // vmID -> hostID
 	vsockPaths         map[string]string      // vmID -> vsock UDS path
+	tapDevices         map[string]string      // cageID -> TAP device name
 	logListeners       map[string]net.Listener // vmID -> pre-created log listener
 	findingsListeners  map[string]net.Listener // vmID -> pre-created findings listener
 }
@@ -206,6 +207,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		log:               cfg.Log.WithValues("component", "cage-activities"),
 		allocs:            make(map[string]string),
 		vsockPaths:        make(map[string]string),
+		tapDevices:        make(map[string]string),
 		logListeners:      make(map[string]net.Listener),
 		findingsListeners: make(map[string]net.Listener),
 	}
@@ -359,6 +361,7 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 
 	a.allocMu.Lock()
 	a.vsockPaths[handle.ID] = handle.VsockPath
+	a.tapDevices[vmConfig.CageID] = fmt.Sprintf("tap-%s", handle.ID[:8])
 	a.allocMu.Unlock()
 
 	// Pre-create the log listener before the guest boots. Firecracker
@@ -418,10 +421,13 @@ func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, sc
 		a.log.V(1).Info("network policy skipped, no enforcer configured", "cage_id", cageID)
 		return nil
 	}
-	if err := a.network.Apply(ctx, cageID, scope, extras); err != nil {
+	a.allocMu.Lock()
+	tapDevice := a.tapDevices[cageID]
+	a.allocMu.Unlock()
+	if err := a.network.Apply(ctx, cageID, scope, extras, tapDevice); err != nil {
 		return fmt.Errorf("cage %s: applying network policy: %w", cageID, err)
 	}
-	a.log.Info("network policy applied", "cage_id", cageID, "scope_hosts", scope.Hosts)
+	a.log.Info("network policy applied", "cage_id", cageID, "tap", tapDevice, "scope_hosts", scope.Hosts)
 	return nil
 }
 
@@ -871,6 +877,10 @@ func (a *ActivityImpl) VerifyCleanup(ctx context.Context, cageID, vmID string) e
 	if a.payloadHolds != nil {
 		a.payloadHolds.UnregisterVM(cageID)
 	}
+
+	a.allocMu.Lock()
+	delete(a.tapDevices, cageID)
+	a.allocMu.Unlock()
 
 	a.log.Info("cleanup verified", "cage_id", cageID)
 	return nil

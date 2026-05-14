@@ -17,15 +17,16 @@ import (
 
 // NetworkEnforcer manages network isolation for cages.
 type NetworkEnforcer interface {
-	Apply(ctx context.Context, cageID string, scope cage.Scope, extras []string) error
+	Apply(ctx context.Context, cageID string, scope cage.Scope, extras []string, tapDevice string) error
 	Remove(ctx context.Context, cageID string) error
 }
 
 // EgressRule is a deployment-agnostic representation of a cage's allowed
 // network destinations. The enforcer translates this to nftables rules.
 type EgressRule struct {
-	CageID   string
-	AllowIPs []string
+	CageID     string
+	TAPDevice  string
+	AllowIPs   []string
 	AllowFQDNs []string
 	AllowPorts []string
 }
@@ -34,8 +35,8 @@ type EgressRule struct {
 // Resolves FQDNs to IPs so nftables can enforce at the network
 // layer. The DNS resolver inside the cage is the primary control;
 // resolved IPs here are a second layer for hardcoded-IP bypass.
-func BuildEgressRules(cageID string, scope cage.Scope, extras []string) EgressRule {
-	rule := EgressRule{CageID: cageID}
+func BuildEgressRules(cageID string, scope cage.Scope, extras []string, tapDevice string) EgressRule {
+	rule := EgressRule{CageID: cageID, TAPDevice: tapDevice}
 
 	allHosts := make([]string, 0, len(scope.Hosts)+len(extras))
 	allHosts = append(allHosts, scope.Hosts...)
@@ -106,7 +107,7 @@ func NewNoopEnforcer(log logr.Logger) *NoopEnforcer {
 	return &NoopEnforcer{log: log.WithValues("component", "noop-enforcer")}
 }
 
-func (e *NoopEnforcer) Apply(_ context.Context, cageID string, _ cage.Scope, _ []string) error {
+func (e *NoopEnforcer) Apply(_ context.Context, cageID string, _ cage.Scope, _ []string, _ string) error {
 	e.log.Info("noop network enforcement: cage has no isolation", "cage_id", cageID)
 	return nil
 }
@@ -115,10 +116,13 @@ func (e *NoopEnforcer) Remove(_ context.Context, _ string) error {
 	return nil
 }
 
-func (e *NFTablesEnforcer) Apply(ctx context.Context, cageID string, scope cage.Scope, extras []string) error {
-	rules := BuildEgressRules(cageID, scope, extras)
+func (e *NFTablesEnforcer) Apply(ctx context.Context, cageID string, scope cage.Scope, extras []string, tapDevice string) error {
+	if tapDevice == "" {
+		return fmt.Errorf("cage %s: TAP device name required for nftables enforcement", cageID)
+	}
+	rules := BuildEgressRules(cageID, scope, extras, tapDevice)
 	nft := GenerateNFTRules(rules)
-	e.log.V(1).Info("applying nftables rules", "cage_id", cageID, "rule_count", strings.Count(nft, "\n"))
+	e.log.V(1).Info("applying nftables rules", "cage_id", cageID, "tap", tapDevice, "rule_count", strings.Count(nft, "\n"))
 
 	// Delete existing rules for this cage first so retries are idempotent.
 	_ = e.Remove(ctx, cageID)
@@ -160,24 +164,35 @@ func (e *NFTablesEnforcer) execNFT(ctx context.Context, cageID, rules string) er
 }
 
 // GenerateNFTRules produces nftables rule text for a cage's egress policy.
+// Rules hook the forward chain and filter by the cage's TAP device so
+// only this cage's forwarded traffic is restricted. Other cages and
+// host-originated traffic pass through unaffected.
 func GenerateNFTRules(rule EgressRule) string {
 	var b strings.Builder
 
 	tableName := fmt.Sprintf("cage-%s", rule.CageID)
 	fmt.Fprintf(&b, "table inet %s {\n", tableName)
 
-	// Default: drop all egress from this cage's TAP device
-	b.WriteString("  chain egress {\n")
-	b.WriteString("    type filter hook output priority 0; policy drop;\n\n")
+	// Cage traffic is forwarded (TAP → host → internet), not locally
+	// originated, so rules must be on the forward hook. policy accept
+	// lets non-cage traffic through; the iifname guard below restricts
+	// only packets entering from this cage's TAP device.
+	b.WriteString("  chain forward {\n")
+	b.WriteString("    type filter hook forward priority 0; policy accept;\n\n")
 
-	// Allow established/related connections
+	// Pass traffic not originating from this cage's TAP device.
+	fmt.Fprintf(&b, "    iifname != \"%s\" accept\n\n", rule.TAPDevice)
+
+	// Allow return traffic for connections the cage initiated.
 	b.WriteString("    ct state established,related accept\n\n")
 
-	// Allow loopback (for in-VM communication: proxy, sidecar)
-	b.WriteString("    oifname lo accept\n\n")
+	// Allow DNS so the cage can resolve allowed hostnames.
+	if len(rule.AllowFQDNs) > 0 {
+		b.WriteString("    udp dport 53 accept\n")
+		b.WriteString("    tcp dport 53 accept\n\n")
+	}
 
 	// Per-IP rules, scoped to allowed ports when specified.
-	// IPv4 uses "ip daddr", IPv6 uses "ip6 daddr".
 	if len(rule.AllowPorts) > 0 {
 		ports := strings.Join(rule.AllowPorts, ", ")
 		for _, cidr := range rule.AllowIPs {
@@ -197,11 +212,8 @@ func GenerateNFTRules(rule EgressRule) string {
 		}
 	}
 
-	if len(rule.AllowFQDNs) > 0 {
-		b.WriteString("\n    udp dport 53 accept\n")
-		b.WriteString("    tcp dport 53 accept\n")
-	}
-
+	// Everything else from this cage is denied.
+	b.WriteString("\n    drop\n")
 	b.WriteString("  }\n")
 	b.WriteString("}\n")
 
