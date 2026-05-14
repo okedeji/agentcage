@@ -56,6 +56,11 @@ func NewFirecrackerProvisioner(cfg FirecrackerConfig, log logr.Logger) *Firecrac
 // previous orchestrator run that did not shut down cleanly. Safe to call at
 // startup before any cages are provisioned.
 func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
+	// Enable IP forwarding and masquerade before anything else.
+	// A fresh instance has no /tmp/firecracker yet but still needs
+	// forwarding ready for the first cage.
+	p.enableForwarding(ctx)
+
 	socketDir := filepath.Join(os.TempDir(), "firecracker")
 	entries, err := os.ReadDir(socketDir)
 	if err != nil {
@@ -75,7 +80,6 @@ func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
 			_ = os.Remove(filepath.Join(socketDir, name))
 			continue
 		}
-		// Sockets are named "<vmID>.sock". Derive the matching tap name.
 		if !strings.HasSuffix(name, ".sock") {
 			continue
 		}
@@ -91,28 +95,25 @@ func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
 		p.log.Info("swept stale firecracker state", "sockets", swept, "dir", socketDir)
 	}
 
-	// Enable IP forwarding and masquerade for the cage subnet.
-	// Cage nftables rules enforce the per-cage egress allowlist
-	// BEFORE masquerade, so only approved traffic leaves the host.
-	for _, cmd := range [][]string{
-		{"sysctl", "-w", "net.ipv4.ip_forward=1"},
-		{"iptables", "-t", "nat", "-C", "POSTROUTING", "-s", "172.20.0.0/16", "-j", "MASQUERADE"},
-	} {
-		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
-		if out, err := c.CombinedOutput(); err != nil {
-			if cmd[1] == "-t" {
-				// -C (check) failed means the rule doesn't exist; add it.
-				add := exec.CommandContext(ctx, "iptables", "-t", "nat", "-A", "POSTROUTING", "-s", "172.20.0.0/16", "-j", "MASQUERADE")
-				if addOut, addErr := add.CombinedOutput(); addErr != nil {
-					p.log.Error(addErr, "adding masquerade rule", "output", string(addOut))
-				}
-			} else {
-				p.log.Error(err, "configuring ip forwarding", "cmd", cmd, "output", string(out))
-			}
-		}
+	return nil
+}
+
+// enableForwarding turns on IP forwarding and adds a masquerade rule
+// for the cage subnet. Cage nftables rules enforce the per-cage egress
+// allowlist on the TAP device, so only approved traffic gets NAT'd.
+func (p *FirecrackerProvisioner) enableForwarding(ctx context.Context) {
+	fwd := exec.CommandContext(ctx, "sysctl", "-w", "net.ipv4.ip_forward=1")
+	if out, err := fwd.CombinedOutput(); err != nil {
+		p.log.Error(err, "enabling ip forwarding", "output", string(out))
 	}
 
-	return nil
+	check := exec.CommandContext(ctx, "iptables", "-t", "nat", "-C", "POSTROUTING", "-s", "172.20.0.0/16", "-j", "MASQUERADE")
+	if err := check.Run(); err != nil {
+		add := exec.CommandContext(ctx, "iptables", "-t", "nat", "-A", "POSTROUTING", "-s", "172.20.0.0/16", "-j", "MASQUERADE")
+		if out, addErr := add.CombinedOutput(); addErr != nil {
+			p.log.Error(addErr, "adding masquerade rule", "output", string(out))
+		}
+	}
 }
 
 func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig) (*VMHandle, error) {

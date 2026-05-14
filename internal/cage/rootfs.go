@@ -156,13 +156,11 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 		return "", fmt.Errorf("injecting agent files: %w", err)
 	}
 
-	// Inject the host's DNS configuration so the guest can resolve
-	// allowed domains (target hosts, LLM endpoint). The build script
-	// deletes resolv.conf to minimize image size; we restore it from
-	// the host at assembly time so the cage inherits the VPC resolver.
-	if hostResolv, err := os.ReadFile("/etc/resolv.conf"); err == nil {
-		_ = os.WriteFile(filepath.Join(mountDir, "etc", "resolv.conf"), hostResolv, 0644)
-	}
+	// Cage targets and LLM endpoints are public. Public resolvers
+	// work on any host without depending on systemd-resolved, VPC
+	// DNS, or other host-specific configurations.
+	_ = os.WriteFile(filepath.Join(mountDir, "etc", "resolv.conf"),
+		[]byte("nameserver 1.1.1.1\nnameserver 8.8.8.8\n"), 0644)
 
 	// Write cage config
 	configDir := filepath.Join(mountDir, "etc", "agentcage")
