@@ -929,6 +929,15 @@ func (a *ActivityImpl) CollectCageLogs(ctx context.Context, cageID string) error
 
 	lineCount := strings.Count(string(data), "\n")
 	a.log.Info("cage logs collected from rootfs", "cage_id", cageID, "lines", lineCount)
+
+	// Copy the Firecracker serial console log (kernel messages,
+	// sidecar errors) alongside the cage log for --infra access.
+	serialSrc := filepath.Join(os.TempDir(), "firecracker", "cage-"+cageID+".serial.log")
+	if serialData, err := os.ReadFile(serialSrc); err == nil && len(serialData) > 0 {
+		serialDst := filepath.Join(a.logDir, cageID+".serial.log")
+		_ = os.WriteFile(serialDst, serialData, 0644)
+	}
+
 	return nil
 }
 

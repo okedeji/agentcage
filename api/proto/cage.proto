@@ -126,6 +126,7 @@ message ListCagesByAssessmentResponse {
 message GetCageLogsRequest {
   string cage_id = 1;
   int32 tail_lines = 2;
+  bool serial = 3;
 }
 
 message GetCageLogsResponse {

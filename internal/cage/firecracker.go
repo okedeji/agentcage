@@ -136,6 +136,17 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		"--api-sock", socketPath,
 	)
 
+	// Firecracker ties the guest serial console (ttyS0) to its
+	// stdout. Capture it so kernel boot messages, cage-init output,
+	// and sidecar errors are available for post-mortem diagnosis.
+	// Named by cageID so CollectCageLogs can find it without vmID.
+	serialLogPath := filepath.Join(filepath.Dir(socketPath), "cage-"+config.CageID+".serial.log")
+	serialLog, serialErr := os.Create(serialLogPath)
+	if serialErr == nil {
+		cmd.Stdout = serialLog
+		cmd.Stderr = serialLog
+	}
+
 	p.log.Info("starting firecracker",
 		"cage_id", config.CageID,
 		"vm_id", vmID,
@@ -146,6 +157,9 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	cleanup := func() {
 		_ = teardownTAP(context.Background(), tapName)
 		_ = os.Remove(socketPath)
+		if serialLog != nil {
+			_ = serialLog.Close()
+		}
 	}
 
 	if err := cmd.Start(); err != nil {

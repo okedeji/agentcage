@@ -1047,6 +1047,7 @@ type GetCageLogsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CageId        string                 `protobuf:"bytes,1,opt,name=cage_id,json=cageId,proto3" json:"cage_id,omitempty"`
 	TailLines     int32                  `protobuf:"varint,2,opt,name=tail_lines,json=tailLines,proto3" json:"tail_lines,omitempty"`
+	Serial        bool                   `protobuf:"varint,3,opt,name=serial,proto3" json:"serial,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1093,6 +1094,13 @@ func (x *GetCageLogsRequest) GetTailLines() int32 {
 		return x.TailLines
 	}
 	return 0
+}
+
+func (x *GetCageLogsRequest) GetSerial() bool {
+	if x != nil {
+		return x.Serial
+	}
+	return false
 }
 
 type GetCageLogsResponse struct {
@@ -1424,11 +1432,12 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\x1cListCagesByAssessmentRequest\x12#\n" +
 	"\rassessment_id\x18\x01 \x01(\tR\fassessmentId\":\n" +
 	"\x1dListCagesByAssessmentResponse\x12\x19\n" +
-	"\bcage_ids\x18\x01 \x03(\tR\acageIds\"L\n" +
+	"\bcage_ids\x18\x01 \x03(\tR\acageIds\"d\n" +
 	"\x12GetCageLogsRequest\x12\x17\n" +
 	"\acage_id\x18\x01 \x01(\tR\x06cageId\x12\x1d\n" +
 	"\n" +
-	"tail_lines\x18\x02 \x01(\x05R\ttailLines\"J\n" +
+	"tail_lines\x18\x02 \x01(\x05R\ttailLines\x12\x16\n" +
+	"\x06serial\x18\x03 \x01(\bR\x06serial\"J\n" +
 	"\x13GetCageLogsResponse\x12\x14\n" +
 	"\x05lines\x18\x01 \x03(\tR\x05lines\x12\x1d\n" +
 	"\n" +

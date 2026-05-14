@@ -256,7 +256,11 @@ func (a *cageAdapter) GetCageLogs(ctx context.Context, req *pb.GetCageLogsReques
 		tailLines = maxLogLines
 	}
 
-	logFile := filepath.Join(a.logDir, req.GetCageId()+".log")
+	suffix := ".log"
+	if req.GetSerial() {
+		suffix = ".serial.log"
+	}
+	logFile := filepath.Join(a.logDir, req.GetCageId()+suffix)
 	lines, err := readLogFile(logFile, tailLines)
 	if err != nil {
 		return &pb.GetCageLogsResponse{IsRunning: isRunning}, nil

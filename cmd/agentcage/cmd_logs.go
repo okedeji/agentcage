@@ -203,6 +203,7 @@ func cmdLogsCage(args []string) {
 	resp, err := client.GetCageLogs(ctx, &pb.GetCageLogsRequest{
 		CageId:    cageID,
 		TailLines: int32(*lines),
+		Serial:    *source == "infra",
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -490,7 +491,10 @@ Common flags:
   --format text|json        Output format (services only)
 
 Cage-specific flags:
-  --source agent|system  Filter cage logs by source
+  --source agent|system|infra  Filter cage logs by source
+           agent               Agent process output
+           system              Cage lifecycle events (start, stop, errors)
+           infra               VM serial console (kernel boot, sidecars, diagnostics)
 
 Examples:
   agentcage logs orchestrator
@@ -499,6 +503,7 @@ Examples:
   agentcage logs cage <id>
   agentcage logs cage <id> --source agent
   agentcage logs cage <id> --source agent -f
+  agentcage logs cage <id> --source infra
   agentcage logs assessment <id>
 `)
 }
