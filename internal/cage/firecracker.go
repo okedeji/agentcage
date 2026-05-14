@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +33,7 @@ type firecrackerVM struct {
 	handle  *VMHandle
 	cmd     *exec.Cmd
 	tapName string
+	exited  chan struct{}
 }
 
 // FirecrackerConfig holds paths needed by the provisioner.
@@ -153,6 +153,15 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		return nil, fmt.Errorf("starting firecracker process: %w", err)
 	}
 
+	// Reap the child process asynchronously so Status() can detect
+	// when the VM exits. Without this, the process becomes a zombie
+	// and Signal(0) still succeeds.
+	exited := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(exited)
+	}()
+
 	if err := waitForSocket(ctx, socketPath, 5*time.Second); err != nil {
 		_ = cmd.Process.Kill()
 		cleanup()
@@ -186,6 +195,7 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		handle:  handle,
 		cmd:     cmd,
 		tapName: tapName,
+		exited:  exited,
 	}
 	p.byCageID[config.CageID] = vmID
 	p.mu.Unlock()
@@ -246,19 +256,13 @@ func (p *FirecrackerProvisioner) Status(_ context.Context, vmID string) (VMStatu
 		return VMStatusStopped, nil
 	}
 
-	// Check if process is still alive. ProcessState is only populated
-	// after Wait(), so also probe with Signal(0) to detect zombies.
-	if vm.cmd != nil {
-		if vm.cmd.ProcessState != nil && vm.cmd.ProcessState.Exited() {
-			return VMStatusStopped, nil
-		}
-		if vm.cmd.Process != nil {
-			if err := vm.cmd.Process.Signal(syscall.Signal(0)); err != nil {
-				return VMStatusStopped, nil
-			}
-		}
+	// The exited channel is closed by a goroutine calling cmd.Wait().
+	select {
+	case <-vm.exited:
+		return VMStatusStopped, nil
+	default:
+		return VMStatusRunning, nil
 	}
-	return VMStatusRunning, nil
 }
 
 func (p *FirecrackerProvisioner) PauseVM(ctx context.Context, vmID string) error {
