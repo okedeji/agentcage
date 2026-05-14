@@ -90,6 +90,28 @@ func (p *FirecrackerProvisioner) SweepStale(ctx context.Context) error {
 	if swept > 0 {
 		p.log.Info("swept stale firecracker state", "sockets", swept, "dir", socketDir)
 	}
+
+	// Enable IP forwarding and masquerade for the cage subnet.
+	// Cage nftables rules enforce the per-cage egress allowlist
+	// BEFORE masquerade, so only approved traffic leaves the host.
+	for _, cmd := range [][]string{
+		{"sysctl", "-w", "net.ipv4.ip_forward=1"},
+		{"iptables", "-t", "nat", "-C", "POSTROUTING", "-s", "172.20.0.0/16", "-j", "MASQUERADE"},
+	} {
+		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+		if out, err := c.CombinedOutput(); err != nil {
+			if cmd[1] == "-t" {
+				// -C (check) failed means the rule doesn't exist; add it.
+				add := exec.CommandContext(ctx, "iptables", "-t", "nat", "-A", "POSTROUTING", "-s", "172.20.0.0/16", "-j", "MASQUERADE")
+				if addOut, addErr := add.CombinedOutput(); addErr != nil {
+					p.log.Error(addErr, "adding masquerade rule", "output", string(addOut))
+				}
+			} else {
+				p.log.Error(err, "configuring ip forwarding", "cmd", cmd, "output", string(out))
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -182,7 +204,7 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		return nil, fmt.Errorf("waiting for firecracker API socket: %w", err)
 	}
 
-	if err := p.configureVM(ctx, socketPath, kernelPath, rootfsPath, config, tapName); err != nil {
+	if err := p.configureVM(ctx, socketPath, kernelPath, rootfsPath, config, tapName, ipAddr); err != nil {
 		_ = cmd.Process.Kill()
 		cleanup()
 		return nil, fmt.Errorf("configuring VM: %w", err)
@@ -327,11 +349,20 @@ func (p *FirecrackerProvisioner) ResumeVM(ctx context.Context, vmID string) erro
 
 // configureVM sends boot source, drives, machine config, and network config
 // to the Firecracker API.
-func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernelPath, rootfsPath string, cfg VMConfig, tapName string) error {
-	// Set boot source
+func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernelPath, rootfsPath string, cfg VMConfig, tapName, hostIP string) error {
+	// Derive guest IP from the host TAP IP. Both sit on a /30;
+	// the guest gets host - 1 so they're adjacent.
+	guestIP := decrementIP(hostIP)
+
+	// Set boot source. The ip= parameter configures guest eth0
+	// at boot without DHCP. Format: ip=<client>::<gw>:<mask>::<dev>:off
+	bootArgs := fmt.Sprintf(
+		"console=ttyS0 earlycon=uart,io,0x3f8 reboot=k panic=1 i8042.noaux i8042.nomux i8042.dumbkbd nomodule ip=%s::%s:255.255.255.252::eth0:off",
+		guestIP, hostIP,
+	)
 	bootSource := map[string]any{
 		"kernel_image_path": kernelPath,
-		"boot_args":         "console=ttyS0 earlycon=uart,io,0x3f8 reboot=k panic=1 i8042.noaux i8042.nomux i8042.dumbkbd nomodule",
+		"boot_args":         bootArgs,
 	}
 	if err := firecrackerAPI(ctx, socket, "PUT", "/boot-source", bootSource); err != nil {
 		return fmt.Errorf("setting boot source: %w", err)
@@ -482,6 +513,20 @@ func (p *FirecrackerProvisioner) allocateIP() (string, error) {
 		return "", fmt.Errorf("IP address space exhausted (172.20.0.0/16, %d VMs allocated)", ipCounter)
 	}
 	return fmt.Sprintf("172.20.%d.%d", third, fourth), nil
+}
+
+// decrementIP subtracts 1 from the last octet of an IPv4 address.
+func decrementIP(ip string) string {
+	parts := strings.Split(ip, ".")
+	if len(parts) != 4 {
+		return ip
+	}
+	last := 0
+	_, _ = fmt.Sscanf(parts[3], "%d", &last)
+	if last > 0 {
+		last--
+	}
+	return fmt.Sprintf("%s.%s.%s.%d", parts[0], parts[1], parts[2], last)
 }
 
 func generateMAC(cageID string) string {
