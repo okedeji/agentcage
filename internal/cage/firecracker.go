@@ -304,12 +304,15 @@ func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernel
 		return fmt.Errorf("setting boot source: %w", err)
 	}
 
-	// Set root drive
+	// Set root drive. cache_type "Writeback" makes guest fsync trigger
+	// a host fsync so cage-init's Sync() calls actually persist data.
+	// The default ("Unsafe") silently drops flush requests.
 	drive := map[string]any{
 		"drive_id":       "rootfs",
-		"path_on_host":  rootfsPath,
+		"path_on_host":   rootfsPath,
 		"is_root_device": true,
-		"is_read_only":  false,
+		"is_read_only":   false,
+		"cache_type":     "Writeback",
 	}
 	if err := firecrackerAPI(ctx, socket, "PUT", "/drives/rootfs", drive); err != nil {
 		return fmt.Errorf("setting root drive: %w", err)

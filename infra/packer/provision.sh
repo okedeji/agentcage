@@ -15,6 +15,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   curl jq unzip \
+  e2fsprogs \
   postgresql-common postgresql \
   nodejs npm \
   python3 python3-pip python3-venv \

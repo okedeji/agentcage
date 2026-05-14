@@ -882,6 +882,18 @@ func (a *ActivityImpl) CollectCageLogs(ctx context.Context, cageID string) error
 		return nil
 	}
 
+	// Firecracker kills leave the ext4 journal dirty. Metadata for
+	// files created by cage-init (inode, directory entry, size) lives
+	// only in the journal until jbd2 checkpoints it (~5s). debugfs
+	// reads raw on-disk structures without replaying the journal, so
+	// it misses uncheckpointed files entirely. e2fsck replays the
+	// journal so debugfs sees the real state.
+	fsck := exec.CommandContext(ctx, "e2fsck", "-fy", rootfsPath)
+	if out, err := fsck.CombinedOutput(); err != nil {
+		a.log.Info("e2fsck on cage rootfs returned non-zero (may be benign)",
+			"cage_id", cageID, "error", err.Error(), "output", string(out))
+	}
+
 	// Try the full agent+system log first, fall back to boot log.
 	data, err := readFileFromExt4(ctx, rootfsPath, "/var/log/cage.log")
 	if err != nil || len(data) == 0 {
