@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +42,20 @@ func BuildEgressRules(cageID string, scope cage.Scope, extras []string) EgressRu
 	allHosts = append(allHosts, extras...)
 
 	for _, host := range allHosts {
+		if host == "" {
+			continue
+		}
+		// Extras may be full URLs (e.g. "https://api.openai.com/v1").
+		// Extract the hostname so DNS lookup and nftables work.
+		if strings.Contains(host, "://") {
+			if u, err := url.Parse(host); err == nil && u.Hostname() != "" {
+				host = u.Hostname()
+			}
+		}
+		// Strip port if present (e.g. "nats.internal:4222").
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
 		if ip := net.ParseIP(host); ip != nil {
 			if ip.To4() != nil {
 				rule.AllowIPs = append(rule.AllowIPs, host+"/32")
