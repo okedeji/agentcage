@@ -48,6 +48,13 @@ func NewJudgeClient(endpoint string, confidenceThreshold float64, apiKey string,
 	}
 }
 
+// SetTransport overrides the HTTP transport used for judge requests.
+// The payload proxy uses this to set the fwmark transport so judge
+// connections bypass the iptables redirect.
+func (c *JudgeClient) SetTransport(t http.RoundTripper) {
+	c.httpClient.Transport = t
+}
+
 // Evaluate sends a single payload to the judge endpoint and returns a
 // decision. Uses its own timeout rather than the caller's context so the
 // agent's request deadline cannot cut the judge call short.

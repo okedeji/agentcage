@@ -262,8 +262,11 @@ func startService(name string, bin string, args ...string) *exec.Cmd {
 
 func setupIPTables() {
 	// Redirect all outbound TCP 80/443 through the payload proxy on :8080.
-	// Exclude the control port (8081) so the host can reach it directly.
+	// The proxy sets SO_MARK=1 on its own outbound sockets so its upstream
+	// connections skip the redirect and reach the real target. Without this,
+	// the proxy's forwarded requests loop back through port 8080.
 	rules := [][]string{
+		{"iptables", "-t", "nat", "-A", "OUTPUT", "-m", "mark", "--mark", "1", "-j", "RETURN"},
 		{"iptables", "-t", "nat", "-A", "OUTPUT", "-p", "tcp", "--dport", "8081", "-j", "RETURN"},
 		{"iptables", "-t", "nat", "-A", "OUTPUT", "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-port", "8080"},
 		{"iptables", "-t", "nat", "-A", "OUTPUT", "-p", "tcp", "--dport", "443", "-j", "REDIRECT", "--to-port", "8080"},

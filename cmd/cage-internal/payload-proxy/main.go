@@ -98,6 +98,8 @@ func main() {
 		go serveControlEndpoint(lis, holdMgr, logger)
 	}
 
+	transport := proxyTransport()
+
 	var judge *enforcement.JudgeClient
 	if *judgeEndpoint != "" {
 		judgeAPIKey := os.Getenv("AGENTCAGE_JUDGE_API_KEY")
@@ -107,9 +109,11 @@ func main() {
 			judgeAPIKey,
 			time.Duration(*judgeTimeout)*time.Second,
 		)
+		judge.SetTransport(transport)
 	}
 
 	proxy := &httputil.ReverseProxy{
+		Transport: transport,
 		Director: func(req *http.Request) {
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host
@@ -125,6 +129,7 @@ func main() {
 	}
 
 	llmProxy := &httputil.ReverseProxy{
+		Transport: transport,
 		Director: func(req *http.Request) {
 			if parsed, parseErr := url.Parse(*llmEndpoint); parseErr == nil {
 				req.URL.Scheme = parsed.Scheme
@@ -385,7 +390,7 @@ func handlePayloadHold(w http.ResponseWriter, r *http.Request, holdMgr *HoldMana
 	return false
 }
 
-var holdNotifyClient = &http.Client{Timeout: 5 * time.Second}
+var holdNotifyClient = &http.Client{Timeout: 5 * time.Second, Transport: proxyTransport()}
 
 func notifyHostHold(hostURL, holdID, cageID, method, reqURL, reason string) error {
 	if hostURL == "" {
