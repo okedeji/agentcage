@@ -166,8 +166,14 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	// Cage targets and LLM endpoints are public. Public resolvers
 	// work on any host without depending on systemd-resolved, VPC
 	// DNS, or other host-specific configurations.
-	_ = os.WriteFile(filepath.Join(mountDir, "etc", "resolv.conf"),
-		[]byte("nameserver 1.1.1.1\nnameserver 8.8.8.8\n"), 0644)
+	// single-request forces Go's pure resolver (CGO_ENABLED=0) to
+	// send A and AAAA queries sequentially. Without it, the parallel
+	// queries race: a NODATA AAAA response poisons the valid A result,
+	// causing "no such host" for domains without IPv6 records.
+	if err := os.WriteFile(filepath.Join(mountDir, "etc", "resolv.conf"),
+		[]byte("nameserver 1.1.1.1\nnameserver 8.8.8.8\noptions single-request timeout:5 attempts:3\n"), 0644); err != nil {
+		return "", fmt.Errorf("writing resolv.conf: %w", err)
+	}
 
 	// Generate a per-cage CA for TLS interception. The payload proxy
 	// uses it to present valid certificates for any hostname, so the
