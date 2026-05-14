@@ -396,6 +396,12 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 		a.agentHolds.StartForVM(ctx, handle.ID, vmConfig.CageID, vmConfig.AssessmentID, handle.VsockPath)
 	}
 
+	// All vsock listeners are ready. Boot the VM so the guest finds
+	// them on first dial instead of getting VIRTIO_VSOCK_OP_RST.
+	if err := a.provisioner.StartVM(ctx, handle.ID); err != nil {
+		return nil, fmt.Errorf("cage %s: starting VM: %w", vmConfig.CageID, err)
+	}
+
 	if agentmetrics.CageActiveCount != nil {
 		agentmetrics.CageActiveCount.Add(ctx, 1)
 	}

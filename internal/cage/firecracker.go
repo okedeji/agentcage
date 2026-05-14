@@ -174,12 +174,10 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		return nil, fmt.Errorf("configuring VM: %w", err)
 	}
 
-	if err := p.startVM(ctx, socketPath); err != nil {
-		_ = cmd.Process.Kill()
-		cleanup()
-		return nil, fmt.Errorf("starting VM instance: %w", err)
-	}
-
+	// Return the handle without booting. The caller creates vsock
+	// listeners from handle.VsockPath, then calls StartVM. Firecracker
+	// sends VIRTIO_VSOCK_OP_RST if no host listener exists at
+	// <uds_path>_<port> when the guest connects.
 	vsockPath := strings.TrimSuffix(socketPath, ".sock") + ".vsock"
 	handle := &VMHandle{
 		ID:         vmID,
@@ -187,7 +185,6 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		IPAddress:  ipAddr,
 		SocketPath: socketPath,
 		VsockPath:  vsockPath,
-		StartedAt:  time.Now(),
 	}
 
 	p.mu.Lock()
@@ -200,13 +197,35 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	p.byCageID[config.CageID] = vmID
 	p.mu.Unlock()
 
-	p.log.Info("cage VM running",
+	p.log.Info("VM provisioned (not yet booted)",
 		"cage_id", config.CageID,
 		"vm_id", vmID,
 		"ip", ipAddr,
 	)
 
 	return handle, nil
+}
+
+func (p *FirecrackerProvisioner) StartVM(ctx context.Context, vmID string) error {
+	p.mu.Lock()
+	vm, ok := p.vms[vmID]
+	if !ok {
+		p.mu.Unlock()
+		return fmt.Errorf("VM %s not found", vmID)
+	}
+	p.mu.Unlock()
+
+	if err := p.startVM(ctx, vm.handle.SocketPath); err != nil {
+		return fmt.Errorf("booting VM %s (cage %s): %w", vmID, vm.handle.CageID, err)
+	}
+
+	vm.handle.StartedAt = time.Now()
+	p.log.Info("cage VM running",
+		"cage_id", vm.handle.CageID,
+		"vm_id", vmID,
+		"ip", vm.handle.IPAddress,
+	)
+	return nil
 }
 
 func (p *FirecrackerProvisioner) Terminate(ctx context.Context, vmID string) error {

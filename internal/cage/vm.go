@@ -43,7 +43,12 @@ type VMHandle struct {
 }
 
 type VMProvisioner interface {
+	// Provision creates and configures a Firecracker VM but does not
+	// boot it. The returned handle contains VsockPath so the caller
+	// can create host-side listeners before the guest dials.
 	Provision(ctx context.Context, config VMConfig) (*VMHandle, error)
+	// StartVM boots a previously provisioned VM.
+	StartVM(ctx context.Context, vmID string) error
 	Terminate(ctx context.Context, vmID string) error
 	Status(ctx context.Context, vmID string) (VMStatus, error)
 	PauseVM(ctx context.Context, vmID string) error

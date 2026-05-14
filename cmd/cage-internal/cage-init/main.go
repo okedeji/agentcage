@@ -320,7 +320,10 @@ func waitForLogReady(path string) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	fatal("host log collector not ready after 15s — refusing to start agent without logging")
+	// The rootfs log (/var/log/cage.log) captures every line
+	// regardless, so the agent can run without live streaming.
+	fmt.Fprintf(os.Stderr, "cage-init: warning: host log collector not ready after 15s, starting agent without live streaming\n")
+	writeLog(nil, "system", "host log collector not ready after 15s, continuing without live streaming")
 }
 
 // connectLogSocket connects to the directive-sidecar's log socket.
