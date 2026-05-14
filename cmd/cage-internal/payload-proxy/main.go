@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -27,6 +30,8 @@ func main() {
 	listenAddr := flag.String("listen", ":8080", "proxy listen address")
 	controlAddr := flag.String("control-listen", "", "control endpoint for hold release (e.g. :8081). Disabled when empty.")
 	targetAddr := flag.String("target", "", "upstream target address")
+	caCertPath := flag.String("ca-cert", "", "path to CA certificate for TLS interception")
+	caKeyPath := flag.String("ca-key", "", "path to CA private key for TLS interception")
 	vulnClass := flag.String("vuln-class", "", "vulnerability class for blocklist selection")
 	llmEndpoint := flag.String("llm-endpoint", "", "external LLM endpoint URL. Requests to this host are metered, not inspected.")
 	hostControlURL := flag.String("host-control", "", "host-side control endpoint URL for hold notifications")
@@ -262,10 +267,49 @@ func main() {
 		proxy.ServeHTTP(w, r)
 	})
 
-	logger.Info("starting payload proxy", "listen", *listenAddr, "target", *targetAddr, "llm_metering_enabled", llmHost != "", "hold_enabled", holdMgr != nil)
-	if srvErr := http.ListenAndServe(*listenAddr, handler); srvErr != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", srvErr)
+	// Load CA for TLS interception. Without a CA, HTTPS connections
+	// are tunneled without inspection.
+	var caCert *x509.Certificate
+	var caKey *rsa.PrivateKey
+	if *caCertPath != "" && *caKeyPath != "" {
+		var caErr error
+		caCert, caKey, caErr = loadCA(*caCertPath, *caKeyPath)
+		if caErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: TLS interception disabled: %v\n", caErr)
+		} else {
+			logger.Info("TLS interception enabled")
+		}
+	}
+
+	logger.Info("starting payload proxy", "listen", *listenAddr, "target", *targetAddr, "llm_metering_enabled", llmHost != "", "hold_enabled", holdMgr != nil, "tls_intercept", caCert != nil)
+
+	lis, lisErr := net.Listen("tcp", *listenAddr)
+	if lisErr != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", lisErr)
 		os.Exit(1)
+	}
+
+	for {
+		conn, acceptErr := lis.Accept()
+		if acceptErr != nil {
+			continue
+		}
+		go func() {
+			br := bufio.NewReader(conn)
+			first, peekErr := br.Peek(1)
+			if peekErr != nil {
+				_ = conn.Close()
+				return
+			}
+
+			if first[0] == 0x16 && caCert != nil {
+				handleTLSConn(conn, br, caCert, caKey, handler, logger)
+			} else {
+				bc := &bufferedConn{Conn: conn, reader: br}
+				httpSrv := &http.Server{Handler: handler}
+				_ = httpSrv.Serve(&singleListener{conn: bc})
+			}
+		}()
 	}
 }
 

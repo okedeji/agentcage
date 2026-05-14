@@ -135,6 +135,12 @@ func main() {
 				proxyArgs = append(proxyArgs, "-judge-timeout", fmt.Sprintf("%d", env.JudgeTimeoutSec))
 			}
 		}
+		// CA for TLS interception. Generated per-cage during rootfs assembly.
+		caCert := "/etc/agentcage/ca.pem"
+		caKey := "/etc/agentcage/ca-key.pem"
+		if _, err := os.Stat(caCert); err == nil {
+			proxyArgs = append(proxyArgs, "-ca-cert", caCert, "-ca-key", caKey)
+		}
 		proxy = startService("payload-proxy", sidecarDir+"/payload-proxy", proxyArgs...)
 	}
 

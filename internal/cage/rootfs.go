@@ -2,12 +2,19 @@ package cage
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -162,6 +169,26 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	_ = os.WriteFile(filepath.Join(mountDir, "etc", "resolv.conf"),
 		[]byte("nameserver 1.1.1.1\nnameserver 8.8.8.8\n"), 0644)
 
+	// Generate a per-cage CA for TLS interception. The payload proxy
+	// uses it to present valid certificates for any hostname, so the
+	// agent's HTTPS requests are decrypted for inspection and metering.
+	caCertPEM, caKeyPEM, caErr := generateCageCA()
+	if caErr != nil {
+		return "", fmt.Errorf("generating cage CA: %w", caErr)
+	}
+	caDir := filepath.Join(mountDir, "usr", "local", "share", "ca-certificates")
+	if err := os.MkdirAll(caDir, 0755); err != nil {
+		return "", fmt.Errorf("creating ca-certificates dir: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(caDir, "agentcage.crt"), caCertPEM, 0644); err != nil {
+		return "", fmt.Errorf("writing cage CA cert: %w", err)
+	}
+	// Alpine uses update-ca-certificates to rebuild the trust bundle.
+	updateCA := exec.CommandContext(ctx, "chroot", mountDir, "update-ca-certificates")
+	if out, ucErr := updateCA.CombinedOutput(); ucErr != nil {
+		return "", fmt.Errorf("update-ca-certificates: %w\n%s", ucErr, out)
+	}
+
 	// Write cage config
 	configDir := filepath.Join(mountDir, "etc", "agentcage")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
@@ -174,8 +201,48 @@ func (b *RootfsBuilder) Assemble(ctx context.Context, cageID string, bundle *cag
 	if err := os.WriteFile(filepath.Join(configDir, "cage.json"), envJSON, 0644); err != nil {
 		return "", fmt.Errorf("writing cage.json: %w", err)
 	}
+	if err := os.WriteFile(filepath.Join(configDir, "ca.pem"), caCertPEM, 0644); err != nil {
+		return "", fmt.Errorf("writing cage CA cert to config: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "ca-key.pem"), caKeyPEM, 0600); err != nil {
+		return "", fmt.Errorf("writing cage CA key: %w", err)
+	}
 
 	return rootfsPath, nil
+}
+
+// generateCageCA creates a self-signed CA certificate and private key
+// for per-cage TLS interception. Each cage gets a unique CA so
+// compromising one cage's key doesn't affect others.
+func generateCageCA() (certPEM, keyPEM []byte, err error) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generating CA key: %w", err)
+	}
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, fmt.Errorf("generating serial: %w", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{Organization: []string{"agentcage"}, CommonName: "agentcage cage CA"},
+		NotBefore:             time.Now().Add(-1 * time.Hour),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating CA cert: %w", err)
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	return certPEM, keyPEM, nil
 }
 
 // Cleanup removes the assembled rootfs and any mount directory left
