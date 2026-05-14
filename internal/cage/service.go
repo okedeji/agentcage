@@ -163,7 +163,7 @@ func (s *Service) DestroyCage(ctx context.Context, cageID string, reason string)
 	info.UpdatedAt = time.Now()
 	s.mu.Unlock()
 
-	_ = s.updateCageState(ctx, cageID, info.State)
+	_ = s.updateCageState(ctx, cageID, info.State, "")
 
 	signal := intervention.InterventionSignal{
 		Action:    intervention.ActionKill,
@@ -193,13 +193,20 @@ func (s *Service) persistCage(ctx context.Context, info *Info) error {
 	return err
 }
 
-func (s *Service) updateCageState(ctx context.Context, cageID string, state State) error {
+func (s *Service) updateCageState(ctx context.Context, cageID string, state State, errorMsg string) error {
+	s.mu.Lock()
+	if info, ok := s.cages[cageID]; ok {
+		info.State = state
+		info.Error = errorMsg
+	}
+	s.mu.Unlock()
+
 	if s.db == nil {
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE cages SET state = $1, updated_at = $2 WHERE id = $3`,
-		state.String(), time.Now(), cageID,
+		`UPDATE cages SET state = $1, failure_reason = $2, updated_at = $3 WHERE id = $4`,
+		state.String(), errorMsg, time.Now(), cageID,
 	)
 	return err
 }
@@ -216,9 +223,9 @@ func (s *Service) loadCage(ctx context.Context, cageID string) (*Info, error) {
 		cfgJSON  []byte
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, assessment_id, type, state, config, created_at, updated_at FROM cages WHERE id = $1`,
+		`SELECT id, assessment_id, type, state, config, created_at, updated_at, COALESCE(failure_reason, '') FROM cages WHERE id = $1`,
 		cageID,
-	).Scan(&info.ID, &info.AssessmentID, &typStr, &stateStr, &cfgJSON, &info.CreatedAt, &info.UpdatedAt)
+	).Scan(&info.ID, &info.AssessmentID, &typStr, &stateStr, &cfgJSON, &info.CreatedAt, &info.UpdatedAt, &info.Error)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("cage %s: %w", cageID, ErrCageNotFound)
 	}

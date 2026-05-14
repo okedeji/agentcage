@@ -696,6 +696,7 @@ type CageInfo struct {
 	Config        *CageConfig            `protobuf:"bytes,5,opt,name=config,proto3" json:"config,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Error         string                 `protobuf:"bytes,8,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -777,6 +778,13 @@ func (x *CageInfo) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+func (x *CageInfo) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
 }
 
 type CreateCageRequest struct {
@@ -1410,7 +1418,7 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"llmGateway\x88\x01\x01\x12H\n" +
 	"\fproxy_config\x18\b \x01(\v2%.agentcage.cage.v1.PayloadProxyConfigR\vproxyConfig\x12*\n" +
 	"\x11parent_finding_id\x18\t \x01(\tR\x0fparentFindingIdB\x0e\n" +
-	"\f_llm_gateway\"\xda\x02\n" +
+	"\f_llm_gateway\"\xf0\x02\n" +
 	"\bCageInfo\x12\x17\n" +
 	"\acage_id\x18\x01 \x01(\tR\x06cageId\x12#\n" +
 	"\rassessment_id\x18\x02 \x01(\tR\fassessmentId\x12/\n" +
@@ -1420,7 +1428,8 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"J\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x14\n" +
+	"\x05error\x18\b \x01(\tR\x05error\"J\n" +
 	"\x11CreateCageRequest\x125\n" +
 	"\x06config\x18\x01 \x01(\v2\x1d.agentcage.cage.v1.CageConfigR\x06config\"E\n" +
 	"\x12CreateCageResponse\x12/\n" +

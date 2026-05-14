@@ -159,7 +159,12 @@ func pollCages(ctx context.Context, client pb.CageServiceClient, assessmentID st
 			case strings.Contains(state, "COMPLETED"):
 				emitTimestamp(s, "Cage %s completed", short)
 			case strings.Contains(state, "FAILED"):
-				emitTimestamp(s, "Cage %s failed", short)
+				errMsg := cage.GetError()
+				if errMsg != "" {
+					emitTimestamp(s, "Cage %s failed: %s", short, errMsg)
+				} else {
+					emitTimestamp(s, "Cage %s failed", short)
+				}
 			case strings.Contains(state, "PAUSED"):
 				emitTimestamp(s, "Cage %s paused (intervention required)", short)
 			}

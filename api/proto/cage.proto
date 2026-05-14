@@ -97,6 +97,7 @@ message CageInfo {
   CageConfig config = 5;
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp updated_at = 7;
+  string error = 8;
 }
 
 message CreateCageRequest {

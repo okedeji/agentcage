@@ -47,14 +47,14 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	var setupReachedPolicy bool
 
 	if err := execActivity(withTimeout(ctx, t.ValidateScope), "ValidateCageConfig", cfg); err != nil {
-		return failResult(result, "validating cage config: %v", err), nil
+		return failResult(ctx, t, result, "validating cage config: %v", err), nil
 	}
 
 	if err := workflow.ExecuteActivity(
 		withTimeout(ctx, t.IssueIdentity),
 		"IssueIdentity", input.CageID, cfg.TimeLimits.MaxDuration,
 	).Get(ctx, &svid); err != nil {
-		return failResult(result, "issuing identity: %v", err), nil
+		return failResult(ctx, t, result, "issuing identity: %v", err), nil
 	}
 
 	if err := workflow.ExecuteActivity(
@@ -62,7 +62,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		"FetchSecrets", &svid, cfg.AssessmentID,
 	).Get(ctx, &token); err != nil {
 		cleanupIdentity(ctx, t, svid.ID, nil)
-		return failResult(result, "fetching secrets: %v", err), nil
+		return failResult(ctx, t, result, "fetching secrets: %v", err), nil
 	}
 
 	env := Env{
@@ -96,7 +96,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 			"FetchTargetCredentials", cfg.Credentials,
 		).Get(ctx, &credData); err != nil {
 			cleanupIdentity(ctx, t, svid.ID, &token)
-			return failResult(result, "fetching target credentials: %v", err), nil
+			return failResult(ctx, t, result, "fetching target credentials: %v", err), nil
 		}
 		env.TargetCredentials = credData
 	}
@@ -106,7 +106,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		"AssembleRootfs", input.CageID, cfg.BundleRef, env,
 	).Get(ctx, &rootfsPath); err != nil {
 		cleanupIdentity(ctx, t, svid.ID, &token)
-		return failResult(result, "assembling rootfs: %v", err), nil
+		return failResult(ctx, t, result, "assembling rootfs: %v", err), nil
 	}
 
 	if err := workflow.ExecuteActivity(
@@ -120,7 +120,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		},
 	).Get(ctx, &vmHandle); err != nil {
 		cleanupIdentity(ctx, t, svid.ID, &token)
-		return failResult(result, "provisioning VM: %v", err), nil
+		return failResult(ctx, t, result, "provisioning VM: %v", err), nil
 	}
 	setupReachedVM = true
 
@@ -133,7 +133,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		"ApplyNetworkPolicy", input.CageID, cfg.Scope, extras,
 	); err != nil {
 		cleanupPartial(ctx, t, svid.ID, &token, vmHandle.ID)
-		return failResult(result, "applying network policy: %v", err), nil
+		return failResult(ctx, t, result, "applying network policy: %v", err), nil
 	}
 	setupReachedPolicy = true
 
@@ -213,6 +213,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		result.FinalState = StateFailed
 	}
 
+	_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "UpdateCageResult", input.CageID, result.FinalState.String(), result.Error)
 	return result, nil
 }
 
@@ -412,9 +413,10 @@ func execActivity(ctx workflow.Context, name string, args ...interface{}) error 
 	return workflow.ExecuteActivity(ctx, name, args...).Get(ctx, nil)
 }
 
-func failResult(result CageWorkflowResult, format string, args ...interface{}) CageWorkflowResult {
+func failResult(ctx workflow.Context, t Timeouts, result CageWorkflowResult, format string, args ...interface{}) CageWorkflowResult {
 	result.FinalState = StateFailed
 	result.Error = fmt.Sprintf(format, args...)
+	_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "UpdateCageResult", result.CageID, result.FinalState.String(), result.Error)
 	return result
 }
 

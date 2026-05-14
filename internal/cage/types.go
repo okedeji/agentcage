@@ -155,6 +155,7 @@ type Info struct {
 	AssessmentID string
 	Type         Type
 	State        State
+	Error        string
 	Config       Config
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

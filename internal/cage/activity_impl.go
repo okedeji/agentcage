@@ -112,6 +112,7 @@ type ActivityImpl struct {
 	directiveWriter    *DirectiveWriter
 	logCollector       *VsockCollector
 	findingsBus        findings.Bus
+	cageService        *Service
 	logDir             string
 	log                logr.Logger
 	allocMu            sync.Mutex
@@ -139,6 +140,7 @@ type ActivityImplConfig struct {
 	TargetCreds       TargetCredentialReader
 	LogCollector      *VsockCollector
 	FindingsBus       findings.Bus
+	CageService       *Service
 	LogDir            string
 	BundleStoreDir    string
 	Log               logr.Logger
@@ -175,6 +177,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("RecordRunMetrics", a.RecordRunMetrics)
 	pin("RecordCostMetrics", a.RecordCostMetrics)
 	pin("CollectCageLogs", a.CollectCageLogs)
+	pin("UpdateCageResult", a.UpdateCageResult)
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
@@ -198,6 +201,7 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		directiveWriter:   NewDirectiveWriter(),
 		logCollector:      cfg.LogCollector,
 		findingsBus:       cfg.FindingsBus,
+		cageService:       cfg.CageService,
 		logDir:            cfg.LogDir,
 		log:               cfg.Log.WithValues("component", "cage-activities"),
 		allocs:            make(map[string]string),
@@ -964,5 +968,17 @@ func (a *ActivityImpl) RecordRunMetrics(_ context.Context, cageID, assessmentID 
 
 func (a *ActivityImpl) RecordCostMetrics(_ context.Context, cageID, assessmentID string) error {
 	a.log.V(1).Info("cost metrics recorded", "cage_id", cageID, "assessment_id", assessmentID)
+	return nil
+}
+
+func (a *ActivityImpl) UpdateCageResult(ctx context.Context, cageID string, finalState string, errorMsg string) error {
+	state := StateFromString(finalState)
+	if state == 0 {
+		state = StateFailed
+	}
+	if err := a.cageService.updateCageState(ctx, cageID, state, errorMsg); err != nil {
+		return fmt.Errorf("updating cage %s result: %w", cageID, err)
+	}
+	a.log.Info("cage result persisted", "cage_id", cageID, "state", state, "error", errorMsg)
 	return nil
 }

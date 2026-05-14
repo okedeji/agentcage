@@ -118,6 +118,7 @@ func cageInfoToProto(info *cage.Info) *pb.CageInfo {
 		AssessmentId: info.AssessmentID,
 		Type:         cageTypeToProto(info.Type),
 		State:        cageStateToProto(info.State),
+		Error:        info.Error,
 		CreatedAt:    timestamppb.New(info.CreatedAt),
 		UpdatedAt:    timestamppb.New(info.UpdatedAt),
 	}
