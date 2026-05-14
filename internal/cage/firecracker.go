@@ -222,12 +222,11 @@ func (p *FirecrackerProvisioner) Terminate(ctx context.Context, vmID string) err
 
 	var errs []error
 
-	// Stop the Firecracker process
+	// Stop the Firecracker process. If the Wait goroutine already
+	// reaped it, Kill returns "process already finished" — not an error.
 	if vm.cmd != nil && vm.cmd.Process != nil {
-		if err := vm.cmd.Process.Kill(); err != nil {
-			errs = append(errs, fmt.Errorf("killing firecracker process: %w", err))
-		}
-		_ = vm.cmd.Wait() // best-effort reap
+		_ = vm.cmd.Process.Kill()
+		_ = vm.cmd.Wait()
 	}
 
 	// Clean up TAP device

@@ -151,6 +151,7 @@ export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
 mount -t proc proc /proc
 mount -t sysfs sys /sys
 mount -t devtmpfs dev /dev
+mount -o remount,rw /
 
 exec /usr/local/bin/cage-init
 INITEOF
