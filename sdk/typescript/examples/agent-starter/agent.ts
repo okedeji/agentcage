@@ -87,16 +87,13 @@ interface LLMMessage {
 async function askLLM(messages: LLMMessage[]): Promise<string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (llmAPIKey) {
-    headers['Authorization'] = `Bearer ${llmAPIKey}`;
+    headers['x-api-key'] = llmAPIKey;
   }
 
   const resp = await fetch(llmEndpoint, {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      model: 'default',
-      messages,
-    }),
+    body: JSON.stringify({ messages }),
     signal: AbortSignal.timeout(30000),
   });
 

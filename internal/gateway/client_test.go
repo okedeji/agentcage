@@ -17,7 +17,6 @@ import (
 func validLLMResponse() LLMResponse {
 	return LLMResponse{
 		ID:    "chatcmpl-abc123",
-		Model: "gpt-4",
 		Choices: []LLMChoice{
 			{Index: 0, Message: LLMMessage{Role: "assistant", Content: "Hello"}},
 		},
@@ -47,7 +46,6 @@ func TestChatCompletion_Success(t *testing.T) {
 	client, meter := newTestClient(srv.URL)
 
 	req := LLMRequest{
-		Model:    "gpt-4",
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
@@ -72,7 +70,6 @@ func TestChatCompletion_BudgetExhausted(t *testing.T) {
 	meter.Record("cage-1", "assess-1", "gpt-4", 500, 500)
 
 	req := LLMRequest{
-		Model:    "gpt-4",
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
@@ -85,7 +82,6 @@ func TestChatCompletion_BudgetExhausted(t *testing.T) {
 func TestChatCompletion_MissingUsageData(t *testing.T) {
 	resp := LLMResponse{
 		ID:    "chatcmpl-abc123",
-		Model: "gpt-4",
 		Choices: []LLMChoice{
 			{Index: 0, Message: LLMMessage{Role: "assistant", Content: "Hello"}},
 		},
@@ -99,7 +95,6 @@ func TestChatCompletion_MissingUsageData(t *testing.T) {
 	client, _ := newTestClient(srv.URL)
 
 	req := LLMRequest{
-		Model:    "gpt-4",
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
@@ -119,7 +114,6 @@ func TestChatCompletion_Timeout(t *testing.T) {
 	client := NewClient(srv.URL, "", 50*time.Millisecond, meter, budget, nil)
 
 	req := LLMRequest{
-		Model:    "gpt-4",
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
@@ -137,7 +131,6 @@ func TestChatCompletion_InvalidJSON(t *testing.T) {
 	client, _ := newTestClient(srv.URL)
 
 	req := LLMRequest{
-		Model:    "gpt-4",
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
 	}
 
@@ -163,7 +156,6 @@ func TestChatCompletion_RequestBodySentCorrectly(t *testing.T) {
 	client, _ := newTestClient(srv.URL)
 
 	req := LLMRequest{
-		Model: "gpt-4",
 		Messages: []LLMMessage{
 			{Role: "system", Content: "You are helpful"},
 			{Role: "user", Content: "hello"},
@@ -173,7 +165,6 @@ func TestChatCompletion_RequestBodySentCorrectly(t *testing.T) {
 	_, err := client.ChatCompletion(context.Background(), "cage-1", "assess-1", 1000, req)
 	require.NoError(t, err)
 
-	assert.Equal(t, "gpt-4", received.Model)
 	require.Len(t, received.Messages, 2)
 	assert.Equal(t, "system", received.Messages[0].Role)
 	assert.Equal(t, "You are helpful", received.Messages[0].Content)

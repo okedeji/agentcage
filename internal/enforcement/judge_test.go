@@ -117,7 +117,7 @@ func TestJudge_InvalidConfidence_FailClosed(t *testing.T) {
 func TestJudge_AuthHeaderSent(t *testing.T) {
 	var gotAuth string
 	srv, client := newTestJudgeServer(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
+		gotAuth = r.Header.Get("x-api-key")
 		respondJSON(w, JudgeResponse{Results: []JudgeResult{
 			{Safe: true, Confidence: 0.9, Reason: "ok"},
 		}})
@@ -126,7 +126,7 @@ func TestJudge_AuthHeaderSent(t *testing.T) {
 
 	_, _, err := client.Evaluate("discovery", "sqli", "assess-1", "GET", "/api", nil)
 	require.NoError(t, err)
-	assert.Equal(t, "Bearer test-key", gotAuth)
+	assert.Equal(t, "test-key", gotAuth)
 }
 
 func TestJudge_RequestPayloadCorrect(t *testing.T) {

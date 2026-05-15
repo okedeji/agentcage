@@ -131,7 +131,7 @@ func (c *Client) doWithRetry(ctx context.Context, body []byte) ([]byte, error) {
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 		if c.apiKey != "" {
-			httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+			httpReq.Header.Set("x-api-key", c.apiKey)
 		}
 
 		httpResp, err := c.httpClient.Do(httpReq)

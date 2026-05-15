@@ -84,7 +84,7 @@ func (c *JudgeClient) Evaluate(cageType, vulnClass, assessmentID, method, url st
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		req.Header.Set("x-api-key", c.apiKey)
 	}
 
 	resp, err := c.httpClient.Do(req)
