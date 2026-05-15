@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -25,6 +27,34 @@ type sockaddrVM struct {
 	Flags     uint8
 	Zero      [3]uint8
 }
+
+// vsockAddr implements net.Addr for AF_VSOCK sockets.
+type vsockAddr struct {
+	cid  uint32
+	port uint32
+}
+
+func (a vsockAddr) Network() string { return "vsock" }
+func (a vsockAddr) String() string  { return fmt.Sprintf("%d:%d", a.cid, a.port) }
+
+// vsockConn wraps an *os.File as a net.Conn. Go's net.FileConn rejects
+// AF_VSOCK because the net package only recognizes AF_INET, AF_INET6,
+// and AF_UNIX (golang/go#69769). This wrapper gives us net.Conn
+// compatibility including deadlines via the runtime poller.
+type vsockConn struct {
+	file       *os.File
+	localAddr  vsockAddr
+	remoteAddr vsockAddr
+}
+
+func (c *vsockConn) Read(b []byte) (int, error)               { return c.file.Read(b) }
+func (c *vsockConn) Write(b []byte) (int, error)              { return c.file.Write(b) }
+func (c *vsockConn) Close() error                             { return c.file.Close() }
+func (c *vsockConn) LocalAddr() net.Addr                      { return c.localAddr }
+func (c *vsockConn) RemoteAddr() net.Addr                     { return c.remoteAddr }
+func (c *vsockConn) SetDeadline(t time.Time) error            { return c.file.SetDeadline(t) }
+func (c *vsockConn) SetReadDeadline(t time.Time) error        { return c.file.SetReadDeadline(t) }
+func (c *vsockConn) SetWriteDeadline(t time.Time) error       { return c.file.SetWriteDeadline(t) }
 
 // vsockListener wraps a raw AF_VSOCK listening socket.
 type vsockListener struct {
@@ -68,13 +98,12 @@ func (l *vsockListener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("accept(AF_VSOCK, port %d): %w", l.port, err)
 	}
-	f := os.NewFile(uintptr(nfd), fmt.Sprintf("vsock:%d", l.port))
-	conn, err := net.FileConn(f)
-	_ = f.Close()
-	if err != nil {
-		return nil, fmt.Errorf("FileConn(AF_VSOCK): %w", err)
-	}
-	return conn, nil
+	_ = syscall.SetNonblock(nfd, true)
+	f := os.NewFile(uintptr(nfd), fmt.Sprintf("vsock-accept:%d", l.port))
+	return &vsockConn{
+		file:      f,
+		localAddr: vsockAddr{cid: vsockCIDAny, port: l.port},
+	}, nil
 }
 
 func (l *vsockListener) Close() error {
@@ -93,8 +122,6 @@ func dialVsock(cid, port uint32) (net.Conn, error) {
 		CID:    cid,
 	}
 
-	// Set a connect timeout by making the socket non-blocking, calling
-	// connect, and polling. Simpler: just use a deadline after wrapping.
 	_, _, errno := syscall.RawSyscall(
 		syscall.SYS_CONNECT,
 		uintptr(fd),
@@ -106,16 +133,13 @@ func dialVsock(cid, port uint32) (net.Conn, error) {
 		return nil, fmt.Errorf("connect(AF_VSOCK, cid=%d port=%d): %w", cid, port, errno)
 	}
 
+	_ = syscall.SetNonblock(fd, true)
 	f := os.NewFile(uintptr(fd), fmt.Sprintf("vsock:%d:%d", cid, port))
-	conn, err := net.FileConn(f)
-	_ = f.Close()
-	if err != nil {
-		return nil, fmt.Errorf("FileConn(AF_VSOCK): %w", err)
+	conn := &vsockConn{
+		file:       f,
+		localAddr:  vsockAddr{cid: 3, port: 0},
+		remoteAddr: vsockAddr{cid: cid, port: port},
 	}
-
-	// FileConn duplicates the fd; the original is closed by f.Close().
-	// Safety net if host-side timeout enforcer is broken.
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Minute))
-
 	return conn, nil
 }
