@@ -38,6 +38,8 @@ type FindingSummary struct {
 }
 
 // CageSummary records what a completed cage attempted and found.
+// The coordinator uses Outcome and Error to decide whether to retry,
+// skip, or stop the assessment.
 type CageSummary struct {
 	CageID    string `json:"cage_id"`
 	CageType  string `json:"cage_type"`
@@ -45,6 +47,7 @@ type CageSummary struct {
 	VulnClass string `json:"vuln_class"`
 	Objective string `json:"objective"`
 	Outcome   string `json:"outcome"`
+	Error     string `json:"error,omitempty"`
 	Findings  int    `json:"findings_count"`
 }
 

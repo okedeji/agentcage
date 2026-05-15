@@ -139,6 +139,16 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	}
 	syncStats(ctx, input.AssessmentID, result, 0)
 
+	// Discovery is the foundation. If it failed, there's no surface
+	// data for exploitation to work with.
+	vCheck := workflow.GetVersion(ctx, "check-cage-outcomes", workflow.DefaultVersion, 1)
+	if vCheck == 1 {
+		resolveCageOutcome(ctx, &cagesCompleted[0])
+		if cagesCompleted[0].Outcome == "failed" {
+			return failResult(result, "discovery cage failed (see: agentcage logs cage %s)", discoveryCageID), nil
+		}
+	}
+
 	if err := updateStatus(ctx, input.AssessmentID, StatusExploitation); err != nil {
 		return failResult(result, "updating status to testing: %v", err), nil
 	}
@@ -205,8 +215,18 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		coverage = UpdateCoverage(coverage, decision.Actions)
 		syncStats(ctx, input.AssessmentID, result, spawned)
 
-		if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
-			return failResult(result, "waiting for cages (iteration %d): %v", iteration, err), nil
+		// Wait for exploitation cages, polling so early failures
+		// don't waste the full 10-minute window.
+		vExplWait := workflow.GetVersion(ctx, "poll-exploitation-cages", workflow.DefaultVersion, 1)
+		if vExplWait == 1 {
+			for si := range completedSummaries {
+				waitForCageOrTimeout(ctx, completedSummaries[si].CageID, TimeoutWaitForCage)
+				resolveCageOutcome(ctx, &completedSummaries[si])
+			}
+			// Update the main slice with resolved outcomes.
+			copy(cagesCompleted[len(cagesCompleted)-len(completedSummaries):], completedSummaries)
+		} else {
+			_ = workflow.Sleep(ctx, TimeoutWaitForCage)
 		}
 		syncStats(ctx, input.AssessmentID, result, 0)
 	}
@@ -427,6 +447,19 @@ func waitForCageOrTimeout(ctx workflow.Context, cageID string, timeout time.Dura
 			return
 		}
 	}
+}
+
+// resolveCageOutcome fetches the cage state and populates the summary's
+// Outcome field. Called after each cage wait so the coordinator knows
+// which cages succeeded and which failed.
+func resolveCageOutcome(ctx workflow.Context, summary *CageSummary) {
+	var state string
+	actCtx := withActivityTimeout(ctx, 5*time.Second)
+	if err := workflow.ExecuteActivity(actCtx, "GetCageState", summary.CageID).Get(ctx, &state); err != nil {
+		summary.Outcome = "unknown"
+		return
+	}
+	summary.Outcome = state
 }
 
 func planNextActions(ctx workflow.Context, state CoordinatorState) (CoordinatorDecision, error) {
