@@ -14,14 +14,22 @@ import (
 	"go.temporal.io/sdk/worker"
 
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/gateway"
 	"github.com/okedeji/agentcage/internal/intervention"
 )
 
-// ProofGapEmitter creates a pending proof_gap intervention. Narrow interface
-// so tests can stub it without spinning up the full intervention service.
-type ProofGapEmitter interface {
+// AlertNotifier dispatches fire-and-forget notifications to operators.
+// Defined here to avoid importing the alert package directly.
+type AlertNotifier interface {
+	Notify(ctx context.Context, source, category, description, cageID, assessmentID string, priority int, details map[string]any)
+}
+
+// InterventionEmitter creates pending interventions at the assessment level.
+// Narrow interface so tests can stub it without spinning up the full
+// intervention service.
+type InterventionEmitter interface {
 	EnqueueProofGap(ctx context.Context, assessmentID, description string, contextData []byte, timeout time.Duration) (*intervention.Request, error)
 }
 
@@ -45,9 +53,11 @@ type ActivityImpl struct {
 	fleet         FleetSignaler
 	assessments   *Service
 	tokens        TokenQuerier
+	configServer  *config.Server
+	alerter       AlertNotifier
 	planner       *Planner
 	proofs        *ProofLibrary
-	interventions ProofGapEmitter
+	interventions InterventionEmitter
 	log           logr.Logger
 	subsMu        sync.Mutex
 	subs          map[string]findings.Subscription
@@ -61,9 +71,11 @@ type ActivityImplConfig struct {
 	Fleet         FleetSignaler
 	Assessments   *Service
 	Tokens        TokenQuerier
+	ConfigServer  *config.Server
+	Alerter       AlertNotifier
 	LLMClient     *gateway.Client
 	Proofs        *ProofLibrary
-	Interventions ProofGapEmitter
+	Interventions InterventionEmitter
 	Log           logr.Logger
 }
 
@@ -80,6 +92,8 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		fleet:         cfg.Fleet,
 		assessments:   cfg.Assessments,
 		tokens:        cfg.Tokens,
+		configServer:  cfg.ConfigServer,
+		alerter:       cfg.Alerter,
 		planner:       planner,
 		proofs:        cfg.Proofs,
 		interventions: cfg.Interventions,
@@ -110,6 +124,8 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("LookupProof", a.LookupProof)
 	pin("EmitProofGapIntervention", a.EmitProofGapIntervention)
 	pin("GetAssessmentTokensConsumed", a.GetAssessmentTokensConsumed)
+	pin("GetLiveTokenBudget", a.GetLiveTokenBudget)
+	pin("NotifyBudgetExhausted", a.NotifyBudgetExhausted)
 	pin("NotifyFinding", a.NotifyFinding)
 	pin("NotifyFleetAssessmentComplete", a.NotifyFleetAssessmentComplete)
 	pin("NotifyAssessmentComplete", a.NotifyAssessmentComplete)
@@ -148,6 +164,27 @@ func (a *ActivityImpl) EmitProofGapIntervention(ctx context.Context, assessmentI
 		"candidates", len(findingIDs),
 		"intervention_id", req.ID)
 	return req.ID, nil
+}
+
+func (a *ActivityImpl) NotifyBudgetExhausted(ctx context.Context, assessmentID string, consumed, budget int64) error {
+	if a.alerter == nil {
+		return nil
+	}
+	a.alerter.Notify(ctx, "system", "budget_exhausted",
+		fmt.Sprintf("token budget exhausted (%d/%d consumed), pausing until operator increases via config set", consumed, budget),
+		"", assessmentID, 3, map[string]any{
+			"consumed": consumed,
+			"budget":   budget,
+		})
+	return nil
+}
+
+func (a *ActivityImpl) GetLiveTokenBudget(ctx context.Context) (int64, error) {
+	if a.configServer == nil {
+		return 0, nil
+	}
+	cfg := a.configServer.GetConfig(ctx)
+	return cfg.Assessment.TokenBudget, nil
 }
 
 func (a *ActivityImpl) GetCageState(ctx context.Context, cageID string) (string, error) {

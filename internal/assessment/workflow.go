@@ -17,7 +17,8 @@ import (
 const (
 	// Pinned so a Go-side rename does not silently break in-flight
 	// workflows on the next history replay.
-	WorkflowName = "AssessmentWorkflow"
+	WorkflowName  = "AssessmentWorkflow"
+	SignalFinish  = "assessment_finish"
 
 	TimeoutCreateCage      = 30 * time.Second
 	TimeoutGetFindings     = 15 * time.Second
@@ -112,6 +113,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 	coverage := make(map[string][]string)
 	var cagesCompleted []CageSummary
+	var budgetDrained bool
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusDiscovery); err != nil {
 		return failResult(result, "updating status to mapping: %v", err), nil
@@ -154,17 +156,59 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	}
 
 	startTime := workflow.Now(ctx)
+	finishCh := workflow.GetSignalChannel(ctx, SignalFinish)
 
 	for iteration := int32(0); iteration < maxIterations; iteration++ {
 		result.Iterations = iteration + 1
 
+		// Check if operator sent finish signal.
+		var finished bool
+		for finishCh.ReceiveAsync(&finished) {
+		}
+		if finished {
+			logger.Info("operator requested finish, proceeding to validation",
+				"assessment_id", input.AssessmentID, "iteration", iteration)
+			break
+		}
+
 		var tokensUsed int64
+		var liveBudget int64
+		vLiveBudget := workflow.GetVersion(ctx, "live-token-budget", workflow.DefaultVersion, 1)
+		if vLiveBudget == 1 {
+			budgetCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+			_ = workflow.ExecuteActivity(budgetCtx, "GetLiveTokenBudget").Get(ctx, &liveBudget)
+			if liveBudget > 0 {
+				cfg.TokenBudget = liveBudget
+			}
+		}
 		if cfg.TokenBudget > 0 {
 			tokenCtx := withActivityTimeout(ctx, TimeoutGetFindings)
 			_ = workflow.ExecuteActivity(tokenCtx, "GetAssessmentTokensConsumed", input.AssessmentID).Get(ctx, &tokensUsed)
 			if tokensUsed >= cfg.TokenBudget {
-				logger.Info("token budget exhausted, ending exploitation",
-					"assessment_id", input.AssessmentID, "consumed", tokensUsed, "budget", cfg.TokenBudget)
+				// Budget exhausted. Pause and poll for a config
+				// increase. The operator runs:
+				//   agentcage config set assessment.token_budget <new>
+				// and the next poll picks it up. Gives up after 24h.
+				vPause := workflow.GetVersion(ctx, "budget-auto-pause", workflow.DefaultVersion, 1)
+				if vPause == 1 {
+					logger.Info("token budget exhausted, pausing until operator increases budget or 24h timeout",
+						"assessment_id", input.AssessmentID, "consumed", tokensUsed, "budget", cfg.TokenBudget)
+					_ = workflow.ExecuteActivity(
+						withActivityTimeout(ctx, 5*time.Second),
+						"NotifyBudgetExhausted", input.AssessmentID, tokensUsed, cfg.TokenBudget,
+					).Get(ctx, nil)
+					newBudget := waitForBudgetIncrease(ctx, cfg.TokenBudget)
+					if newBudget <= cfg.TokenBudget {
+						logger.Info("budget not increased after 24h, skipping validation/report",
+							"assessment_id", input.AssessmentID)
+						budgetDrained = true
+						break
+					}
+					cfg.TokenBudget = newBudget
+					logger.Info("budget increased, resuming exploitation",
+						"assessment_id", input.AssessmentID, "new_budget", newBudget)
+					continue
+				}
 				break
 			}
 		}
@@ -232,6 +276,17 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	}
 
 	syncStats(ctx, input.AssessmentID, result, 0)
+
+	// When budget is fully drained with no operator increase, skip
+	// validation/escalation/report (all require LLM tokens). Return
+	// candidate findings as-is.
+	if budgetDrained {
+		candidates, _ := getCandidateFindings(ctx, input.AssessmentID)
+		result.Findings = int32(len(candidates))
+		result.FinalStatus = StatusApproved
+		result.Error = fmt.Sprintf("token budget exhausted (%d token budget), findings returned as unvalidated candidates", cfg.TokenBudget)
+		return result, nil
+	}
 
 	if err := updateStatus(ctx, input.AssessmentID, StatusValidation); err != nil {
 		return failResult(result, "updating status to validating: %v", err), nil
@@ -847,6 +902,30 @@ func waitForProofGap(ctx workflow.Context, interventionID string) *intervention.
 			return &signal
 		}
 	}
+}
+
+// waitForBudgetIncrease polls the live config every 30s for up to 24h,
+// waiting for the operator to increase the token budget via
+// `agentcage config set assessment.token_budget <new_value>`.
+// Returns the new budget if it increased, or the old budget if timed out.
+func waitForBudgetIncrease(ctx workflow.Context, currentBudget int64) int64 {
+	const pollInterval = 30 * time.Second
+	const maxWait = 24 * time.Hour
+
+	for elapsed := time.Duration(0); elapsed < maxWait; elapsed += pollInterval {
+		if err := workflow.Sleep(ctx, pollInterval); err != nil {
+			return currentBudget
+		}
+		var liveBudget int64
+		actCtx := withActivityTimeout(ctx, 5*time.Second)
+		if err := workflow.ExecuteActivity(actCtx, "GetLiveTokenBudget").Get(ctx, &liveBudget); err != nil {
+			continue
+		}
+		if liveBudget > currentBudget {
+			return liveBudget
+		}
+	}
+	return currentBudget
 }
 
 func spawnEscalationCages(

@@ -159,7 +159,7 @@ func cmdInterventionsResolve(args []string) {
 	if *id == "" || *action == "" {
 		fmt.Fprintln(os.Stderr, "usage: agentcage interventions resolve --id <id> --action <action> [--rationale reason]")
 		fmt.Fprintln(os.Stderr, "\nActions:")
-		fmt.Fprintln(os.Stderr, "  resume, kill, allow, block     cage interventions (tripwire, payload)")
+		fmt.Fprintln(os.Stderr, "  resume, kill, allow, block     cage and budget interventions")
 		fmt.Fprintln(os.Stderr, "  retry, skip                    proof gap interventions")
 		fmt.Fprintln(os.Stderr, "  approve, reject, retest        report review interventions")
 		os.Exit(1)
