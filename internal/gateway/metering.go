@@ -67,6 +67,21 @@ func (m *TokenMeter) GetUsage(cageID string) TokenUsage {
 	}
 }
 
+// SetUsage sets the cumulative token count for a cage. Used by the
+// host control endpoint to record agent-side token consumption
+// reported by the in-cage proxy.
+func (m *TokenMeter) SetUsage(cageID, assessmentID string, consumed int64) {
+	m.mu.Lock()
+	cm, ok := m.cages[cageID]
+	if !ok {
+		cm = &cageMetrics{assessmentID: assessmentID}
+		m.cages[cageID] = cm
+	}
+	m.mu.Unlock()
+	cm.inputTokens.Store(consumed)
+	cm.outputTokens.Store(0)
+}
+
 func (m *TokenMeter) Reset(cageID string) {
 	m.mu.Lock()
 	delete(m.cages, cageID)

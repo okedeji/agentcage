@@ -278,6 +278,8 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		Log:               log,
 	})
 
+	configServer := config.NewServer(cfg)
+
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
 		Cages:         cageSvc,
 		Findings:      findingStore,
@@ -289,6 +291,8 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		LLMClient:     llmClient,
 		Proofs:        proofLib,
 		Interventions: iSvc,
+		ConfigServer:  configServer,
+		Alerter:       alertDispatcher,
 		Log:           log,
 	})
 
@@ -316,7 +320,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 			AgentcageVersion: version,
 		},
 		SecretReader:     secretReader,
-		ConfigServer:     config.NewServer(cfg),
+		ConfigServer:     configServer,
 		CageLogDir:       cageLogDir,
 		NATSConn:         natsConnForGRPC(findingsBus),
 		ServiceLogDir:    embedded.LogDir(),
@@ -376,7 +380,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 	}
 	serveGRPC(grpcServer, lis, cancel, log)
 
-	if err := startHoldControlServer(holdControlAddr, payloadHoldHandler, cancel, log); err != nil {
+	if err := startHoldControlServer(holdControlAddr, payloadHoldHandler, tokenMeter, cancel, log); err != nil {
 		shutdownSequence(cancel, deps, nil, log)
 		return fmt.Errorf("starting payload hold control server: %w", err)
 	}

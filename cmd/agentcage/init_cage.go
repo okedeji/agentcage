@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	"github.com/okedeji/agentcage/internal/enforcement"
+	"github.com/okedeji/agentcage/internal/gateway"
 	"github.com/okedeji/agentcage/internal/intervention"
 )
 
@@ -136,9 +138,26 @@ func openFalcoReader(ctx context.Context, cfg *config.Config, log logr.Logger) (
 // startHoldControlServer binds an HTTP server that receives payload hold
 // notifications from in-cage proxies. The handler is a cage.PayloadHoldHandler
 // which enqueues interventions and relays decisions back.
-func startHoldControlServer(addr string, handler *cage.PayloadHoldHandler, cancel context.CancelFunc, log logr.Logger) error {
+func startHoldControlServer(addr string, handler *cage.PayloadHoldHandler, meter *gateway.TokenMeter, cancel context.CancelFunc, log logr.Logger) error {
 	mux := http.NewServeMux()
 	mux.Handle("/payload-hold", handler)
+	mux.HandleFunc("/token-usage", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var report struct {
+			CageID       string `json:"cage_id"`
+			AssessmentID string `json:"assessment_id"`
+			Consumed     int64  `json:"consumed"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		meter.SetUsage(report.CageID, report.AssessmentID, report.Consumed)
+		w.WriteHeader(http.StatusOK)
+	})
 
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {

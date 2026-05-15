@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -43,6 +44,7 @@ func main() {
 	judgeEndpoint := flag.String("judge-endpoint", "", "LLM-as-a-Judge classification endpoint")
 	judgeConfidence := flag.Float64("judge-confidence", 0.7, "confidence threshold for judge decisions")
 	judgeTimeout := flag.Int("judge-timeout", 10, "judge endpoint timeout in seconds")
+	tokenBudget := flag.Int64("token-budget", -1, "max tokens for this cage. -1 means unlimited.")
 	flag.Parse()
 
 	if *targetAddr == "" {
@@ -95,7 +97,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: control server bind %s: %v\n", *controlAddr, lisErr)
 			os.Exit(1)
 		}
-		go serveControlEndpoint(lis, holdMgr, logger)
+		go serveControlEndpoint(lis, holdMgr)
 	}
 
 	transport := proxyTransport()
@@ -111,6 +113,8 @@ func main() {
 		)
 		judge.SetTransport(transport)
 	}
+
+	var tokensConsumed atomic.Int64
 
 	proxy := &httputil.ReverseProxy{
 		Transport: transport,
@@ -176,12 +180,23 @@ func main() {
 					resp.ContentLength = int64(len(msg))
 					return nil
 				}
+				tokensConsumed.Add(llmResp.Usage.TotalTokens)
+				remaining := int64(-1)
+				if *tokenBudget >= 0 {
+					remaining = *tokenBudget - tokensConsumed.Load()
+					if remaining < 0 {
+						remaining = 0
+					}
+				}
 				logger.Info("llm_usage",
 					"model", llmResp.Model,
 					"prompt_tokens", llmResp.Usage.PromptTokens,
 					"completion_tokens", llmResp.Usage.CompletionTokens,
 					"total_tokens", llmResp.Usage.TotalTokens,
+					"consumed", tokensConsumed.Load(),
+					"remaining", remaining,
 				)
+				reportTokenUsage(*hostControlURL, *cageID, *assessmentID, tokensConsumed.Load())
 			}
 			return nil
 		},
@@ -205,17 +220,17 @@ func main() {
 			}
 		}
 
-		// LLM requests: validate, forward, and meter
+		// LLM requests: validate, enforce budget, forward, and meter
 		if llmHost != "" && r.URL.Host == llmHost {
+			if *tokenBudget >= 0 && tokensConsumed.Load() >= *tokenBudget {
+				logger.Info("token budget exhausted", "consumed", tokensConsumed.Load(), "budget", *tokenBudget)
+				http.Error(w, "token budget exhausted", http.StatusTooManyRequests)
+				return
+			}
 			var llmReq gateway.LLMRequest
 			if err := json.Unmarshal(bodyBytes, &llmReq); err != nil {
 				logger.Info("llm request rejected: invalid JSON", "error", err)
 				http.Error(w, "invalid LLM request: must be JSON", http.StatusBadRequest)
-				return
-			}
-			if llmReq.Model == "" {
-				logger.Info("llm request rejected: missing model")
-				http.Error(w, "invalid LLM request: 'model' field required", http.StatusBadRequest)
 				return
 			}
 			if len(llmReq.Messages) == 0 {
@@ -225,7 +240,7 @@ func main() {
 			}
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			r.ContentLength = int64(len(bodyBytes))
-			logger.V(1).Info("llm request forwarded", "method", r.Method, "url", r.URL.String(), "model", llmReq.Model)
+			logger.V(1).Info("llm request forwarded", "method", r.Method, "url", r.URL.String())
 			llmProxy.ServeHTTP(w, r)
 			return
 		}
@@ -318,7 +333,7 @@ func main() {
 	}
 }
 
-func serveControlEndpoint(lis net.Listener, holdMgr *HoldManager, logger logr.Logger) {
+func serveControlEndpoint(lis net.Listener, holdMgr *HoldManager) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/hold/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -412,4 +427,20 @@ func notifyHostHold(hostURL, holdID, cageID, method, reqURL, reason string) erro
 		return fmt.Errorf("host rejected hold notification: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func reportTokenUsage(hostURL, cageID, assessmentID string, consumed int64) {
+	if hostURL == "" {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"cage_id":       cageID,
+		"assessment_id": assessmentID,
+		"consumed":      consumed,
+	})
+	resp, err := holdNotifyClient.Post(hostURL+"/token-usage", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return
+	}
+	_ = resp.Body.Close()
 }

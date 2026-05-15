@@ -117,6 +117,9 @@ func main() {
 		if env.LLMEndpoint != "" {
 			proxyArgs = append(proxyArgs, "-llm-endpoint", env.LLMEndpoint)
 		}
+		if env.TokenBudget > 0 {
+			proxyArgs = append(proxyArgs, "-token-budget", fmt.Sprintf("%d", env.TokenBudget))
+		}
 		if env.HostControlAddr != "" {
 			proxyArgs = append(proxyArgs,
 				"-control-listen", ":8081",
