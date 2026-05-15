@@ -27,3 +27,12 @@ output "resume_command" {
   description = "Start the instance back up"
   value       = "aws ec2 start-instances --instance-ids ${module.agentcage.instance_id}"
 }
+
+output "webhook_endpoint" {
+  description = "LLM webhook URL — set this as llm.endpoint in agentcage config"
+  value       = module.webhook.endpoint
+}
+
+output "webhook_instance_id" {
+  value = module.webhook.instance_id
+}

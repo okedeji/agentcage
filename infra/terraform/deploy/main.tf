@@ -60,6 +60,19 @@ module "network" {
   single_nat_gateway = true
 }
 
+module "webhook" {
+  source = "../modules/aws/webhook"
+
+  name                        = var.name
+  vpc_id                      = module.network.vpc_id
+  subnet_id                   = module.network.public_subnet_id
+  agentcage_security_group_id = module.agentcage.security_group_id
+  webhook_api_key             = var.webhook_api_key
+  llm_provider_url            = var.llm_provider_url
+  llm_provider_key            = var.llm_provider_key
+  llm_model                   = var.llm_model
+}
+
 module "agentcage" {
   source = "../modules/aws/agentcage"
 

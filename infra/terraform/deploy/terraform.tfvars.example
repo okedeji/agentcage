@@ -3,6 +3,12 @@ spot              = false       # set true for cheapest throwaway testing
 enable_ssh        = true        # auto-generates SSH key at agentcage-ssh.pem
 my_ip             = "0.0.0.0/0" # restrict to your IP if static, or leave open
 
+# LLM webhook gateway (deployed on free-tier t3.micro)
+webhook_api_key   = ""          # shared secret between agentcage and the webhook
+llm_provider_url  = "https://api.openai.com/v1/chat/completions"
+llm_provider_key  = ""          # your OpenAI (or other provider) API key
+llm_model         = "gpt-5.5"   # model the webhook uses for all requests
+
 # spot = false: use pause/resume to save costs (~$2.40/month when stopped)
 #   terraform output pause_command   -> stops instance, runs agentcage stop
 #   terraform output resume_command  -> starts instance, agentcage auto-starts

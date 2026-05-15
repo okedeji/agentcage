@@ -46,3 +46,27 @@ variable "secrets_file" {
   type        = string
   default     = "secrets.env"
 }
+
+variable "webhook_api_key" {
+  description = "API key for agentcage to authenticate with the LLM webhook"
+  type        = string
+  sensitive   = true
+}
+
+variable "llm_provider_url" {
+  description = "LLM provider endpoint the webhook forwards to"
+  type        = string
+  default     = "https://api.openai.com/v1/chat/completions"
+}
+
+variable "llm_provider_key" {
+  description = "API key for the LLM provider (e.g. OpenAI key)"
+  type        = string
+  sensitive   = true
+}
+
+variable "llm_model" {
+  description = "Model the webhook uses for all LLM requests"
+  type        = string
+  default     = "gpt-5.5"
+}

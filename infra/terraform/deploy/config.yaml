@@ -1,3 +1,6 @@
 posture: dev
+# llm.endpoint is set after deploy via:
+#.  agentcage connect $(terraform output -raw grpc_addr) --insecure
+#   agentcage config set llm.endpoint $(terraform output -raw webhook_endpoint)
 llm:
-  endpoint: "https://api.openai.com/v1/chat/completions"
+  endpoint: ""
