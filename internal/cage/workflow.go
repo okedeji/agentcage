@@ -185,6 +185,22 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "CollectCageLogs", input.CageID)
 	}
 
+	// Check the agent's exit code from the result file cage-init wrote
+	// to the rootfs. CollectCageLogs extracted it to the log directory.
+	// A non-zero exit means the agent failed; the cage state should
+	// reflect that instead of showing "completed".
+	v3 := workflow.GetVersion(ctx, "read-agent-result", workflow.DefaultVersion, 1)
+	if v3 == 1 && stopReason == StopReasonCompleted {
+		var agentResult AgentResult
+		if rErr := workflow.ExecuteActivity(
+			withTimeout(ctx, t.ExportAuditLog),
+			"ReadAgentResult", input.CageID,
+		).Get(ctx, &agentResult); rErr == nil && agentResult.ExitCode != 0 {
+			stopReason = StopReasonError
+			result.Error = fmt.Sprintf("agent exited with code %d (see: agentcage logs cage %s)", agentResult.ExitCode, input.CageID)
+		}
+	}
+
 	if stopReason.RequiresRCA() || result.Error != "" {
 		reason := stopReason.String()
 		if result.Error != "" {

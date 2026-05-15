@@ -42,6 +42,14 @@ func (r StopReason) RequiresRCA() bool {
 	return r == StopReasonTripwire || r == StopReasonError
 }
 
+// AgentResult is the exit status written by cage-init to the rootfs.
+// The orchestrator reads it after the VM dies to determine whether
+// the agent succeeded or failed.
+type AgentResult struct {
+	ExitCode int    `json:"exit_code"`
+	Error    string `json:"error,omitempty"`
+}
+
 // InterventionType mirrors intervention.Type so the cage package can
 // specify intervention types without importing intervention.
 type InterventionType int

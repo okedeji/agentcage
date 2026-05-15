@@ -220,11 +220,13 @@ func main() {
 	if err := agentCmd.Run(); err != nil {
 		writeLog(logConn, "system", fmt.Sprintf("agent exited with error: %v", err))
 		fmt.Printf("cage-init: agent exited with error: %v\n", err)
+		writeResult(1, err.Error())
 		drainAndExit(logConn, []*exec.Cmd{sidecar, directiveSidecar, proxy}, 1)
 	}
 
 	writeLog(logConn, "system", "agent completed successfully")
 	fmt.Println("cage-init: agent completed successfully")
+	writeResult(0, "")
 	drainAndExit(logConn, []*exec.Cmd{sidecar, directiveSidecar, proxy}, 0)
 }
 
@@ -282,6 +284,24 @@ func setupIPTables() {
 
 func setEnv(key, value string) {
 	os.Setenv(key, value) //nolint:errcheck
+}
+
+// writeResult persists the agent's exit code to the rootfs so the
+// orchestrator can read it via debugfs after the VM dies and surface
+// the failure in the cage and assessment status.
+func writeResult(exitCode int, errMsg string) {
+	data, _ := json.Marshal(map[string]any{
+		"exit_code": exitCode,
+		"error":     errMsg,
+		"ts":        time.Now().Unix(),
+	})
+	if err := os.WriteFile("/var/log/cage-result.json", data, 0644); err != nil {
+		return
+	}
+	if f, err := os.OpenFile("/var/log/cage-result.json", os.O_RDONLY, 0); err == nil {
+		_ = f.Sync()
+		_ = f.Close()
+	}
 }
 
 func drainAndExit(logConn net.Conn, procs []*exec.Cmd, code int) {

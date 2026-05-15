@@ -178,6 +178,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("RecordRunMetrics", a.RecordRunMetrics)
 	pin("RecordCostMetrics", a.RecordCostMetrics)
 	pin("CollectCageLogs", a.CollectCageLogs)
+	pin("ReadAgentResult", a.ReadAgentResult)
 	pin("UpdateCageResult", a.UpdateCageResult)
 }
 
@@ -952,7 +953,34 @@ func (a *ActivityImpl) CollectCageLogs(ctx context.Context, cageID string) error
 		_ = os.WriteFile(serialDst, serialData, 0644)
 	}
 
+	// Extract the agent result file so ReadAgentResult can read it
+	// after VerifyCleanup deletes the rootfs.
+	resultData, _ := readFileFromExt4(ctx, rootfsPath, "/var/log/cage-result.json")
+	if len(resultData) > 0 {
+		resultPath := filepath.Join(a.logDir, cageID+".result.json")
+		_ = os.WriteFile(resultPath, resultData, 0644)
+	}
+
 	return nil
+}
+
+// ReadAgentResult reads the agent exit status that CollectCageLogs
+// extracted from the rootfs. Returns a zero-value result if the file
+// is missing (old cages that predate the result file).
+func (a *ActivityImpl) ReadAgentResult(ctx context.Context, cageID string) (*AgentResult, error) {
+	if a.logDir == "" {
+		return &AgentResult{}, nil
+	}
+	resultPath := filepath.Join(a.logDir, cageID+".result.json")
+	data, err := os.ReadFile(resultPath)
+	if err != nil {
+		return &AgentResult{}, nil
+	}
+	var result AgentResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return &AgentResult{}, nil
+	}
+	return &result, nil
 }
 
 // readFileFromExt4 reads a file from an ext4 image using debugfs.
