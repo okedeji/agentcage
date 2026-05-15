@@ -128,8 +128,14 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	})
 	syncStats(ctx, input.AssessmentID, result, 1)
 
-	if err := workflow.Sleep(ctx, TimeoutWaitForCage); err != nil {
-		return failResult(result, "waiting for surface mapping cage: %v", err), nil
+	// Wait for the discovery cage to finish or the timeout, whichever
+	// comes first. Old workflows replay as a fixed sleep; new ones poll
+	// every 5s so an early cage failure surfaces immediately.
+	vWait := workflow.GetVersion(ctx, "poll-cage-completion", workflow.DefaultVersion, 1)
+	if vWait == 1 {
+		waitForCageOrTimeout(ctx, discoveryCageID, TimeoutWaitForCage)
+	} else {
+		_ = workflow.Sleep(ctx, TimeoutWaitForCage)
 	}
 	syncStats(ctx, input.AssessmentID, result, 0)
 
@@ -399,6 +405,27 @@ func applyGuidance(cageCfg *cage.Config, guidance *Guidance) {
 	}
 	if data, err := json.Marshal(guidance); err == nil {
 		cageCfg.Guidance = data
+	}
+}
+
+// waitForCageOrTimeout polls cage state every 5s and returns as soon as the
+// cage reaches a terminal state. Falls through after timeout if the cage is
+// still running. Replaces the old fixed Sleep so a crashed cage surfaces
+// immediately instead of wasting the full 10-minute window.
+func waitForCageOrTimeout(ctx workflow.Context, cageID string, timeout time.Duration) {
+	const pollInterval = 5 * time.Second
+	for elapsed := time.Duration(0); elapsed < timeout; elapsed += pollInterval {
+		if err := workflow.Sleep(ctx, pollInterval); err != nil {
+			return
+		}
+		var state string
+		actCtx := withActivityTimeout(ctx, 5*time.Second)
+		if err := workflow.ExecuteActivity(actCtx, "GetCageState", cageID).Get(ctx, &state); err != nil {
+			continue
+		}
+		if state == "completed" || state == "failed" {
+			return
+		}
 	}
 }
 

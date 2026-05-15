@@ -119,6 +119,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("CountFindings", a.CountFindings)
 	pin("EnrichFinding", a.EnrichFinding)
 	pin("StoreValidationProof", a.StoreValidationProof)
+	pin("GetCageState", a.GetCageState)
 }
 
 // EmitProofGapIntervention creates a pending proof_gap intervention for a
@@ -147,6 +148,14 @@ func (a *ActivityImpl) EmitProofGapIntervention(ctx context.Context, assessmentI
 		"candidates", len(findingIDs),
 		"intervention_id", req.ID)
 	return req.ID, nil
+}
+
+func (a *ActivityImpl) GetCageState(ctx context.Context, cageID string) (string, error) {
+	info, err := a.cages.GetCage(ctx, cageID)
+	if err != nil {
+		return "", fmt.Errorf("getting cage %s state: %w", cageID, err)
+	}
+	return info.State.String(), nil
 }
 
 func (a *ActivityImpl) CreateDiscoveryCage(ctx context.Context, assessmentID string, config cage.Config) (string, error) {
