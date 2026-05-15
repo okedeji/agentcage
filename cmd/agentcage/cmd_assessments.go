@@ -18,6 +18,10 @@ func cmdAssessments(args []string) {
 		cmdAssessmentsCancel(args[1:])
 		return
 	}
+	if len(args) > 0 && args[0] == "finish" {
+		cmdAssessmentsFinish(args[1:])
+		return
+	}
 
 	fs := flag.NewFlagSet("assessments", flag.ExitOnError)
 	fs.Usage = printAssessmentsUsage
@@ -61,7 +65,7 @@ func cmdAssessments(args []string) {
 			os.Exit(1)
 		}
 		if *follow {
-			printCatchUpSummary(ctx, client, conn, *id)
+			printCatchUpSummary(ctx, client, *id)
 			followAssessment(ctx, conn, *id, *format)
 		} else {
 			showAssessment(ctx, conn, *id)
@@ -185,7 +189,7 @@ func showAssessment(ctx context.Context, conn *grpc.ClientConn, id string) {
 	}
 }
 
-func printCatchUpSummary(ctx context.Context, client pb.AssessmentServiceClient, conn *grpc.ClientConn, id string) {
+func printCatchUpSummary(ctx context.Context, client pb.AssessmentServiceClient, id string) {
 	resp, err := client.GetAssessment(ctx, &pb.GetAssessmentRequest{AssessmentId: id})
 	if err != nil {
 		return
@@ -354,12 +358,50 @@ func cmdAssessmentsCancel(args []string) {
 	}
 }
 
+func cmdAssessmentsFinish(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: agentcage assessments finish <id>")
+		os.Exit(1)
+	}
+	assessmentID := args[0]
+
+	cfg := config.Defaults()
+	if resolved := config.Resolve(""); resolved != "" {
+		if override, err := config.Load(resolved); err == nil {
+			cfg = config.Merge(cfg, override)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, err := dialOrchestrator(ctx, cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := pb.NewAssessmentServiceClient(conn)
+	if _, err := client.FinishAssessment(ctx, &pb.FinishAssessmentRequest{AssessmentId: assessmentID}); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Assessment %s finishing — stopping exploitation, proceeding to validation and report.\n", assessmentID)
+}
+
 func printAssessmentsUsage() {
 	fmt.Fprintf(os.Stderr, `usage: agentcage assessments [flags]
        agentcage assessments cancel <id>
        agentcage assessments cancel --all
+       agentcage assessments finish <id>
 
-List assessments, show details, or cancel running assessments.
+List, inspect, cancel, or finish assessments.
+
+Commands:
+  cancel <id>     Kill the assessment immediately (no report generated)
+  cancel --all    Kill all running assessments
+  finish <id>     Stop testing, validate findings, generate report
 
 Examples:
   agentcage assessments
@@ -367,7 +409,7 @@ Examples:
   agentcage assessments --id <assessment-id>
   agentcage assessments --id <assessment-id> --follow
   agentcage assessments cancel <assessment-id>
-  agentcage assessments cancel --all
+  agentcage assessments finish <assessment-id>
 
 Flags:
   --id          assessment ID to show details for

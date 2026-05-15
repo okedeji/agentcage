@@ -128,6 +128,11 @@ func (s *Service) CancelAssessment(ctx context.Context, assessmentID string) err
 	return s.UpdateStatus(ctx, assessmentID, StatusFailed)
 }
 
+func (s *Service) FinishAssessment(ctx context.Context, assessmentID string) error {
+	workflowID := "assessment-" + assessmentID
+	return s.temporal.SignalWorkflow(ctx, workflowID, "", SignalFinish, true)
+}
+
 func isWorkflowGone(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "not found") ||

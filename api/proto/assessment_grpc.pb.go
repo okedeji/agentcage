@@ -23,6 +23,7 @@ const (
 	AssessmentService_GetAssessment_FullMethodName    = "/agentcage.assessment.v1.AssessmentService/GetAssessment"
 	AssessmentService_ListAssessments_FullMethodName  = "/agentcage.assessment.v1.AssessmentService/ListAssessments"
 	AssessmentService_CancelAssessment_FullMethodName = "/agentcage.assessment.v1.AssessmentService/CancelAssessment"
+	AssessmentService_FinishAssessment_FullMethodName = "/agentcage.assessment.v1.AssessmentService/FinishAssessment"
 	AssessmentService_GetReport_FullMethodName        = "/agentcage.assessment.v1.AssessmentService/GetReport"
 )
 
@@ -34,6 +35,7 @@ type AssessmentServiceClient interface {
 	GetAssessment(ctx context.Context, in *GetAssessmentRequest, opts ...grpc.CallOption) (*GetAssessmentResponse, error)
 	ListAssessments(ctx context.Context, in *ListAssessmentsRequest, opts ...grpc.CallOption) (*ListAssessmentsResponse, error)
 	CancelAssessment(ctx context.Context, in *CancelAssessmentRequest, opts ...grpc.CallOption) (*CancelAssessmentResponse, error)
+	FinishAssessment(ctx context.Context, in *FinishAssessmentRequest, opts ...grpc.CallOption) (*FinishAssessmentResponse, error)
 	GetReport(ctx context.Context, in *GetReportRequest, opts ...grpc.CallOption) (*GetReportResponse, error)
 }
 
@@ -85,6 +87,16 @@ func (c *assessmentServiceClient) CancelAssessment(ctx context.Context, in *Canc
 	return out, nil
 }
 
+func (c *assessmentServiceClient) FinishAssessment(ctx context.Context, in *FinishAssessmentRequest, opts ...grpc.CallOption) (*FinishAssessmentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FinishAssessmentResponse)
+	err := c.cc.Invoke(ctx, AssessmentService_FinishAssessment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *assessmentServiceClient) GetReport(ctx context.Context, in *GetReportRequest, opts ...grpc.CallOption) (*GetReportResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetReportResponse)
@@ -103,6 +115,7 @@ type AssessmentServiceServer interface {
 	GetAssessment(context.Context, *GetAssessmentRequest) (*GetAssessmentResponse, error)
 	ListAssessments(context.Context, *ListAssessmentsRequest) (*ListAssessmentsResponse, error)
 	CancelAssessment(context.Context, *CancelAssessmentRequest) (*CancelAssessmentResponse, error)
+	FinishAssessment(context.Context, *FinishAssessmentRequest) (*FinishAssessmentResponse, error)
 	GetReport(context.Context, *GetReportRequest) (*GetReportResponse, error)
 	mustEmbedUnimplementedAssessmentServiceServer()
 }
@@ -125,6 +138,9 @@ func (UnimplementedAssessmentServiceServer) ListAssessments(context.Context, *Li
 }
 func (UnimplementedAssessmentServiceServer) CancelAssessment(context.Context, *CancelAssessmentRequest) (*CancelAssessmentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelAssessment not implemented")
+}
+func (UnimplementedAssessmentServiceServer) FinishAssessment(context.Context, *FinishAssessmentRequest) (*FinishAssessmentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FinishAssessment not implemented")
 }
 func (UnimplementedAssessmentServiceServer) GetReport(context.Context, *GetReportRequest) (*GetReportResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetReport not implemented")
@@ -222,6 +238,24 @@ func _AssessmentService_CancelAssessment_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AssessmentService_FinishAssessment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FinishAssessmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AssessmentServiceServer).FinishAssessment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AssessmentService_FinishAssessment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AssessmentServiceServer).FinishAssessment(ctx, req.(*FinishAssessmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AssessmentService_GetReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetReportRequest)
 	if err := dec(in); err != nil {
@@ -262,6 +296,10 @@ var AssessmentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CancelAssessment",
 			Handler:    _AssessmentService_CancelAssessment_Handler,
+		},
+		{
+			MethodName: "FinishAssessment",
+			Handler:    _AssessmentService_FinishAssessment_Handler,
 		},
 		{
 			MethodName: "GetReport",
