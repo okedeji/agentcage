@@ -192,12 +192,14 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		}()
 	}
 
-	llmClient, tokenMeter, llmAPIKey, err := buildLLMClient(ctx, cfg, secretReader, alertDispatcher, log)
+	configServer := config.NewServer(cfg)
+
+	llmClient, tokenMeter, llmAPIKey, err := buildLLMClient(ctx, cfg, configServer, secretReader, alertDispatcher, log)
 	if err != nil {
 		return err
 	}
 
-	cageSvc := cage.NewService(temporalClient, cageValidator, db, cfg.LLM.Endpoint, llmAPIKey, natsURL, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
+	cageSvc := cage.NewService(temporalClient, cageValidator, db, func() string { return configServer.GetConfig(ctx).LLM.Endpoint }, llmAPIKey, natsURL, cfg.InterventionHoldControlAddr(), cage.TimeoutsFromConfig(cfg.Timeouts), cfg.InterventionTimeout())
 	fleetSvc := fleet.NewService(fleetSetup.pool, fleetSetup.demand, fleetSetup.provisioner, log.WithValues("component", "fleet"))
 	var fleetSignaler assessment.FleetSignaler
 	if fleetSetup.autoscaler != nil {
@@ -277,8 +279,6 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		LogDir:            cageLogDir,
 		Log:               log,
 	})
-
-	configServer := config.NewServer(cfg)
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
 		Cages:         cageSvc,

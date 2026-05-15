@@ -33,8 +33,12 @@ type AlertNotifier interface {
 	Notify(ctx context.Context, source, category, description, cageID, assessmentID string, priority int, details map[string]any)
 }
 
+// EndpointFunc returns the current LLM endpoint. Called on every
+// request so config set llm.endpoint takes effect immediately.
+type EndpointFunc func() string
+
 type Client struct {
-	endpoint   string
+	endpointFn EndpointFunc
 	apiKey     string
 	httpClient *http.Client
 	meter      *TokenMeter
@@ -47,7 +51,7 @@ type Client struct {
 	authAlertSent bool
 }
 
-func NewClient(endpoint, apiKey string, timeout time.Duration, meter *TokenMeter, budget *BudgetEnforcer, alerter AlertNotifier) *Client {
+func NewClient(endpointFn EndpointFunc, apiKey string, timeout time.Duration, meter *TokenMeter, budget *BudgetEnforcer, alerter AlertNotifier) *Client {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
@@ -60,7 +64,7 @@ func NewClient(endpoint, apiKey string, timeout time.Duration, meter *TokenMeter
 		IdleConnTimeout:     90 * time.Second,
 	})
 	return &Client{
-		endpoint: endpoint,
+		endpointFn: endpointFn,
 		apiKey:   apiKey,
 		httpClient: &http.Client{
 			Transport: transport,
@@ -124,7 +128,7 @@ func (c *Client) doWithRetry(ctx context.Context, body []byte) ([]byte, error) {
 		}
 
 		reqCtx, cancel := context.WithTimeout(ctx, c.timeout)
-		httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.endpoint, bytes.NewReader(body))
+		httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.endpointFn(), bytes.NewReader(body))
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("creating HTTP request: %w", err)

@@ -25,7 +25,7 @@ type Service struct {
 	temporal             client.Client
 	validate             ConfigValidator
 	db                   *sql.DB
-	llmEndpoint          string
+	llmEndpointFn        func() string
 	llmAPIKey            string
 	natsAddr             string
 	hostControlAddr      string
@@ -35,12 +35,12 @@ type Service struct {
 	cages                map[string]*Info
 }
 
-func NewService(temporal client.Client, validate ConfigValidator, db *sql.DB, llmEndpoint, llmAPIKey, natsAddr, hostControlAddr string, timeouts Timeouts, interventionTimeout time.Duration) *Service {
+func NewService(temporal client.Client, validate ConfigValidator, db *sql.DB, llmEndpointFn func() string, llmAPIKey, natsAddr, hostControlAddr string, timeouts Timeouts, interventionTimeout time.Duration) *Service {
 	return &Service{
 		temporal:            temporal,
 		validate:            validate,
 		db:                  db,
-		llmEndpoint:         llmEndpoint,
+		llmEndpointFn:       llmEndpointFn,
 		llmAPIKey:           llmAPIKey,
 		natsAddr:            natsAddr,
 		hostControlAddr:     hostControlAddr,
@@ -82,7 +82,7 @@ func (s *Service) CreateCage(ctx context.Context, config Config) (*Info, error) 
 	input := CageWorkflowInput{
 		CageID:              cageID,
 		Config:              config,
-		LLMEndpoint:         s.llmEndpoint,
+		LLMEndpoint:         s.llmEndpointFn(),
 		LLMAPIKey:           s.llmAPIKey,
 		NATSAddr:            s.natsAddr,
 		HostControlAddr:     s.hostControlAddr,

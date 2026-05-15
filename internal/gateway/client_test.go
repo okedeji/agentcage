@@ -31,7 +31,7 @@ func validLLMResponse() LLMResponse {
 func newTestClient(serverURL string) (*Client, *TokenMeter) {
 	meter := NewTokenMeter()
 	budget := NewBudgetEnforcer(meter)
-	client := NewClient(serverURL, "", 5*time.Second, meter, budget, nil)
+	client := NewClient(func() string { return serverURL }, "", 5*time.Second, meter, budget, nil)
 	return client, meter
 }
 
@@ -111,7 +111,7 @@ func TestChatCompletion_Timeout(t *testing.T) {
 
 	meter := NewTokenMeter()
 	budget := NewBudgetEnforcer(meter)
-	client := NewClient(srv.URL, "", 50*time.Millisecond, meter, budget, nil)
+	client := NewClient(func() string { return srv.URL }, "", 50*time.Millisecond, meter, budget, nil)
 
 	req := LLMRequest{
 		Messages: []LLMMessage{{Role: "user", Content: "hi"}},
