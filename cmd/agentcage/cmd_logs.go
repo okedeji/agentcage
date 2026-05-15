@@ -171,6 +171,7 @@ func cmdLogsCage(args []string) {
 	follow := fs.Bool("follow", false, "stream live")
 	followShort := fs.Bool("f", false, "stream live (short)")
 	lines := fs.Int("lines", 0, "show last N lines")
+	format := fs.String("format", "text", "output format: text or json")
 	_ = fs.Parse(reorderArgs(args))
 
 	if *followShort {
@@ -211,10 +212,14 @@ func cmdLogsCage(args []string) {
 	}
 
 	for _, line := range resp.GetLines() {
-		if *source != "" && !strings.Contains(line, "["+*source+"]") {
+		if *source != "" && !strings.Contains(line, `"source":"`+*source+`"`) {
 			continue
 		}
-		fmt.Println(line)
+		if *format == "json" {
+			fmt.Println(line)
+		} else {
+			fmt.Println(formatCageLogLine(line))
+		}
 	}
 
 	if !*follow {
@@ -263,7 +268,11 @@ func cmdLogsCage(args []string) {
 			fmt.Fprintf(os.Stderr, "\nCage %s.\n", msg.GetCageState())
 			return
 		}
-		fmt.Println(msg.GetLine())
+		if *format == "json" {
+			fmt.Println(msg.GetLine())
+		} else {
+			fmt.Println(formatCageLogLine(msg.GetLine()))
+		}
 	}
 }
 
@@ -456,6 +465,32 @@ func formatLogLines(r io.Reader) {
 		}
 		fmt.Println(out)
 	}
+}
+
+// formatCageLogLine parses a cage JSON log line into human-readable
+// text. Handles both raw JSON from CollectCageLogs and the
+// "[source] {json}" format from the FileSink/NATS stream.
+func formatCageLogLine(line string) string {
+	// Strip FileSink "[source] " prefix if present.
+	if idx := strings.Index(line, "] {"); idx > 0 && line[0] == '[' {
+		line = line[idx+2:]
+	}
+
+	var entry struct {
+		Source string  `json:"source"`
+		Msg    string  `json:"msg"`
+		Ts     float64 `json:"ts"`
+	}
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		return line
+	}
+
+	ts := time.Unix(int64(entry.Ts), 0).Local().Format("15:04:05")
+	source := entry.Source
+	if source == "" {
+		source = "system"
+	}
+	return fmt.Sprintf("%s [%s] %s", ts, source, entry.Msg)
 }
 
 func extractString(m map[string]any, keys ...string) string {
