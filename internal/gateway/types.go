@@ -21,7 +21,6 @@ var (
 )
 
 type LLMRequest struct {
-	Model    string       `json:"model"`
 	Messages []LLMMessage `json:"messages"`
 }
 

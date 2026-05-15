@@ -64,7 +64,6 @@ func (p *Planner) PlanNextActions(ctx context.Context, state CoordinatorState) (
 	}
 
 	resp, err := p.client.ChatCompletion(ctx, "coordinator-"+state.AssessmentID, state.AssessmentID, state.TokenBudget, gateway.LLMRequest{
-		Model: "",
 		Messages: []gateway.LLMMessage{
 			{Role: "system", Content: coordinatorSystemPrompt},
 			{Role: "user", Content: string(stateJSON)},
