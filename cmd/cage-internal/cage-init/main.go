@@ -107,7 +107,7 @@ func main() {
 	if len(env.ScopeHosts) > 0 {
 		proxyArgs := []string{
 			"-listen", ":8080",
-			"-target", fmt.Sprintf("http://%s", env.ScopeHosts[0]),
+			"-target", fmt.Sprintf("https://%s", env.ScopeHosts[0]),
 			"-cage-id", env.CageID,
 			"-cage-type", env.CageType,
 			"-assessment-id", env.AssessmentID,
