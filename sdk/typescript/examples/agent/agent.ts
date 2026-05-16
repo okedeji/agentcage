@@ -69,6 +69,20 @@ async function askLLM(messages: LLMMessage[]): Promise<string> {
   return data.choices?.[0]?.message?.content ?? '';
 }
 
+// Strip markdown code fences that LLMs commonly wrap JSON in.
+function extractJSON(raw: string): any {
+  let text = raw.trim();
+  const fenceStart = text.indexOf('```');
+  if (fenceStart >= 0) {
+    const afterFence = text.indexOf('\n', fenceStart);
+    const fenceEnd = text.lastIndexOf('```');
+    if (afterFence >= 0 && fenceEnd > afterFence) {
+      text = text.slice(afterFence + 1, fenceEnd).trim();
+    }
+  }
+  return JSON.parse(text);
+}
+
 // ── HTTP ────────────────────────────────────────────────────
 
 interface HttpResponse {
@@ -151,14 +165,23 @@ Only include paths likely to exist on THIS target based on what you see. Do not 
   ]);
 
   try {
-    const paths = JSON.parse(response);
+    const paths = extractJSON(response);
     if (Array.isArray(paths)) {
-      return paths.filter((p: any) => typeof p === 'string' && p.startsWith('/')).slice(0, 50);
+      const filtered = paths.filter((p: any) => typeof p === 'string' && p.startsWith('/')).slice(0, 50);
+      if (filtered.length > 0) return filtered;
     }
-  } catch { /* fall through */ }
+  } catch {
+    console.log('LLM response was not valid JSON, raw:', response.slice(0, 200));
+  }
 
-  console.log('LLM did not return valid paths, extracting links from HTML');
-  return extractLinks(seed.homepage?.body ?? '');
+  const links = extractLinks(seed.homepage?.body ?? '');
+  if (links.length > 0) {
+    console.log(`Extracted ${links.length} links from homepage HTML`);
+    return links;
+  }
+
+  console.log('No paths from LLM or HTML, using minimal seed list');
+  return ['/api', '/login', '/admin', '/docs', '/graphql', '/health', '/search', '/sitemap.xml'];
 }
 
 function extractLinks(html: string): string[] {
@@ -256,11 +279,13 @@ Respond with ONLY a JSON array:
   ]);
 
   try {
-    const parsed = JSON.parse(response);
-    if (Array.isArray(parsed)) return parsed;
-  } catch { /* fall through */ }
+    const parsed = extractJSON(response);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  } catch {
+    console.log('LLM analysis was not valid JSON, raw:', response.slice(0, 200));
+  }
 
-  console.log('LLM response was not valid JSON, submitting raw endpoints');
+  console.log('Falling back to raw endpoints as surface map');
   return endpoints
     .filter(e => e.status === 200)
     .map(e => ({
