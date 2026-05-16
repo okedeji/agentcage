@@ -4,3 +4,5 @@ posture: dev
 #   agentcage config set llm.endpoint $(terraform output -raw webhook_endpoint)
 llm:
   endpoint: ""
+assessment:
+  max_concurrent: 2

@@ -28,7 +28,7 @@ const (
 	TimeoutPlanNextActions = 60 * time.Second
 	TimeoutReviewDeadline  = 24 * time.Hour
 	TimeoutWaitForCage     = 10 * time.Minute
-	DefaultMaxConcurrent   = int32(10)
+	DefaultMaxConcurrent   = int32(3)
 	DefaultMaxChainDepth   = int32(3)
 	DefaultMaxIterations   = int32(20)
 
