@@ -108,6 +108,7 @@ type Config struct {
 	InputContext     []byte
 	Credentials      string
 	ProofThreshold   float64
+	Environment      map[string]string
 }
 
 type Scope struct {

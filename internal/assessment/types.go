@@ -87,6 +87,7 @@ type Config struct {
 	ExtraBlock       []cage.ProxyPatternEntry
 	ExtraFlag        []cage.ProxyPatternEntry
 	Credentials      string
+	Environment      map[string]string
 }
 
 

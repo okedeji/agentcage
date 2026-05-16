@@ -25,14 +25,15 @@ var SupportedTools = func() map[string]bool {
 }()
 
 type Manifest struct {
-	Runtime    string   `json:"runtime"`
-	Entrypoint string   `json:"entrypoint"`
-	Build      string   `json:"build,omitempty"`
-	SystemDeps []string `json:"system_deps,omitempty"`
-	Packages   []string `json:"packages,omitempty"`
-	PipDeps    []string `json:"pip_deps,omitempty"`
-	NpmDeps    []string `json:"npm_deps,omitempty"`
-	GoDeps     []string `json:"go_deps,omitempty"`
+	Runtime    string            `json:"runtime"`
+	Entrypoint string            `json:"entrypoint"`
+	Build      string            `json:"build,omitempty"`
+	SystemDeps []string          `json:"system_deps,omitempty"`
+	Packages   []string          `json:"packages,omitempty"`
+	PipDeps    []string          `json:"pip_deps,omitempty"`
+	NpmDeps    []string          `json:"npm_deps,omitempty"`
+	GoDeps     []string          `json:"go_deps,omitempty"`
+	EnvVars    map[string]string `json:"env,omitempty"`
 }
 
 func Parse(r io.Reader) (*Manifest, error) {
@@ -103,6 +104,21 @@ func Parse(r io.Reader) (*Manifest, error) {
 
 		case "go-deps":
 			m.GoDeps = append(m.GoDeps, strings.Fields(value)...)
+
+		case "env":
+			eqIdx := strings.IndexByte(value, '=')
+			if eqIdx <= 0 {
+				return nil, fmt.Errorf("line %d: env directive requires KEY=VALUE format", lineNum)
+			}
+			key := value[:eqIdx]
+			val := value[eqIdx+1:]
+			if strings.HasPrefix(strings.ToUpper(key), "AGENTCAGE_") {
+				return nil, fmt.Errorf("line %d: env key %q uses reserved AGENTCAGE_ prefix", lineNum, key)
+			}
+			if m.EnvVars == nil {
+				m.EnvVars = make(map[string]string)
+			}
+			m.EnvVars[key] = val
 
 		default:
 			return nil, fmt.Errorf("line %d: unknown directive %q", lineNum, directive)

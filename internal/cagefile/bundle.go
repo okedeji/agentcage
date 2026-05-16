@@ -18,17 +18,18 @@ import (
 )
 
 type BundleManifest struct {
-	Name       string   `json:"name"`
-	Tag        string   `json:"tag"`
-	PackedWith string   `json:"packed_with"`
-	Runtime    string   `json:"runtime"`
-	Entrypoint string   `json:"entrypoint"`
-	SystemDeps []string `json:"system_deps,omitempty"`
-	Packages   []string `json:"packages,omitempty"`
-	PipDeps    []string `json:"pip_deps,omitempty"`
-	NpmDeps    []string `json:"npm_deps,omitempty"`
-	GoDeps     []string `json:"go_deps,omitempty"`
-	FilesHash  string   `json:"files_hash"`
+	Name       string            `json:"name"`
+	Tag        string            `json:"tag"`
+	PackedWith string            `json:"packed_with"`
+	Runtime    string            `json:"runtime"`
+	Entrypoint string            `json:"entrypoint"`
+	SystemDeps []string          `json:"system_deps,omitempty"`
+	Packages   []string          `json:"packages,omitempty"`
+	PipDeps    []string          `json:"pip_deps,omitempty"`
+	NpmDeps    []string          `json:"npm_deps,omitempty"`
+	GoDeps     []string          `json:"go_deps,omitempty"`
+	EnvVars    map[string]string `json:"env,omitempty"`
+	FilesHash  string            `json:"files_hash"`
 }
 
 // SHA256 of the raw manifest.json bytes so a tampered manifest
@@ -82,6 +83,7 @@ func Pack(dir string, version string, agentcageVersion string, w io.Writer, opts
 		PipDeps:    manifest.PipDeps,
 		NpmDeps:    manifest.NpmDeps,
 		GoDeps:     manifest.GoDeps,
+		EnvVars:    manifest.EnvVars,
 		FilesHash:  "sha256:" + hash,
 	}
 

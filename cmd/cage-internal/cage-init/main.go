@@ -33,7 +33,8 @@ type CageEnv struct {
 	JudgeEndpoint     string          `json:"judge_endpoint,omitempty"`
 	JudgeConfidence   float64         `json:"judge_confidence,omitempty"`
 	JudgeTimeoutSec   int             `json:"judge_timeout_sec,omitempty"`
-	ProofThreshold    float64         `json:"proof_threshold,omitempty"`
+	ProofThreshold    float64           `json:"proof_threshold,omitempty"`
+	CustomEnv         map[string]string `json:"custom_env,omitempty"`
 }
 
 // Paths configurable via environment for unisolated mode where
@@ -180,6 +181,9 @@ func main() {
 	setEnv("AGENTCAGE_DIRECTIVES_FILE", socketDir+"/directives.json")
 	setEnv("AGENTCAGE_HOLD_SOCKET", socketDir+"/hold.sock")
 	setEnv("AGENTCAGE_LOG_SOCKET", socketDir+"/logs.sock")
+	for k, v := range env.CustomEnv {
+		setEnv(k, v)
+	}
 
 	writeBootLog("env exported, connecting log socket")
 

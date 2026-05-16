@@ -142,6 +142,7 @@ type Plan struct {
 	Notifications Notifications       `yaml:"notifications"`
 	Output        Output              `yaml:"output"`
 	Tags          map[string]string   `yaml:"tags"`
+	Environment   map[string]string   `yaml:"environment,omitempty"`
 	CustomerID    string              `yaml:"customer_id"`
 }
 
@@ -581,6 +582,13 @@ func Validate(p *Plan) error {
 	default:
 		return fmt.Errorf("unknown output.format %q (supported: text, json)", p.Output.Format)
 	}
+
+	for k := range p.Environment {
+		if strings.HasPrefix(strings.ToUpper(k), "AGENTCAGE_") {
+			return fmt.Errorf("environment key %q uses reserved AGENTCAGE_ prefix", k)
+		}
+	}
+
 	return nil
 }
 

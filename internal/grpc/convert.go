@@ -144,6 +144,7 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 		cfg.MaxDuration = p.GetMaxDuration().AsDuration()
 	}
 	cfg.SkipPaths = p.GetSkipPaths()
+	cfg.Environment = p.GetEnvironment()
 	cfg.ExtraBlock = patternEntriesFromProto(p.GetExtraBlock())
 	cfg.ExtraFlag = patternEntriesFromProto(p.GetExtraFlag())
 	if n := p.GetNotifications(); n != nil {
@@ -277,6 +278,7 @@ func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
 		MaxIterations:      cfg.MaxIterations,
 		SkipPaths:          cfg.SkipPaths,
 		Tags:               cfg.Tags,
+		Environment:         cfg.Environment,
 		Scope: &pb.TargetScope{
 			Hosts: cfg.Target.Hosts,
 			Ports: cfg.Target.Ports,

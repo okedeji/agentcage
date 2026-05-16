@@ -455,6 +455,7 @@ func applyCageDefaults(cageCfg *cage.Config, cfg Config) {
 	cageCfg.ProxyConfig.ExtraFlag = cfg.ExtraFlag
 	cageCfg.Credentials = cfg.Credentials
 	cageCfg.ProofThreshold = cfg.ProofThreshold
+	cageCfg.Environment = cfg.Environment
 	applyGuidance(cageCfg, cfg.Guidance)
 }
 
