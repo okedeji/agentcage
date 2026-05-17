@@ -419,6 +419,9 @@ func Validate(p *Plan) error {
 	if p.Target.Host == "" {
 		return fmt.Errorf("target host is required (--target or target.host: in plan file)")
 	}
+	// Normalize: strip URL scheme and path so agents receive a bare host.
+	// Pentesters commonly paste full URLs ("https://example.com/path").
+	p.Target.Host = normalizeTargetHost(p.Target.Host)
 	if err := validateTargetHost(p.Target.Host); err != nil {
 		return fmt.Errorf("target host %q: %w", p.Target.Host, err)
 	}
@@ -568,6 +571,23 @@ func Validate(p *Plan) error {
 	}
 
 	return nil
+}
+
+// normalizeTargetHost strips URL scheme, path, and any user info so the
+// agent receives a bare host. Accepts inputs like "https://example.com/path"
+// and "example.com:443" alike.
+func normalizeTargetHost(h string) string {
+	h = strings.TrimSpace(h)
+	if strings.Contains(h, "://") {
+		if u, err := url.Parse(h); err == nil && u.Host != "" {
+			return u.Host
+		}
+	}
+	// Strip trailing path on inputs without a scheme ("example.com/foo").
+	if i := strings.Index(h, "/"); i > 0 {
+		h = h[:i]
+	}
+	return h
 }
 
 func validateTargetHost(h string) error {
