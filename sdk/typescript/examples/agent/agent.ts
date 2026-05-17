@@ -14,13 +14,13 @@ import * as crypto from 'crypto';
 
 // ── Environment ─────────────────────────────────────────────
 
-const targets = (process.env.AGENTCAGE_SCOPE ?? '').split(',').filter(Boolean);
+const target = (process.env.AGENTCAGE_SCOPE ?? '').trim();
 const llmEndpoint = process.env.AGENTCAGE_LLM_ENDPOINT ?? '';
 const llmAPIKey = process.env.AGENTCAGE_LLM_API_KEY ?? '';
 const objective = process.env.AGENTCAGE_OBJECTIVE ?? '';
 
-if (targets.length === 0) {
-  console.error('No targets in AGENTCAGE_SCOPE');
+if (!target) {
+  console.error('AGENTCAGE_SCOPE not set');
   process.exit(1);
 }
 if (!llmEndpoint) {
@@ -28,7 +28,7 @@ if (!llmEndpoint) {
   process.exit(1);
 }
 
-console.log(`Agent starting. Targets: ${targets.join(', ')}`);
+console.log(`Agent starting. Target: ${target}`);
 console.log(`LLM endpoint: ${llmEndpoint}`);
 
 // ── SDK ─────────────────────────────────────────────────────
@@ -326,28 +326,25 @@ async function submitSurface(target: string, surface: SurfaceEntry[]): Promise<v
 // ── Main ────────────────────────────────────────────────────
 
 async function main() {
-  for (const target of targets) {
-    if (terminated) break;
+  console.log(`\n── Discovering ${target} ──`);
 
-    console.log(`\n── Discovering ${target} ──`);
+  const seed = await seedCrawl(target);
+  const paths = await planCrawl(target, seed);
+  console.log(`LLM planned ${paths.length} paths to crawl`);
 
-    const seed = await seedCrawl(target);
-    const paths = await planCrawl(target, seed);
-    console.log(`LLM planned ${paths.length} paths to crawl`);
+  const endpoints = await crawlPaths(target, paths);
+  console.log(`${endpoints.length} live endpoints found`);
 
-    const endpoints = await crawlPaths(target, paths);
-    console.log(`${endpoints.length} live endpoints found`);
-
-    if (endpoints.length === 0) {
-      console.log('No live endpoints, target may be unreachable');
-      continue;
-    }
-
-    const surface = await analyzeSurface(target, seed, endpoints);
-    console.log(`${surface.length} interesting endpoints identified`);
-
-    await submitSurface(target, surface);
+  if (endpoints.length === 0) {
+    console.log('No live endpoints, target may be unreachable');
+    agent.close();
+    return;
   }
+
+  const surface = await analyzeSurface(target, seed, endpoints);
+  console.log(`${surface.length} interesting endpoints identified`);
+
+  await submitSurface(target, surface);
 
   console.log('\nDiscovery complete.');
   agent.close();
