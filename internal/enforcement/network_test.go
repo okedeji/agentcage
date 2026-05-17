@@ -9,40 +9,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildEgressRules_DomainHosts(t *testing.T) {
-	scope := cage.Scope{Hosts: []string{"example.com", "api.target.io"}}
+func TestBuildEgressRules_DomainHost(t *testing.T) {
+	scope := cage.Scope{Host: "example.com"}
 	rules := BuildEgressRules("abc-123", scope, nil, "tap-deadbeef")
 
 	assert.Equal(t, "abc-123", rules.CageID)
 	assert.Equal(t, "tap-deadbeef", rules.TAPDevice)
-	require.Len(t, rules.AllowFQDNs, 2)
+	require.Len(t, rules.AllowFQDNs, 1)
 	assert.Equal(t, "example.com", rules.AllowFQDNs[0])
-	assert.Equal(t, "api.target.io", rules.AllowFQDNs[1])
-	// FQDNs also resolve to IPs for nftables enforcement.
 	assert.NotEmpty(t, rules.AllowIPs)
 }
 
-func TestBuildEgressRules_IPHosts(t *testing.T) {
-	scope := cage.Scope{Hosts: []string{"93.184.216.34", "2001:db8::1"}}
+func TestBuildEgressRules_IPHost(t *testing.T) {
+	scope := cage.Scope{Host: "93.184.216.34"}
 	rules := BuildEgressRules("ip-cage", scope, nil, "tap-00000001")
 
 	assert.Empty(t, rules.AllowFQDNs)
-	require.Len(t, rules.AllowIPs, 2)
+	require.Len(t, rules.AllowIPs, 1)
 	assert.Equal(t, "93.184.216.34/32", rules.AllowIPs[0])
-	assert.Equal(t, "2001:db8::1/128", rules.AllowIPs[1])
-}
-
-func TestBuildEgressRules_MixedHosts(t *testing.T) {
-	scope := cage.Scope{Hosts: []string{"example.com", "93.184.216.34"}}
-	rules := BuildEgressRules("mixed", scope, nil, "tap-00000002")
-
-	require.Len(t, rules.AllowFQDNs, 1)
-	assert.Equal(t, "example.com", rules.AllowFQDNs[0])
-	assert.Contains(t, rules.AllowIPs, "93.184.216.34/32")
 }
 
 func TestBuildEgressRules_WithExtras(t *testing.T) {
-	scope := cage.Scope{Hosts: []string{"target.com"}}
+	scope := cage.Scope{Host: "target.com"}
 	extras := []string{"gateway.internal.svc", "10.0.0.50"}
 	rules := BuildEgressRules("extras", scope, extras, "tap-00000003")
 
@@ -54,7 +42,7 @@ func TestBuildEgressRules_WithExtras(t *testing.T) {
 
 func TestBuildEgressRules_WithPorts(t *testing.T) {
 	scope := cage.Scope{
-		Hosts: []string{"example.com"},
+		Host:  "example.com",
 		Ports: []string{"80", "443"},
 	}
 	rules := BuildEgressRules("ports", scope, nil, "tap-00000004")

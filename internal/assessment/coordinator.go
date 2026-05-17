@@ -93,20 +93,19 @@ func UpdateCoverage(coverage map[string][]string, actions []CoordinatorAction) m
 		coverage = make(map[string][]string)
 	}
 	for _, a := range actions {
-		for _, host := range a.Scope.Hosts {
-			key := host
-			if a.VulnClass != "" {
-				found := false
-				for _, existing := range coverage[key] {
-					if existing == a.VulnClass {
-						found = true
-						break
-					}
-				}
-				if !found {
-					coverage[key] = append(coverage[key], a.VulnClass)
-				}
+		key := a.Scope.Host
+		if key == "" || a.VulnClass == "" {
+			continue
+		}
+		found := false
+		for _, existing := range coverage[key] {
+			if existing == a.VulnClass {
+				found = true
+				break
 			}
+		}
+		if !found {
+			coverage[key] = append(coverage[key], a.VulnClass)
 		}
 	}
 	return coverage

@@ -141,7 +141,7 @@ func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, erro
 	}
 
 	if s.fleet != nil {
-		s.fleet.OnNewAssessment(assessmentID, len(cfg.Target.Hosts))
+		s.fleet.OnNewAssessment(assessmentID, 1)
 	}
 
 	return info, nil

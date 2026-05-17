@@ -3,7 +3,6 @@ package assessment
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -291,7 +290,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		return failResult(result, "fetching enriched findings for report: %v", err), nil
 	}
 
-	if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, strings.Join(cfg.Target.Hosts, ", "), validated); err != nil {
+	if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, cfg.Target.Host, validated); err != nil {
 		return failResult(result, "generating draft report: %v", err), nil
 	}
 
@@ -330,7 +329,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 		result.Findings = int32(len(validated))
 
-		if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, strings.Join(cfg.Target.Hosts, ", "), validated); err != nil {
+		if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, cfg.Target.Host, validated); err != nil {
 			return failResult(result, "generating final report after retest: %v", err), nil
 		}
 		if err := updateStatus(ctx, input.AssessmentID, StatusApproved); err != nil {

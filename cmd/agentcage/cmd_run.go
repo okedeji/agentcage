@@ -162,7 +162,7 @@ func printAssessmentSummary(info *pb.AssessmentInfo, p *plan.Plan, bundleRef str
 		shortRef = shortRef[:12]
 	}
 	fmt.Printf("  Agent:      %s (sha256:%s)\n", p.Agent, shortRef)
-	fmt.Printf("  Target:     %s\n", strings.Join(p.Target.Hosts, ", "))
+	fmt.Printf("  Target:     %s\n", p.Target.Host)
 	if p.Budget.Tokens > 0 || p.Budget.MaxDuration != "" {
 		parts := []string{}
 		if p.Budget.Tokens > 0 {

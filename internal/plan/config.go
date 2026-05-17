@@ -123,12 +123,10 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 		}
 	}
 
-	// Check target hosts against operator's scope deny list. Entries
-	// can be hostnames (string match), bare IPs (string match), or
-	// CIDRs (contains check).
-	for _, h := range p.Target.Hosts {
-		host := h
-		if hp, _, err := net.SplitHostPort(h); err == nil {
+	// Check target host against operator's scope deny list.
+	{
+		host := p.Target.Host
+		if hp, _, err := net.SplitHostPort(host); err == nil {
 			host = hp
 		}
 		lower := strings.ToLower(host)
@@ -136,14 +134,14 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 		for _, denied := range cfg.Scope.Deny {
 			_, cidr, cidrErr := net.ParseCIDR(denied)
 			if cidrErr == nil && ip != nil && cidr.Contains(ip) {
-				return fmt.Errorf("target host %q falls within denied CIDR %s", h, denied)
+				return fmt.Errorf("target host %q falls within denied CIDR %s", p.Target.Host, denied)
 			}
 			if cidrErr != nil && strings.ToLower(denied) == lower {
-				return fmt.Errorf("target host %q is denied by operator scope.deny", h)
+				return fmt.Errorf("target host %q is denied by operator scope.deny", p.Target.Host)
 			}
 		}
 		if err := checkHostResolvesToPrivate(host); err != nil {
-			return fmt.Errorf("target host %q: %w", h, err)
+			return fmt.Errorf("target host %q: %w", p.Target.Host, err)
 		}
 	}
 

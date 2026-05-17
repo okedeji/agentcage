@@ -23,7 +23,7 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) (*pb.CreateAss
 	}
 
 	cfg.Scope = &pb.TargetScope{
-		Hosts: p.Target.Hosts,
+		Host:  p.Target.Host,
 		Ports: p.Target.Ports,
 		Paths: p.Target.Paths,
 	}

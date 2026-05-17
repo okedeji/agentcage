@@ -19,11 +19,8 @@ type DNSConfig struct {
 // out because DNS resolution only applies to domain names.
 func GenerateDNSConfig(scope cage.Scope, llmEndpoint, natsAddr string) DNSConfig {
 	var domains []string
-	for _, host := range scope.Hosts {
-		if net.ParseIP(host) != nil {
-			continue
-		}
-		domains = append(domains, host)
+	if scope.Host != "" && net.ParseIP(scope.Host) == nil {
+		domains = append(domains, scope.Host)
 	}
 
 	return DNSConfig{

@@ -38,7 +38,7 @@ message PatternEntry {
 }
 
 message TargetScope {
-  repeated string hosts = 1;
+  string host = 1;
   repeated string ports = 2;
   repeated string paths = 3;
   repeated string extras = 4;

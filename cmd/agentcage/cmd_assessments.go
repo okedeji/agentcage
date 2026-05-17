@@ -93,8 +93,8 @@ func showAssessment(ctx context.Context, conn *grpc.ClientConn, id string) {
 	// Header
 	fmt.Printf("Assessment %s\n", info.GetAssessmentId())
 	fmt.Printf("  Status:    %s\n", friendlyStatus(info.GetStatus().String()))
-	if scope := info.GetConfig().GetScope(); scope != nil && len(scope.GetHosts()) > 0 {
-		fmt.Printf("  Target:    %s\n", strings.Join(scope.GetHosts(), ", "))
+	if scope := info.GetConfig().GetScope(); scope != nil && scope.GetHost() != "" {
+		fmt.Printf("  Target:    %s\n", scope.GetHost())
 	}
 	fmt.Printf("  Customer:  %s\n", info.GetCustomerId())
 	if info.GetCreatedAt() != nil {
@@ -245,7 +245,7 @@ func listAssessments(ctx context.Context, client pb.AssessmentServiceClient, sta
 	for _, info := range items {
 		target := ""
 		if scope := info.GetConfig().GetScope(); scope != nil {
-			target = strings.Join(scope.GetHosts(), ", ")
+			target = scope.GetHost()
 		}
 		created := ""
 		if info.GetCreatedAt() != nil {

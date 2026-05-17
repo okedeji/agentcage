@@ -38,8 +38,10 @@ type EgressRule struct {
 func BuildEgressRules(cageID string, scope cage.Scope, extras []string, tapDevice string) EgressRule {
 	rule := EgressRule{CageID: cageID, TAPDevice: tapDevice}
 
-	allHosts := make([]string, 0, len(scope.Hosts)+len(extras))
-	allHosts = append(allHosts, scope.Hosts...)
+	allHosts := make([]string, 0, 1+len(extras))
+	if scope.Host != "" {
+		allHosts = append(allHosts, scope.Host)
+	}
 	allHosts = append(allHosts, extras...)
 
 	for _, host := range allHosts {

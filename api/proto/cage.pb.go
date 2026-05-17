@@ -245,7 +245,7 @@ func (x *PatternEntry) GetReason() string {
 
 type TargetScope struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hosts         []string               `protobuf:"bytes,1,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
 	Ports         []string               `protobuf:"bytes,2,rep,name=ports,proto3" json:"ports,omitempty"`
 	Paths         []string               `protobuf:"bytes,3,rep,name=paths,proto3" json:"paths,omitempty"`
 	Extras        []string               `protobuf:"bytes,4,rep,name=extras,proto3" json:"extras,omitempty"`
@@ -283,11 +283,11 @@ func (*TargetScope) Descriptor() ([]byte, []int) {
 	return file_api_proto_cage_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *TargetScope) GetHosts() []string {
+func (x *TargetScope) GetHost() string {
 	if x != nil {
-		return x.Hosts
+		return x.Host
 	}
-	return nil
+	return ""
 }
 
 func (x *TargetScope) GetPorts() []string {
@@ -1378,9 +1378,9 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\x14api/proto/cage.proto\x12\x11agentcage.cage.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"@\n" +
 	"\fPatternEntry\x12\x18\n" +
 	"\apattern\x18\x01 \x01(\tR\apattern\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"g\n" +
-	"\vTargetScope\x12\x14\n" +
-	"\x05hosts\x18\x01 \x03(\tR\x05hosts\x12\x14\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"e\n" +
+	"\vTargetScope\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12\x14\n" +
 	"\x05ports\x18\x02 \x03(\tR\x05ports\x12\x14\n" +
 	"\x05paths\x18\x03 \x03(\tR\x05paths\x12\x16\n" +
 	"\x06extras\x18\x04 \x03(\tR\x06extras\"C\n" +

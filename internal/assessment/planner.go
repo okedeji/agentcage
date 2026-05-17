@@ -20,7 +20,7 @@ func NewPlanner(client *gateway.Client) *Planner {
 const coordinatorSystemPrompt = `You coordinate an autonomous penetration test. Each iteration you receive a state snapshot and decide what to test next by spawning short-lived agents ("cages").
 
 STATE SCHEMA:
-- target: {hosts, ports, paths} the authorized scope
+- target: {host, ports, paths} the authorized scope (single host per assessment)
 - agent_capabilities.exploitation: ["sqli","xss",...] vuln classes the agent can test. You may ONLY request these.
 - findings[]: {id, title, severity, vuln_class, endpoint, status, chain_depth} discovered so far
 - coverage: {host: [vuln_classes_already_tested]} what has been tested. Do not re-test these combinations.
@@ -36,7 +36,7 @@ RESPONSE FORMAT (JSON only):
   "actions": [
     {
       "type": "exploitation",
-      "scope": {"hosts": ["target.example.com"], "ports": ["443"], "paths": ["/api"]},
+      "scope": {"host": "target.example.com", "ports": ["443"], "paths": ["/api"]},
       "vuln_class": "sqli",
       "objective": "test /api/users endpoint for SQL injection via the id parameter",
       "priority": 1
@@ -112,8 +112,8 @@ func validateDecision(d CoordinatorDecision) error {
 			return fmt.Errorf("action %d: invalid type %q", i, a.Type)
 		}
 
-		if len(a.Scope.Hosts) == 0 {
-			return fmt.Errorf("action %d: scope must have at least one host", i)
+		if a.Scope.Host == "" {
+			return fmt.Errorf("action %d: scope must have a host", i)
 		}
 
 		if a.Objective == "" {

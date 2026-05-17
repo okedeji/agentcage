@@ -112,7 +112,7 @@ type Config struct {
 }
 
 type Scope struct {
-	Hosts  []string
+	Host   string
 	Ports  []string
 	Paths  []string
 	Extras []string

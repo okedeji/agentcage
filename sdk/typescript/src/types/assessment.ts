@@ -1,7 +1,7 @@
 import { AssessmentStatus } from './enums';
 
 export interface TargetScope {
-  hosts: string[];
+  host: string;
   ports?: string[];
   paths?: string[];
   skipPaths?: string[];

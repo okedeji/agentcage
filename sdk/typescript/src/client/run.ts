@@ -66,7 +66,7 @@ function buildAssessmentConfig(rc: RunConfig): AssessmentConfig {
     name: rc.name,
     customerId: rc.customerId,
     scope: {
-      hosts: [rc.target],
+      host: rc.target,
       ports: rc.ports,
       paths: rc.paths,
       skipPaths: rc.skipPaths,

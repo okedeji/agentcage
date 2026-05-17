@@ -22,7 +22,7 @@ type CageEnv struct {
 	LLMEndpoint       string            `json:"llm_endpoint,omitempty"`
 	LLMAPIKey         string            `json:"llm_api_key,omitempty"`
 	NATSAddr          string            `json:"nats_addr,omitempty"`
-	ScopeHosts        []string          `json:"scope_hosts"`
+	ScopeHost         string            `json:"scope_host"`
 	ScopePorts        []string          `json:"scope_ports,omitempty"`
 	ScopePaths        []string          `json:"scope_paths,omitempty"`
 	TokenBudget       int64             `json:"token_budget,omitempty"`
@@ -104,10 +104,10 @@ func main() {
 
 	// 3. Start payload-proxy
 	var proxy *exec.Cmd
-	if len(env.ScopeHosts) > 0 {
+	if env.ScopeHost != "" {
 		proxyArgs := []string{
 			"-listen", ":8080",
-			"-target", fmt.Sprintf("https://%s", env.ScopeHosts[0]),
+			"-target", fmt.Sprintf("https://%s", env.ScopeHost),
 			"-cage-id", env.CageID,
 			"-cage-type", env.CageType,
 			"-assessment-id", env.AssessmentID,
@@ -158,7 +158,7 @@ func main() {
 	setEnv("AGENTCAGE_CAGE_ID", env.CageID)
 	setEnv("AGENTCAGE_ASSESSMENT_ID", env.AssessmentID)
 	setEnv("AGENTCAGE_CAGE_TYPE", env.CageType)
-	setEnv("AGENTCAGE_SCOPE", strings.Join(env.ScopeHosts, ","))
+	setEnv("AGENTCAGE_SCOPE", env.ScopeHost)
 	setEnv("AGENTCAGE_FINDINGS_SOCKET", socketDir+"/findings.sock")
 	if env.LLMEndpoint != "" {
 		setEnv("AGENTCAGE_LLM_ENDPOINT", env.LLMEndpoint)
@@ -197,7 +197,7 @@ func main() {
 	waitForLogReady(socketDir + "/logs.ready")
 
 	writeBootLog("log ready, starting agent")
-	writeLog(logConn, "system", fmt.Sprintf("cage=%s type=%s target=%s", env.CageID, env.CageType, strings.Join(env.ScopeHosts, ",")))
+	writeLog(logConn, "system", fmt.Sprintf("cage=%s type=%s target=%s", env.CageID, env.CageType, env.ScopeHost))
 	writeLog(logConn, "system", fmt.Sprintf("starting agent: %s", env.Entrypoint))
 
 	// 8. Run the agent entrypoint.

@@ -87,7 +87,7 @@ func testInput() AssessmentWorkflowInput {
 		AssessmentID: "test-assessment-1",
 		Config: Config{
 			CustomerID:    "customer-1",
-			Target:        cage.Scope{Hosts: []string{"target.example.com"}},
+			Target:        cage.Scope{Host: "target.example.com"},
 			TokenBudget:   1000000,
 			MaxIterations: 5,
 			Capabilities:  cagefile.AgentCapabilities{Discovery: true, Exploitation: []string{"sqli", "xss"}},
@@ -185,7 +185,7 @@ func TestAssessmentWorkflow_CoordinatorSpawnsCages(t *testing.T) {
 					Actions: []CoordinatorAction{
 						{
 							Type:      "exploitation",
-							Scope:     cage.Scope{Hosts: []string{"target.example.com"}},
+							Scope:     cage.Scope{Host: "target.example.com"},
 							VulnClass: "sqli",
 							Objective: "test /api endpoints for SQL injection",
 							Priority:  1,

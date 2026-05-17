@@ -59,44 +59,30 @@ func ValidateCageConfig(cageConfig cage.Config, limits *config.Config) error {
 func validateScope(scope cage.Scope) []error {
 	var errs []error
 
-	if len(scope.Hosts) == 0 {
-		errs = append(errs, fmt.Errorf("scope must contain at least one host"))
+	host := scope.Host
+	if host == "" {
+		errs = append(errs, fmt.Errorf("scope must contain a host"))
+		return errs
+	}
+	if strings.Contains(host, "*") {
+		errs = append(errs, fmt.Errorf("scope host %q must not contain wildcard", host))
+		return errs
+	}
+	if strings.ToLower(host) == "localhost" {
+		errs = append(errs, fmt.Errorf("scope host %q is a loopback address", host))
 		return errs
 	}
 
-	for _, host := range scope.Hosts {
-		if host == "" {
-			errs = append(errs, fmt.Errorf("scope host must not be empty"))
-			continue
-		}
-		if strings.Contains(host, "*") {
-			errs = append(errs, fmt.Errorf("scope host %q must not contain wildcard", host))
-			continue
-		}
-
-		ip := net.ParseIP(host)
-		if ip == nil {
-			continue
-		}
-		// Normalize IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) to
-		// IPv4 before the loopback/private checks.
+	if ip := net.ParseIP(host); ip != nil {
 		check := ip
 		if v4 := ip.To4(); v4 != nil {
 			check = v4
 		}
 		if check.IsLoopback() {
 			errs = append(errs, fmt.Errorf("scope host %q is a loopback address", host))
-			continue
 		}
 		if isPrivateIP(check) {
 			errs = append(errs, fmt.Errorf("scope host %q is a private IP address (override via scope.deny in config.yaml)", host))
-		}
-	}
-
-	for _, host := range scope.Hosts {
-		lower := strings.ToLower(host)
-		if lower == "localhost" {
-			errs = append(errs, fmt.Errorf("scope host %q is a loopback address", host))
 		}
 	}
 

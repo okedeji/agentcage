@@ -20,7 +20,7 @@ func cageConfigFromProto(p *pb.CageConfig) cage.Config {
 		Type:         cageTypeFromProto(p.GetType()),
 	}
 	if s := p.GetScope(); s != nil {
-		cfg.Scope = cage.Scope{Hosts: s.GetHosts(), Ports: s.GetPorts(), Paths: s.GetPaths(), Extras: s.GetExtras()}
+		cfg.Scope = cage.Scope{Host: s.GetHost(), Ports: s.GetPorts(), Paths: s.GetPaths(), Extras: s.GetExtras()}
 	}
 	if r := p.GetResources(); r != nil {
 		cfg.Resources = cage.ResourceLimits{VCPUs: r.GetVcpus(), MemoryMB: r.GetMemoryMb()}
@@ -137,7 +137,7 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 		Tags:          p.GetTags(),
 	}
 	if s := p.GetScope(); s != nil {
-		cfg.Target = cage.Scope{Hosts: s.GetHosts(), Ports: s.GetPorts(), Paths: s.GetPaths(), Extras: s.GetExtras()}
+		cfg.Target = cage.Scope{Host: s.GetHost(), Ports: s.GetPorts(), Paths: s.GetPaths(), Extras: s.GetExtras()}
 	}
 	if p.GetMaxDuration() != nil {
 		cfg.MaxDuration = p.GetMaxDuration().AsDuration()
@@ -278,7 +278,7 @@ func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
 		Tags:             cfg.Tags,
 		Environment:      cfg.Environment,
 		Scope: &pb.TargetScope{
-			Hosts: cfg.Target.Hosts,
+			Host:  cfg.Target.Host,
 			Ports: cfg.Target.Ports,
 			Paths: cfg.Target.Paths,
 		},

@@ -32,7 +32,7 @@ type Env struct {
 	LLMEndpoint       string                     `json:"llm_endpoint,omitempty"`
 	LLMAPIKey         string                     `json:"llm_api_key,omitempty"`
 	NATSAddr          string                     `json:"nats_addr,omitempty"`
-	ScopeHosts        []string                   `json:"scope_hosts"`
+	ScopeHost         string                     `json:"scope_host"`
 	ScopePorts        []string                   `json:"scope_ports,omitempty"`
 	ScopePaths        []string                   `json:"scope_paths,omitempty"`
 	SkipPaths         []string                   `json:"skip_paths,omitempty"`

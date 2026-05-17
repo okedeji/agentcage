@@ -64,7 +64,7 @@ func testWorkflowInput() CageWorkflowInput {
 			AssessmentID: "test-assessment-1",
 			Type:         TypeDiscovery,
 			BundleRef:    "abc123def456",
-			Scope:        Scope{Hosts: []string{"target.example.com"}},
+			Scope:        Scope{Host: "target.example.com"},
 			Resources:    ResourceLimits{VCPUs: 2, MemoryMB: 4096},
 			TimeLimits:   TimeLimits{MaxDuration: 5 * time.Minute},
 			RateLimits:   RateLimits{RequestsPerSecond: 100},

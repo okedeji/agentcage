@@ -74,7 +74,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		LLMEndpoint:     input.LLMEndpoint,
 		LLMAPIKey:       input.LLMAPIKey,
 		NATSAddr:        input.NATSAddr,
-		ScopeHosts:      cfg.Scope.Hosts,
+		ScopeHost:       cfg.Scope.Host,
 		ScopePorts:      cfg.Scope.Ports,
 		ScopePaths:      cfg.Scope.Paths,
 		SkipPaths:       cfg.SkipPaths,

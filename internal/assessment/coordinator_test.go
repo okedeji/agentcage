@@ -49,9 +49,9 @@ func TestUpdateCoverage(t *testing.T) {
 	coverage := make(map[string][]string)
 
 	actions := []CoordinatorAction{
-		{Scope: cage.Scope{Hosts: []string{"target.com"}}, VulnClass: "sqli"},
-		{Scope: cage.Scope{Hosts: []string{"target.com"}}, VulnClass: "xss"},
-		{Scope: cage.Scope{Hosts: []string{"api.target.com"}}, VulnClass: "sqli"},
+		{Scope: cage.Scope{Host: "target.com"}, VulnClass: "sqli"},
+		{Scope: cage.Scope{Host: "target.com"}, VulnClass: "xss"},
+		{Scope: cage.Scope{Host: "api.target.com"}, VulnClass: "sqli"},
 	}
 
 	coverage = UpdateCoverage(coverage, actions)
@@ -68,8 +68,8 @@ func TestUpdateCoverage_NoDuplicates(t *testing.T) {
 	}
 
 	actions := []CoordinatorAction{
-		{Scope: cage.Scope{Hosts: []string{"target.com"}}, VulnClass: "sqli"},
-		{Scope: cage.Scope{Hosts: []string{"target.com"}}, VulnClass: "xss"},
+		{Scope: cage.Scope{Host: "target.com"}, VulnClass: "sqli"},
+		{Scope: cage.Scope{Host: "target.com"}, VulnClass: "xss"},
 	}
 
 	coverage = UpdateCoverage(coverage, actions)
@@ -87,7 +87,7 @@ func TestUpdateCoverage_NoDuplicates(t *testing.T) {
 
 func TestUpdateCoverage_NilInput(t *testing.T) {
 	coverage := UpdateCoverage(nil, []CoordinatorAction{
-		{Scope: cage.Scope{Hosts: []string{"x.com"}}, VulnClass: "rce"},
+		{Scope: cage.Scope{Host: "x.com"}, VulnClass: "rce"},
 	})
 	assert.Contains(t, coverage["x.com"], "rce")
 }
@@ -95,7 +95,7 @@ func TestUpdateCoverage_NilInput(t *testing.T) {
 func TestUpdateCoverage_EmptyVulnClass(t *testing.T) {
 	coverage := make(map[string][]string)
 	coverage = UpdateCoverage(coverage, []CoordinatorAction{
-		{Scope: cage.Scope{Hosts: []string{"x.com"}}, VulnClass: ""},
+		{Scope: cage.Scope{Host: "x.com"}, VulnClass: ""},
 	})
 	assert.Empty(t, coverage["x.com"])
 }

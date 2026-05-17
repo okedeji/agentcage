@@ -16,7 +16,7 @@ func validTestConfig() Config {
 		AssessmentID: "assess-001",
 		Type:         TypeDiscovery,
 		Scope: Scope{
-			Hosts: []string{"example.com"},
+			Host:  "example.com",
 			Ports: []string{"443"},
 		},
 		Resources: ResourceLimits{

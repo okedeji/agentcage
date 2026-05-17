@@ -437,7 +437,7 @@ func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, sc
 	if err := a.network.Apply(ctx, cageID, scope, extras, tapDevice); err != nil {
 		return fmt.Errorf("cage %s: applying network policy: %w", cageID, err)
 	}
-	a.log.Info("network policy applied", "cage_id", cageID, "tap", tapDevice, "scope_hosts", scope.Hosts)
+	a.log.Info("network policy applied", "cage_id", cageID, "tap", tapDevice, "scope_host", scope.Host)
 	return nil
 }
 

@@ -12,7 +12,7 @@ func configToPlan(cfg Config) *plan.Plan {
 		Agent:      cfg.BundleRef,
 		CustomerID: cfg.CustomerID,
 		Target: plan.Target{
-			Hosts:     cfg.Target.Hosts,
+			Host:      cfg.Target.Host,
 			Ports:     cfg.Target.Ports,
 			Paths:     cfg.Target.Paths,
 			SkipPaths: cfg.SkipPaths,

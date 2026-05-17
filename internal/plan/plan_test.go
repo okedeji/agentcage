@@ -16,9 +16,7 @@ func TestLoad_ValidPlan(t *testing.T) {
 name: staging-scan
 agent: ./my-agent.cage
 target:
-  hosts:
-    - example.com
-    - api.example.com
+  host: example.com
   ports:
     - "443"
   skip_paths:
@@ -45,7 +43,7 @@ customer_id: acme
 
 	assert.Equal(t, "staging-scan", p.Name)
 	assert.Equal(t, "./my-agent.cage", p.Agent)
-	assert.Equal(t, []string{"example.com", "api.example.com"}, p.Target.Hosts)
+	assert.Equal(t, "example.com", p.Target.Host)
 	assert.Equal(t, []string{"443"}, p.Target.Ports)
 	assert.Equal(t, []string{"/health"}, p.Target.SkipPaths)
 	assert.Equal(t, int64(500000), p.Budget.Tokens)
@@ -94,22 +92,22 @@ func TestMerge_OverrideScalars(t *testing.T) {
 
 func TestMerge_OverrideSlicesReplace(t *testing.T) {
 	base := &Plan{
-		Target: Target{Hosts: []string{"a.com"}},
+		Target: Target{Host: "a.com"},
 	}
 	override := &Plan{
-		Target: Target{Hosts: []string{"c.com"}},
+		Target: Target{Host: "c.com"},
 	}
 
 	result := Merge(base, override)
 
-	assert.Equal(t, []string{"c.com"}, result.Target.Hosts)
+	assert.Equal(t, "c.com", result.Target.Host)
 }
 
 func TestMerge_EmptyOverridePreservesBase(t *testing.T) {
 	base := &Plan{
 		Name:   "keep-me",
 		Agent:  "keep-agent",
-		Target: Target{Hosts: []string{"keep.com"}},
+		Target: Target{Host: "keep.com"},
 		Budget: Budget{Tokens: 100, MaxDuration: "2h"},
 	}
 
@@ -117,7 +115,7 @@ func TestMerge_EmptyOverridePreservesBase(t *testing.T) {
 
 	assert.Equal(t, "keep-me", result.Name)
 	assert.Equal(t, "keep-agent", result.Agent)
-	assert.Equal(t, []string{"keep.com"}, result.Target.Hosts)
+	assert.Equal(t, "keep.com", result.Target.Host)
 	assert.Equal(t, int64(100), result.Budget.Tokens)
 	assert.Equal(t, "2h", result.Budget.MaxDuration)
 }
@@ -165,7 +163,7 @@ func TestMerge_CageTypesOverridePerKey(t *testing.T) {
 func TestValidate_MissingCustomerID(t *testing.T) {
 	p := &Plan{
 		Agent:  "./agent.cage",
-		Target: Target{Hosts: []string{"example.com"}},
+		Target: Target{Host: "example.com"},
 	}
 	err := Validate(p)
 	require.Error(t, err)
@@ -173,7 +171,7 @@ func TestValidate_MissingCustomerID(t *testing.T) {
 }
 
 func TestValidate_MissingAgent(t *testing.T) {
-	p := &Plan{CustomerID: "acme", Target: Target{Hosts: []string{"example.com"}}}
+	p := &Plan{CustomerID: "acme", Target: Target{Host: "example.com"}}
 	err := Validate(p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "agent is required")
@@ -183,14 +181,14 @@ func TestValidate_MissingTarget(t *testing.T) {
 	p := &Plan{CustomerID: "acme", Agent: "./agent.cage"}
 	err := Validate(p)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "at least one target host")
+	assert.Contains(t, err.Error(), "target host is required")
 }
 
 func TestValidate_InvalidDuration(t *testing.T) {
 	p := &Plan{
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
-		Target:     Target{Hosts: []string{"example.com"}},
+		Target:     Target{Host: "example.com"},
 		Budget:     Budget{Tokens: 500000, MaxDuration: "notaduration"},
 	}
 	err := Validate(p)
@@ -202,7 +200,7 @@ func TestValidate_InvalidCageType(t *testing.T) {
 	p := &Plan{
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
-		Target:     Target{Hosts: []string{"example.com"}},
+		Target:     Target{Host: "example.com"},
 		Budget:     Budget{Tokens: 500000},
 		CageTypes:  map[string]CageType{"recon": {VCPUs: 1}},
 	}
@@ -215,7 +213,7 @@ func TestValidate_InvalidOutputFormat(t *testing.T) {
 	p := &Plan{
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
-		Target:     Target{Hosts: []string{"example.com"}},
+		Target:     Target{Host: "example.com"},
 		Budget:     Budget{Tokens: 500000},
 		Output:     Output{Format: "xml"},
 	}
@@ -228,7 +226,7 @@ func TestValidate_ValidMinimalPlan(t *testing.T) {
 	p := &Plan{
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
-		Target:     Target{Hosts: []string{"example.com"}},
+		Target:     Target{Host: "example.com"},
 		Budget:     Budget{Tokens: 500000},
 	}
 	ApplyDefaults(p)
@@ -240,7 +238,7 @@ func TestValidate_ZeroTokensRejected(t *testing.T) {
 	p := &Plan{
 		CustomerID: "acme",
 		Agent:      "./agent.cage",
-		Target:     Target{Hosts: []string{"example.com"}},
+		Target:     Target{Host: "example.com"},
 	}
 	err := Validate(p)
 	require.Error(t, err)
@@ -255,7 +253,7 @@ func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
 	}
 	f := RawFlags{
 		Agent:       "./my-agent",
-		Target:      "a.com,b.com",
+		Target:      "a.com",
 		Focus:       []string{"sqli", "xss"},
 		TokenBudget: 999999,
 	}
@@ -264,7 +262,7 @@ func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "./my-agent", p.Agent)
-	assert.Equal(t, []string{"a.com", "b.com"}, p.Target.Hosts)
+	assert.Equal(t, "a.com", p.Target.Host)
 	assert.Equal(t, []string{"sqli", "xss"}, p.Guidance.Priorities.VulnClasses)
 	assert.Equal(t, int64(0), p.Budget.Tokens)
 }

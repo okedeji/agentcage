@@ -20,21 +20,8 @@ func TestGenerateDNSConfig(t *testing.T) {
 		wantNATS        string
 	}{
 		{
-			name: "scope with domain hosts",
-			scope: cage.Scope{
-				Hosts: []string{"example.com", "api.target.io"},
-			},
-			llmEndpoint:     "llm.internal:8080",
-			natsAddr:        "nats.internal:4222",
-			wantDomains:     []string{"example.com", "api.target.io"},
-			wantLLMEndpoint: "llm.internal:8080",
-			wantNATS:        "nats.internal:4222",
-		},
-		{
-			name: "scope with IP hosts filtered out",
-			scope: cage.Scope{
-				Hosts: []string{"192.168.1.1", "example.com", "10.0.0.1"},
-			},
+			name:            "scope with domain host",
+			scope:           cage.Scope{Host: "example.com"},
 			llmEndpoint:     "llm.internal:8080",
 			natsAddr:        "nats.internal:4222",
 			wantDomains:     []string{"example.com"},
@@ -42,10 +29,8 @@ func TestGenerateDNSConfig(t *testing.T) {
 			wantNATS:        "nats.internal:4222",
 		},
 		{
-			name: "scope with only IPs yields no allowed domains",
-			scope: cage.Scope{
-				Hosts: []string{"10.0.0.1", "172.16.0.1"},
-			},
+			name:            "scope with IP host yields no allowed domains",
+			scope:           cage.Scope{Host: "10.0.0.1"},
 			llmEndpoint:     "llm.internal:8080",
 			natsAddr:        "nats.internal:4222",
 			wantDomains:     nil,
@@ -58,17 +43,6 @@ func TestGenerateDNSConfig(t *testing.T) {
 			llmEndpoint:     "llm.internal:8080",
 			natsAddr:        "nats.internal:4222",
 			wantDomains:     nil,
-			wantLLMEndpoint: "llm.internal:8080",
-			wantNATS:        "nats.internal:4222",
-		},
-		{
-			name: "IPv6 addresses filtered out",
-			scope: cage.Scope{
-				Hosts: []string{"::1", "example.com", "fe80::1"},
-			},
-			llmEndpoint:     "llm.internal:8080",
-			natsAddr:        "nats.internal:4222",
-			wantDomains:     []string{"example.com"},
 			wantLLMEndpoint: "llm.internal:8080",
 			wantNATS:        "nats.internal:4222",
 		},

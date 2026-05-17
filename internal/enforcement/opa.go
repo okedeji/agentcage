@@ -80,17 +80,12 @@ func (e *OPAEngine) EvaluateScope(ctx context.Context, scope cage.Scope, denyLis
 			}
 		}
 	}
-	// Normalize input hosts so compressed IPv6 (::1) matches expanded forms
-	normalizedHosts := make([]string, len(scope.Hosts))
-	for i, h := range scope.Hosts {
-		if ip := net.ParseIP(h); ip != nil {
-			normalizedHosts[i] = ip.String()
-		} else {
-			normalizedHosts[i] = h
-		}
+	normalizedHost := scope.Host
+	if ip := net.ParseIP(scope.Host); ip != nil {
+		normalizedHost = ip.String()
 	}
 	input := map[string]any{
-		"hosts":      normalizedHosts,
+		"host":       normalizedHost,
 		"ports":      scope.Ports,
 		"paths":      scope.Paths,
 		"deny_hosts": denySet,

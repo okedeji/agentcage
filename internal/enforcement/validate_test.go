@@ -23,7 +23,7 @@ func validDiscoveryConfig() cage.Config {
 		Type:         cage.TypeDiscovery,
 		BundleRef:    "abc123",
 		Scope: cage.Scope{
-			Hosts: []string{"example.com"},
+			Host:  "example.com",
 			Ports: []string{"443"},
 		},
 		Resources:  cage.ResourceLimits{VCPUs: 2, MemoryMB: 4096},
@@ -38,7 +38,7 @@ func validValidatorConfig() cage.Config {
 		AssessmentID:    "assess-1",
 		Type:            cage.TypeValidator,
 		BundleRef:       "abc123",
-		Scope:           cage.Scope{Hosts: []string{"target.example.com"}, Ports: []string{"80"}},
+		Scope:           cage.Scope{Host: "target.example.com", Ports: []string{"80"}},
 		Resources:       cage.ResourceLimits{VCPUs: 1, MemoryMB: 512},
 		TimeLimits:      cage.TimeLimits{MaxDuration: 30 * time.Second},
 		RateLimits:      cage.RateLimits{RequestsPerSecond: 5},
@@ -51,7 +51,7 @@ func validExploitationConfig() cage.Config {
 		AssessmentID: "assess-1",
 		Type:         cage.TypeExploitation,
 		BundleRef:    "abc123",
-		Scope:        cage.Scope{Hosts: []string{"target.example.com"}, Ports: []string{"443"}},
+		Scope:        cage.Scope{Host: "target.example.com", Ports: []string{"443"}},
 		Resources:    cage.ResourceLimits{VCPUs: 2, MemoryMB: 2048},
 		TimeLimits:   cage.TimeLimits{MaxDuration: 10 * time.Minute},
 		RateLimits:   cage.RateLimits{RequestsPerSecond: 15},
@@ -82,58 +82,58 @@ func TestValidateCageConfig(t *testing.T) {
 			baseType: "exploitation",
 		},
 		{
-			name:      "empty scope hosts",
+			name:      "empty scope host",
 			baseType:  "discovery",
-			modify:    func(cfg *cage.Config) { cfg.Scope.Hosts = nil },
+			modify:    func(cfg *cage.Config) { cfg.Scope.Host = "" },
 			wantErr:   true,
-			errSubstr: "at least one host",
+			errSubstr: "must contain a host",
 		},
 		{
 			name:      "wildcard in host",
 			baseType:  "discovery",
-			modify:    func(cfg *cage.Config) { cfg.Scope.Hosts = []string{"*.example.com"} },
+			modify:    func(cfg *cage.Config) { cfg.Scope.Host = "*.example.com" },
 			wantErr:   true,
 			errSubstr: "wildcard",
 		},
 		{
 			name:      "private IP 10.0.0.5",
 			baseType:  "discovery",
-			modify:    func(cfg *cage.Config) { cfg.Scope.Hosts = []string{"10.0.0.5"} },
+			modify:    func(cfg *cage.Config) { cfg.Scope.Host = "10.0.0.5" },
 			wantErr:   true,
 			errSubstr: "private",
 		},
 		{
 			name:      "private IP 172.16.0.1",
 			baseType:  "discovery",
-			modify:    func(cfg *cage.Config) { cfg.Scope.Hosts = []string{"172.16.0.1"} },
+			modify:    func(cfg *cage.Config) { cfg.Scope.Host = "172.16.0.1" },
 			wantErr:   true,
 			errSubstr: "private",
 		},
 		{
 			name:      "private IP 192.168.1.1",
 			baseType:  "discovery",
-			modify:    func(cfg *cage.Config) { cfg.Scope.Hosts = []string{"192.168.1.1"} },
+			modify:    func(cfg *cage.Config) { cfg.Scope.Host = "192.168.1.1" },
 			wantErr:   true,
 			errSubstr: "private",
 		},
 		{
 			name:      "loopback 127.0.0.1",
 			baseType:  "discovery",
-			modify:    func(cfg *cage.Config) { cfg.Scope.Hosts = []string{"127.0.0.1"} },
+			modify:    func(cfg *cage.Config) { cfg.Scope.Host = "127.0.0.1" },
 			wantErr:   true,
 			errSubstr: "loopback",
 		},
 		{
 			name:      "localhost",
 			baseType:  "discovery",
-			modify:    func(cfg *cage.Config) { cfg.Scope.Hosts = []string{"localhost"} },
+			modify:    func(cfg *cage.Config) { cfg.Scope.Host = "localhost" },
 			wantErr:   true,
 			errSubstr: "loopback",
 		},
 		{
 			name:     "domain name passes IP checks",
 			baseType: "discovery",
-			modify:   func(cfg *cage.Config) { cfg.Scope.Hosts = []string{"example.com"} },
+			modify:   func(cfg *cage.Config) { cfg.Scope.Host = "example.com" },
 		},
 		{
 			name:      "rate limit zero",
@@ -251,7 +251,7 @@ func TestValidateCageConfig(t *testing.T) {
 func TestValidateCageConfig_MultipleViolations(t *testing.T) {
 	limits := testLimits(t)
 	cfg := validDiscoveryConfig()
-	cfg.Scope.Hosts = nil
+	cfg.Scope.Host = ""
 	cfg.RateLimits.RequestsPerSecond = 0
 	cfg.TimeLimits.MaxDuration = 0
 	cfg.Resources.VCPUs = 0

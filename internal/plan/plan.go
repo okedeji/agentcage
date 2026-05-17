@@ -157,7 +157,7 @@ type PlanPattern struct {
 }
 
 type Target struct {
-	Hosts       []string `yaml:"hosts"`
+	Host        string   `yaml:"host"`
 	Ports       []string `yaml:"ports"`
 	Paths       []string `yaml:"paths"`
 	SkipPaths   []string `yaml:"skip_paths"`
@@ -242,7 +242,7 @@ func Merge(base, override *Plan) *Plan {
 
 	// Deep-copy reference types from base so mutations to out
 	// don't corrupt the caller's base plan.
-	out.Target.Hosts = copyStrings(base.Target.Hosts)
+	out.Target.Host = base.Target.Host
 	out.Target.Ports = copyStrings(base.Target.Ports)
 	out.Target.Paths = copyStrings(base.Target.Paths)
 	out.Target.SkipPaths = copyStrings(base.Target.SkipPaths)
@@ -276,8 +276,8 @@ func Merge(base, override *Plan) *Plan {
 		out.CustomerID = override.CustomerID
 	}
 
-	if len(override.Target.Hosts) > 0 {
-		out.Target.Hosts = override.Target.Hosts
+	if len(override.Target.Host) > 0 {
+		out.Target.Host = override.Target.Host
 	}
 	if len(override.Target.Ports) > 0 {
 		out.Target.Ports = override.Target.Ports
@@ -416,18 +416,11 @@ func Validate(p *Plan) error {
 		return fmt.Errorf("name exceeds %d characters", maxNameLen)
 	}
 
-	// One target per assessment. Multiple targets are separate assessments.
-	if len(p.Target.Hosts) == 0 {
-		return fmt.Errorf("target host is required (--target or target.hosts: in plan file)")
+	if p.Target.Host == "" {
+		return fmt.Errorf("target host is required (--target or target.host: in plan file)")
 	}
-	if len(p.Target.Hosts) > 1 {
-		return fmt.Errorf("exactly one target host per assessment (got %d). Run separate assessments for multiple targets", len(p.Target.Hosts))
-	}
-	if p.Target.Hosts[0] == "" {
-		return fmt.Errorf("target host cannot be empty")
-	}
-	if err := validateTargetHost(p.Target.Hosts[0]); err != nil {
-		return fmt.Errorf("target host %q: %w", p.Target.Hosts[0], err)
+	if err := validateTargetHost(p.Target.Host); err != nil {
+		return fmt.Errorf("target host %q: %w", p.Target.Host, err)
 	}
 	if len(p.Target.Ports) > maxPorts {
 		return fmt.Errorf("target.ports has %d entries, max %d", len(p.Target.Ports), maxPorts)
@@ -692,7 +685,7 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) (*Plan, error) {
 		p.Agent = f.Agent
 	}
 	if explicit["target"] {
-		p.Target.Hosts = []string{strings.TrimSpace(f.Target)}
+		p.Target.Host = strings.TrimSpace(f.Target)
 	}
 	if explicit["port"] {
 		p.Target.Ports = f.Ports

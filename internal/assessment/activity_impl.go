@@ -164,7 +164,7 @@ func (a *ActivityImpl) CreateExploitationCage(ctx context.Context, assessmentID 
 		"assessment_id", assessmentID,
 		"cage_id", info.ID,
 		"vuln_class", config.VulnClass,
-		"scope", config.Scope.Hosts,
+		"scope", config.Scope.Host,
 	)
 	return info.ID, nil
 }
@@ -184,7 +184,7 @@ func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID str
 		AssessmentID:    assessmentID,
 		Type:            cage.TypeValidator,
 		BundleRef:       bundleRef,
-		Scope:           cage.Scope{Hosts: []string{finding.Endpoint}},
+		Scope:           cage.Scope{Host: finding.Endpoint},
 		ParentFindingID: finding.ID,
 		VulnClass:       finding.VulnClass,
 	}
