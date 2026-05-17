@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -196,6 +197,13 @@ func main() {
 	// Without this, agent output is lost if it prints before the pipe is up.
 	waitForLogReady(socketDir + "/logs.ready")
 
+	// Drain any sidecar output captured before the log socket was up.
+	// New writes pass straight through. Silent sidecar failures used to
+	// cost an hour of debugging; now they show up in cage logs.
+	if logConn != nil {
+		attachSidecarLogs(logConn)
+	}
+
 	writeBootLog("log ready, starting agent")
 	writeLog(logConn, "system", fmt.Sprintf("cage=%s type=%s target=%s", env.CageID, env.CageType, env.ScopeHost))
 	writeLog(logConn, "system", fmt.Sprintf("starting agent: %s", env.Entrypoint))
@@ -249,10 +257,18 @@ func loadConfig() (*CageEnv, error) {
 	return &env, nil
 }
 
+// pendingSidecarLogs collects deferred log writers for every sidecar so
+// we can attach them to the log socket once it connects. Sidecars start
+// before the log socket is up; their output would otherwise be lost.
+var pendingSidecarLogs []*deferredLogWriter
+
 func startService(name string, bin string, args ...string) *exec.Cmd {
+	out := newDeferredLogWriter(name)
+	pendingSidecarLogs = append(pendingSidecarLogs, out)
+
 	cmd := exec.Command(bin, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = out
+	cmd.Stderr = out
 	if err := cmd.Start(); err != nil {
 		fmt.Printf("cage-init: warning: failed to start %s: %v\n", name, err)
 		return nil
@@ -267,6 +283,14 @@ func startService(name string, bin string, args ...string) *exec.Cmd {
 	}
 
 	return cmd
+}
+
+// attachSidecarLogs flushes any buffered sidecar output through logConn
+// and routes subsequent writes there too. Call once logConn is open.
+func attachSidecarLogs(logConn net.Conn) {
+	for _, w := range pendingSidecarLogs {
+		w.attach(logConn)
+	}
 }
 
 func setupIPTables() {
@@ -413,6 +437,50 @@ type logWriter struct {
 
 func newLogWriter(conn net.Conn, source string) *logWriter {
 	return &logWriter{conn: conn, source: source}
+}
+
+// deferredLogWriter buffers writes in memory until attach() is called
+// with a real log connection. Sidecars start before the log socket is
+// open, so without this their stderr would be silently dropped.
+type deferredLogWriter struct {
+	mu      sync.Mutex
+	source  string
+	pending []byte
+	inner   *logWriter
+}
+
+func newDeferredLogWriter(source string) *deferredLogWriter {
+	return &deferredLogWriter{source: source}
+}
+
+func (w *deferredLogWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.inner != nil {
+		return w.inner.Write(p)
+	}
+	// Cap the buffer so a sidecar logging in a hot loop before attach
+	// can't exhaust memory.
+	const maxBuffered = 64 * 1024
+	if len(w.pending)+len(p) > maxBuffered {
+		drop := len(w.pending) + len(p) - maxBuffered
+		if drop > len(w.pending) {
+			drop = len(w.pending)
+		}
+		w.pending = w.pending[drop:]
+	}
+	w.pending = append(w.pending, p...)
+	return len(p), nil
+}
+
+func (w *deferredLogWriter) attach(conn net.Conn) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.inner = newLogWriter(conn, w.source)
+	if len(w.pending) > 0 {
+		_, _ = w.inner.Write(w.pending)
+		w.pending = nil
+	}
 }
 
 func (w *logWriter) Write(p []byte) (int, error) {
