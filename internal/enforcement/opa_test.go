@@ -44,10 +44,10 @@ func TestOPAScope(t *testing.T) {
 			wantAllowed: true,
 		},
 		{
-			name:        "empty hosts",
+			name:        "empty host",
 			scope:       cage.Scope{},
 			wantAllowed: false,
-			wantSubstr:  "at least one host",
+			wantSubstr:  "must include a host",
 		},
 		{
 			name:        "wildcard host",

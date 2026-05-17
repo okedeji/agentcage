@@ -27,7 +27,7 @@ func TestGenerateScopeRego_ContainsExpectedRules(t *testing.T) {
 	rego := modules["scope.rego"]
 
 	assert.Contains(t, rego, "package agentcage.scope")
-	assert.Contains(t, rego, "count(input.hosts) == 0")
+	assert.Contains(t, rego, "input.host == \"\"")
 	assert.Contains(t, rego, "wildcard hosts are not allowed")
 	assert.Contains(t, rego, "10.0.0.0/8")
 	assert.Contains(t, rego, "172.16.0.0/12")

@@ -807,18 +807,6 @@ func copyPatterns(p []PlanPattern) []PlanPattern {
 	return out
 }
 
-func splitAndTrim(s, sep string) []string {
-	parts := strings.Split(s, sep)
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
 func ParseTags(tags []string) (map[string]string, error) {
 	m := make(map[string]string, len(tags))
 	for _, t := range tags {

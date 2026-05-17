@@ -261,7 +261,7 @@ func TestValidateCageConfig_MultipleViolations(t *testing.T) {
 	require.Error(t, err)
 
 	msg := err.Error()
-	assert.True(t, strings.Contains(msg, "at least one host"), "should contain scope violation")
+	assert.True(t, strings.Contains(msg, "must contain a host"), "should contain scope violation")
 	assert.True(t, strings.Contains(msg, "positive"), "should contain rate limit violation")
 	assert.True(t, strings.Contains(msg, "vCPU"), "should contain resource violation")
 	assert.True(t, strings.Contains(msg, "LLM"), "should contain required field violation")

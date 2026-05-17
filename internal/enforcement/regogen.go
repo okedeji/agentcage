@@ -29,26 +29,26 @@ func generateScopeRego(cfg *config.Config) string {
 	var b strings.Builder
 	b.WriteString("package agentcage.scope\n\n")
 
-	b.WriteString("deny contains msg if {\n\tcount(input.hosts) == 0\n\tmsg := \"scope must include at least one host\"\n}\n\n")
+	b.WriteString("deny contains msg if {\n\tinput.host == \"\"\n\tmsg := \"scope must include a host\"\n}\n\n")
 
 	if cfg.ScopeDenyWildcardsDefault() {
-		b.WriteString("deny contains msg if {\n\tsome h\n\tinput.hosts[h] == \"*\"\n\tmsg := \"wildcard hosts are not allowed\"\n}\n\n")
-		b.WriteString("deny contains msg if {\n\tsome h\n\tcontains(input.hosts[h], \"*\")\n\tinput.hosts[h] != \"*\"\n\tmsg := sprintf(\"wildcard in host not allowed: %s\", [input.hosts[h]])\n}\n\n")
+		b.WriteString("deny contains msg if {\n\tinput.host == \"*\"\n\tmsg := \"wildcard hosts are not allowed\"\n}\n\n")
+		b.WriteString("deny contains msg if {\n\tcontains(input.host, \"*\")\n\tinput.host != \"*\"\n\tmsg := sprintf(\"wildcard in host not allowed: %s\", [input.host])\n}\n\n")
 	}
 
 	for _, cidr := range scope.Deny {
 		if strings.Contains(cidr, "/") {
-			fmt.Fprintf(&b, "deny contains msg if {\n\tsome h\n\tnet.cidr_contains(%q, input.hosts[h])\n\tmsg := sprintf(\"private IP range not allowed: %%s (override via scope.deny in config.yaml)\", [input.hosts[h]])\n}\n\n", cidr)
+			fmt.Fprintf(&b, "deny contains msg if {\n\tnet.cidr_contains(%q, input.host)\n\tmsg := sprintf(\"private IP range not allowed: %%s (override via scope.deny in config.yaml)\", [input.host])\n}\n\n", cidr)
 		}
 	}
 
 	if cfg.ScopeDenyLocalhostDefault() {
-		b.WriteString("deny contains msg if {\n\tsome h\n\tinput.hosts[h] == \"localhost\"\n\tmsg := \"localhost not allowed in scope\"\n}\n\n")
-		b.WriteString("deny contains msg if {\n\tsome h\n\tstartswith(input.hosts[h], \"127.\")\n\tmsg := sprintf(\"loopback address not allowed: %s\", [input.hosts[h]])\n}\n\n")
+		b.WriteString("deny contains msg if {\n\tinput.host == \"localhost\"\n\tmsg := \"localhost not allowed in scope\"\n}\n\n")
+		b.WriteString("deny contains msg if {\n\tstartswith(input.host, \"127.\")\n\tmsg := sprintf(\"loopback address not allowed: %s\", [input.host])\n}\n\n")
 	}
 
 	if slices.Contains(scope.Deny, "::1") {
-		b.WriteString("deny contains msg if {\n\tsome h\n\tinput.hosts[h] == \"::1\"\n\tmsg := \"IPv6 loopback not allowed in scope (override via scope.deny in config.yaml)\"\n}\n\n")
+		b.WriteString("deny contains msg if {\n\tinput.host == \"::1\"\n\tmsg := \"IPv6 loopback not allowed in scope (override via scope.deny in config.yaml)\"\n}\n\n")
 	}
 
 	// Port validation
@@ -66,7 +66,7 @@ func generateScopeRego(cfg *config.Config) string {
 		}
 	}
 	if len(exactEntries) > 0 {
-		b.WriteString("deny contains msg if {\n\tsome h\n\tinput.deny_hosts[input.hosts[h]]\n\tmsg := sprintf(\"host not allowed in scope: %s (override via scope.deny in config.yaml)\", [input.hosts[h]])\n}\n")
+		b.WriteString("deny contains msg if {\n\tinput.deny_hosts[input.host]\n\tmsg := sprintf(\"host not allowed in scope: %s (override via scope.deny in config.yaml)\", [input.host])\n}\n")
 	}
 
 	return b.String()
