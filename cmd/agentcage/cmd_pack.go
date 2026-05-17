@@ -261,4 +261,3 @@ func resolvedDirName(dir string) string {
 	}
 	return filepath.Base(abs)
 }
-

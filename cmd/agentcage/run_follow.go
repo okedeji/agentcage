@@ -21,13 +21,13 @@ const (
 )
 
 type followState struct {
-	lastStatus  string
-	lastChange  time.Time
-	startTime   time.Time
-	seenCages   map[string]string // cage_id -> last state
-	seenFindings map[string]bool
+	lastStatus        string
+	lastChange        time.Time
+	startTime         time.Time
+	seenCages         map[string]string // cage_id -> last state
+	seenFindings      map[string]bool
 	seenInterventions map[string]string // intervention_id -> last status
-	jsonMode    bool
+	jsonMode          bool
 }
 
 func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessmentID, format string) {

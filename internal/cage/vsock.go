@@ -121,9 +121,9 @@ func (s *StdoutSink) Write(cageID, source string, line []byte) error {
 // Each cage gets its own log file: <dir>/<cageID>.log. The CLI
 // command `agentcage logs cage <id>` tails this file.
 type FileSink struct {
-	dir    string
-	mu     sync.Mutex
-	files  map[string]*os.File
+	dir   string
+	mu    sync.Mutex
+	files map[string]*os.File
 }
 
 func NewFileSink(dir string) (*FileSink, error) {

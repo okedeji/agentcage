@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	pb "github.com/okedeji/agentcage/api/proto"
 	"github.com/okedeji/agentcage/internal/assessment"
 	"github.com/okedeji/agentcage/internal/audit"
@@ -19,7 +20,6 @@ import (
 	"github.com/okedeji/agentcage/internal/fleet"
 	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/internal/intervention"
-	"github.com/nats-io/nats.go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -28,23 +28,23 @@ import (
 
 // Services holds references to all domain servers needed by gRPC adapters.
 type Services struct {
-	Cages         *cage.Service
-	Assessments   *assessment.Service
-	Interventions *intervention.Service
-	Fleet         *fleet.Service
-	Findings      *findings.PGStore
-	Audit         *audit.PGStore
-	Pack              PackConfig
-	SecretReader      identity.SecretReader
-	ConfigServer      *config.Server
-	CageLogDir        string
-	NATSConn          *nats.Conn
-	ServiceLogDir     string
-	ConfigYAML        []byte
-	CACert            []byte
-	ServiceEndpoints  *pb.ServiceEndpoints
-	Cancel            context.CancelFunc
-	Version           string
+	Cages            *cage.Service
+	Assessments      *assessment.Service
+	Interventions    *intervention.Service
+	Fleet            *fleet.Service
+	Findings         *findings.PGStore
+	Audit            *audit.PGStore
+	Pack             PackConfig
+	SecretReader     identity.SecretReader
+	ConfigServer     *config.Server
+	CageLogDir       string
+	NATSConn         *nats.Conn
+	ServiceLogDir    string
+	ConfigYAML       []byte
+	CACert           []byte
+	ServiceEndpoints *pb.ServiceEndpoints
+	Cancel           context.CancelFunc
+	Version          string
 }
 
 // Register wires all gRPC service adapters onto the server.
@@ -879,8 +879,8 @@ func (a *auditAdapter) ChainStatus(ctx context.Context, req *pb.ChainStatusReque
 		CageId:          entries[0].CageID,
 		AssessmentId:    entries[0].AssessmentID,
 		EntryCount:      int64(len(entries)),
-		FirstTimestamp:   timestamppb.New(entries[0].Timestamp),
-		LatestTimestamp:  timestamppb.New(entries[len(entries)-1].Timestamp),
+		FirstTimestamp:  timestamppb.New(entries[0].Timestamp),
+		LatestTimestamp: timestamppb.New(entries[len(entries)-1].Timestamp),
 		HasDigest:       digest != nil,
 		KeyVersions:     versions,
 	}

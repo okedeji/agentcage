@@ -10,9 +10,9 @@ import (
 // mode) return PayloadHold so the proxy can pause the request and ask a
 // human. Block patterns are always checked first.
 type ProxyEngine struct {
-	vulnClass        string
-	blockPatterns    []*compiledPattern
-	flagPatterns []*compiledPattern
+	vulnClass     string
+	blockPatterns []*compiledPattern
+	flagPatterns  []*compiledPattern
 }
 
 type compiledPattern struct {
@@ -51,9 +51,9 @@ func NewProxyEngine(vulnClass string, blockPatterns map[string]string, flagPatte
 		}
 	}
 	return &ProxyEngine{
-		vulnClass:        vulnClass,
-		blockPatterns:    block,
-		flagPatterns: flag,
+		vulnClass:     vulnClass,
+		blockPatterns: block,
+		flagPatterns:  flag,
 	}, nil
 }
 

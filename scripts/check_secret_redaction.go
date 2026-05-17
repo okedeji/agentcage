@@ -34,9 +34,9 @@ var sensitiveTypePatterns = []string{
 }
 
 type violation struct {
-	file       string
-	typeName   string
-	field      string
+	file           string
+	typeName       string
+	field          string
 	missingMethods []string
 }
 

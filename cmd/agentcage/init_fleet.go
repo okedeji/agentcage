@@ -38,9 +38,9 @@ func setupFleet(ctx context.Context, cfg *config.Config, embeddedMgr *embedded.M
 	}
 	validatorRes := cageRes("validator")
 	discoveryRes := cageRes("discovery")
-	escalationRes := cageRes("exploitation")
+	exploitationRes := cageRes("exploitation")
 
-	if err := fleet.InitPool(pool, cfg.Fleet.Hosts, validatorRes, discoveryRes, escalationRes); err != nil {
+	if err := fleet.InitPool(pool, cfg.Fleet.Hosts, validatorRes, discoveryRes, exploitationRes); err != nil {
 		return nil, fmt.Errorf("initializing fleet pool: %w", err)
 	}
 	status := pool.GetFleetStatus()
@@ -143,4 +143,3 @@ func buildHostProvisioner(ctx context.Context, cfg *config.Config, secrets ident
 	log.Info("fleet provisioner: local (single machine, no scaling)")
 	return fleet.NewLocalHostProvisioner(log)
 }
-

@@ -18,16 +18,16 @@ import (
 )
 
 type BundleManifest struct {
-	Name       string            `json:"name"`
-	Tag        string            `json:"tag"`
-	PackedWith string            `json:"packed_with"`
-	Runtime    string            `json:"runtime"`
-	Entrypoint string            `json:"entrypoint"`
-	SystemDeps []string          `json:"system_deps,omitempty"`
-	Packages   []string          `json:"packages,omitempty"`
-	PipDeps    []string          `json:"pip_deps,omitempty"`
-	NpmDeps    []string          `json:"npm_deps,omitempty"`
-	GoDeps     []string          `json:"go_deps,omitempty"`
+	Name         string            `json:"name"`
+	Tag          string            `json:"tag"`
+	PackedWith   string            `json:"packed_with"`
+	Runtime      string            `json:"runtime"`
+	Entrypoint   string            `json:"entrypoint"`
+	SystemDeps   []string          `json:"system_deps,omitempty"`
+	Packages     []string          `json:"packages,omitempty"`
+	PipDeps      []string          `json:"pip_deps,omitempty"`
+	NpmDeps      []string          `json:"npm_deps,omitempty"`
+	GoDeps       []string          `json:"go_deps,omitempty"`
 	EnvVars      map[string]string `json:"env,omitempty"`
 	Capabilities AgentCapabilities `json:"capabilities"`
 	FilesHash    string            `json:"files_hash"`
@@ -74,16 +74,16 @@ func Pack(dir string, version string, agentcageVersion string, w io.Writer, opts
 	}
 
 	bundleManifest := &BundleManifest{
-		Name:       filepath.Base(dir),
-		Tag:        version,
-		PackedWith: agentcageVersion,
-		Runtime:    manifest.Runtime,
-		Entrypoint: manifest.Entrypoint,
-		SystemDeps: manifest.SystemDeps,
-		Packages:   manifest.Packages,
-		PipDeps:    manifest.PipDeps,
-		NpmDeps:    manifest.NpmDeps,
-		GoDeps:     manifest.GoDeps,
+		Name:         filepath.Base(dir),
+		Tag:          version,
+		PackedWith:   agentcageVersion,
+		Runtime:      manifest.Runtime,
+		Entrypoint:   manifest.Entrypoint,
+		SystemDeps:   manifest.SystemDeps,
+		Packages:     manifest.Packages,
+		PipDeps:      manifest.PipDeps,
+		NpmDeps:      manifest.NpmDeps,
+		GoDeps:       manifest.GoDeps,
 		EnvVars:      manifest.EnvVars,
 		Capabilities: manifest.Capabilities,
 		FilesHash:    "sha256:" + hash,
@@ -196,9 +196,9 @@ func Unpack(r io.Reader, destDir string, opts *UnpackOptions) (*BundleManifest, 
 	tr := tar.NewReader(lr)
 
 	var (
-		manifest          *BundleManifest
-		manifestRawBytes  []byte
-		signature         *bundleSignature
+		manifest         *BundleManifest
+		manifestRawBytes []byte
+		signature        *bundleSignature
 	)
 
 	for {
@@ -355,20 +355,20 @@ func CheckCompatibility(bundle *BundleManifest, currentVersion string) error {
 // cage's containment model expects. Blocked at pack-time so the
 // operator gets a clear error before any cage is provisioned.
 var deniedSystemDeps = map[string]string{
-	"docker":      "container runtime",
-	"docker.io":   "container runtime",
-	"containerd":  "container runtime",
-	"podman":      "container runtime",
-	"lxc":         "container runtime",
-	"iptables":    "firewall manipulation",
-	"nftables":    "firewall manipulation",
-	"tcpdump":     "raw packet capture",
-	"wireshark":   "raw packet capture",
-	"tshark":      "raw packet capture",
-	"socat":       "raw socket relay",
-	"openvpn":     "VPN tunnel",
-	"wireguard":   "VPN tunnel",
-	"kmod":        "kernel module tools",
+	"docker":        "container runtime",
+	"docker.io":     "container runtime",
+	"containerd":    "container runtime",
+	"podman":        "container runtime",
+	"lxc":           "container runtime",
+	"iptables":      "firewall manipulation",
+	"nftables":      "firewall manipulation",
+	"tcpdump":       "raw packet capture",
+	"wireshark":     "raw packet capture",
+	"tshark":        "raw packet capture",
+	"socat":         "raw socket relay",
+	"openvpn":       "VPN tunnel",
+	"wireguard":     "VPN tunnel",
+	"kmod":          "kernel module tools",
 	"linux-headers": "kernel headers",
 }
 

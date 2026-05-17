@@ -23,7 +23,7 @@ type AgentHoldListener struct {
 	log             logr.Logger
 
 	mu        sync.Mutex
-	listeners map[string]net.Listener // vmID -> vsock listener
+	listeners map[string]net.Listener           // vmID -> vsock listener
 	pending   map[string]chan AgentHoldResponse // interventionID -> response channel
 }
 

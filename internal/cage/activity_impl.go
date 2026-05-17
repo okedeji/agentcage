@@ -109,18 +109,18 @@ type ActivityImpl struct {
 	payloadHolds      *PayloadHoldHandler
 	agentHolds        *AgentHoldListener
 	targetCreds       TargetCredentialReader
-	directiveWriter    *DirectiveWriter
-	logCollector       *VsockCollector
-	findingsBus        findings.Bus
-	cageService        *Service
-	logDir             string
-	log                logr.Logger
-	allocMu            sync.Mutex
-	allocs             map[string]string      // vmID -> hostID
-	vsockPaths         map[string]string      // vmID -> vsock UDS path
-	tapDevices         map[string]string      // cageID -> TAP device name
-	logListeners       map[string]net.Listener // vmID -> pre-created log listener
-	findingsListeners  map[string]net.Listener // vmID -> pre-created findings listener
+	directiveWriter   *DirectiveWriter
+	logCollector      *VsockCollector
+	findingsBus       findings.Bus
+	cageService       *Service
+	logDir            string
+	log               logr.Logger
+	allocMu           sync.Mutex
+	allocs            map[string]string       // vmID -> hostID
+	vsockPaths        map[string]string       // vmID -> vsock UDS path
+	tapDevices        map[string]string       // cageID -> TAP device name
+	logListeners      map[string]net.Listener // vmID -> pre-created log listener
+	findingsListeners map[string]net.Listener // vmID -> pre-created findings listener
 }
 
 type ActivityImplConfig struct {
@@ -440,7 +440,6 @@ func (a *ActivityImpl) ApplyNetworkPolicy(ctx context.Context, cageID string, sc
 	a.log.Info("network policy applied", "cage_id", cageID, "tap", tapDevice, "scope_hosts", scope.Hosts)
 	return nil
 }
-
 
 func (a *ActivityImpl) MonitorCage(ctx context.Context, cageID, vmID string, config Config) (StopReason, error) {
 	a.log.Info("monitoring cage", "cage_id", cageID, "vm_id", vmID, "max_duration", config.TimeLimits.MaxDuration)

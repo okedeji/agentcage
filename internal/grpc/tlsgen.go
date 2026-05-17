@@ -23,9 +23,9 @@ const (
 
 // TLSCerts holds paths to generated TLS certificate files.
 type TLSCerts struct {
-	CAFile     string
-	CertFile   string
-	KeyFile    string
+	CAFile   string
+	CertFile string
+	KeyFile  string
 }
 
 // EnsureTLSCerts generates a self-signed CA and server certificate if

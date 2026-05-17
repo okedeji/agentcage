@@ -11,7 +11,7 @@ var ErrInvalidFinding = errors.New("invalid finding")
 const (
 	maxEvidenceRequestSize  = 1 << 20 // 1MB
 	maxEvidenceResponseSize = 1 << 20 // 1MB
-	maxTitleLength = 500
+	maxTitleLength          = 500
 
 	DefaultMaxScreenshotSize = 5 << 20 // 5MB
 )

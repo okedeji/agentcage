@@ -17,8 +17,8 @@ import (
 const (
 	// Pinned so a Go-side rename does not silently break in-flight
 	// workflows on the next history replay.
-	WorkflowName  = "AssessmentWorkflow"
-	SignalFinish  = "assessment_finish"
+	WorkflowName = "AssessmentWorkflow"
+	SignalFinish = "assessment_finish"
 
 	TimeoutCreateCage      = 30 * time.Second
 	TimeoutGetFindings     = 15 * time.Second
@@ -28,8 +28,8 @@ const (
 	TimeoutPlanNextActions = 60 * time.Second
 	TimeoutReviewDeadline  = 24 * time.Hour
 	TimeoutWaitForCage     = 10 * time.Minute
-	DefaultMaxBatchSize  = int32(3)
-	DefaultMaxIterations = int32(20)
+	DefaultMaxBatchSize    = int32(3)
+	DefaultMaxIterations   = int32(20)
 
 	// Even a 5-second proof needs cage boot + teardown overhead.
 	MinValidatorWait = 60 * time.Second
@@ -84,7 +84,6 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		maxIterations = DefaultMaxIterations
 	}
 
-
 	// Hard deadline on the entire assessment. When the timer fires
 	// the child context cancels, failing any in-flight activity.
 	if cfg.MaxDuration > 0 {
@@ -125,25 +124,12 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	})
 	syncStats(ctx, input.AssessmentID, result, 1)
 
-	// Wait for the discovery cage to finish or the timeout, whichever
-	// comes first. Old workflows replay as a fixed sleep; new ones poll
-	// every 5s so an early cage failure surfaces immediately.
-	vWait := workflow.GetVersion(ctx, "poll-cage-completion", workflow.DefaultVersion, 1)
-	if vWait == 1 {
-		waitForCageOrTimeout(ctx, discoveryCageID, TimeoutWaitForCage)
-	} else {
-		_ = workflow.Sleep(ctx, TimeoutWaitForCage)
-	}
+	waitForCageOrTimeout(ctx, discoveryCageID, TimeoutWaitForCage)
 	syncStats(ctx, input.AssessmentID, result, 0)
 
-	// Discovery is the foundation. If it failed, there's no surface
-	// data for exploitation to work with.
-	vCheck := workflow.GetVersion(ctx, "check-cage-outcomes", workflow.DefaultVersion, 1)
-	if vCheck == 1 {
-		resolveCageOutcome(ctx, &cagesCompleted[0])
-		if cagesCompleted[0].Outcome == "failed" {
-			return failResult(result, "discovery cage failed (see: agentcage logs cage %s)", discoveryCageID), nil
-		}
+	resolveCageOutcome(ctx, &cagesCompleted[0])
+	if cagesCompleted[0].Outcome == "failed" {
+		return failResult(result, "discovery cage failed (see: agentcage logs cage %s)", discoveryCageID), nil
 	}
 
 	// Skip exploitation if agent has no exploitation capabilities.
@@ -174,43 +160,32 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 		var tokensUsed int64
 		var liveBudget int64
-		vLiveBudget := workflow.GetVersion(ctx, "live-token-budget", workflow.DefaultVersion, 1)
-		if vLiveBudget == 1 {
-			budgetCtx := withActivityTimeout(ctx, TimeoutGetFindings)
-			_ = workflow.ExecuteActivity(budgetCtx, "GetLiveTokenBudget").Get(ctx, &liveBudget)
-			if liveBudget > 0 {
-				cfg.TokenBudget = liveBudget
-			}
+		budgetCtx := withActivityTimeout(ctx, TimeoutGetFindings)
+		_ = workflow.ExecuteActivity(budgetCtx, "GetLiveTokenBudget").Get(ctx, &liveBudget)
+		if liveBudget > 0 {
+			cfg.TokenBudget = liveBudget
 		}
 		if cfg.TokenBudget > 0 {
 			tokenCtx := withActivityTimeout(ctx, TimeoutGetFindings)
 			_ = workflow.ExecuteActivity(tokenCtx, "GetAssessmentTokensConsumed", input.AssessmentID).Get(ctx, &tokensUsed)
 			if tokensUsed >= cfg.TokenBudget {
-				// Budget exhausted. Pause and poll for a config
-				// increase. The operator runs:
-				//   agentcage config set assessment.token_budget <new>
-				// and the next poll picks it up. Gives up after 24h.
-				vPause := workflow.GetVersion(ctx, "budget-auto-pause", workflow.DefaultVersion, 1)
-				if vPause == 1 {
-					logger.Info("token budget exhausted, pausing until operator increases budget or 24h timeout",
-						"assessment_id", input.AssessmentID, "consumed", tokensUsed, "budget", cfg.TokenBudget)
-					_ = workflow.ExecuteActivity(
-						withActivityTimeout(ctx, 5*time.Second),
-						"NotifyBudgetExhausted", input.AssessmentID, tokensUsed, cfg.TokenBudget,
-					).Get(ctx, nil)
-					newBudget := waitForBudgetIncrease(ctx, cfg.TokenBudget)
-					if newBudget <= cfg.TokenBudget {
-						logger.Info("budget not increased after 24h, skipping validation/report",
-							"assessment_id", input.AssessmentID)
-						budgetDrained = true
-						break
-					}
-					cfg.TokenBudget = newBudget
-					logger.Info("budget increased, resuming exploitation",
-						"assessment_id", input.AssessmentID, "new_budget", newBudget)
-					continue
+				logger.Info("token budget exhausted, pausing until operator increases budget or 24h timeout",
+					"assessment_id", input.AssessmentID, "consumed", tokensUsed, "budget", cfg.TokenBudget)
+				_ = workflow.ExecuteActivity(
+					withActivityTimeout(ctx, 5*time.Second),
+					"NotifyBudgetExhausted", input.AssessmentID, tokensUsed, cfg.TokenBudget,
+				).Get(ctx, nil)
+				newBudget := waitForBudgetIncrease(ctx, cfg.TokenBudget)
+				if newBudget <= cfg.TokenBudget {
+					logger.Info("budget not increased after 24h, skipping validation/report",
+						"assessment_id", input.AssessmentID)
+					budgetDrained = true
+					break
 				}
-				break
+				cfg.TokenBudget = newBudget
+				logger.Info("budget increased, resuming exploitation",
+					"assessment_id", input.AssessmentID, "new_budget", newBudget)
+				continue
 			}
 		}
 
@@ -263,17 +238,11 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 
 		// Wait for exploitation cages, polling so early failures
 		// don't waste the full 10-minute window.
-		vExplWait := workflow.GetVersion(ctx, "poll-exploitation-cages", workflow.DefaultVersion, 1)
-		if vExplWait == 1 {
-			for si := range completedSummaries {
-				waitForCageOrTimeout(ctx, completedSummaries[si].CageID, TimeoutWaitForCage)
-				resolveCageOutcome(ctx, &completedSummaries[si])
-			}
-			// Update the main slice with resolved outcomes.
-			copy(cagesCompleted[len(cagesCompleted)-len(completedSummaries):], completedSummaries)
-		} else {
-			_ = workflow.Sleep(ctx, TimeoutWaitForCage)
+		for si := range completedSummaries {
+			waitForCageOrTimeout(ctx, completedSummaries[si].CageID, TimeoutWaitForCage)
+			resolveCageOutcome(ctx, &completedSummaries[si])
 		}
+		copy(cagesCompleted[len(cagesCompleted)-len(completedSummaries):], completedSummaries)
 		syncStats(ctx, input.AssessmentID, result, 0)
 	}
 
@@ -754,9 +723,9 @@ func validateFindings(
 // the validator will replay the request and check for the same indicator.
 func agentProofToValidatorProof(f findings.Finding) *Proof {
 	return &Proof{
-		VulnClass:          f.VulnClass,
-		ValidationType:     "agent_provided",
-		Description:        fmt.Sprintf("agent-provided reproduction for %s", f.ID),
+		VulnClass:      f.VulnClass,
+		ValidationType: "agent_provided",
+		Description:    fmt.Sprintf("agent-provided reproduction for %s", f.ID),
 		Payload: ProofPayload{
 			URL: f.Endpoint,
 		},

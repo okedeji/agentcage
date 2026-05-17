@@ -54,5 +54,3 @@ type VMProvisioner interface {
 	PauseVM(ctx context.Context, vmID string) error
 	ResumeVM(ctx context.Context, vmID string) error
 }
-
-

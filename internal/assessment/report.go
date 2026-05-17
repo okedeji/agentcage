@@ -33,17 +33,17 @@ type ReportSummary struct {
 }
 
 type ReportFinding struct {
-	ID              string `json:"id"`
-	Title           string `json:"title"`
-	Severity        string `json:"severity"`
-	VulnClass       string `json:"vuln_class"`
-	CWE             string `json:"cwe,omitempty"`
+	ID              string  `json:"id"`
+	Title           string  `json:"title"`
+	Severity        string  `json:"severity"`
+	VulnClass       string  `json:"vuln_class"`
+	CWE             string  `json:"cwe,omitempty"`
 	CVSSScore       float64 `json:"cvss_score,omitempty"`
-	Endpoint        string `json:"endpoint"`
-	Description     string `json:"description"`
-	Evidence        string `json:"evidence,omitempty"`
-	Remediation     string `json:"remediation,omitempty"`
-	ValidationProof string `json:"validation_proof,omitempty"`
+	Endpoint        string  `json:"endpoint"`
+	Description     string  `json:"description"`
+	Evidence        string  `json:"evidence,omitempty"`
+	Remediation     string  `json:"remediation,omitempty"`
+	ValidationProof string  `json:"validation_proof,omitempty"`
 }
 
 func GenerateReport(ctx context.Context, assessmentID, customerID string, validated []findings.Finding, target string, llm *gateway.Client) (*Report, error) {

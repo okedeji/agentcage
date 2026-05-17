@@ -51,8 +51,8 @@ func NewPostgresService(log logr.Logger) *PostgresService {
 	}
 }
 
-func (p *PostgresService) Name() string      { return "postgres" }
-func (p *PostgresService) IsExternal() bool   { return false }
+func (p *PostgresService) Name() string     { return "postgres" }
+func (p *PostgresService) IsExternal() bool { return false }
 
 func (p *PostgresService) URL() string {
 	return fmt.Sprintf("postgres://%s:%s@localhost:%s/%s?sslmode=disable",

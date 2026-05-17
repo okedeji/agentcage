@@ -33,8 +33,8 @@ func NewVaultService(log logr.Logger) *VaultService {
 	return &VaultService{log: log.WithValues("service", "vault")}
 }
 
-func (v *VaultService) Name() string      { return "vault" }
-func (v *VaultService) IsExternal() bool   { return false }
+func (v *VaultService) Name() string     { return "vault" }
+func (v *VaultService) IsExternal() bool { return false }
 
 func (v *VaultService) Address() string {
 	return "http://localhost:" + vaultPort

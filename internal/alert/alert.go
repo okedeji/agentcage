@@ -24,7 +24,7 @@ type Category string
 
 const (
 	// Policy categories
-	CategoryScopeViolation     Category = "scope_violation"
+	CategoryScopeViolation      Category = "scope_violation"
 	CategoryCageConfigViolation Category = "cage_config_violation"
 
 	// Behavioral categories
@@ -50,12 +50,12 @@ const (
 
 type Event struct {
 	Source       Source
-	Category    Category
-	Priority    intervention.Priority
-	CageID      string
+	Category     Category
+	Priority     intervention.Priority
+	CageID       string
 	AssessmentID string
-	Description string
-	Details     map[string]any
+	Description  string
+	Details      map[string]any
 }
 
 // Dispatcher routes alert events through the intervention notification system.

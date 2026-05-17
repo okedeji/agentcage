@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/embedded"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
 	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
 
 func resolveSpireSocket(cfg *config.Config) string {

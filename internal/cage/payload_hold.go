@@ -26,23 +26,23 @@ type PayloadHoldNotification struct {
 // HoldRecord tracks a held payload so the resolution can be relayed
 // back to the proxy's control endpoint inside the VM.
 type HoldRecord struct {
-	CageID  string
-	VMIP    string
-	HoldID  string
+	CageID     string
+	VMIP       string
+	HoldID     string
 	EnqueuedAt time.Time
 }
 
 // PayloadHoldHandler receives hold notifications from in-cage proxies,
 // enqueues interventions, and relays decisions back when resolved.
 type PayloadHoldHandler struct {
-	enqueuer         InterventionEnqueuer
-	interventionTTL  time.Duration
-	controlPort      string
-	httpClient       *http.Client
-	mu               sync.Mutex
-	holds            map[string]*HoldRecord // keyed by intervention ID
-	vmIPs            map[string]string      // cage ID -> VM IP
-	log              logr.Logger
+	enqueuer        InterventionEnqueuer
+	interventionTTL time.Duration
+	controlPort     string
+	httpClient      *http.Client
+	mu              sync.Mutex
+	holds           map[string]*HoldRecord // keyed by intervention ID
+	vmIPs           map[string]string      // cage ID -> VM IP
+	log             logr.Logger
 }
 
 type PayloadHoldConfig struct {

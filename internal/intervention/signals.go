@@ -25,7 +25,7 @@ type InterventionSignal struct {
 // ReportReviewSignal is the Temporal signal payload sent to an assessment
 // workflow when an operator resolves a report review.
 type ReportReviewSignal struct {
-	Decision    ReviewDecision    `json:"decision"`
-	Rationale   string            `json:"rationale"`
+	Decision    ReviewDecision      `json:"decision"`
+	Rationale   string              `json:"rationale"`
 	Adjustments []FindingAdjustment `json:"adjustments,omitempty"`
 }

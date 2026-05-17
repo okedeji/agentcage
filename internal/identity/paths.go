@@ -11,25 +11,25 @@ const (
 	TargetPrefix               = "secret/data/agentcage/target/"
 	TargetMetadataPrefix       = "secret/metadata/agentcage/target/"
 
-	PathLLMKey       = OrchestratorPrefix + "llm-api-key"
-	PathTemporalKey  = OrchestratorPrefix + "temporal-api-key"
-	PathFleetKey     = OrchestratorPrefix + "fleet-api-key"
-	PathNomadToken   = OrchestratorPrefix + "nomad-token"
-	PathNATSURL      = OrchestratorPrefix + "nats-url"
-	PathPostgresURL  = OrchestratorPrefix + "postgres-url"
-	PathJudgeKey     = OrchestratorPrefix + "judge-api-key"
+	PathLLMKey      = OrchestratorPrefix + "llm-api-key"
+	PathTemporalKey = OrchestratorPrefix + "temporal-api-key"
+	PathFleetKey    = OrchestratorPrefix + "fleet-api-key"
+	PathNomadToken  = OrchestratorPrefix + "nomad-token"
+	PathNATSURL     = OrchestratorPrefix + "nats-url"
+	PathPostgresURL = OrchestratorPrefix + "postgres-url"
+	PathJudgeKey    = OrchestratorPrefix + "judge-api-key"
 )
 
 // EnvToVaultPath maps legacy AGENTCAGE_* env var names to Vault paths.
 // Used by the vault import command to translate .env files.
 var EnvToVaultPath = map[string]string{
 	"AGENTCAGE_LLM_API_KEY":      PathLLMKey,
-	"AGENTCAGE_TEMPORAL_API_KEY":  PathTemporalKey,
-	"AGENTCAGE_FLEET_API_KEY":     PathFleetKey,
-	"AGENTCAGE_NOMAD_TOKEN":       PathNomadToken,
-	"AGENTCAGE_JUDGE_API_KEY":     PathJudgeKey,
-	"AGENTCAGE_NATS_URL":          PathNATSURL,
-	"AGENTCAGE_POSTGRES_URL":      PathPostgresURL,
+	"AGENTCAGE_TEMPORAL_API_KEY": PathTemporalKey,
+	"AGENTCAGE_FLEET_API_KEY":    PathFleetKey,
+	"AGENTCAGE_NOMAD_TOKEN":      PathNomadToken,
+	"AGENTCAGE_JUDGE_API_KEY":    PathJudgeKey,
+	"AGENTCAGE_NATS_URL":         PathNATSURL,
+	"AGENTCAGE_POSTGRES_URL":     PathPostgresURL,
 }
 
 func ScopeDataPrefix(scope string) (string, error) {

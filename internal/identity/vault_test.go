@@ -54,8 +54,8 @@ func TestVaultClient_Authenticate_Success(t *testing.T) {
 		if r.URL.Path == "/v1/auth/jwt/login" && r.Method == http.MethodPut {
 			resp := map[string]interface{}{
 				"auth": map[string]interface{}{
-					"client_token": "s.test-token-123",
-					"policies":     []string{"cage-default", "cage-discovery"},
+					"client_token":   "s.test-token-123",
+					"policies":       []string{"cage-default", "cage-discovery"},
 					"lease_duration": 3600,
 					"renewable":      true,
 				},
@@ -98,9 +98,9 @@ func TestVaultClient_Authenticate_Rejected(t *testing.T) {
 
 	vc := newTestVaultClient(t, server.URL)
 	svid := &SVID{
-		ID:       "test-serial",
-		Raw:      []byte("bad-cert"),
-		CageID:   "test-cage-1",
+		ID:     "test-serial",
+		Raw:    []byte("bad-cert"),
+		CageID: "test-cage-1",
 	}
 
 	_, err := vc.Authenticate(context.Background(), svid)

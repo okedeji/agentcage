@@ -403,10 +403,10 @@ func cmdAuditValidate(args []string) {
 		CageID       string `json:"cage_id"`
 		AssessmentID string `json:"assessment_id"`
 		Entries      []struct {
-			ID           string `json:"id"`
-			Sequence     int64  `json:"sequence"`
-			Type         string `json:"type"`
-			Timestamp    string `json:"timestamp"`
+			ID        string `json:"id"`
+			Sequence  int64  `json:"sequence"`
+			Type      string `json:"type"`
+			Timestamp string `json:"timestamp"`
 		} `json:"entries"`
 		Digest *struct {
 			EntryCount    int64  `json:"entry_count"`

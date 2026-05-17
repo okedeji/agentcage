@@ -65,7 +65,7 @@ func NewClient(endpointFn EndpointFunc, apiKey string, timeout time.Duration, me
 	})
 	return &Client{
 		endpointFn: endpointFn,
-		apiKey:   apiKey,
+		apiKey:     apiKey,
 		httpClient: &http.Client{
 			Transport: transport,
 			Timeout:   timeout + 5*time.Second,

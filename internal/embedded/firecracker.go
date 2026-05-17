@@ -14,7 +14,6 @@ import (
 
 const (
 	firecrackerVersion = "1.14.1"
-
 )
 
 // FirecrackerDownloader downloads the Firecracker VMM binary and a
@@ -30,8 +29,8 @@ func NewFirecrackerDownloader(log logr.Logger, version string) *FirecrackerDownl
 	return &FirecrackerDownloader{log: log.WithValues("service", "firecracker"), version: version}
 }
 
-func (f *FirecrackerDownloader) Name() string      { return "firecracker" }
-func (f *FirecrackerDownloader) IsExternal() bool   { return false }
+func (f *FirecrackerDownloader) Name() string     { return "firecracker" }
+func (f *FirecrackerDownloader) IsExternal() bool { return false }
 
 func (f *FirecrackerDownloader) BinPath() string {
 	return filepath.Join(BinDir(), "firecracker")

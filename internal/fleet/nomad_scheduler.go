@@ -16,9 +16,9 @@ import (
 
 // NomadSchedulerConfig holds the connection details for a Nomad cluster.
 type NomadSchedulerConfig struct {
-	Address  string
-	Token    string      // ACL token, empty for dev mode
-	TLS      *tls.Config // nil for plaintext (embedded dev)
+	Address string
+	Token   string      // ACL token, empty for dev mode
+	TLS     *tls.Config // nil for plaintext (embedded dev)
 }
 
 func (c NomadSchedulerConfig) String() string {
@@ -48,13 +48,13 @@ func (c NomadSchedulerConfig) MarshalJSON() ([]byte, error) {
 // placement, health checking, and rescheduling. The PoolManager is
 // still the source of truth for slot accounting.
 type NomadScheduler struct {
-	pool    *PoolManager
-	addr    string
-	token   string
-	client  *http.Client
-	mu      sync.Mutex
-	allocs  map[string]*nomadAlloc
-	ipSeq   uint32
+	pool   *PoolManager
+	addr   string
+	token  string
+	client *http.Client
+	mu     sync.Mutex
+	allocs map[string]*nomadAlloc
+	ipSeq  uint32
 }
 
 type nomadAlloc struct {

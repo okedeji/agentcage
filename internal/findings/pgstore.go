@@ -84,15 +84,15 @@ func (s *PGStore) FindingExists(ctx context.Context, findingID string) (bool, er
 
 func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error) {
 	var (
-		f                       Finding
-		statusStr, severityStr  string
-		description, endpoint   *string
-		cwe, remediation        *string
-		cvssScore               *float64
-		evidence                []byte
-		validationProofJSON     []byte
-		parentID                *string
-		validatedAt             *time.Time
+		f                      Finding
+		statusStr, severityStr string
+		description, endpoint  *string
+		cwe, remediation       *string
+		cvssScore              *float64
+		evidence               []byte
+		validationProofJSON    []byte
+		parentID               *string
+		validatedAt            *time.Time
 	)
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at

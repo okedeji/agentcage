@@ -16,7 +16,7 @@ import (
 
 func validLLMResponse() LLMResponse {
 	return LLMResponse{
-		ID:    "chatcmpl-abc123",
+		ID: "chatcmpl-abc123",
 		Choices: []LLMChoice{
 			{Index: 0, Message: LLMMessage{Role: "assistant", Content: "Hello"}},
 		},
@@ -81,7 +81,7 @@ func TestChatCompletion_BudgetExhausted(t *testing.T) {
 
 func TestChatCompletion_MissingUsageData(t *testing.T) {
 	resp := LLMResponse{
-		ID:    "chatcmpl-abc123",
+		ID: "chatcmpl-abc123",
 		Choices: []LLMChoice{
 			{Index: 0, Message: LLMMessage{Role: "assistant", Content: "Hello"}},
 		},

@@ -214,7 +214,9 @@ func (m *MultiNotifier) NotifyTimedOut(ctx context.Context, req Request) error {
 
 type NoopNotifier struct{}
 
-func (n *NoopNotifier) NotifyCreated(_ context.Context, _ Request) error                    { return nil }
-func (n *NoopNotifier) NotifyResolved(_ context.Context, _ Request) error                   { return nil }
-func (n *NoopNotifier) NotifyTimedOut(_ context.Context, _ Request) error                   { return nil }
-func (n *NoopNotifier) NotifyExpiring(_ context.Context, _ Request, _ time.Duration) error  { return nil }
+func (n *NoopNotifier) NotifyCreated(_ context.Context, _ Request) error  { return nil }
+func (n *NoopNotifier) NotifyResolved(_ context.Context, _ Request) error { return nil }
+func (n *NoopNotifier) NotifyTimedOut(_ context.Context, _ Request) error { return nil }
+func (n *NoopNotifier) NotifyExpiring(_ context.Context, _ Request, _ time.Duration) error {
+	return nil
+}

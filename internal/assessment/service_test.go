@@ -14,10 +14,10 @@ import (
 
 func testConfig() Config {
 	return Config{
-		CustomerID:    "customer-1",
-		Target:        cage.Scope{Hosts: []string{"target.example.com"}},
-		TokenBudget:   500000,
-		MaxDuration:   1 * time.Hour,
+		CustomerID:  "customer-1",
+		Target:      cage.Scope{Hosts: []string{"target.example.com"}},
+		TokenBudget: 500000,
+		MaxDuration: 1 * time.Hour,
 	}
 }
 

@@ -22,7 +22,7 @@ func configToPlan(cfg Config) *plan.Plan {
 		},
 		Limits: plan.Limits{
 			MaxTotalCages: cfg.MaxTotalCages,
-			MaxIterations:      cfg.MaxIterations,
+			MaxIterations: cfg.MaxIterations,
 		},
 		Tags: cfg.Tags,
 	}

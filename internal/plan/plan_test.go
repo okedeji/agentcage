@@ -75,12 +75,12 @@ func TestLoad_InvalidYAML(t *testing.T) {
 
 func TestMerge_OverrideScalars(t *testing.T) {
 	base := &Plan{
-		Name:  "base",
-		Agent: "base-agent.cage",
+		Name:   "base",
+		Agent:  "base-agent.cage",
 		Budget: Budget{Tokens: 100000, MaxDuration: "1h"},
 	}
 	override := &Plan{
-		Name:  "override",
+		Name:   "override",
 		Budget: Budget{Tokens: 500000},
 	}
 
@@ -268,7 +268,6 @@ func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
 	assert.Equal(t, []string{"sqli", "xss"}, p.Guidance.Priorities.VulnClasses)
 	assert.Equal(t, int64(0), p.Budget.Tokens)
 }
-
 
 func TestParseTags_Valid(t *testing.T) {
 	tags := []string{"team=red", "env=staging"}

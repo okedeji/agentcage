@@ -43,14 +43,14 @@ type vsockConn struct {
 	remoteAddr vsockAddr
 }
 
-func (c *vsockConn) Read(b []byte) (int, error)               { return c.file.Read(b) }
-func (c *vsockConn) Write(b []byte) (int, error)              { return c.file.Write(b) }
-func (c *vsockConn) Close() error                             { return c.file.Close() }
-func (c *vsockConn) LocalAddr() net.Addr                      { return c.localAddr }
-func (c *vsockConn) RemoteAddr() net.Addr                     { return c.remoteAddr }
-func (c *vsockConn) SetDeadline(t time.Time) error            { return c.file.SetDeadline(t) }
-func (c *vsockConn) SetReadDeadline(t time.Time) error        { return c.file.SetReadDeadline(t) }
-func (c *vsockConn) SetWriteDeadline(t time.Time) error       { return c.file.SetWriteDeadline(t) }
+func (c *vsockConn) Read(b []byte) (int, error)         { return c.file.Read(b) }
+func (c *vsockConn) Write(b []byte) (int, error)        { return c.file.Write(b) }
+func (c *vsockConn) Close() error                       { return c.file.Close() }
+func (c *vsockConn) LocalAddr() net.Addr                { return c.localAddr }
+func (c *vsockConn) RemoteAddr() net.Addr               { return c.remoteAddr }
+func (c *vsockConn) SetDeadline(t time.Time) error      { return c.file.SetDeadline(t) }
+func (c *vsockConn) SetReadDeadline(t time.Time) error  { return c.file.SetReadDeadline(t) }
+func (c *vsockConn) SetWriteDeadline(t time.Time) error { return c.file.SetWriteDeadline(t) }
 
 func dialVsock(cid, port uint32) (net.Conn, error) {
 	fd, err := syscall.Socket(afVsock, syscall.SOCK_STREAM, 0)

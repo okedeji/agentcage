@@ -31,18 +31,18 @@ type FleetSignaler interface {
 
 type Service struct {
 	temporal    client.Client
-	db         *sql.DB
-	fleet      FleetSignaler
+	db          *sql.DB
+	fleet       FleetSignaler
 	operatorCfg *config.Config
-	mu         sync.RWMutex
+	mu          sync.RWMutex
 	assessments map[string]*Info
 }
 
 func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, operatorCfg *config.Config) *Service {
 	return &Service{
 		temporal:    temporal,
-		db:         db,
-		fleet:      fleet,
+		db:          db,
+		fleet:       fleet,
 		operatorCfg: operatorCfg,
 		assessments: make(map[string]*Info),
 	}

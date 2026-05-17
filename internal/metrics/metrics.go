@@ -28,8 +28,8 @@ var (
 	FleetHostsActive         metric.Int64UpDownCounter
 	FleetCapacityUtilization metric.Float64Gauge
 
-	TripwiresFiredTotal       metric.Int64Counter
-	FalcoConnectionFailures   metric.Int64Counter
+	TripwiresFiredTotal     metric.Int64Counter
+	FalcoConnectionFailures metric.Int64Counter
 )
 
 // Init registers all agentcage metric instruments with the global meter provider.

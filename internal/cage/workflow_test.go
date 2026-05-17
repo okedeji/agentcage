@@ -45,15 +45,15 @@ func (activityStub) EnqueueIntervention(context.Context, InterventionType, Inter
 func (activityStub) FetchTargetCredentials(context.Context, string) ([]byte, error) {
 	return nil, nil
 }
-func (activityStub) ExportAuditLog(context.Context, string) error               { return nil }
-func (activityStub) TeardownVM(context.Context, string) error                   { return nil }
-func (activityStub) RevokeSVID(context.Context, string) error                   { return nil }
+func (activityStub) ExportAuditLog(context.Context, string) error                 { return nil }
+func (activityStub) TeardownVM(context.Context, string) error                     { return nil }
+func (activityStub) RevokeSVID(context.Context, string) error                     { return nil }
 func (activityStub) RevokeVaultToken(context.Context, *identity.VaultToken) error { return nil }
-func (activityStub) RemoveNetworkPolicy(context.Context, string) error          { return nil }
-func (activityStub) VerifyCleanup(context.Context, string, string) error        { return nil }
-func (activityStub) EmitRCA(context.Context, string, string, string) error      { return nil }
-func (activityStub) RecordRunMetrics(context.Context, string, string) error     { return nil }
-func (activityStub) RecordCostMetrics(context.Context, string, string) error    { return nil }
+func (activityStub) RemoveNetworkPolicy(context.Context, string) error            { return nil }
+func (activityStub) VerifyCleanup(context.Context, string, string) error          { return nil }
+func (activityStub) EmitRCA(context.Context, string, string, string) error        { return nil }
+func (activityStub) RecordRunMetrics(context.Context, string, string) error       { return nil }
+func (activityStub) RecordCostMetrics(context.Context, string, string) error      { return nil }
 
 func testWorkflowInput() CageWorkflowInput {
 	return CageWorkflowInput{
@@ -442,4 +442,3 @@ func TestCageWorkflow_HumanReview_Timeout(t *testing.T) {
 	env.AssertCalled(t, "SuspendAgent", mock.Anything, mock.Anything)
 	env.AssertNotCalled(t, "ResumeAgent", mock.Anything, mock.Anything)
 }
-

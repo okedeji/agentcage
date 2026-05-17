@@ -23,8 +23,8 @@ func NewFalcoService(log logr.Logger, version string) *FalcoService {
 	return &FalcoService{log: log.WithValues("service", "falco"), version: version}
 }
 
-func (f *FalcoService) Name() string      { return "falco" }
-func (f *FalcoService) IsExternal() bool   { return false }
+func (f *FalcoService) Name() string     { return "falco" }
+func (f *FalcoService) IsExternal() bool { return false }
 
 func (f *FalcoService) Download(ctx context.Context) error {
 	dest := filepath.Join(BinDir(), "falco")

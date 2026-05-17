@@ -27,8 +27,8 @@ func NewTemporalService(log logr.Logger) *TemporalService {
 	return &TemporalService{log: log.WithValues("service", "temporal")}
 }
 
-func (t *TemporalService) Name() string      { return "temporal" }
-func (t *TemporalService) IsExternal() bool   { return false }
+func (t *TemporalService) Name() string     { return "temporal" }
+func (t *TemporalService) IsExternal() bool { return false }
 
 func (t *TemporalService) Address() string {
 	return "localhost:" + temporalPort

@@ -19,9 +19,9 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/ui"
 	"github.com/okedeji/agentcage/internal/embedded"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
+	"github.com/okedeji/agentcage/internal/ui"
 )
 
 func buildGRPCServer(

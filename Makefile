@@ -1,6 +1,6 @@
 .PHONY: all build build-agentcage build-cage-rootfs \
        build-cage-internal build-typescript-sdk clean proto test vet lint \
-       check-secrets ci tidy
+       check-secrets fmt-check ci tidy
 
 GO := go
 VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo dev)
@@ -64,7 +64,10 @@ lint:
 check-secrets:
 	$(GO) run scripts/check_secret_redaction.go
 
-ci: vet lint check-secrets test build
+fmt-check:
+	@unformatted=$$(gofmt -l .); if [ -n "$$unformatted" ]; then echo "gofmt: these files are not formatted:" >&2; echo "$$unformatted" >&2; exit 1; fi
+
+ci: fmt-check vet lint check-secrets test build
 
 build-typescript-sdk:
 	cd sdk/typescript && npm install && npm run build

@@ -39,8 +39,8 @@ func NewSPIREServiceWithBind(log logr.Logger, bindAddr string) *SPIREService {
 	return &SPIREService{bindAddr: bindAddr, log: log.WithValues("service", "spire")}
 }
 
-func (s *SPIREService) Name() string      { return "spire" }
-func (s *SPIREService) IsExternal() bool   { return false }
+func (s *SPIREService) Name() string     { return "spire" }
+func (s *SPIREService) IsExternal() bool { return false }
 
 func (s *SPIREService) AgentSocket() string {
 	return filepath.Join(RunDir(), "spire", "agent.sock")

@@ -22,7 +22,7 @@ func NewCageInternalDownloader(log logr.Logger, version string) *CageInternalDow
 	return &CageInternalDownloader{log: log.WithValues("service", "cage-internal"), version: version}
 }
 
-func (c *CageInternalDownloader) Name() string    { return "cage-internal" }
+func (c *CageInternalDownloader) Name() string     { return "cage-internal" }
 func (c *CageInternalDownloader) IsExternal() bool { return false }
 
 func (c *CageInternalDownloader) binDir() string {

@@ -65,32 +65,31 @@ func StatusFromString(s string) Status {
 }
 
 type Config struct {
-	CustomerID       string
-	Name             string
-	BundleRef        string
-	Target           cage.Scope
-	SkipPaths        []string
-	CageDefaults     map[cage.Type]CageTypeConfig
-	TokenBudget      int64
-	MaxDuration      time.Duration
-	MaxTotalCages    int32
-	MaxIterations    int32
+	CustomerID    string
+	Name          string
+	BundleRef     string
+	Target        cage.Scope
+	SkipPaths     []string
+	CageDefaults  map[cage.Type]CageTypeConfig
+	TokenBudget   int64
+	MaxDuration   time.Duration
+	MaxTotalCages int32
+	MaxIterations int32
 	// TrustAgentProof skips spawning a validator cage when the agent
 	// provides a confirmed ValidationProof on the finding. The finding
 	// is marked validated directly. Set false to always re-test
 	// independently (higher confidence, more expensive).
-	TrustAgentProof  bool
-	ProofThreshold   float64
-	Guidance         *Guidance
-	Tags             map[string]string
-	Notifications    NotificationConfig
-	ExtraBlock       []cage.ProxyPatternEntry
-	ExtraFlag        []cage.ProxyPatternEntry
-	Credentials      string
-	Environment      map[string]string
-	Capabilities     cagefile.AgentCapabilities
+	TrustAgentProof bool
+	ProofThreshold  float64
+	Guidance        *Guidance
+	Tags            map[string]string
+	Notifications   NotificationConfig
+	ExtraBlock      []cage.ProxyPatternEntry
+	ExtraFlag       []cage.ProxyPatternEntry
+	Credentials     string
+	Environment     map[string]string
+	Capabilities    cagefile.AgentCapabilities
 }
-
 
 type NotificationConfig struct {
 	Webhook    string
@@ -127,10 +126,10 @@ type ValidationGuidance struct {
 }
 
 type CageTypeConfig struct {
-	Type        cage.Type
-	Resources   cage.ResourceLimits
+	Type         cage.Type
+	Resources    cage.ResourceLimits
 	MaxBatchSize int32
-	MaxDuration time.Duration
+	MaxDuration  time.Duration
 }
 
 type Info struct {

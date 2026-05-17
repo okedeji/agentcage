@@ -385,7 +385,7 @@ func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernel
 
 	// Set machine config
 	machine := map[string]any{
-		"vcpu_count":  cfg.VCPUs,
+		"vcpu_count":   cfg.VCPUs,
 		"mem_size_mib": cfg.MemoryMB,
 	}
 	if err := firecrackerAPI(ctx, socket, "PUT", "/machine-config", machine); err != nil {

@@ -18,9 +18,9 @@ import (
 
 // PackConfig holds dependencies for the pack service handler.
 type PackConfig struct {
-	BundleStoreDir    string
-	SDKTarball        string
-	AgentcageVersion  string
+	BundleStoreDir   string
+	SDKTarball       string
+	AgentcageVersion string
 }
 
 type packAdapter struct {

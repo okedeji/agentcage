@@ -37,11 +37,11 @@ func normalizeVulnClass(s string) string {
 }
 
 type Proof struct {
-	VulnClass      string               `yaml:"vulnerability_class"`
-	ValidationType string               `yaml:"validation_type"`
-	Description    string               `yaml:"description"`
-	Payload        ProofPayload      `yaml:"payload_template"`
-	Confirmation   ProofConfirmation `yaml:"confirmation"`
+	VulnClass          string               `yaml:"vulnerability_class"`
+	ValidationType     string               `yaml:"validation_type"`
+	Description        string               `yaml:"description"`
+	Payload            ProofPayload         `yaml:"payload_template"`
+	Confirmation       ProofConfirmation    `yaml:"confirmation"`
 	MaxRequests        int                  `yaml:"max_requests"`
 	MaxDurationSeconds int                  `yaml:"max_duration_seconds"`
 	Safety             SafetyClassification `yaml:"safety_classification"`

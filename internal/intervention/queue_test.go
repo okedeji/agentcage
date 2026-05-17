@@ -72,8 +72,8 @@ func (m *memStore) ListInterventions(_ context.Context, filters ListFilters) ([]
 }
 
 type recordingNotifier struct {
-	mu      sync.Mutex
-	created []Request
+	mu       sync.Mutex
+	created  []Request
 	resolved []Request
 	timedOut []Request
 }

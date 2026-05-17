@@ -22,8 +22,8 @@ func NewNATSService(log logr.Logger) *NATSService {
 	return &NATSService{log: log.WithValues("service", "nats")}
 }
 
-func (n *NATSService) Name() string      { return "nats" }
-func (n *NATSService) IsExternal() bool   { return false }
+func (n *NATSService) Name() string     { return "nats" }
+func (n *NATSService) IsExternal() bool { return false }
 
 func (n *NATSService) URL() string {
 	return fmt.Sprintf("nats://localhost:%d", natsPort)

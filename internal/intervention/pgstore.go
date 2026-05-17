@@ -70,13 +70,13 @@ func (s *PGStore) UpdateIntervention(ctx context.Context, req Request) error {
 
 func (s *PGStore) GetIntervention(ctx context.Context, id string) (*Request, error) {
 	var (
-		req        Request
-		typeName   string
-		statusName string
+		req          Request
+		typeName     string
+		statusName   string
 		priorityName string
-		cageID     sql.NullString
-		timeoutAt  sql.NullTime
-		resolvedAt sql.NullTime
+		cageID       sql.NullString
+		timeoutAt    sql.NullTime
+		resolvedAt   sql.NullTime
 	)
 
 	err := s.db.QueryRowContext(ctx,
@@ -215,8 +215,8 @@ func (s *PGStore) ListInterventions(ctx context.Context, filters ListFilters) ([
 	return results, nextToken, nil
 }
 
-func statusToString(s Status) string  { return s.String() }
-func typeToString(t Type) string      { return t.String() }
+func statusToString(s Status) string     { return s.String() }
+func typeToString(t Type) string         { return t.String() }
 func priorityToString(p Priority) string { return p.String() }
 
 func statusFromString(s string) Status {

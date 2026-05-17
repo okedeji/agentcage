@@ -26,7 +26,7 @@ func listenVsock(port uint32) (*vsockListener, error) {
 }
 
 func (l *vsockListener) Accept() (net.Conn, error) { return l.inner.Accept() }
-func (l *vsockListener) Close() error               { return l.inner.Close() }
+func (l *vsockListener) Close() error              { return l.inner.Close() }
 
 func dialVsock(cid, port uint32) (net.Conn, error) {
 	sockPath := fmt.Sprintf("/var/run/agentcage/vsock-%d.sock", port)

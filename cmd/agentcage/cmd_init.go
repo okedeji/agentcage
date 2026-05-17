@@ -22,13 +22,12 @@ import (
 	"github.com/okedeji/agentcage/internal/enforcement"
 	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/fleet"
-	"github.com/okedeji/agentcage/internal/identity"
 	agentgrpc "github.com/okedeji/agentcage/internal/grpc"
+	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/internal/intervention"
 	proxylog "github.com/okedeji/agentcage/internal/log"
 	"github.com/okedeji/agentcage/internal/ui"
 )
-
 
 func cmdInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
@@ -308,12 +307,12 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 	}
 
 	grpcServer, err := buildGRPCServer(ctx, cfg, agentgrpc.Services{
-		Cages:            cageSvc,
-		Assessments:      assessmentSvc,
-		Interventions:    iSvc,
-		Fleet:            fleetSvc,
-		Findings:         findingStore,
-		Audit:            cageRuntime.auditStore,
+		Cages:         cageSvc,
+		Assessments:   assessmentSvc,
+		Interventions: iSvc,
+		Fleet:         fleetSvc,
+		Findings:      findingStore,
+		Audit:         cageRuntime.auditStore,
 		Pack: agentgrpc.PackConfig{
 			BundleStoreDir:   filepath.Join(embedded.DataDir(), "bundles"),
 			SDKTarball:       filepath.Join(embedded.BinDir(), "agentcage-sdk.tgz"),

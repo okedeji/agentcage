@@ -260,4 +260,3 @@ func splitHostPort(addr, defaultPort string) (string, string) {
 	}
 	return addr, defaultPort
 }
-

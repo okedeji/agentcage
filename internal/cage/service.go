@@ -22,17 +22,17 @@ var ErrCageNotFound = errors.New("cage not found")
 type ConfigValidator func(Config) error
 
 type Service struct {
-	temporal             client.Client
-	validate             ConfigValidator
-	db                   *sql.DB
-	llmEndpointFn        func() string
-	llmAPIKey            string
-	natsAddr             string
-	hostControlAddr      string
-	timeouts             Timeouts
-	interventionTimeout  time.Duration
-	mu                   sync.RWMutex
-	cages                map[string]*Info
+	temporal            client.Client
+	validate            ConfigValidator
+	db                  *sql.DB
+	llmEndpointFn       func() string
+	llmAPIKey           string
+	natsAddr            string
+	hostControlAddr     string
+	timeouts            Timeouts
+	interventionTimeout time.Duration
+	mu                  sync.RWMutex
+	cages               map[string]*Info
 }
 
 func NewService(temporal client.Client, validate ConfigValidator, db *sql.DB, llmEndpointFn func() string, llmAPIKey, natsAddr, hostControlAddr string, timeouts Timeouts, interventionTimeout time.Duration) *Service {

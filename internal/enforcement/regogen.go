@@ -122,4 +122,3 @@ func generatePayloadRego(class string, pc config.PayloadConfig) string {
 
 	return b.String()
 }
-
