@@ -113,7 +113,7 @@ func listInterventions(ctx context.Context, client pb.InterventionServiceClient,
 
 	for _, item := range items {
 		scope := "cage=" + item.GetCageId()
-		if item.GetType() == pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP {
+		if item.GetType() == pb.InterventionType_INTERVENTION_TYPE_REPORT_REVIEW {
 			scope = "assessment=" + item.GetAssessmentId()
 		}
 		created := ""
@@ -140,8 +140,6 @@ func interventionTypeLabel(t pb.InterventionType) string {
 		return "report_review"
 	case pb.InterventionType_INTERVENTION_TYPE_POLICY_VIOLATION:
 		return "policy_violation"
-	case pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP:
-		return "proof_gap"
 	case pb.InterventionType_INTERVENTION_TYPE_AGENT_HOLD:
 		return "agent_hold"
 	default:
@@ -160,7 +158,6 @@ func cmdInterventionsResolve(args []string) {
 		fmt.Fprintln(os.Stderr, "usage: agentcage interventions resolve --id <id> --action <action> [--rationale reason]")
 		fmt.Fprintln(os.Stderr, "\nActions:")
 		fmt.Fprintln(os.Stderr, "  resume, kill, allow, block     cage and budget interventions")
-		fmt.Fprintln(os.Stderr, "  retry, skip                    proof gap interventions")
 		fmt.Fprintln(os.Stderr, "  approve, reject, retest        report review interventions")
 		os.Exit(1)
 	}
@@ -188,8 +185,6 @@ func cmdInterventionsResolve(args []string) {
 	client := pb.NewInterventionServiceClient(conn)
 
 	switch *action {
-	case "retry", "skip":
-		resolveProofGap(ctx, client, *id, *action, *rationale)
 	case "approve", "reject", "retest":
 		resolveReview(ctx, client, *id, *action, *rationale)
 	case "resume", "kill", "allow", "block":
@@ -222,25 +217,6 @@ func resolveCage(ctx context.Context, client pb.InterventionServiceClient, id, a
 		os.Exit(1)
 	}
 	fmt.Printf("Intervention %s resolved with action=%s\n", id, action)
-}
-
-func resolveProofGap(ctx context.Context, client pb.InterventionServiceClient, id, action, rationale string) {
-	var pgAction pb.ProofGapAction
-	if action == "retry" {
-		pgAction = pb.ProofGapAction_PROOF_GAP_ACTION_RETRY
-	} else {
-		pgAction = pb.ProofGapAction_PROOF_GAP_ACTION_SKIP
-	}
-
-	if _, err := client.ResolveProofGap(ctx, &pb.ResolveProofGapRequest{
-		InterventionId: id,
-		Action:         pgAction,
-		Rationale:      rationale,
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Proof gap intervention %s resolved with action=%s\n", id, action)
 }
 
 func resolveReview(ctx context.Context, client pb.InterventionServiceClient, id, action, rationale string) {
@@ -282,7 +258,6 @@ Examples:
 
 Actions:
   resume, kill, allow, block     cage interventions (tripwire, payload)
-  retry, skip                    proof gap interventions
   approve, reject, retest        report review interventions
 
 Flags:

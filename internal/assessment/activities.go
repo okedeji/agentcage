@@ -26,8 +26,6 @@ type Activities interface {
 	GenerateReport(ctx context.Context, assessmentID, customerID, target string, validated []findings.Finding) ([]byte, error)
 	StoreReport(ctx context.Context, assessmentID string, reportData []byte) error
 	PlanNextActions(ctx context.Context, state CoordinatorState) (CoordinatorDecision, error)
-	LookupProof(ctx context.Context, vulnClass string) (*Proof, error)
-	EmitProofGapIntervention(ctx context.Context, assessmentID, vulnClass string, findingIDs []string) (string, error)
 	GetAssessmentTokensConsumed(ctx context.Context, assessmentID string) (int64, error)
 	CountFindings(ctx context.Context, assessmentID string) (findings.StatusCounts, error)
 	EnrichFinding(ctx context.Context, assessmentID string, f findings.Finding) error

@@ -1,6 +1,6 @@
 // Command agentcage is the orchestrator binary and CLI for the
 // agentcage platform. It dispatches subcommands (init, run, assessments,
-// findings, report, interventions, fleet, db, logs, proof, audit,
+// findings, report, interventions, fleet, db, logs, audit,
 // falco). All gRPC commands dial the orchestrator directly.
 //
 // `agentcage init` is the long-running entry point: it boots every

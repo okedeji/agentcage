@@ -3,7 +3,6 @@ import {
   InterventionStatus,
   InterventionAction,
   ReviewDecision,
-  ProofGapAction,
 } from './enums';
 
 export interface Intervention {
@@ -33,12 +32,6 @@ export interface ResolveCageRequest {
   action: InterventionAction;
   rationale?: string;
   adjustments?: Record<string, string>;
-}
-
-export interface ResolveProofGapRequest {
-  interventionId: string;
-  action: ProofGapAction;
-  rationale?: string;
 }
 
 export interface FindingAdjustment {

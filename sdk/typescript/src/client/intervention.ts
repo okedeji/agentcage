@@ -4,7 +4,6 @@ import type {
   Intervention,
   ListInterventionsRequest,
   ResolveCageRequest,
-  ResolveProofGapRequest,
   ResolveReviewRequest,
 } from '../types/intervention';
 
@@ -25,10 +24,6 @@ export class InterventionService {
 
   async resolveCage(req: ResolveCageRequest): Promise<void> {
     await callUnary(this.client, 'resolveCageIntervention', req, this.callCreds);
-  }
-
-  async resolveProofGap(req: ResolveProofGapRequest): Promise<void> {
-    await callUnary(this.client, 'resolveProofGap', req, this.callCreds);
   }
 
   async resolveReview(req: ResolveReviewRequest): Promise<void> {

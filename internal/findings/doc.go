@@ -7,7 +7,7 @@
 // findings at ingestion, and the Postgres-backed store.
 //
 // A finding moves from candidate to validated when a validator cage
-// confirms it via the proof library, or to rejected if validation
+// independently confirms the agent's proof, or to rejected if validation
 // fails. The status transitions are owned by the assessment package;
 // this package owns the data and the ingestion path.
 package findings

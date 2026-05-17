@@ -242,8 +242,6 @@ func typeFromString(s string) Type {
 		return TypeReportReview
 	case "policy_violation":
 		return TypePolicyViolation
-	case "proof_gap":
-		return TypeProofGap
 	case "agent_hold":
 		return TypeAgentHold
 	default:

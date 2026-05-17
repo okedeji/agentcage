@@ -611,14 +611,6 @@ func (a *interventionAdapter) ResolveCageIntervention(ctx context.Context, req *
 	return &pb.ResolveCageInterventionResponse{}, nil
 }
 
-func (a *interventionAdapter) ResolveProofGap(ctx context.Context, req *pb.ResolveProofGapRequest) (*pb.ResolveProofGapResponse, error) {
-	action := proofGapActionFromProto(req.GetAction())
-	if err := a.server.ResolveProofGap(ctx, req.GetInterventionId(), action, req.GetRationale(), "operator"); err != nil {
-		return nil, toGRPCError(err)
-	}
-	return &pb.ResolveProofGapResponse{}, nil
-}
-
 func (a *interventionAdapter) ResolveAssessmentReview(ctx context.Context, req *pb.ResolveAssessmentReviewRequest) (*pb.ResolveAssessmentReviewResponse, error) {
 	decision := reviewDecisionFromProto(req.GetDecision())
 	var adjustments []intervention.FindingAdjustment

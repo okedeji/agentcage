@@ -23,7 +23,6 @@ const (
 	InterventionService_GetIntervention_FullMethodName         = "/agentcage.intervention.v1.InterventionService/GetIntervention"
 	InterventionService_ResolveCageIntervention_FullMethodName = "/agentcage.intervention.v1.InterventionService/ResolveCageIntervention"
 	InterventionService_ResolveAssessmentReview_FullMethodName = "/agentcage.intervention.v1.InterventionService/ResolveAssessmentReview"
-	InterventionService_ResolveProofGap_FullMethodName         = "/agentcage.intervention.v1.InterventionService/ResolveProofGap"
 )
 
 // InterventionServiceClient is the client API for InterventionService service.
@@ -34,7 +33,6 @@ type InterventionServiceClient interface {
 	GetIntervention(ctx context.Context, in *GetInterventionRequest, opts ...grpc.CallOption) (*GetInterventionResponse, error)
 	ResolveCageIntervention(ctx context.Context, in *ResolveCageInterventionRequest, opts ...grpc.CallOption) (*ResolveCageInterventionResponse, error)
 	ResolveAssessmentReview(ctx context.Context, in *ResolveAssessmentReviewRequest, opts ...grpc.CallOption) (*ResolveAssessmentReviewResponse, error)
-	ResolveProofGap(ctx context.Context, in *ResolveProofGapRequest, opts ...grpc.CallOption) (*ResolveProofGapResponse, error)
 }
 
 type interventionServiceClient struct {
@@ -85,16 +83,6 @@ func (c *interventionServiceClient) ResolveAssessmentReview(ctx context.Context,
 	return out, nil
 }
 
-func (c *interventionServiceClient) ResolveProofGap(ctx context.Context, in *ResolveProofGapRequest, opts ...grpc.CallOption) (*ResolveProofGapResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ResolveProofGapResponse)
-	err := c.cc.Invoke(ctx, InterventionService_ResolveProofGap_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // InterventionServiceServer is the server API for InterventionService service.
 // All implementations must embed UnimplementedInterventionServiceServer
 // for forward compatibility.
@@ -103,7 +91,6 @@ type InterventionServiceServer interface {
 	GetIntervention(context.Context, *GetInterventionRequest) (*GetInterventionResponse, error)
 	ResolveCageIntervention(context.Context, *ResolveCageInterventionRequest) (*ResolveCageInterventionResponse, error)
 	ResolveAssessmentReview(context.Context, *ResolveAssessmentReviewRequest) (*ResolveAssessmentReviewResponse, error)
-	ResolveProofGap(context.Context, *ResolveProofGapRequest) (*ResolveProofGapResponse, error)
 	mustEmbedUnimplementedInterventionServiceServer()
 }
 
@@ -125,9 +112,6 @@ func (UnimplementedInterventionServiceServer) ResolveCageIntervention(context.Co
 }
 func (UnimplementedInterventionServiceServer) ResolveAssessmentReview(context.Context, *ResolveAssessmentReviewRequest) (*ResolveAssessmentReviewResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResolveAssessmentReview not implemented")
-}
-func (UnimplementedInterventionServiceServer) ResolveProofGap(context.Context, *ResolveProofGapRequest) (*ResolveProofGapResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ResolveProofGap not implemented")
 }
 func (UnimplementedInterventionServiceServer) mustEmbedUnimplementedInterventionServiceServer() {}
 func (UnimplementedInterventionServiceServer) testEmbeddedByValue()                             {}
@@ -222,24 +206,6 @@ func _InterventionService_ResolveAssessmentReview_Handler(srv interface{}, ctx c
 	return interceptor(ctx, in, info, handler)
 }
 
-func _InterventionService_ResolveProofGap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ResolveProofGapRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InterventionServiceServer).ResolveProofGap(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InterventionService_ResolveProofGap_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InterventionServiceServer).ResolveProofGap(ctx, req.(*ResolveProofGapRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // InterventionService_ServiceDesc is the grpc.ServiceDesc for InterventionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -262,10 +228,6 @@ var InterventionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResolveAssessmentReview",
 			Handler:    _InterventionService_ResolveAssessmentReview_Handler,
-		},
-		{
-			MethodName: "ResolveProofGap",
-			Handler:    _InterventionService_ResolveProofGap_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

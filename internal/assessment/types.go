@@ -173,3 +173,38 @@ func ValidateTransition(from, to Status) error {
 	}
 	return fmt.Errorf("%w: %s to %s", ErrInvalidTransition, from, to)
 }
+
+// Proof is the structured instruction a validator cage uses to
+// reproduce a finding. Built from the agent's reproduction steps.
+type Proof struct {
+	VulnClass          string               `json:"vuln_class"`
+	ValidationType     string               `json:"validation_type"`
+	Description        string               `json:"description"`
+	Payload            ProofPayload         `json:"payload"`
+	Confirmation       ProofConfirmation    `json:"confirmation"`
+	MaxRequests        int                  `json:"max_requests"`
+	MaxDurationSeconds int                  `json:"max_duration_seconds"`
+	Safety             SafetyClassification `json:"safety"`
+}
+
+type ProofPayload struct {
+	Method    string `json:"method,omitempty"`
+	URL       string `json:"url"`
+	Parameter string `json:"parameter,omitempty"`
+	Value     string `json:"value,omitempty"`
+}
+
+type ProofConfirmation struct {
+	Type            string `json:"type"`
+	ExpectedDelta   int    `json:"expected_delta,omitempty"`
+	Tolerance       int    `json:"tolerance,omitempty"`
+	ExpectedPattern string `json:"expected_pattern,omitempty"`
+	TimeoutSeconds  int    `json:"timeout_seconds,omitempty"`
+}
+
+type SafetyClassification struct {
+	Destructive       bool   `json:"destructive,omitempty"`
+	DataExfiltration  bool   `json:"data_exfiltration,omitempty"`
+	StateModification bool   `json:"state_modification,omitempty"`
+	Rationale         string `json:"rationale"`
+}

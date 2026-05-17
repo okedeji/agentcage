@@ -69,8 +69,6 @@ func main() {
 		cmdDB(args)
 	case "logs":
 		cmdLogs(args)
-	case "proof":
-		cmdProof(args)
 	case "audit":
 		cmdAudit(args)
 	case "falco":
@@ -136,7 +134,6 @@ Monitor:
 
 Operate:
   interventions       List, inspect, or resolve pending interventions
-  proof               Manage proof-of-concept validation rules
   fleet               Inspect fleet hosts, pools, and capacity
   audit               Verify, inspect, and export audit logs
   falco               Manage Falco runtime security rules

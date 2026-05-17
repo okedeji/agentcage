@@ -1,7 +1,7 @@
 // Package intervention is the human-in-the-loop seam where the
 // autonomous orchestrator hands control back to a person. When the
 // system hits a decision it shouldn't make alone (a tripwire, a
-// payload review, a missing proof, a report review, a policy
+// payload review, a report review, a policy
 // violation), it enqueues an intervention. An operator resolves it
 // via CLI, and the resolution signals the relevant Temporal workflow
 // to resume, kill, or skip.

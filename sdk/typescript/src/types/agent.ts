@@ -20,7 +20,7 @@ export interface AgentFinding {
   cwe?: string;
   cvssScore?: number;
   remediation?: string;
-  validationProof?: {
+  validationProof: {
     reproductionSteps: string;
     confirmed: boolean;
     deterministic: boolean;

@@ -365,25 +365,10 @@ func interventionTypeFromProto(t pb.InterventionType) intervention.Type {
 		return intervention.TypeReportReview
 	case pb.InterventionType_INTERVENTION_TYPE_POLICY_VIOLATION:
 		return intervention.TypePolicyViolation
-	case pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP:
-		return intervention.TypeProofGap
 	case pb.InterventionType_INTERVENTION_TYPE_AGENT_HOLD:
 		return intervention.TypeAgentHold
 	default:
 		return intervention.TypeTripwireEscalation
-	}
-}
-
-func proofGapActionFromProto(a pb.ProofGapAction) intervention.ProofGapAction {
-	switch a {
-	case pb.ProofGapAction_PROOF_GAP_ACTION_RETRY:
-		return intervention.ProofGapActionRetry
-	case pb.ProofGapAction_PROOF_GAP_ACTION_SKIP:
-		return intervention.ProofGapActionSkip
-	default:
-		// Fail closed: unknown action retries (requires proof) rather
-		// than skips (accepts unvalidated findings).
-		return intervention.ProofGapActionRetry
 	}
 }
 
@@ -477,8 +462,6 @@ func interventionTypeToProto(t intervention.Type) pb.InterventionType {
 		return pb.InterventionType_INTERVENTION_TYPE_REPORT_REVIEW
 	case intervention.TypePolicyViolation:
 		return pb.InterventionType_INTERVENTION_TYPE_POLICY_VIOLATION
-	case intervention.TypeProofGap:
-		return pb.InterventionType_INTERVENTION_TYPE_PROOF_GAP
 	case intervention.TypeAgentHold:
 		return pb.InterventionType_INTERVENTION_TYPE_AGENT_HOLD
 	default:

@@ -239,8 +239,6 @@ func pollInterventions(ctx context.Context, client pb.InterventionServiceClient,
 func printInterventionCommand(iv *pb.InterventionInfo) {
 	id := shortID(iv.GetInterventionId())
 	switch {
-	case strings.Contains(iv.GetType().String(), "PROOF_GAP"):
-		fmt.Printf("           Run: agentcage intervention resolve %s --retry\n", id)
 	case strings.Contains(iv.GetType().String(), "TRIPWIRE"):
 		fmt.Printf("           Run: agentcage intervention resolve %s --resume  (or --kill)\n", id)
 	case strings.Contains(iv.GetType().String(), "REPORT_REVIEW"):

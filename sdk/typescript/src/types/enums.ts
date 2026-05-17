@@ -28,7 +28,6 @@ export enum InterventionType {
   PayloadReview = 'payload_review',
   ReportReview = 'report_review',
   PolicyViolation = 'policy_violation',
-  ProofGap = 'proof_gap',
   AgentHold = 'agent_hold',
 }
 
@@ -49,11 +48,6 @@ export enum ReviewDecision {
   Approve = 'approve',
   Reject = 'reject',
   Retest = 'retest',
-}
-
-export enum ProofGapAction {
-  Retry = 'retry',
-  Skip = 'skip',
 }
 
 export enum HostPool {

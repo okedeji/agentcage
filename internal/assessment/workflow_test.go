@@ -42,14 +42,8 @@ func (assessmentActivityStub) GenerateReport(_ context.Context, _, _, _ string, 
 func (assessmentActivityStub) PlanNextActions(_ context.Context, _ CoordinatorState) (CoordinatorDecision, error) {
 	return CoordinatorDecision{Done: true, Reason: "stub"}, nil
 }
-func (assessmentActivityStub) LookupProof(_ context.Context, _ string) (*Proof, error) {
-	return nil, nil
-}
 func (assessmentActivityStub) GetFinding(_ context.Context, _ string) (findings.Finding, error) {
 	return findings.Finding{}, nil
-}
-func (assessmentActivityStub) EmitProofGapIntervention(_ context.Context, _, _ string, _ []string) (string, error) {
-	return "", nil
 }
 func (assessmentActivityStub) GetAssessmentTokensConsumed(_ context.Context, _ string) (int64, error) {
 	return 0, nil

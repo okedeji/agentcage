@@ -28,6 +28,9 @@ export class FindingsWriter {
   }
 
   async submit(finding: AgentFinding): Promise<void> {
+    if (!finding.validationProof?.reproductionSteps) {
+      throw new Error(`finding ${finding.id}: validationProof.reproductionSteps is required`);
+    }
     const sock = await this.ensureConnection();
 
     // Default status to candidate if not set.

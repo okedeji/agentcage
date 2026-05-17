@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-logr/logr"
 	"go.temporal.io/sdk/activity"
@@ -17,7 +16,6 @@ import (
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/gateway"
-	"github.com/okedeji/agentcage/internal/intervention"
 )
 
 // AlertNotifier dispatches fire-and-forget notifications to operators.
@@ -26,57 +24,42 @@ type AlertNotifier interface {
 	Notify(ctx context.Context, source, category, description, cageID, assessmentID string, priority int, details map[string]any)
 }
 
-// InterventionEmitter creates pending interventions at the assessment level.
-// Narrow interface so tests can stub it without spinning up the full
-// intervention service.
-type InterventionEmitter interface {
-	EnqueueProofGap(ctx context.Context, assessmentID, description string, contextData []byte, timeout time.Duration) (*intervention.Request, error)
-}
-
-// ProofGapTimeout is how long an operator has to add a new proof and resolve
-// the intervention before the workflow auto-skips the affected findings.
-const ProofGapTimeout = 24 * time.Hour
-
 // ActivityImpl provides concrete implementations of all assessment
 // lifecycle activities. It wires the cage server, findings store,
-// planner, and proof library together.
+// planner, and operator config together.
 // Returns total tokens consumed across all cages in an assessment.
 type TokenQuerier interface {
 	AssessmentTokens(assessmentID string) int64
 }
 
 type ActivityImpl struct {
-	cages         *cage.Service
-	findings      findings.FindingStore
-	bus           findings.Bus
-	coordinator   *findings.Coordinator
-	fleet         FleetSignaler
-	assessments   *Service
-	tokens        TokenQuerier
-	configServer  *config.Server
-	alerter       AlertNotifier
-	planner       *Planner
-	proofs        *ProofLibrary
-	interventions InterventionEmitter
-	log           logr.Logger
-	subsMu        sync.Mutex
-	subs          map[string]findings.Subscription
+	cages        *cage.Service
+	findings     findings.FindingStore
+	bus          findings.Bus
+	coordinator  *findings.Coordinator
+	fleet        FleetSignaler
+	assessments  *Service
+	tokens       TokenQuerier
+	configServer *config.Server
+	alerter      AlertNotifier
+	planner      *Planner
+	log          logr.Logger
+	subsMu       sync.Mutex
+	subs         map[string]findings.Subscription
 }
 
 type ActivityImplConfig struct {
-	Cages         *cage.Service
-	Findings      findings.FindingStore
-	Bus           findings.Bus
-	Coordinator   *findings.Coordinator
-	Fleet         FleetSignaler
-	Assessments   *Service
-	Tokens        TokenQuerier
-	ConfigServer  *config.Server
-	Alerter       AlertNotifier
-	LLMClient     *gateway.Client
-	Proofs        *ProofLibrary
-	Interventions InterventionEmitter
-	Log           logr.Logger
+	Cages        *cage.Service
+	Findings     findings.FindingStore
+	Bus          findings.Bus
+	Coordinator  *findings.Coordinator
+	Fleet        FleetSignaler
+	Assessments  *Service
+	Tokens       TokenQuerier
+	ConfigServer *config.Server
+	Alerter      AlertNotifier
+	LLMClient    *gateway.Client
+	Log          logr.Logger
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
@@ -85,20 +68,18 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		planner = NewPlanner(cfg.LLMClient)
 	}
 	return &ActivityImpl{
-		cages:         cfg.Cages,
-		findings:      cfg.Findings,
-		bus:           cfg.Bus,
-		coordinator:   cfg.Coordinator,
-		fleet:         cfg.Fleet,
-		assessments:   cfg.Assessments,
-		tokens:        cfg.Tokens,
-		configServer:  cfg.ConfigServer,
-		alerter:       cfg.Alerter,
-		planner:       planner,
-		proofs:        cfg.Proofs,
-		interventions: cfg.Interventions,
-		log:           cfg.Log.WithValues("component", "assessment-activities"),
-		subs:          make(map[string]findings.Subscription),
+		cages:        cfg.Cages,
+		findings:     cfg.Findings,
+		bus:          cfg.Bus,
+		coordinator:  cfg.Coordinator,
+		fleet:        cfg.Fleet,
+		assessments:  cfg.Assessments,
+		tokens:       cfg.Tokens,
+		configServer: cfg.ConfigServer,
+		alerter:      cfg.Alerter,
+		planner:      planner,
+		log:          cfg.Log.WithValues("component", "assessment-activities"),
+		subs:         make(map[string]findings.Subscription),
 	}
 }
 
@@ -120,8 +101,6 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("UpdateAssessmentStats", a.UpdateAssessmentStats)
 	pin("GenerateReport", a.GenerateReport)
 	pin("PlanNextActions", a.PlanNextActions)
-	pin("LookupProof", a.LookupProof)
-	pin("EmitProofGapIntervention", a.EmitProofGapIntervention)
 	pin("GetAssessmentTokensConsumed", a.GetAssessmentTokensConsumed)
 	pin("GetLiveTokenBudget", a.GetLiveTokenBudget)
 	pin("NotifyBudgetExhausted", a.NotifyBudgetExhausted)
@@ -135,34 +114,6 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("EnrichFinding", a.EnrichFinding)
 	pin("StoreValidationProof", a.StoreValidationProof)
 	pin("GetCageState", a.GetCageState)
-}
-
-// EmitProofGapIntervention creates a pending proof_gap intervention for a
-// specific vulnerability class with the list of affected candidate findings
-// in the context payload. Returns the intervention ID for the workflow to
-// signal-wait against.
-func (a *ActivityImpl) EmitProofGapIntervention(ctx context.Context, assessmentID, vulnClass string, findingIDs []string) (string, error) {
-	if a.interventions == nil {
-		return "", fmt.Errorf("proof gap emitter not configured for assessment %s", assessmentID)
-	}
-	payload, err := json.Marshal(struct {
-		VulnClass  string   `json:"vuln_class"`
-		FindingIDs []string `json:"finding_ids"`
-	}{vulnClass, findingIDs})
-	if err != nil {
-		return "", fmt.Errorf("marshaling proof_gap context for %s: %w", assessmentID, err)
-	}
-	desc := fmt.Sprintf("no proof for vuln_class=%s (%d candidate findings)", vulnClass, len(findingIDs))
-	req, err := a.interventions.EnqueueProofGap(ctx, assessmentID, desc, payload, ProofGapTimeout)
-	if err != nil {
-		return "", fmt.Errorf("enqueueing proof_gap intervention for %s: %w", assessmentID, err)
-	}
-	a.log.Info("proof_gap intervention emitted",
-		"assessment_id", assessmentID,
-		"vuln_class", vulnClass,
-		"candidates", len(findingIDs),
-		"intervention_id", req.ID)
-	return req.ID, nil
 }
 
 func (a *ActivityImpl) NotifyBudgetExhausted(ctx context.Context, assessmentID string, consumed, budget int64) error {
@@ -316,24 +267,6 @@ func (a *ActivityImpl) PlanNextActions(ctx context.Context, state CoordinatorSta
 		"actions", len(decision.Actions),
 	)
 	return decision, nil
-}
-
-// LookupProof returns the first available proof for a vuln class.
-// Returns nil, nil if no proof exists; the workflow handles the
-// missing case by leaving the finding as a candidate for review.
-func (a *ActivityImpl) LookupProof(_ context.Context, vulnClass string) (*Proof, error) {
-	if a.proofs == nil {
-		return nil, nil
-	}
-	available := a.proofs.GetByVulnClass(vulnClass)
-	if len(available) == 0 {
-		a.log.V(1).Info("no proof found for vuln class", "vuln_class", vulnClass)
-		return nil, nil
-	}
-	// First proof for now. Could later select by validation_type
-	// based on candidate evidence.
-	a.log.V(1).Info("proof selected", "vuln_class", vulnClass, "validation_type", available[0].ValidationType)
-	return available[0], nil
 }
 
 func (a *ActivityImpl) GetAssessmentTokensConsumed(_ context.Context, assessmentID string) (int64, error) {

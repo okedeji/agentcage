@@ -10,7 +10,6 @@ service InterventionService {
   rpc GetIntervention(GetInterventionRequest) returns (GetInterventionResponse);
   rpc ResolveCageIntervention(ResolveCageInterventionRequest) returns (ResolveCageInterventionResponse);
   rpc ResolveAssessmentReview(ResolveAssessmentReviewRequest) returns (ResolveAssessmentReviewResponse);
-  rpc ResolveProofGap(ResolveProofGapRequest) returns (ResolveProofGapResponse);
 }
 
 enum InterventionType {
@@ -19,14 +18,7 @@ enum InterventionType {
   INTERVENTION_TYPE_PAYLOAD_REVIEW = 2;
   INTERVENTION_TYPE_REPORT_REVIEW = 3;
   INTERVENTION_TYPE_POLICY_VIOLATION = 4;
-  INTERVENTION_TYPE_PROOF_GAP = 5;
   INTERVENTION_TYPE_AGENT_HOLD = 6;
-}
-
-enum ProofGapAction {
-  PROOF_GAP_ACTION_UNSPECIFIED = 0;
-  PROOF_GAP_ACTION_RETRY = 1;
-  PROOF_GAP_ACTION_SKIP = 2;
 }
 
 enum InterventionAction {
@@ -97,14 +89,6 @@ message ResolveAssessmentReviewRequest {
 }
 
 message ResolveAssessmentReviewResponse {}
-
-message ResolveProofGapRequest {
-  string intervention_id = 1;
-  ProofGapAction action = 2;
-  string rationale = 3;
-}
-
-message ResolveProofGapResponse {}
 
 message GetInterventionRequest {
   string intervention_id = 1;

@@ -209,12 +209,6 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))
 
-	proofLib, err := loadProofLibrary(cfg, log)
-	if err != nil {
-		return err
-	}
-	iSvc.SetProofReloader(proofLib)
-
 	cageRuntime, err := setupCageRuntime(ctx, cfg, db, log)
 	if err != nil {
 		return err
@@ -280,19 +274,17 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 	})
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
-		Cages:         cageSvc,
-		Findings:      findingStore,
-		Bus:           findingsBus,
-		Coordinator:   findingsCoordinator,
-		Fleet:         fleetSignaler,
-		Assessments:   assessmentSvc,
-		Tokens:        tokenMeter,
-		LLMClient:     llmClient,
-		Proofs:        proofLib,
-		Interventions: iSvc,
-		ConfigServer:  configServer,
-		Alerter:       alertDispatcher,
-		Log:           log,
+		Cages:        cageSvc,
+		Findings:     findingStore,
+		Bus:          findingsBus,
+		Coordinator:  findingsCoordinator,
+		Fleet:        fleetSignaler,
+		Assessments:  assessmentSvc,
+		Tokens:       tokenMeter,
+		LLMClient:    llmClient,
+		ConfigServer: configServer,
+		Alerter:      alertDispatcher,
+		Log:          log,
 	})
 
 	configYAML, _ := config.Marshal(cfg)

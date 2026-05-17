@@ -37,8 +37,6 @@ const (
 
 	// Beyond this the workflow leaves the rest for the human-review gate.
 	MaxFindingsPerValidationPhase = 500
-
-	ProofGapWaitDeadline = 24 * time.Hour
 )
 
 func validatorWaitFor(proof *Proof) time.Duration {
@@ -653,26 +651,23 @@ func validateFindings(
 		}
 	}
 
-	// Separate findings that carry agent-provided reproduction steps
-	// from those that need a proof from the library. Agent proofs
-	// bypass the proof_gap gate (no operator pause) but still get
-	// independently validated in a cage.
-	var withAgentProof, needsLibraryProof []findings.Finding
+	// Filter to candidates that carry agent-provided reproduction steps.
+	// The SDK enforces that findings always include a validationProof;
+	// findings without one are skipped defensively.
+	var provable []findings.Finding
 	for _, f := range candidates {
 		if f.Status != findings.StatusCandidate {
 			continue
 		}
 		if f.ValidationProof != nil && f.ValidationProof.ReproductionSteps != "" {
-			withAgentProof = append(withAgentProof, f)
-		} else {
-			needsLibraryProof = append(needsLibraryProof, f)
+			provable = append(provable, f)
 		}
 	}
 
-	// TrustAgentProof: mark agent-proven findings validated without
-	// spawning a validator cage. Opt-in only; default is always validate.
-	if cfg.TrustAgentProof && len(withAgentProof) > 0 {
-		for _, f := range withAgentProof {
+	// TrustAgentProof: mark findings validated without spawning a
+	// validator cage. Opt-in only; default is always validate.
+	if cfg.TrustAgentProof {
+		for _, f := range provable {
 			actCtx := withActivityTimeout(ctx, TimeoutUpdateFinding)
 			if err := workflow.ExecuteActivity(actCtx, "UpdateFindingStatus", f.ID, findings.StatusValidated).Get(ctx, nil); err != nil {
 				return validatedCount, cagesSpawned, fmt.Errorf("marking agent-proven finding %s validated: %w", f.ID, err)
@@ -683,48 +678,13 @@ func validateFindings(
 				"NotifyFinding", assessmentID, cfg.Notifications, f,
 			).Get(ctx, nil)
 		}
-		workflow.GetLogger(ctx).Info("agent-proven findings accepted without independent validation",
-			"assessment_id", assessmentID, "count", len(withAgentProof))
-		withAgentProof = nil
+		return validatedCount, cagesSpawned, nil
 	}
 
-	// Validate findings that carry agent reproduction steps. The agent's
-	// proof becomes the validator's input — same cage, same rigor, but
-	// no proof_gap pause because the agent already told us how to reproduce.
-	for _, f := range withAgentProof {
+	// Spawn a validator cage per finding using the agent's proof.
+	for _, f := range provable {
 		proof := agentProofToValidatorProof(f)
 		v, c, err := validateFindingGroup(ctx, assessmentID, cfg, []findings.Finding{f}, proof)
-		if err != nil {
-			return validatedCount, cagesSpawned, err
-		}
-		validatedCount += v
-		cagesSpawned += c
-	}
-
-	// Bucket remaining candidates by vuln_class so we can emit one
-	// proof_gap intervention per class instead of fanning out one per
-	// finding.
-	pending := make(map[string][]findings.Finding)
-	var classOrder []string
-	for _, f := range needsLibraryProof {
-		if _, seen := pending[f.VulnClass]; !seen {
-			classOrder = append(classOrder, f.VulnClass)
-		}
-		pending[f.VulnClass] = append(pending[f.VulnClass], f)
-	}
-
-	for _, vulnClass := range classOrder {
-		group := pending[vulnClass]
-
-		proof, err := lookupProofWithGate(ctx, assessmentID, vulnClass, group)
-		if err != nil {
-			return validatedCount, cagesSpawned, err
-		}
-		if proof == nil {
-			continue
-		}
-
-		v, c, err := validateFindingGroup(ctx, assessmentID, cfg, group, proof)
 		if err != nil {
 			return validatedCount, cagesSpawned, err
 		}
@@ -812,73 +772,6 @@ func validateFindingGroup(
 	return validatedCount, cagesSpawned, nil
 }
 
-// On retry the intervention service reloads ProofLibrary from disk
-// before signaling, so the re-run sees newly added proofs.
-func lookupProofWithGate(
-	ctx workflow.Context,
-	assessmentID, vulnClass string,
-	group []findings.Finding,
-) (*Proof, error) {
-	for {
-		var proof *Proof
-		lookupCtx := withActivityTimeout(ctx, TimeoutGetFindings)
-		if err := workflow.ExecuteActivity(lookupCtx, "LookupProof", vulnClass).Get(ctx, &proof); err != nil {
-			return nil, fmt.Errorf("looking up proof for vuln class %s: %w", vulnClass, err)
-		}
-		if proof != nil {
-			return proof, nil
-		}
-
-		findingIDs := make([]string, len(group))
-		for i, f := range group {
-			findingIDs[i] = f.ID
-		}
-
-		emitCtx := withActivityTimeout(ctx, TimeoutCreateCage)
-		var interventionID string
-		if err := workflow.ExecuteActivity(emitCtx, "EmitProofGapIntervention", assessmentID, vulnClass, findingIDs).Get(ctx, &interventionID); err != nil {
-			workflow.GetLogger(ctx).Info("could not emit proof_gap intervention; skipping",
-				"assessment_id", assessmentID, "vuln_class", vulnClass, "error", err.Error())
-			return nil, nil
-		}
-
-		decision := waitForProofGap(ctx, interventionID)
-		if decision == nil || decision.Action == intervention.ProofGapActionSkip {
-			workflow.GetLogger(ctx).Info("proof_gap skipped",
-				"assessment_id", assessmentID, "vuln_class", vulnClass, "intervention_id", interventionID)
-			return nil, nil
-		}
-	}
-}
-
-func waitForProofGap(ctx workflow.Context, interventionID string) *intervention.ProofGapSignal {
-	signalCh := workflow.GetSignalChannel(ctx, intervention.SignalProofGap)
-	timer := workflow.NewTimer(ctx, ProofGapWaitDeadline)
-
-	for {
-		var signal intervention.ProofGapSignal
-		var timedOut bool
-
-		sel := workflow.NewSelector(ctx)
-		sel.AddReceive(signalCh, func(ch workflow.ReceiveChannel, more bool) {
-			ch.Receive(ctx, &signal)
-		})
-		sel.AddFuture(timer, func(f workflow.Future) {
-			_ = f.Get(ctx, nil)
-			timedOut = true
-		})
-		sel.Select(ctx)
-
-		if timedOut {
-			return nil
-		}
-		// Multiple proof_gap interventions can be in flight serially.
-		if signal.InterventionID == interventionID {
-			return &signal
-		}
-	}
-}
-
 // waitForBudgetIncrease polls the live config every 30s for up to 24h,
 // waiting for the operator to increase the token budget via
 // `agentcage config set assessment.token_budget <new_value>`.
@@ -952,15 +845,13 @@ func retestFindings(
 			}
 		}
 
-		// Skip rather than spawning a no-op cage with no validation plan.
-		lookupCtx := withActivityTimeout(ctx, TimeoutGetFindings)
-		var proof *Proof
-		_ = workflow.ExecuteActivity(lookupCtx, "LookupProof", f.VulnClass).Get(ctx, &proof)
-		if proof == nil {
-			workflow.GetLogger(ctx).Info("skipping retest: no proof for vuln class",
+		// Skip findings without agent-provided reproduction steps.
+		if f.ValidationProof == nil || f.ValidationProof.ReproductionSteps == "" {
+			workflow.GetLogger(ctx).Info("skipping retest: no agent proof",
 				"finding_id", f.ID, "vuln_class", f.VulnClass)
 			continue
 		}
+		proof := agentProofToValidatorProof(f)
 
 		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 		var cageID string
