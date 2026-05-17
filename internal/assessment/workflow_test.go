@@ -11,6 +11,7 @@ import (
 	"go.temporal.io/sdk/testsuite"
 
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/intervention"
 )
@@ -92,6 +93,7 @@ func testInput() AssessmentWorkflowInput {
 			Target:        cage.Scope{Hosts: []string{"target.example.com"}},
 			TokenBudget:   1000000,
 			MaxIterations: 5,
+			Capabilities:  cagefile.AgentCapabilities{Discovery: true, Exploitation: []string{"sqli", "xss"}},
 		},
 	}
 }

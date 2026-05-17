@@ -486,7 +486,7 @@ func Validate(p *Plan) error {
 		switch name {
 		case "discovery", "validator", "exploitation":
 		default:
-			return fmt.Errorf("unknown cage type %q in cage_types (supported: discovery, validator, escalation)", name)
+			return fmt.Errorf("unknown cage type %q in cage_types (supported: discovery, validator, exploitation)", name)
 		}
 		if ct.VCPUs < 0 {
 			return fmt.Errorf("cage_types.%s.vcpus must not be negative", name)

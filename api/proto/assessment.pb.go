@@ -162,7 +162,6 @@ type AssessmentConfig struct {
 	CageTypeConfigs    []*CageTypeConfig      `protobuf:"bytes,3,rep,name=cage_type_configs,json=cageTypeConfigs,proto3" json:"cage_type_configs,omitempty"`
 	TotalTokenBudget   int64                  `protobuf:"varint,4,opt,name=total_token_budget,json=totalTokenBudget,proto3" json:"total_token_budget,omitempty"`
 	MaxDuration        *durationpb.Duration   `protobuf:"bytes,5,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
-	MaxChainDepth      int32                  `protobuf:"varint,6,opt,name=max_chain_depth,json=maxChainDepth,proto3" json:"max_chain_depth,omitempty"` // deprecated: coordinator handles depth
 	Guidance           *Guidance              `protobuf:"bytes,8,opt,name=guidance,proto3" json:"guidance,omitempty"`
 	SkipPaths          []string               `protobuf:"bytes,9,rep,name=skip_paths,json=skipPaths,proto3" json:"skip_paths,omitempty"`
 	Tags               map[string]string      `protobuf:"bytes,11,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -240,13 +239,6 @@ func (x *AssessmentConfig) GetMaxDuration() *durationpb.Duration {
 		return x.MaxDuration
 	}
 	return nil
-}
-
-func (x *AssessmentConfig) GetMaxChainDepth() int32 {
-	if x != nil {
-		return x.MaxChainDepth
-	}
-	return 0
 }
 
 func (x *AssessmentConfig) GetGuidance() *Guidance {
@@ -1400,15 +1392,14 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2\x1b.agentcage.cage.v1.CageTypeR\x04type\x12=\n" +
 	"\bdefaults\x18\x02 \x01(\v2!.agentcage.cage.v1.ResourceLimitsR\bdefaults\x12%\n" +
 	"\x0emax_concurrent\x18\x03 \x01(\x05R\rmaxConcurrent\x12<\n" +
-	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\x92\b\n" +
+	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xea\a\n" +
 	"\x10AssessmentConfig\x12\x1f\n" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\x124\n" +
 	"\x05scope\x18\x02 \x01(\v2\x1e.agentcage.cage.v1.TargetScopeR\x05scope\x12S\n" +
 	"\x11cage_type_configs\x18\x03 \x03(\v2'.agentcage.assessment.v1.CageTypeConfigR\x0fcageTypeConfigs\x12,\n" +
 	"\x12total_token_budget\x18\x04 \x01(\x03R\x10totalTokenBudget\x12<\n" +
-	"\fmax_duration\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\x12&\n" +
-	"\x0fmax_chain_depth\x18\x06 \x01(\x05R\rmaxChainDepth\x12=\n" +
+	"\fmax_duration\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\x12=\n" +
 	"\bguidance\x18\b \x01(\v2!.agentcage.assessment.v1.GuidanceR\bguidance\x12\x1d\n" +
 	"\n" +
 	"skip_paths\x18\t \x03(\tR\tskipPaths\x12G\n" +

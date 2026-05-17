@@ -146,6 +146,12 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 	}
 
+	// Skip exploitation if agent has no exploitation capabilities.
+	if len(cfg.Capabilities.Exploitation) == 0 {
+		logger.Info("agent has no exploitation capabilities, skipping to validation", "assessment_id", input.AssessmentID)
+		maxIterations = 0
+	}
+
 	if err := updateStatus(ctx, input.AssessmentID, StatusExploitation); err != nil {
 		return failResult(result, "updating status to testing: %v", err), nil
 	}
@@ -274,7 +280,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	syncStats(ctx, input.AssessmentID, result, 0)
 
 	// When budget is fully drained with no operator increase, skip
-	// validation/escalation/report (all require LLM tokens). Return
+	// validation/report (all require LLM tokens). Return
 	// candidate findings as-is.
 	if budgetDrained {
 		candidates, _ := getCandidateFindings(ctx, input.AssessmentID)
