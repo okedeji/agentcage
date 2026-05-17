@@ -408,9 +408,9 @@ func applyCageDefaults(cageCfg *cage.Config, cfg Config) {
 		if tc.MaxDuration > 0 {
 			cageCfg.TimeLimits = cage.TimeLimits{MaxDuration: tc.MaxDuration}
 		}
-	}
-	if cageCfg.RateLimits.RequestsPerSecond <= 0 {
-		cageCfg.RateLimits = cage.RateLimits{RequestsPerSecond: 10}
+		if cageCfg.RateLimits.RequestsPerSecond <= 0 && tc.RateLimit > 0 {
+			cageCfg.RateLimits = cage.RateLimits{RequestsPerSecond: tc.RateLimit}
+		}
 	}
 	if cfg.TokenBudget > 0 {
 		cageCfg.LLM = &cage.LLMGatewayConfig{TokenBudget: cfg.TokenBudget}

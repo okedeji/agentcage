@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
 
+	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/plan"
 )
@@ -97,6 +98,31 @@ func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, erro
 	cfg.MaxIterations = p.Limits.MaxIterations
 	cfg.MaxTotalCages = p.Limits.MaxTotalCages
 	cfg.TokenBudget = p.Budget.Tokens
+
+	// Fill rate limits from operator config into CageDefaults.
+	if s.operatorCfg != nil {
+		if cfg.CageDefaults == nil {
+			cfg.CageDefaults = make(map[cage.Type]CageTypeConfig)
+		}
+		for name, opCfg := range s.operatorCfg.Cages {
+			t := cage.TypeFromString(name)
+			if t == cage.TypeUnspecified {
+				continue
+			}
+			tc := cfg.CageDefaults[t]
+			tc.Type = t
+			if tc.RateLimit <= 0 && opCfg.RateLimit > 0 {
+				tc.RateLimit = opCfg.RateLimit
+			}
+			if tc.MaxDuration <= 0 && opCfg.MaxDuration > 0 {
+				tc.MaxDuration = opCfg.MaxDuration
+			}
+			if tc.Resources.VCPUs <= 0 && opCfg.DefaultVCPUs > 0 {
+				tc.Resources = cage.ResourceLimits{VCPUs: opCfg.DefaultVCPUs, MemoryMB: opCfg.DefaultMemoryMB}
+			}
+			cfg.CageDefaults[t] = tc
+		}
+	}
 
 	workflowOpts := client.StartWorkflowOptions{
 		ID:        "assessment-" + assessmentID,

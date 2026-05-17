@@ -126,7 +126,7 @@ func TestOPACageConfig(t *testing.T) {
 		TimeLimits:      cage.TimeLimits{MaxDuration: 10 * time.Minute},
 		Resources:       cage.ResourceLimits{VCPUs: 2, MemoryMB: 4096},
 		LLM:             &cage.LLMGatewayConfig{TokenBudget: 10000, RoutingStrategy: "round_robin"},
-		RateLimits:      cage.RateLimits{RequestsPerSecond: 100},
+		RateLimits:      cage.RateLimits{RequestsPerSecond: 30},
 		ParentFindingID: "",
 	}
 
@@ -135,7 +135,7 @@ func TestOPACageConfig(t *testing.T) {
 		TimeLimits:      cage.TimeLimits{MaxDuration: 30 * time.Second},
 		Resources:       cage.ResourceLimits{VCPUs: 1, MemoryMB: 512},
 		LLM:             nil,
-		RateLimits:      cage.RateLimits{RequestsPerSecond: 50},
+		RateLimits:      cage.RateLimits{RequestsPerSecond: 5},
 		ParentFindingID: "finding-123",
 	}
 
@@ -231,7 +231,7 @@ func TestOPACageConfig(t *testing.T) {
 				Type:       cage.TypeExploitation,
 				TimeLimits: cage.TimeLimits{MaxDuration: 5 * time.Minute},
 				Resources:  cage.ResourceLimits{VCPUs: 1, MemoryMB: 2048},
-				RateLimits: cage.RateLimits{RequestsPerSecond: 50},
+				RateLimits: cage.RateLimits{RequestsPerSecond: 15},
 			},
 			wantAllowed: false,
 			wantSubstr:  "LLM",
@@ -247,14 +247,14 @@ func TestOPACageConfig(t *testing.T) {
 			wantSubstr:  "rate limit must be positive",
 		},
 		{
-			name: "rate limit 1500",
+			name: "rate limit exceeds cap",
 			config: func() cage.Config {
 				c := validDiscovery
-				c.RateLimits.RequestsPerSecond = 1500
+				c.RateLimits.RequestsPerSecond = 100
 				return c
 			}(),
 			wantAllowed: false,
-			wantSubstr:  "cannot exceed 1000",
+			wantSubstr:  "cannot exceed 50",
 		},
 	}
 

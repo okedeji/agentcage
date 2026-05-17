@@ -757,7 +757,7 @@ func Defaults() *Config {
 				DefaultMemoryMB: 4096,
 				MaxBatchSize:    1,
 				RequiresLLM:     true,
-				RateLimit:       1000,
+				RateLimit:       50,
 			},
 			"validator": {
 				MaxDuration:           60 * time.Second,
@@ -768,7 +768,7 @@ func Defaults() *Config {
 				MaxBatchSize:          1,
 				RequiresLLM:           false,
 				RequiresParentFinding: true,
-				RateLimit:             100,
+				RateLimit:             10,
 			},
 			"exploitation": {
 				MaxDuration:           15 * time.Minute,
@@ -779,7 +779,7 @@ func Defaults() *Config {
 				MaxBatchSize:          1,
 				RequiresLLM:           true,
 				RequiresParentFinding: false,
-				RateLimit:             500,
+				RateLimit:             20,
 			},
 		},
 		Assessment: AssessmentConfig{

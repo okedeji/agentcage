@@ -130,6 +130,7 @@ type CageTypeConfig struct {
 	Resources    cage.ResourceLimits
 	MaxBatchSize int32
 	MaxDuration  time.Duration
+	RateLimit    int32
 }
 
 type Info struct {

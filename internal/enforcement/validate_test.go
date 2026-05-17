@@ -28,7 +28,7 @@ func validDiscoveryConfig() cage.Config {
 		},
 		Resources:  cage.ResourceLimits{VCPUs: 2, MemoryMB: 4096},
 		TimeLimits: cage.TimeLimits{MaxDuration: 20 * time.Minute},
-		RateLimits: cage.RateLimits{RequestsPerSecond: 100},
+		RateLimits: cage.RateLimits{RequestsPerSecond: 30},
 		LLM:        &cage.LLMGatewayConfig{TokenBudget: 10000, RoutingStrategy: "round_robin"},
 	}
 }
@@ -41,7 +41,7 @@ func validValidatorConfig() cage.Config {
 		Scope:           cage.Scope{Hosts: []string{"target.example.com"}, Ports: []string{"80"}},
 		Resources:       cage.ResourceLimits{VCPUs: 1, MemoryMB: 512},
 		TimeLimits:      cage.TimeLimits{MaxDuration: 30 * time.Second},
-		RateLimits:      cage.RateLimits{RequestsPerSecond: 50},
+		RateLimits:      cage.RateLimits{RequestsPerSecond: 5},
 		ParentFindingID: "finding-123",
 	}
 }
@@ -54,7 +54,7 @@ func validExploitationConfig() cage.Config {
 		Scope:        cage.Scope{Hosts: []string{"target.example.com"}, Ports: []string{"443"}},
 		Resources:    cage.ResourceLimits{VCPUs: 2, MemoryMB: 2048},
 		TimeLimits:   cage.TimeLimits{MaxDuration: 10 * time.Minute},
-		RateLimits:   cage.RateLimits{RequestsPerSecond: 200},
+		RateLimits:   cage.RateLimits{RequestsPerSecond: 15},
 		LLM:          &cage.LLMGatewayConfig{TokenBudget: 5000, RoutingStrategy: "round_robin"},
 	}
 }
@@ -152,9 +152,9 @@ func TestValidateCageConfig(t *testing.T) {
 		{
 			name:      "rate limit exceeds max",
 			baseType:  "discovery",
-			modify:    func(cfg *cage.Config) { cfg.RateLimits.RequestsPerSecond = 1001 },
+			modify:    func(cfg *cage.Config) { cfg.RateLimits.RequestsPerSecond = 51 },
 			wantErr:   true,
-			errSubstr: "1000",
+			errSubstr: "50",
 		},
 		{
 			name:      "zero duration",

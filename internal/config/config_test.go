@@ -322,9 +322,9 @@ func TestBlocklistPatterns(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	cfg := Defaults()
-	assert.Equal(t, int32(1000), cfg.RateLimit("discovery"))
-	assert.Equal(t, int32(100), cfg.RateLimit("validator"))
-	assert.Equal(t, int32(500), cfg.RateLimit("exploitation"))
+	assert.Equal(t, int32(50), cfg.RateLimit("discovery"))
+	assert.Equal(t, int32(10), cfg.RateLimit("validator"))
+	assert.Equal(t, int32(20), cfg.RateLimit("exploitation"))
 	assert.Equal(t, int32(0), cfg.RateLimit("nonexistent"))
 }
 
