@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
+	"github.com/okedeji/agentcage/internal/ids"
 )
 
 // FirecrackerProvisioner manages Firecracker microVMs on the local host.
@@ -126,7 +126,7 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	}
 	p.mu.Unlock()
 
-	vmID := uuid.New().String()
+	vmID := ids.VM()
 	socketPath := filepath.Join(os.TempDir(), "firecracker", vmID+".sock")
 
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0755); err != nil {

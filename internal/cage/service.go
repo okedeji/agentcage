@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
 
+	"github.com/okedeji/agentcage/internal/ids"
 	"github.com/okedeji/agentcage/internal/intervention"
 )
 
@@ -55,7 +55,7 @@ func (s *Service) CreateCage(ctx context.Context, config Config) (*Info, error) 
 		return nil, fmt.Errorf("validating cage config: %w", err)
 	}
 
-	cageID := uuid.NewString()
+	cageID := ids.Cage()
 	now := time.Now()
 	info := &Info{
 		ID:           cageID,
@@ -76,7 +76,7 @@ func (s *Service) CreateCage(ctx context.Context, config Config) (*Info, error) 
 	s.mu.Unlock()
 
 	workflowOpts := client.StartWorkflowOptions{
-		ID:        "cage-" + cageID,
+		ID:        cageID,
 		TaskQueue: TaskQueue,
 	}
 	input := CageWorkflowInput{
@@ -169,7 +169,7 @@ func (s *Service) DestroyCage(ctx context.Context, cageID string, reason string)
 		Action:    intervention.ActionKill,
 		Rationale: reason,
 	}
-	if err := s.temporal.SignalWorkflow(ctx, "cage-"+cageID, "", intervention.SignalIntervention, signal); err != nil {
+	if err := s.temporal.SignalWorkflow(ctx, cageID, "", intervention.SignalIntervention, signal); err != nil {
 		return fmt.Errorf("signaling cage %s workflow to kill: %w", cageID, err)
 	}
 

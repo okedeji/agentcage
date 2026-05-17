@@ -4,12 +4,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/okedeji/agentcage/internal/ids"
 )
 
 func Generate(cageID, assessmentID, failureReason string, timeline []TimelineEntry) Document {
 	return Document{
-		ID:           uuid.NewString(),
+		ID:           ids.RCA(),
 		CageID:       cageID,
 		AssessmentID: assessmentID,
 		Summary:      failureReason,

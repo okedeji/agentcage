@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
+	"github.com/okedeji/agentcage/internal/ids"
 
 	"github.com/okedeji/agentcage/internal/intervention"
 )
@@ -148,7 +148,7 @@ func (d *Dispatcher) send(event Event) {
 	}
 
 	req := intervention.Request{
-		ID:           uuid.NewString(),
+		ID:           ids.Intervention(),
 		Type:         interventionType(event.Source),
 		Status:       intervention.StatusResolved,
 		Priority:     event.Priority,

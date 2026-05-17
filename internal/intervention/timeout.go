@@ -123,7 +123,7 @@ func (e *TimeoutEnforcer) signalTimeout(ctx context.Context, req *Request) error
 	case TypeTripwireEscalation, TypePayloadReview:
 		return e.signaler.SignalWorkflow(
 			ctx,
-			"cage-"+req.CageID,
+			req.CageID,
 			"",
 			SignalIntervention,
 			InterventionSignal{Action: ActionKill, Rationale: "intervention timeout"},
@@ -131,7 +131,7 @@ func (e *TimeoutEnforcer) signalTimeout(ctx context.Context, req *Request) error
 	case TypeReportReview:
 		return e.signaler.SignalWorkflow(
 			ctx,
-			"assessment-"+req.AssessmentID,
+			req.AssessmentID,
 			"",
 			SignalReportReview,
 			ReportReviewSignal{Decision: ReviewReject, Rationale: "intervention timeout"},

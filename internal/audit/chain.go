@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/okedeji/agentcage/internal/ids"
 )
 
 // Chain maintains the state needed to append new entries to a
@@ -41,7 +41,7 @@ func (c *Chain) Append(entryType EntryType, data []byte) (Entry, error) {
 	c.sequence++
 
 	entry := Entry{
-		ID:           uuid.NewString(),
+		ID:           ids.Audit(),
 		CageID:       c.cageID,
 		AssessmentID: c.assessmentID,
 		Sequence:     c.sequence,

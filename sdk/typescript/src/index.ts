@@ -4,7 +4,7 @@ export type { VaultConfig, RunConfig, RunEvent, ApiKeyInfo, PackOptions, PackRes
 export { generateJoinScript, type JoinOptions } from './client/join';
 
 // Agent SDK — for TypeScript agents running inside cages.
-export { AgentSDK, type AgentConfig } from './agent';
+export { AgentSDK, type AgentConfig, newFindingId } from './agent';
 
 // Judge server — HTTP framework for payload safety classification.
 export { createJudgeServer, type EvaluateFn, type JudgeServerConfig } from './judge';

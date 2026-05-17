@@ -130,14 +130,14 @@ func showAssessment(ctx context.Context, conn *grpc.ClientConn, id string) {
 			cr, err := cClient.GetCage(getCtx, &pb.GetCageRequest{CageId: cageID})
 			getCancel()
 			if err != nil {
-				fmt.Printf("  %s  (unavailable)\n", shortID(cageID))
+				fmt.Printf("  %s  (unavailable)\n", cageID)
 				continue
 			}
 			cage := cr.GetCage()
 			cType := friendlyCageType(cage.GetType().String())
 			cState := strings.TrimPrefix(cage.GetState().String(), "CAGE_STATE_")
 			cState = strings.ToLower(cState)
-			fmt.Printf("  %s  %-10s  %s\n", shortID(cageID), cType, cState)
+			fmt.Printf("  %s  %-10s  %s\n", cageID, cType, cState)
 		}
 	} else if stats == nil || stats.GetTotalCages() == 0 {
 		fmt.Println("  (none)")
@@ -198,7 +198,7 @@ func printCatchUpSummary(ctx context.Context, client pb.AssessmentServiceClient,
 	stats := info.GetStats()
 
 	status := friendlyStatus(info.GetStatus().String())
-	fmt.Printf("Assessment %s — %s\n", shortID(id), status)
+	fmt.Printf("Assessment %s — %s\n", id, status)
 	if stats != nil {
 		fmt.Printf("  Cages: %d total, %d active  |  Findings: %d candidate, %d validated\n",
 			stats.GetTotalCages(), stats.GetActiveCages(),

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
+	"github.com/okedeji/agentcage/internal/ids"
 )
 
 var ErrNotPending = errors.New("intervention is not in pending status")
@@ -36,7 +36,7 @@ func (q *Queue) Enqueue(ctx context.Context, reqType Type, priority Priority, ca
 		return nil, fmt.Errorf("invalid intervention type %d", reqType)
 	}
 	req := Request{
-		ID:           uuid.New().String(),
+		ID:           ids.Intervention(),
 		Type:         reqType,
 		Status:       StatusPending,
 		Priority:     priority,

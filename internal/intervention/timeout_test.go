@@ -64,7 +64,7 @@ func TestExpiredInterventionTimedOut(t *testing.T) {
 
 	signals := sig.getSignals()
 	require.Len(t, signals, 1)
-	assert.Equal(t, "cage-cage-1", signals[0].WorkflowID)
+	assert.Equal(t, "cage-1", signals[0].WorkflowID)
 	assert.Equal(t, SignalIntervention, signals[0].SignalName)
 }
 

@@ -48,11 +48,7 @@ func followAssessment(parentCtx context.Context, conn *grpc.ClientConn, assessme
 		jsonMode:          format == "json",
 	}
 
-	shortID := assessmentID
-	if len(shortID) > 8 {
-		shortID = shortID[:8]
-	}
-	fmt.Printf("\nFollowing assessment %s... (Ctrl+C to detach)\n\n", shortID)
+	fmt.Printf("\nFollowing assessment %s... (Ctrl+C to detach)\n\n", assessmentID)
 
 	var consecutiveErrors int
 
@@ -146,27 +142,26 @@ func pollCages(ctx context.Context, client pb.CageServiceClient, assessmentID st
 		cage := cageResp.GetCage()
 		state := cage.GetState().String()
 		prevState, seen := s.seenCages[cageID]
-		short := shortID(cageID)
 		cageType := friendlyCageType(cage.GetType().String())
 
 		if !seen {
-			emitTimestamp(s, "Cage %s (%s) started", short, cageType)
+			emitTimestamp(s, "Cage %s (%s) started", cageID, cageType)
 			fmt.Printf("           Logs: agentcage logs cage %s\n", cageID)
 			s.seenCages[cageID] = state
 			s.lastChange = time.Now()
 		} else if state != prevState {
 			switch {
 			case strings.Contains(state, "COMPLETED"):
-				emitTimestamp(s, "Cage %s completed", short)
+				emitTimestamp(s, "Cage %s completed", cageID)
 			case strings.Contains(state, "FAILED"):
 				errMsg := cage.GetError()
 				if errMsg != "" {
-					emitTimestamp(s, "Cage %s failed: %s", short, errMsg)
+					emitTimestamp(s, "Cage %s failed: %s", cageID, errMsg)
 				} else {
-					emitTimestamp(s, "Cage %s failed", short)
+					emitTimestamp(s, "Cage %s failed", cageID)
 				}
 			case strings.Contains(state, "PAUSED"):
-				emitTimestamp(s, "Cage %s paused (intervention required)", short)
+				emitTimestamp(s, "Cage %s paused (intervention required)", cageID)
 			}
 			s.seenCages[cageID] = state
 			s.lastChange = time.Now()
@@ -192,7 +187,7 @@ func pollFindings(ctx context.Context, client pb.FindingsServiceClient, assessme
 		s.lastChange = time.Now()
 
 		severity := friendlySeverity(f.GetSeverity().String())
-		short := shortID(f.GetCageId())
+		cageID := f.GetCageId()
 		status := f.GetStatus().String()
 
 		if strings.Contains(status, "VALIDATED") {
@@ -204,7 +199,7 @@ func pollFindings(ctx context.Context, client pb.FindingsServiceClient, assessme
 				emitTimestamp(s, "Finding validated: %s %s", severity, f.GetTitle())
 			}
 		} else {
-			emitTimestamp(s, "Finding: %s %s (cage %s)", severity, f.GetTitle(), short)
+			emitTimestamp(s, "Finding: %s %s (cage %s)", severity, f.GetTitle(), cageID)
 		}
 	}
 }
@@ -237,7 +232,7 @@ func pollInterventions(ctx context.Context, client pb.InterventionServiceClient,
 }
 
 func printInterventionCommand(iv *pb.InterventionInfo) {
-	id := shortID(iv.GetInterventionId())
+	id := iv.GetInterventionId()
 	switch {
 	case strings.Contains(iv.GetType().String(), "TRIPWIRE"):
 		fmt.Printf("           Run: agentcage intervention resolve %s --resume  (or --kill)\n", id)
@@ -308,13 +303,6 @@ func emitTimestamp(s *followState, format string, args ...any) {
 	} else {
 		fmt.Printf("[%s] %s\n", ts, msg)
 	}
-}
-
-func shortID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
 }
 
 func friendlyStatus(s string) string {

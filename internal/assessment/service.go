@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
 
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/ids"
 	"github.com/okedeji/agentcage/internal/plan"
 )
 
@@ -75,7 +75,7 @@ func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, erro
 		}
 	}
 
-	assessmentID := uuid.NewString()
+	assessmentID := ids.Assessment()
 	now := time.Now()
 	info := &Info{
 		ID:         assessmentID,
@@ -125,7 +125,7 @@ func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, erro
 	}
 
 	workflowOpts := client.StartWorkflowOptions{
-		ID:        "assessment-" + assessmentID,
+		ID:        assessmentID,
 		TaskQueue: TaskQueue,
 	}
 	input := AssessmentWorkflowInput{
@@ -148,7 +148,7 @@ func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, erro
 }
 
 func (s *Service) CancelAssessment(ctx context.Context, assessmentID string) error {
-	workflowID := "assessment-" + assessmentID
+	workflowID := assessmentID
 	err := s.temporal.CancelWorkflow(ctx, workflowID, "")
 	if err != nil {
 		if isWorkflowGone(err) {
@@ -160,7 +160,7 @@ func (s *Service) CancelAssessment(ctx context.Context, assessmentID string) err
 }
 
 func (s *Service) FinishAssessment(ctx context.Context, assessmentID string) error {
-	workflowID := "assessment-" + assessmentID
+	workflowID := assessmentID
 	return s.temporal.SignalWorkflow(ctx, workflowID, "", SignalFinish, true)
 }
 

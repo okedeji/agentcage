@@ -88,7 +88,7 @@ func (s *Service) ResolveCageIntervention(ctx context.Context, interventionID st
 
 	if err := s.signaler.SignalWorkflow(
 		ctx,
-		"cage-"+req.CageID,
+		req.CageID,
 		"",
 		SignalIntervention,
 		InterventionSignal{
@@ -153,7 +153,7 @@ func (s *Service) ResolveAssessmentReview(ctx context.Context, interventionID st
 
 	if err := s.signaler.SignalWorkflow(
 		ctx,
-		"assessment-"+req.AssessmentID,
+		req.AssessmentID,
 		"",
 		SignalReportReview,
 		ReportReviewSignal{

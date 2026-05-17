@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
+	"github.com/okedeji/agentcage/internal/ids"
 
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/enforcement"
@@ -388,7 +388,7 @@ func handlePayloadHold(w http.ResponseWriter, r *http.Request, holdMgr *HoldMana
 		http.Error(w, fmt.Sprintf("blocked by payload proxy (no hold configured): %s", reason), http.StatusForbidden)
 		return true
 	}
-	holdID := uuid.NewString()
+	holdID := ids.Hold()
 	logger.Info("payload held for review", "hold_id", holdID, "method", r.Method, "url", r.URL.String(), "reason", reason)
 	if err := notifyHostHold(hostControlURL, holdID, cageID, r.Method, r.URL.String(), reason); err != nil {
 		logger.Info("host notification failed, blocking payload", "hold_id", holdID, "error", err.Error())

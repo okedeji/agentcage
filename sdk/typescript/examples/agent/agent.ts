@@ -9,8 +9,7 @@
  * validation agents are separate.
  */
 
-import { AgentSDK, Severity, DirectiveInstruction } from '@agentcage/sdk';
-import * as crypto from 'crypto';
+import { AgentSDK, Severity, DirectiveInstruction, newFindingId } from '@agentcage/sdk';
 
 // ── Environment ─────────────────────────────────────────────
 
@@ -304,7 +303,7 @@ async function submitSurface(target: string, surface: SurfaceEntry[]): Promise<v
     if (terminated) break;
 
     await agent.submitFinding({
-      id: crypto.randomUUID(),
+      id: newFindingId(),
       severity: Severity.Info,
       title: `Discovered: ${entry.endpoint}`,
       vulnClass: 'surface',

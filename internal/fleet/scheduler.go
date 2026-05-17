@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/ids"
 )
 
 type Scheduler interface {
@@ -52,7 +52,7 @@ func (s *SimpleScheduler) Schedule(ctx context.Context, config cage.VMConfig) (*
 		return nil, fmt.Errorf("scheduling cage %s: allocating slot on host %s: %w", config.CageID, host.ID, err)
 	}
 
-	vmID := uuid.New().String()
+	vmID := ids.VM()
 	s.allocs[vmID] = &allocation{
 		vmID:   vmID,
 		hostID: host.ID,

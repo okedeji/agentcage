@@ -33,7 +33,7 @@ func TestResolveCageInterventionResume(t *testing.T) {
 
 	signals := sig.getSignals()
 	require.Len(t, signals, 1)
-	assert.Equal(t, "cage-cage-1", signals[0].WorkflowID)
+	assert.Equal(t, "cage-1", signals[0].WorkflowID)
 	assert.Equal(t, SignalIntervention, signals[0].SignalName)
 
 	sig0, ok := signals[0].Arg.(InterventionSignal)
@@ -77,7 +77,7 @@ func TestResolveAssessmentReviewApprove(t *testing.T) {
 
 	signals := sig.getSignals()
 	require.Len(t, signals, 1)
-	assert.Equal(t, "assessment-a-1", signals[0].WorkflowID)
+	assert.Equal(t, "a-1", signals[0].WorkflowID)
 	assert.Equal(t, SignalReportReview, signals[0].SignalName)
 
 	sig0, ok := signals[0].Arg.(ReportReviewSignal)
