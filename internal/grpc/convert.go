@@ -132,7 +132,7 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 		CustomerID:    p.GetCustomerId(),
 		Name:          p.GetName(),
 		TokenBudget:   p.GetTotalTokenBudget(),
-		MaxTotalCages: p.GetMaxConcurrentCages(),
+		MaxTotalCages: p.GetMaxTotalCages(),
 		MaxIterations: p.GetMaxIterations(),
 		Tags:          p.GetTags(),
 	}
@@ -162,8 +162,8 @@ func assessmentConfigFromProto(p *pb.AssessmentConfig) assessment.Config {
 		}
 		t := cageTypeFromProto(ct.GetType())
 		ctc := assessment.CageTypeConfig{
-			Type:          t,
-			MaxBatchSize: ct.GetMaxConcurrent(),
+			Type:         t,
+			MaxBatchSize: ct.GetMaxBatchSize(),
 		}
 		if d := ct.GetDefaults(); d != nil {
 			ctc.Resources = cage.ResourceLimits{VCPUs: d.GetVcpus(), MemoryMB: d.GetMemoryMb()}
@@ -269,14 +269,14 @@ func assessmentInfoToProto(info *assessment.Info) *pb.AssessmentInfo {
 
 func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
 	out := &pb.AssessmentConfig{
-		Name:               cfg.Name,
-		CustomerId:         cfg.CustomerID,
-		TotalTokenBudget:   cfg.TokenBudget,
-		MaxConcurrentCages: cfg.MaxTotalCages,
-		MaxIterations:      cfg.MaxIterations,
-		SkipPaths:          cfg.SkipPaths,
-		Tags:               cfg.Tags,
-		Environment:         cfg.Environment,
+		Name:             cfg.Name,
+		CustomerId:       cfg.CustomerID,
+		TotalTokenBudget: cfg.TokenBudget,
+		MaxTotalCages:    cfg.MaxTotalCages,
+		MaxIterations:    cfg.MaxIterations,
+		SkipPaths:        cfg.SkipPaths,
+		Tags:             cfg.Tags,
+		Environment:      cfg.Environment,
 		Scope: &pb.TargetScope{
 			Hosts: cfg.Target.Hosts,
 			Ports: cfg.Target.Ports,
@@ -300,9 +300,9 @@ func assessmentConfigToProto(cfg assessment.Config) *pb.AssessmentConfig {
 	}
 	for t, ct := range cfg.CageDefaults {
 		ctPb := &pb.CageTypeConfig{
-			Type:          cageTypeToProto(t),
-			MaxConcurrent: ct.MaxBatchSize,
-			Defaults:      &pb.ResourceLimits{Vcpus: ct.Resources.VCPUs, MemoryMb: ct.Resources.MemoryMB},
+			Type:         cageTypeToProto(t),
+			MaxBatchSize: ct.MaxBatchSize,
+			Defaults:     &pb.ResourceLimits{Vcpus: ct.Resources.VCPUs, MemoryMb: ct.Resources.MemoryMB},
 		}
 		if ct.MaxDuration > 0 {
 			ctPb.MaxDuration = durationpb.New(ct.MaxDuration)
@@ -556,15 +556,15 @@ func hostStateToProto(s fleet.HostState) pb.HostState {
 
 func hostToProto(h fleet.Host) *pb.HostInfo {
 	return &pb.HostInfo{
-		HostId:        h.ID,
-		Pool:          poolToProto(h.Pool),
-		State:         hostStateToProto(h.State),
+		HostId:         h.ID,
+		Pool:           poolToProto(h.Pool),
+		State:          hostStateToProto(h.State),
 		CageSlotsTotal: h.CageSlotsTotal,
 		CageSlotsUsed:  h.CageSlotsUsed,
-		VcpusTotal:    h.VCPUsTotal,
-		VcpusUsed:     h.VCPUsUsed,
-		MemoryMbTotal: h.MemoryMBTotal,
-		MemoryMbUsed:  h.MemoryMBUsed,
+		VcpusTotal:     h.VCPUsTotal,
+		VcpusUsed:      h.VCPUsUsed,
+		MemoryMbTotal:  h.MemoryMBTotal,
+		MemoryMbUsed:   h.MemoryMBUsed,
 	}
 }
 

@@ -16,24 +16,24 @@ import (
 )
 
 const (
-	maxNameLen             = 256
-	maxCustomerIDLen       = 256
-	maxContextLen          = 10000
-	maxWeaknessLen         = 2000
-	maxEndpointLen         = 2048
-	maxAPISpecLen          = 2048
-	maxTagKeyLen           = 128
-	maxTagValueLen         = 1024
-	maxTags                = 50
-	maxHosts               = 100
-	maxPorts               = 100
-	maxPaths               = 500
-	maxExtraPatterns       = 100
-	maxPatternLen          = 1024
-	maxVulnClasses         = 50
-	maxKnownWeaknesses     = 50
-	maxEndpoints           = 200
-	maxAPISpecs            = 50
+	maxNameLen         = 256
+	maxCustomerIDLen   = 256
+	maxContextLen      = 10000
+	maxWeaknessLen     = 2000
+	maxEndpointLen     = 2048
+	maxAPISpecLen      = 2048
+	maxTagKeyLen       = 128
+	maxTagValueLen     = 1024
+	maxTags            = 50
+	maxHosts           = 100
+	maxPorts           = 100
+	maxPaths           = 500
+	maxExtraPatterns   = 100
+	maxPatternLen      = 1024
+	maxVulnClasses     = 50
+	maxKnownWeaknesses = 50
+	maxEndpoints       = 200
+	maxAPISpecs        = 50
 )
 
 // Hosts that the orchestrator or cloud metadata services listen on.
@@ -175,10 +175,10 @@ type Limits struct {
 }
 
 type CageType struct {
-	VCPUs         int32  `yaml:"vcpus"`
-	MemoryMB      int32  `yaml:"memory_mb"`
+	VCPUs        int32  `yaml:"vcpus"`
+	MemoryMB     int32  `yaml:"memory_mb"`
 	MaxBatchSize int32  `yaml:"max_batch_size"`
-	MaxDuration   string `yaml:"max_duration"`
+	MaxDuration  string `yaml:"max_duration"`
 }
 
 type Guidance struct {
@@ -495,7 +495,7 @@ func Validate(p *Plan) error {
 			return fmt.Errorf("cage_types.%s.memory_mb must not be negative", name)
 		}
 		if ct.MaxBatchSize < 0 {
-			return fmt.Errorf("cage_types.%s.max_concurrent must not be negative", name)
+			return fmt.Errorf("cage_types.%s.max_batch_size must not be negative", name)
 		}
 		if ct.MaxDuration != "" {
 			if _, err := time.ParseDuration(ct.MaxDuration); err != nil {

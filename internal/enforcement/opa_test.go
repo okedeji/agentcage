@@ -226,17 +226,15 @@ func TestOPACageConfig(t *testing.T) {
 			wantSubstr:  "cannot exceed 1800 seconds",
 		},
 		{
-			name: "escalation without parent finding",
+			name: "exploitation without LLM",
 			config: cage.Config{
-				Type:            cage.TypeExploitation,
-				TimeLimits:      cage.TimeLimits{MaxDuration: 5 * time.Minute},
-				Resources:       cage.ResourceLimits{VCPUs: 1, MemoryMB: 2048},
-				LLM:             &cage.LLMGatewayConfig{TokenBudget: 5000},
-				RateLimits:      cage.RateLimits{RequestsPerSecond: 50},
-				ParentFindingID: "",
+				Type:       cage.TypeExploitation,
+				TimeLimits: cage.TimeLimits{MaxDuration: 5 * time.Minute},
+				Resources:  cage.ResourceLimits{VCPUs: 1, MemoryMB: 2048},
+				RateLimits: cage.RateLimits{RequestsPerSecond: 50},
 			},
 			wantAllowed: false,
-			wantSubstr:  "parent finding ID",
+			wantSubstr:  "LLM",
 		},
 		{
 			name: "rate limit zero",
@@ -355,4 +353,3 @@ func TestOPAPayload(t *testing.T) {
 		})
 	}
 }
-

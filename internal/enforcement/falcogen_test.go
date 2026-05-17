@@ -79,13 +79,13 @@ func TestGenerateFalcoRules_AllowlistSubstitution(t *testing.T) {
 	assert.True(t, found, "should generate unexpected_process rule with allowlist")
 }
 
-func TestGenerateFalcoRules_EscalationLateralMovement(t *testing.T) {
+func TestGenerateFalcoRules_ExploitationLateralMovement(t *testing.T) {
 	cfg := config.Defaults()
 	rules, tripwires := GenerateFalcoRules(cfg.Monitoring)
 
-	escalation := rules["exploitation"]
+	exploitation := rules["exploitation"]
 	var hasLateral bool
-	for _, r := range escalation {
+	for _, r := range exploitation {
 		if r.Rule == "lateral movement in exploitation cage" {
 			hasLateral = true
 			assert.Contains(t, r.Condition, "22")

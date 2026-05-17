@@ -42,8 +42,8 @@ func BasePlanFromConfig(cfg *config.Config) *Plan {
 				mem = 512
 			}
 			ctPlan := CageType{
-				VCPUs:         vcpus,
-				MemoryMB:      mem,
+				VCPUs:        vcpus,
+				MemoryMB:     mem,
 				MaxBatchSize: ct.MaxBatchSize,
 			}
 			if ct.MaxDuration > 0 {
@@ -98,7 +98,7 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 			return fmt.Errorf("cage_types.%s.memory_mb %d exceeds operator limit %d", name, ct.MemoryMB, cfgCt.MaxMemoryMB)
 		}
 		if ct.MaxBatchSize > cfgCt.MaxBatchSize && cfgCt.MaxBatchSize > 0 {
-			return fmt.Errorf("cage_types.%s.max_concurrent %d exceeds operator limit %d", name, ct.MaxBatchSize, cfgCt.MaxBatchSize)
+			return fmt.Errorf("cage_types.%s.max_batch_size %d exceeds operator limit %d", name, ct.MaxBatchSize, cfgCt.MaxBatchSize)
 		}
 		if ct.MaxDuration != "" && cfgCt.MaxDuration > 0 {
 			d, err := time.ParseDuration(ct.MaxDuration)
@@ -111,13 +111,13 @@ func EnforceConfigCeilings(p *Plan, cfg *config.Config) error {
 		}
 	}
 
-	// A per-cage-type max_concurrent higher than the assessment-level
-	// max_total_cages is not dangerous, but it will confuse
-	// operators who expect the per-type value to be reachable.
+	// A per-cage-type max_batch_size higher than the assessment-level
+	// max_total_cages will confuse operators who expect the per-type
+	// value to be reachable.
 	if p.Limits.MaxTotalCages > 0 {
 		for name, ct := range p.CageTypes {
 			if ct.MaxBatchSize > p.Limits.MaxTotalCages {
-				return fmt.Errorf("cage_types.%s.max_concurrent %d exceeds assessment max_total_cages %d",
+				return fmt.Errorf("cage_types.%s.max_batch_size %d exceeds assessment max_total_cages %d",
 					name, ct.MaxBatchSize, p.Limits.MaxTotalCages)
 			}
 		}

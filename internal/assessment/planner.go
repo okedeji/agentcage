@@ -34,10 +34,10 @@ You must respond with a JSON object:
   "reason": "explanation of your strategy",
   "actions": [
     {
-      "type": "discovery|validator|escalation",
+      "type": "exploitation|validator",
       "scope": {"hosts": ["..."], "ports": ["..."], "paths": ["..."]},
       "vuln_class": "sqli|xss|rce|ssrf|idor|auth|...",
-      "finding_id": "only for validator/escalation",
+      "finding_id": "only for validator",
       "objective": "natural language description of what this cage should do",
       "priority": 1
     }
@@ -46,9 +46,8 @@ You must respond with a JSON object:
 
 Rules:
 - Set "done": true when you believe the target has been sufficiently tested or budget is low
-- Discovery cages explore attack surface and find candidate vulnerabilities
+- Exploitation cages test a specific endpoint for a specific vulnerability class. Also use exploitation cages to go deeper on existing findings (chaining, privilege escalation, data extraction).
 - Validator cages confirm a specific finding is real (requires finding_id)
-- Escalation cages attempt to chain from a validated finding (requires finding_id)
 - Prioritize uncovered endpoints and high-value targets (admin panels, auth, API endpoints)
 - Do not re-test combinations already in the coverage map
 - Be concise in objectives — the agent LLM inside the cage will interpret them
@@ -105,7 +104,7 @@ func validateDecision(d CoordinatorDecision) error {
 
 	for i, a := range d.Actions {
 		switch a.Type {
-		case "discovery", "validator", "escalation":
+		case "exploitation", "validator":
 		default:
 			return fmt.Errorf("action %d: invalid type %q", i, a.Type)
 		}
@@ -118,8 +117,8 @@ func validateDecision(d CoordinatorDecision) error {
 			return fmt.Errorf("action %d: objective is required", i)
 		}
 
-		if (a.Type == "validator" || a.Type == "escalation") && a.FindingID == "" {
-			return fmt.Errorf("action %d: %s cages require a finding_id", i, a.Type)
+		if a.Type == "validator" && a.FindingID == "" {
+			return fmt.Errorf("action %d: validator cages require a finding_id", i)
 		}
 	}
 

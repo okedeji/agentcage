@@ -12,13 +12,13 @@ import (
 
 func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) (*pb.CreateAssessmentRequest, error) {
 	cfg := &pb.AssessmentConfig{
-		Name:               p.Name,
-		CustomerId:         p.CustomerID,
-		TotalTokenBudget:   p.Budget.Tokens,
-		MaxConcurrentCages: p.Limits.MaxTotalCages,
-		SkipPaths:          p.Target.SkipPaths,
-		Tags:               p.Tags,
-		Environment:         p.Environment,
+		Name:             p.Name,
+		CustomerId:       p.CustomerID,
+		TotalTokenBudget: p.Budget.Tokens,
+		MaxTotalCages:    p.Limits.MaxTotalCages,
+		SkipPaths:        p.Target.SkipPaths,
+		Tags:             p.Tags,
+		Environment:      p.Environment,
 	}
 
 	if p.Limits.MaxIterations > 0 {
@@ -52,9 +52,9 @@ func buildCreateAssessmentRequest(p *plan.Plan, bundleRef string) (*pb.CreateAss
 			return nil, typeErr
 		}
 		ctPb := &pb.CageTypeConfig{
-			Type:          protoType,
-			MaxConcurrent: ct.MaxBatchSize,
-			Defaults:      &pb.ResourceLimits{Vcpus: ct.VCPUs, MemoryMb: ct.MemoryMB},
+			Type:         protoType,
+			MaxBatchSize: ct.MaxBatchSize,
+			Defaults:     &pb.ResourceLimits{Vcpus: ct.VCPUs, MemoryMb: ct.MemoryMB},
 		}
 		if ct.MaxDuration != "" {
 			d, err := time.ParseDuration(ct.MaxDuration)

@@ -46,17 +46,16 @@ func validValidatorConfig() cage.Config {
 	}
 }
 
-func validEscalationConfig() cage.Config {
+func validExploitationConfig() cage.Config {
 	return cage.Config{
-		AssessmentID:    "assess-1",
-		Type:            cage.TypeExploitation,
-		BundleRef:       "abc123",
-		Scope:           cage.Scope{Hosts: []string{"target.example.com"}, Ports: []string{"443"}},
-		Resources:       cage.ResourceLimits{VCPUs: 2, MemoryMB: 2048},
-		TimeLimits:      cage.TimeLimits{MaxDuration: 10 * time.Minute},
-		RateLimits:      cage.RateLimits{RequestsPerSecond: 200},
-		LLM:             &cage.LLMGatewayConfig{TokenBudget: 5000, RoutingStrategy: "round_robin"},
-		ParentFindingID: "finding-456",
+		AssessmentID: "assess-1",
+		Type:         cage.TypeExploitation,
+		BundleRef:    "abc123",
+		Scope:        cage.Scope{Hosts: []string{"target.example.com"}, Ports: []string{"443"}},
+		Resources:    cage.ResourceLimits{VCPUs: 2, MemoryMB: 2048},
+		TimeLimits:   cage.TimeLimits{MaxDuration: 10 * time.Minute},
+		RateLimits:   cage.RateLimits{RequestsPerSecond: 200},
+		LLM:          &cage.LLMGatewayConfig{TokenBudget: 5000, RoutingStrategy: "round_robin"},
 	}
 }
 
@@ -79,8 +78,8 @@ func TestValidateCageConfig(t *testing.T) {
 			baseType: "validator",
 		},
 		{
-			name:     "valid escalation config",
-			baseType: "escalation",
+			name:     "valid exploitation config",
+			baseType: "exploitation",
 		},
 		{
 			name:      "empty scope hosts",
@@ -214,11 +213,11 @@ func TestValidateCageConfig(t *testing.T) {
 			errSubstr: "LLM",
 		},
 		{
-			name:      "escalation missing ParentFindingID",
-			baseType:  "escalation",
-			modify:    func(cfg *cage.Config) { cfg.ParentFindingID = "" },
+			name:      "exploitation missing LLM",
+			baseType:  "exploitation",
+			modify:    func(cfg *cage.Config) { cfg.LLM = nil },
 			wantErr:   true,
-			errSubstr: "ParentFindingID",
+			errSubstr: "LLM",
 		},
 	}
 
@@ -230,8 +229,8 @@ func TestValidateCageConfig(t *testing.T) {
 				cfg = validDiscoveryConfig()
 			case "validator":
 				cfg = validValidatorConfig()
-			case "escalation":
-				cfg = validEscalationConfig()
+			case "exploitation":
+				cfg = validExploitationConfig()
 			}
 			if tt.modify != nil {
 				tt.modify(&cfg)

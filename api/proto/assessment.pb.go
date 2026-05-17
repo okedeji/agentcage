@@ -91,7 +91,7 @@ type CageTypeConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Type          CageType               `protobuf:"varint,1,opt,name=type,proto3,enum=agentcage.cage.v1.CageType" json:"type,omitempty"`
 	Defaults      *ResourceLimits        `protobuf:"bytes,2,opt,name=defaults,proto3" json:"defaults,omitempty"`
-	MaxConcurrent int32                  `protobuf:"varint,3,opt,name=max_concurrent,json=maxConcurrent,proto3" json:"max_concurrent,omitempty"`
+	MaxBatchSize  int32                  `protobuf:"varint,3,opt,name=max_batch_size,json=maxBatchSize,proto3" json:"max_batch_size,omitempty"`
 	MaxDuration   *durationpb.Duration   `protobuf:"bytes,4,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -141,9 +141,9 @@ func (x *CageTypeConfig) GetDefaults() *ResourceLimits {
 	return nil
 }
 
-func (x *CageTypeConfig) GetMaxConcurrent() int32 {
+func (x *CageTypeConfig) GetMaxBatchSize() int32 {
 	if x != nil {
-		return x.MaxConcurrent
+		return x.MaxBatchSize
 	}
 	return 0
 }
@@ -156,24 +156,24 @@ func (x *CageTypeConfig) GetMaxDuration() *durationpb.Duration {
 }
 
 type AssessmentConfig struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	CustomerId         string                 `protobuf:"bytes,1,opt,name=customer_id,json=customerId,proto3" json:"customer_id,omitempty"`
-	Scope              *TargetScope           `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
-	CageTypeConfigs    []*CageTypeConfig      `protobuf:"bytes,3,rep,name=cage_type_configs,json=cageTypeConfigs,proto3" json:"cage_type_configs,omitempty"`
-	TotalTokenBudget   int64                  `protobuf:"varint,4,opt,name=total_token_budget,json=totalTokenBudget,proto3" json:"total_token_budget,omitempty"`
-	MaxDuration        *durationpb.Duration   `protobuf:"bytes,5,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
-	Guidance           *Guidance              `protobuf:"bytes,8,opt,name=guidance,proto3" json:"guidance,omitempty"`
-	SkipPaths          []string               `protobuf:"bytes,9,rep,name=skip_paths,json=skipPaths,proto3" json:"skip_paths,omitempty"`
-	Tags               map[string]string      `protobuf:"bytes,11,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Notifications      *NotificationConfig    `protobuf:"bytes,12,opt,name=notifications,proto3" json:"notifications,omitempty"`
-	Name               string                 `protobuf:"bytes,13,opt,name=name,proto3" json:"name,omitempty"`
-	MaxConcurrentCages int32                  `protobuf:"varint,14,opt,name=max_concurrent_cages,json=maxConcurrentCages,proto3" json:"max_concurrent_cages,omitempty"`
-	ExtraBlock         []*PatternEntry        `protobuf:"bytes,15,rep,name=extra_block,json=extraBlock,proto3" json:"extra_block,omitempty"`
-	ExtraFlag          []*PatternEntry        `protobuf:"bytes,16,rep,name=extra_flag,json=extraFlag,proto3" json:"extra_flag,omitempty"`
-	MaxIterations      int32                  `protobuf:"varint,17,opt,name=max_iterations,json=maxIterations,proto3" json:"max_iterations,omitempty"`
-	Environment        map[string]string      `protobuf:"bytes,18,rep,name=environment,proto3" json:"environment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	CustomerId       string                 `protobuf:"bytes,1,opt,name=customer_id,json=customerId,proto3" json:"customer_id,omitempty"`
+	Scope            *TargetScope           `protobuf:"bytes,2,opt,name=scope,proto3" json:"scope,omitempty"`
+	CageTypeConfigs  []*CageTypeConfig      `protobuf:"bytes,3,rep,name=cage_type_configs,json=cageTypeConfigs,proto3" json:"cage_type_configs,omitempty"`
+	TotalTokenBudget int64                  `protobuf:"varint,4,opt,name=total_token_budget,json=totalTokenBudget,proto3" json:"total_token_budget,omitempty"`
+	MaxDuration      *durationpb.Duration   `protobuf:"bytes,5,opt,name=max_duration,json=maxDuration,proto3" json:"max_duration,omitempty"`
+	Guidance         *Guidance              `protobuf:"bytes,8,opt,name=guidance,proto3" json:"guidance,omitempty"`
+	SkipPaths        []string               `protobuf:"bytes,9,rep,name=skip_paths,json=skipPaths,proto3" json:"skip_paths,omitempty"`
+	Tags             map[string]string      `protobuf:"bytes,11,rep,name=tags,proto3" json:"tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Notifications    *NotificationConfig    `protobuf:"bytes,12,opt,name=notifications,proto3" json:"notifications,omitempty"`
+	Name             string                 `protobuf:"bytes,13,opt,name=name,proto3" json:"name,omitempty"`
+	MaxTotalCages    int32                  `protobuf:"varint,14,opt,name=max_total_cages,json=maxTotalCages,proto3" json:"max_total_cages,omitempty"`
+	ExtraBlock       []*PatternEntry        `protobuf:"bytes,15,rep,name=extra_block,json=extraBlock,proto3" json:"extra_block,omitempty"`
+	ExtraFlag        []*PatternEntry        `protobuf:"bytes,16,rep,name=extra_flag,json=extraFlag,proto3" json:"extra_flag,omitempty"`
+	MaxIterations    int32                  `protobuf:"varint,17,opt,name=max_iterations,json=maxIterations,proto3" json:"max_iterations,omitempty"`
+	Environment      map[string]string      `protobuf:"bytes,18,rep,name=environment,proto3" json:"environment,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *AssessmentConfig) Reset() {
@@ -276,9 +276,9 @@ func (x *AssessmentConfig) GetName() string {
 	return ""
 }
 
-func (x *AssessmentConfig) GetMaxConcurrentCages() int32 {
+func (x *AssessmentConfig) GetMaxTotalCages() int32 {
 	if x != nil {
-		return x.MaxConcurrentCages
+		return x.MaxTotalCages
 	}
 	return 0
 }
@@ -1387,12 +1387,12 @@ var File_api_proto_assessment_proto protoreflect.FileDescriptor
 
 const file_api_proto_assessment_proto_rawDesc = "" +
 	"\n" +
-	"\x1aapi/proto/assessment.proto\x12\x17agentcage.assessment.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14api/proto/cage.proto\"\xe5\x01\n" +
+	"\x1aapi/proto/assessment.proto\x12\x17agentcage.assessment.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14api/proto/cage.proto\"\xe4\x01\n" +
 	"\x0eCageTypeConfig\x12/\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1b.agentcage.cage.v1.CageTypeR\x04type\x12=\n" +
-	"\bdefaults\x18\x02 \x01(\v2!.agentcage.cage.v1.ResourceLimitsR\bdefaults\x12%\n" +
-	"\x0emax_concurrent\x18\x03 \x01(\x05R\rmaxConcurrent\x12<\n" +
-	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xea\a\n" +
+	"\bdefaults\x18\x02 \x01(\v2!.agentcage.cage.v1.ResourceLimitsR\bdefaults\x12$\n" +
+	"\x0emax_batch_size\x18\x03 \x01(\x05R\fmaxBatchSize\x12<\n" +
+	"\fmax_duration\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vmaxDuration\"\xe0\a\n" +
 	"\x10AssessmentConfig\x12\x1f\n" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\x124\n" +
@@ -1405,8 +1405,8 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"skip_paths\x18\t \x03(\tR\tskipPaths\x12G\n" +
 	"\x04tags\x18\v \x03(\v23.agentcage.assessment.v1.AssessmentConfig.TagsEntryR\x04tags\x12Q\n" +
 	"\rnotifications\x18\f \x01(\v2+.agentcage.assessment.v1.NotificationConfigR\rnotifications\x12\x12\n" +
-	"\x04name\x18\r \x01(\tR\x04name\x120\n" +
-	"\x14max_concurrent_cages\x18\x0e \x01(\x05R\x12maxConcurrentCages\x12@\n" +
+	"\x04name\x18\r \x01(\tR\x04name\x12&\n" +
+	"\x0fmax_total_cages\x18\x0e \x01(\x05R\rmaxTotalCages\x12@\n" +
 	"\vextra_block\x18\x0f \x03(\v2\x1f.agentcage.cage.v1.PatternEntryR\n" +
 	"extraBlock\x12>\n" +
 	"\n" +

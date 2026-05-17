@@ -1,5 +1,5 @@
 -- +migrate Up
-CREATE TYPE cage_type AS ENUM ('discovery', 'validator', 'escalation');
+CREATE TYPE cage_type AS ENUM ('discovery', 'validator', 'exploitation');
 CREATE TYPE cage_state AS ENUM ('pending', 'provisioning', 'running', 'paused', 'tearing_down', 'completed', 'failed');
 
 CREATE TABLE cages (

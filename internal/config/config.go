@@ -46,23 +46,23 @@ type Config struct {
 	// enforces TLS, denies localhost/wildcard targets, requires LLM.
 	// "dev" relaxes those for laptop development. Cage isolation via
 	// Firecracker is always required regardless of posture.
-	Posture        Posture                    `yaml:"posture"`
-	Infrastructure InfrastructureConfig       `yaml:"infrastructure"`
-	GRPC           GRPCConfig                 `yaml:"grpc"`
-	LLM            LLMConfig                  `yaml:"llm"`
-	Fleet          FleetConfig                `yaml:"fleet"`
-	CageRuntime    CageRuntimeConfig          `yaml:"cage_runtime"`
-	Cages          map[string]CageTypeConfig  `yaml:"cages"`
-	Assessment     AssessmentConfig           `yaml:"assessment"`
-	Scope          ScopeConfig                `yaml:"scope"`
-	Payload        map[string]PayloadConfig   `yaml:"payload"`
+	Posture        Posture                     `yaml:"posture"`
+	Infrastructure InfrastructureConfig        `yaml:"infrastructure"`
+	GRPC           GRPCConfig                  `yaml:"grpc"`
+	LLM            LLMConfig                   `yaml:"llm"`
+	Fleet          FleetConfig                 `yaml:"fleet"`
+	CageRuntime    CageRuntimeConfig           `yaml:"cage_runtime"`
+	Cages          map[string]CageTypeConfig   `yaml:"cages"`
+	Assessment     AssessmentConfig            `yaml:"assessment"`
+	Scope          ScopeConfig                 `yaml:"scope"`
+	Payload        map[string]PayloadConfig    `yaml:"payload"`
 	Monitoring     map[string]MonitoringConfig `yaml:"monitoring"`
-	Notifications  NotificationsConfig        `yaml:"notifications"`
-	Timeouts       ActivityTimeoutsConfig     `yaml:"timeouts"`
-	Intervention   InterventionConfig         `yaml:"intervention"`
-	Judge          *JudgeConfig               `yaml:"judge,omitempty"`
-	Access         AccessConfig               `yaml:"access"`
-	Server         ServerConfig               `yaml:"server"`
+	Notifications  NotificationsConfig         `yaml:"notifications"`
+	Timeouts       ActivityTimeoutsConfig      `yaml:"timeouts"`
+	Intervention   InterventionConfig          `yaml:"intervention"`
+	Judge          *JudgeConfig                `yaml:"judge,omitempty"`
+	Access         AccessConfig                `yaml:"access"`
+	Server         ServerConfig                `yaml:"server"`
 }
 
 type AccessConfig struct {
@@ -111,7 +111,6 @@ func (s ServerConfig) MarshalYAML() (interface{}, error) {
 	}
 	return c, nil
 }
-
 
 // ServerAddress returns the configured server address or the default.
 func (c *Config) ServerAddress() string {
@@ -298,8 +297,8 @@ type WebhookConfig struct {
 type GRPCConfig struct {
 	// Address is the server bind address. Defaults to 127.0.0.1:9090
 	// (loopback only). Set to 0.0.0.0:9090 to expose on all interfaces.
-	Address string          `yaml:"address,omitempty"`
-	TLS     *GRPCTLSConfig  `yaml:"tls,omitempty"`
+	Address string         `yaml:"address,omitempty"`
+	TLS     *GRPCTLSConfig `yaml:"tls,omitempty"`
 	// Reflection enables the gRPC server reflection service for debugging
 	// with grpcurl. Posture default: dev=true, strict=false.
 	Reflection *bool `yaml:"reflection,omitempty"`
@@ -310,7 +309,7 @@ type GRPCConfig struct {
 
 type GRPCTLSConfig struct {
 	// LetsEncrypt enables automatic TLS via Let's Encrypt ACME.
-	LetsEncrypt bool   `yaml:"letsencrypt,omitempty"`
+	LetsEncrypt bool `yaml:"letsencrypt,omitempty"`
 	// Domain is required when LetsEncrypt is true. The ACME challenge
 	// proves ownership of this domain.
 	Domain string `yaml:"domain,omitempty"`
@@ -353,13 +352,13 @@ type InfrastructureConfig struct {
 	// combined with embedded ports so host-init auto-discovers them.
 	AdvertiseAddress string `yaml:"advertise_address,omitempty"`
 
-	Postgres *PostgresConfig  `yaml:"postgres"`
-	NATS     *NATSConfig      `yaml:"nats"`
-	Temporal *TemporalConfig  `yaml:"temporal"`
-	SPIRE    *SPIREConfig     `yaml:"spire"`
-	Vault    *VaultConfig     `yaml:"vault"`
-	Nomad    *NomadConfig     `yaml:"nomad"`
-	OTel     *OTelConfig      `yaml:"otel"`
+	Postgres *PostgresConfig `yaml:"postgres"`
+	NATS     *NATSConfig     `yaml:"nats"`
+	Temporal *TemporalConfig `yaml:"temporal"`
+	SPIRE    *SPIREConfig    `yaml:"spire"`
+	Vault    *VaultConfig    `yaml:"vault"`
+	Nomad    *NomadConfig    `yaml:"nomad"`
+	OTel     *OTelConfig     `yaml:"otel"`
 }
 
 func (c *InfrastructureConfig) IsMultiMachine() bool {
@@ -393,8 +392,8 @@ type VaultConfig struct {
 }
 
 type NomadConfig struct {
-	Address string       `yaml:"address"`
-	TLS     *InfraTLS    `yaml:"tls,omitempty"`
+	Address string    `yaml:"address"`
+	TLS     *InfraTLS `yaml:"tls,omitempty"`
 }
 
 // InfraTLS holds cert/key paths for infrastructure service connections
@@ -409,8 +408,8 @@ type OTelConfig struct {
 	// Insecure disables TLS for the OTLP exporters. Posture default: never
 	// (strict refuses to start if explicitly set). Pointer so unset is
 	// distinct from explicit false.
-	Insecure *bool       `yaml:"insecure,omitempty"`
-	TLS      *OTelTLS    `yaml:"tls,omitempty"`
+	Insecure *bool    `yaml:"insecure,omitempty"`
+	TLS      *OTelTLS `yaml:"tls,omitempty"`
 }
 
 type OTelTLS struct {
@@ -457,15 +456,15 @@ type AutoscalerConfig struct {
 // Default* fields are what cages receive when the plan does not specify
 // resources. Max* fields are ceilings that EnforceConfigCeilings checks.
 type CageTypeConfig struct {
-	MaxDuration          time.Duration `yaml:"max_duration"`
-	MaxVCPUs             int32         `yaml:"max_vcpus"`
-	MaxMemoryMB          int32         `yaml:"max_memory_mb"`
-	DefaultVCPUs         int32         `yaml:"default_vcpus"`
-	DefaultMemoryMB      int32         `yaml:"default_memory_mb"`
-	MaxBatchSize        int32         `yaml:"max_batch_size"`
-	RequiresLLM          bool          `yaml:"requires_llm"`
-	RequiresParentFinding bool         `yaml:"requires_parent_finding"`
-	RateLimit            int32         `yaml:"rate_limit"`
+	MaxDuration           time.Duration `yaml:"max_duration"`
+	MaxVCPUs              int32         `yaml:"max_vcpus"`
+	MaxMemoryMB           int32         `yaml:"max_memory_mb"`
+	DefaultVCPUs          int32         `yaml:"default_vcpus"`
+	DefaultMemoryMB       int32         `yaml:"default_memory_mb"`
+	MaxBatchSize          int32         `yaml:"max_batch_size"`
+	RequiresLLM           bool          `yaml:"requires_llm"`
+	RequiresParentFinding bool          `yaml:"requires_parent_finding"`
+	RateLimit             int32         `yaml:"rate_limit"`
 }
 
 // AssessmentConfig defines defaults for assessment execution.
@@ -514,21 +513,21 @@ func (m *ProofsMode) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type AssessmentConfig struct {
-	MaxDuration       time.Duration `yaml:"max_duration"`
-	TokenBudget       int64         `yaml:"token_budget"`
-	MaxIterations     int32         `yaml:"max_iterations"`
-	MaxTotalCages     int32         `yaml:"max_batch_size"`
-	ReviewTimeout     time.Duration `yaml:"review_timeout"`
+	MaxDuration   time.Duration `yaml:"max_duration"`
+	TokenBudget   int64         `yaml:"token_budget"`
+	MaxIterations int32         `yaml:"max_iterations"`
+	MaxTotalCages int32         `yaml:"max_total_cages"`
+	ReviewTimeout time.Duration `yaml:"review_timeout"`
 	// TrustAgentProof skips independent validation when the agent
 	// provides a confirmed proof on the finding. Faster and cheaper
 	// but relies on the agent's honesty. Default false.
-	TrustAgentProof   bool          `yaml:"trust_agent_proof"`
+	TrustAgentProof bool `yaml:"trust_agent_proof"`
 	// Minimum LLM confidence (0.0-1.0) for agents to attach a
 	// validation proof to findings. 0 uses the agent's built-in default.
-	ProofThreshold    float64       `yaml:"proof_threshold"`
-	ProofsDir         string        `yaml:"proofs_dir"`
-	ProofsMode        ProofsMode    `yaml:"proofs_mode"`
-	MaxScreenshotSize int64         `yaml:"max_screenshot_size"`
+	ProofThreshold    float64    `yaml:"proof_threshold"`
+	ProofsDir         string     `yaml:"proofs_dir"`
+	ProofsMode        ProofsMode `yaml:"proofs_mode"`
+	MaxScreenshotSize int64      `yaml:"max_screenshot_size"`
 }
 
 // ScopeConfig defines what targets are allowed or denied. The two deny
@@ -546,8 +545,8 @@ type ScopeConfig struct {
 // class. Block patterns reject the request. Flag patterns trigger a
 // human-review hold when the proxy runs in flag mode.
 type PayloadConfig struct {
-	Block    []PatternEntry `yaml:"block"`
-	Flag []PatternEntry `yaml:"flag,omitempty"`
+	Block []PatternEntry `yaml:"block"`
+	Flag  []PatternEntry `yaml:"flag,omitempty"`
 }
 
 // PatternEntry is a single regex pattern with a human-readable reason.
@@ -663,8 +662,8 @@ func Resolve(explicit string) string {
 
 // Parse reads configuration from raw YAML bytes.
 var validCageTypes = map[string]bool{
-	"discovery":  true,
-	"validator":  true,
+	"discovery":    true,
+	"validator":    true,
 	"exploitation": true,
 }
 
@@ -705,12 +704,12 @@ func validatePosture(cfg *Config) error {
 func validateConfigKeys(cfg *Config) error {
 	for key := range cfg.Cages {
 		if !validCageTypes[key] {
-			return fmt.Errorf("unknown cage type %q in config (valid: discovery, validator, escalation)", key)
+			return fmt.Errorf("unknown cage type %q in config (valid: discovery, validator, exploitation)", key)
 		}
 	}
 	for key := range cfg.Monitoring {
 		if !validCageTypes[key] {
-			return fmt.Errorf("unknown cage type %q in monitoring config (valid: discovery, validator, escalation)", key)
+			return fmt.Errorf("unknown cage type %q in monitoring config (valid: discovery, validator, exploitation)", key)
 		}
 	}
 	for i, k := range cfg.Access.APIKeys {
@@ -756,7 +755,7 @@ func Defaults() *Config {
 				MaxMemoryMB:     8192,
 				DefaultVCPUs:    2,
 				DefaultMemoryMB: 4096,
-				MaxBatchSize:   10,
+				MaxBatchSize:    10,
 				RequiresLLM:     true,
 				RateLimit:       1000,
 			},
@@ -766,7 +765,7 @@ func Defaults() *Config {
 				MaxMemoryMB:           1024,
 				DefaultVCPUs:          1,
 				DefaultMemoryMB:       512,
-				MaxBatchSize:         20,
+				MaxBatchSize:          20,
 				RequiresLLM:           false,
 				RequiresParentFinding: true,
 				RateLimit:             100,
@@ -777,9 +776,9 @@ func Defaults() *Config {
 				MaxMemoryMB:           4096,
 				DefaultVCPUs:          1,
 				DefaultMemoryMB:       2048,
-				MaxBatchSize:         5,
+				MaxBatchSize:          5,
 				RequiresLLM:           true,
-				RequiresParentFinding: true,
+				RequiresParentFinding: false,
 				RateLimit:             500,
 			},
 		},
@@ -823,16 +822,16 @@ func Defaults() *Config {
 					"privileged_shell":     "human_review",
 					"sensitive_file_write": "human_review",
 					"privilege_escalation": "kill",
-					"fork_bomb":           "human_review",
+					"fork_bomb":            "human_review",
 					"kernel_module":        "kill",
-					"ptrace":              "kill",
-					"mount":               "kill",
-					"container_escape":    "kill",
-					"raw_socket":          "human_review",
-					"dns_exfil":           "log",
-					"large_read":          "log",
-					"persistence":         "kill",
-					"download_exec":       "kill",
+					"ptrace":               "kill",
+					"mount":                "kill",
+					"container_escape":     "kill",
+					"raw_socket":           "human_review",
+					"dns_exfil":            "log",
+					"large_read":           "log",
+					"persistence":          "kill",
+					"download_exec":        "kill",
 				},
 				DefaultAction: "human_review",
 			},
@@ -844,12 +843,12 @@ func Defaults() *Config {
 					"privilege_escalation": "kill",
 					"unexpected_process":   "kill",
 					"kernel_module":        "kill",
-					"ptrace":              "kill",
-					"mount":               "kill",
-					"container_escape":    "kill",
-					"raw_socket":          "kill",
-					"persistence":         "kill",
-					"download_exec":       "kill",
+					"ptrace":               "kill",
+					"mount":                "kill",
+					"container_escape":     "kill",
+					"raw_socket":           "kill",
+					"persistence":          "kill",
+					"download_exec":        "kill",
 				},
 				AllowedProcesses: []string{"agent", "payload-proxy", "findings-sidecar"},
 				DefaultAction:    "human_review",
@@ -859,15 +858,15 @@ func Defaults() *Config {
 					"privileged_shell":     "human_review",
 					"sensitive_file_write": "human_review",
 					"privilege_escalation": "kill",
-					"lateral_movement":    "kill",
+					"lateral_movement":     "kill",
 					"kernel_module":        "kill",
-					"ptrace":              "kill",
-					"mount":               "kill",
-					"container_escape":    "kill",
-					"raw_socket":          "human_review",
-					"dns_exfil":           "log",
-					"persistence":         "kill",
-					"download_exec":       "kill",
+					"ptrace":               "kill",
+					"mount":                "kill",
+					"container_escape":     "kill",
+					"raw_socket":           "human_review",
+					"dns_exfil":            "log",
+					"persistence":          "kill",
+					"download_exec":        "kill",
 				},
 				DefaultAction: "human_review",
 			},
@@ -1275,7 +1274,6 @@ func (c *InfrastructureConfig) IsExternalSPIRE() bool {
 func (c *InfrastructureConfig) IsExternalVault() bool {
 	return c.Vault != nil && c.Vault.Address != ""
 }
-
 
 func (c *InfrastructureConfig) IsExternalNomad() bool {
 	return c.Nomad != nil && c.Nomad.Address != ""

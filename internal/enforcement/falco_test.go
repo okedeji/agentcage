@@ -34,10 +34,10 @@ func testRuleSets() map[cage.Type]TripwireRuleSet {
 		},
 		cage.TypeExploitation: {
 			Rules: map[string]TripwirePolicy{
-				"Privileged Shell in Escalation Cage":         TripwireHumanReview,
-				"Sensitive File Write in Escalation Cage":     TripwireHumanReview,
-				"Privilege Escalation in Escalation Cage":     TripwireImmediateTeardown,
-				"Lateral Movement Attempt in Escalation Cage": TripwireImmediateTeardown,
+				"Privileged Shell in Exploitation Cage":         TripwireHumanReview,
+				"Sensitive File Write in Exploitation Cage":     TripwireHumanReview,
+				"Privilege Escalation in Exploitation Cage":     TripwireImmediateTeardown,
+				"Lateral Movement Attempt in Exploitation Cage": TripwireImmediateTeardown,
 			},
 			Default: TripwireHumanReview,
 		},
@@ -98,13 +98,13 @@ func TestFalcoHandler_HandleAlert(t *testing.T) {
 			wantPolicy: TripwireHumanReview,
 		},
 		{
-			name:       "escalation lateral movement triggers teardown",
+			name:       "exploitation lateral movement triggers teardown",
 			cageType:   cage.TypeExploitation,
-			ruleName:   "Lateral Movement Attempt in Escalation Cage",
+			ruleName:   "Lateral Movement Attempt in Exploitation Cage",
 			wantPolicy: TripwireImmediateTeardown,
 		},
 		{
-			name:       "escalation unknown rule falls back to human review",
+			name:       "exploitation unknown rule falls back to human review",
 			cageType:   cage.TypeExploitation,
 			ruleName:   "Some Unknown Rule",
 			wantPolicy: TripwireHumanReview,

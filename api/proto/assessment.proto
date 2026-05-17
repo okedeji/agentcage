@@ -30,7 +30,7 @@ enum AssessmentStatus {
 message CageTypeConfig {
   agentcage.cage.v1.CageType type = 1;
   agentcage.cage.v1.ResourceLimits defaults = 2;
-  int32 max_concurrent = 3;
+  int32 max_batch_size = 3;
   google.protobuf.Duration max_duration = 4;
 }
 
@@ -45,7 +45,7 @@ message AssessmentConfig {
   map<string, string> tags = 11;
   NotificationConfig notifications = 12;
   string name = 13;
-  int32 max_concurrent_cages = 14;
+  int32 max_total_cages = 14;
   repeated agentcage.cage.v1.PatternEntry extra_block = 15;
   repeated agentcage.cage.v1.PatternEntry extra_flag = 16;
   int32 max_iterations = 17;

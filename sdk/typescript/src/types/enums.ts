@@ -66,7 +66,7 @@ export enum HostPool {
 export enum CageType {
   Discovery = 'discovery',
   Validator = 'validator',
-  Escalation = 'escalation',
+  Exploitation = 'exploitation',
 }
 
 export enum DirectiveType {

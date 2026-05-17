@@ -5,4 +5,4 @@ posture: dev
 llm:
   endpoint: ""
 assessment:
-  max_concurrent: 2
+  max_total_cages: 2
