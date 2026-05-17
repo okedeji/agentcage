@@ -167,7 +167,7 @@ func cmdLogsService(service string, args []string) {
 
 func cmdLogsCage(args []string) {
 	fs := flag.NewFlagSet("logs cage", flag.ExitOnError)
-	source := fs.String("source", "", "filter by source: agent, system")
+	source := fs.String("source", "", "filter by source: agent, system, sidecar, or a specific name (findings-sidecar, directive-sidecar, payload-proxy)")
 	follow := fs.Bool("follow", false, "stream live")
 	followShort := fs.Bool("f", false, "stream live (short)")
 	lines := fs.Int("lines", 0, "show last N lines")
@@ -212,7 +212,7 @@ func cmdLogsCage(args []string) {
 	}
 
 	for _, line := range resp.GetLines() {
-		if *source != "" && !strings.Contains(line, `"source":"`+*source+`"`) {
+		if *source != "" && !matchesSource(line, *source) {
 			continue
 		}
 		if *format == "json" {
@@ -289,7 +289,7 @@ func pollCageLogs(client pb.CageServiceClient, cageID, source string, lastCount 
 		lines := resp.GetLines()
 		for i := lastCount; i < int32(len(lines)); i++ {
 			line := lines[i]
-			if source != "" && !strings.Contains(line, `"source":"`+source+`"`) {
+			if source != "" && !matchesSource(line, source) {
 				continue
 			}
 			fmt.Println(line)
@@ -539,6 +539,20 @@ Examples:
   agentcage logs cage <id> --source agent
   agentcage logs cage <id> --source agent -f
   agentcage logs cage <id> --source infra
+  agentcage logs cage <id> --source sidecar
+  agentcage logs cage <id> --source findings-sidecar
   agentcage logs assessment <id>
 `)
+}
+
+// matchesSource decides whether a JSON-encoded log line passes the
+// --source filter. Exact names ("agent", "system", "findings-sidecar")
+// match the source field directly. The literal "sidecar" is a shortcut
+// that matches any non-agent, non-system source (sidecars and proxies).
+func matchesSource(line, filter string) bool {
+	if filter == "sidecar" {
+		return !strings.Contains(line, `"source":"agent"`) &&
+			!strings.Contains(line, `"source":"system"`)
+	}
+	return strings.Contains(line, `"source":"`+filter+`"`)
 }
