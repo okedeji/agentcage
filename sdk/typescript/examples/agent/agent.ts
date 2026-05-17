@@ -9,7 +9,7 @@
  * validation agents are separate.
  */
 
-import { AgentSDK, Severity, DirectiveInstruction, newFindingId } from '@agentcage/sdk';
+import { AgentSDK, Severity, DirectiveInstruction, newFindingId, fetch } from '@agentcage/sdk';
 
 // ── Environment ─────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ async function askLLM(messages: LLMMessage[]): Promise<string> {
     method: 'POST',
     headers,
     body: JSON.stringify({ messages }),
-    signal: AbortSignal.timeout(60000),
+    timeoutMs: 60000,
   });
   if (!resp.ok) {
     throw new Error(`LLM returned ${resp.status}`);
@@ -92,7 +92,7 @@ interface HttpResponse {
 
 async function fetchSafe(url: string): Promise<HttpResponse | null> {
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(10000), redirect: 'follow' });
+    const resp = await fetch(url, { redirect: 'follow' });
     const body = await resp.text();
     const headers: Record<string, string> = {};
     resp.headers.forEach((v, k) => { headers[k] = v; });

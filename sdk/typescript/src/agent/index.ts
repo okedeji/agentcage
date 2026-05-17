@@ -39,3 +39,4 @@ export class AgentSDK {
 export type { AgentFinding, HoldRequest, HoldResponse, DirectiveInstruction, Directive } from '../types/agent';
 export type { DirectiveCallback } from './directive-watcher';
 export { newFindingId } from './ids';
+export { fetch, type FetchOptions } from './fetch';
