@@ -2,6 +2,7 @@ package assessment
 
 import (
 	"context"
+	"time"
 
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/findings"
@@ -36,4 +37,12 @@ type Activities interface {
 	NotifyFinding(ctx context.Context, assessmentID string, config NotificationConfig, finding findings.Finding) error
 	NotifyFleetAssessmentComplete(ctx context.Context, assessmentID string) error
 	NotifyAssessmentComplete(ctx context.Context, assessmentID string, config NotificationConfig, status Status, findingsValidated int32, name string, tags map[string]string) error
+	EnqueueReportReview(ctx context.Context, assessmentID, customerID string, findingsValidated int32) (string, error)
+}
+
+// InterventionEnqueuer creates pending interventions for the assessment
+// layer (today: the report-review gate). Defined as a narrow interface
+// so this package doesn't import internal/intervention directly.
+type InterventionEnqueuer interface {
+	EnqueueReportReview(ctx context.Context, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error)
 }

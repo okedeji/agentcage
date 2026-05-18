@@ -145,3 +145,13 @@ func (a *interventionQueueAdapter) Enqueue(ctx context.Context, reqType cage.Int
 	}
 	return req.ID, nil
 }
+
+// EnqueueReportReview satisfies assessment.InterventionEnqueuer. Same
+// queue, different signature (no cageID, fixed type/priority).
+func (a *interventionQueueAdapter) EnqueueReportReview(ctx context.Context, assessmentID, description string, contextData []byte, timeout time.Duration) (string, error) {
+	req, err := a.q.Enqueue(ctx, intervention.TypeReportReview, intervention.PriorityHigh, "", assessmentID, description, contextData, timeout)
+	if err != nil {
+		return "", err
+	}
+	return req.ID, nil
+}

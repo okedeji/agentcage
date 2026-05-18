@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-logr/logr"
 	"go.temporal.io/sdk/activity"
@@ -33,33 +34,37 @@ type TokenQuerier interface {
 }
 
 type ActivityImpl struct {
-	cages        *cage.Service
-	findings     findings.FindingStore
-	bus          findings.Bus
-	coordinator  *findings.Coordinator
-	fleet        FleetSignaler
-	assessments  *Service
-	tokens       TokenQuerier
-	configServer *config.Server
-	alerter      AlertNotifier
-	planner      *Planner
-	log          logr.Logger
-	subsMu       sync.Mutex
-	subs         map[string]findings.Subscription
+	cages         *cage.Service
+	findings      findings.FindingStore
+	bus           findings.Bus
+	coordinator   *findings.Coordinator
+	fleet         FleetSignaler
+	assessments   *Service
+	tokens        TokenQuerier
+	configServer  *config.Server
+	alerter       AlertNotifier
+	planner       *Planner
+	interventions InterventionEnqueuer
+	reviewTimeout time.Duration
+	log           logr.Logger
+	subsMu        sync.Mutex
+	subs          map[string]findings.Subscription
 }
 
 type ActivityImplConfig struct {
-	Cages        *cage.Service
-	Findings     findings.FindingStore
-	Bus          findings.Bus
-	Coordinator  *findings.Coordinator
-	Fleet        FleetSignaler
-	Assessments  *Service
-	Tokens       TokenQuerier
-	ConfigServer *config.Server
-	Alerter      AlertNotifier
-	LLMClient    *gateway.Client
-	Log          logr.Logger
+	Cages         *cage.Service
+	Findings      findings.FindingStore
+	Bus           findings.Bus
+	Coordinator   *findings.Coordinator
+	Fleet         FleetSignaler
+	Assessments   *Service
+	Tokens        TokenQuerier
+	ConfigServer  *config.Server
+	Alerter       AlertNotifier
+	LLMClient     *gateway.Client
+	Interventions InterventionEnqueuer
+	ReviewTimeout time.Duration
+	Log           logr.Logger
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
@@ -68,18 +73,20 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		planner = NewPlanner(cfg.LLMClient)
 	}
 	return &ActivityImpl{
-		cages:        cfg.Cages,
-		findings:     cfg.Findings,
-		bus:          cfg.Bus,
-		coordinator:  cfg.Coordinator,
-		fleet:        cfg.Fleet,
-		assessments:  cfg.Assessments,
-		tokens:       cfg.Tokens,
-		configServer: cfg.ConfigServer,
-		alerter:      cfg.Alerter,
-		planner:      planner,
-		log:          cfg.Log.WithValues("component", "assessment-activities"),
-		subs:         make(map[string]findings.Subscription),
+		cages:         cfg.Cages,
+		findings:      cfg.Findings,
+		bus:           cfg.Bus,
+		coordinator:   cfg.Coordinator,
+		fleet:         cfg.Fleet,
+		assessments:   cfg.Assessments,
+		tokens:        cfg.Tokens,
+		configServer:  cfg.ConfigServer,
+		alerter:       cfg.Alerter,
+		planner:       planner,
+		interventions: cfg.Interventions,
+		reviewTimeout: cfg.ReviewTimeout,
+		log:           cfg.Log.WithValues("component", "assessment-activities"),
+		subs:          make(map[string]findings.Subscription),
 	}
 }
 
@@ -108,6 +115,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("NotifyFinding", a.NotifyFinding)
 	pin("NotifyFleetAssessmentComplete", a.NotifyFleetAssessmentComplete)
 	pin("NotifyAssessmentComplete", a.NotifyAssessmentComplete)
+	pin("EnqueueReportReview", a.EnqueueReportReview)
 	pin("StartFindingsStream", a.StartFindingsStream)
 	pin("StopFindingsStream", a.StopFindingsStream)
 	pin("StoreReport", a.StoreReport)
@@ -115,6 +123,28 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("EnrichFinding", a.EnrichFinding)
 	pin("StoreValidationProof", a.StoreValidationProof)
 	pin("GetCageState", a.GetCageState)
+}
+
+// EnqueueReportReview creates the pending report-review intervention so
+// an operator can approve/reject/retest via `agentcage interventions
+// resolve`. The intervention ID returned is what the operator passes
+// with --id. The workflow does not need this ID directly because it
+// waits on a Temporal signal keyed by assessment ID.
+func (a *ActivityImpl) EnqueueReportReview(ctx context.Context, assessmentID, customerID string, findingsValidated int32) (string, error) {
+	if a.interventions == nil {
+		return "", fmt.Errorf("intervention queue not configured")
+	}
+	timeout := a.reviewTimeout
+	if timeout <= 0 {
+		timeout = 24 * time.Hour
+	}
+	description := fmt.Sprintf("Assessment %s ready for review: %d validated finding(s)", assessmentID, findingsValidated)
+	id, err := a.interventions.EnqueueReportReview(ctx, assessmentID, description, nil, timeout)
+	if err != nil {
+		return "", fmt.Errorf("enqueueing report review for %s: %w", assessmentID, err)
+	}
+	a.log.Info("report review intervention enqueued", "assessment_id", assessmentID, "intervention_id", id, "customer_id", customerID)
+	return id, nil
 }
 
 func (a *ActivityImpl) NotifyBudgetExhausted(ctx context.Context, assessmentID string, consumed, budget int64) error {

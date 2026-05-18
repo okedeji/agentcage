@@ -305,6 +305,15 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		return failResult(result, "updating status to pending_review: %v", err), nil
 	}
 
+	// Without this, the assessment would silently hang at pending_review
+	// forever because no intervention exists for the operator to resolve.
+	// The signal-based wait below is keyed by assessment workflow ID, not
+	// intervention ID, so we discard the returned ID.
+	enqueueCtx := withActivityTimeout(ctx, TimeoutUpdateStatus)
+	if err := workflow.ExecuteActivity(enqueueCtx, "EnqueueReportReview", input.AssessmentID, cfg.CustomerID, result.Findings).Get(ctx, nil); err != nil {
+		return failResult(result, "enqueueing report review intervention: %v", err), nil
+	}
+
 	decision, err := waitForReportReview(ctx)
 	if err != nil {
 		return failResult(result, "waiting for report review: %v", err), nil

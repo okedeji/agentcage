@@ -63,6 +63,9 @@ func (assessmentActivityStub) NotifyFleetAssessmentComplete(_ context.Context, _
 func (assessmentActivityStub) NotifyAssessmentComplete(_ context.Context, _ string, _ NotificationConfig, _ Status, _ int32, _ string, _ map[string]string) error {
 	return nil
 }
+func (assessmentActivityStub) EnqueueReportReview(_ context.Context, _, _ string, _ int32) (string, error) {
+	return "ivn_stub", nil
+}
 func (assessmentActivityStub) StartFindingsStream(_ context.Context, _ string) error {
 	return nil
 }

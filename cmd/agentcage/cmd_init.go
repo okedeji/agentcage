@@ -273,17 +273,19 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 	})
 
 	assessmentActivityImpl := assessment.NewActivityImpl(assessment.ActivityImplConfig{
-		Cages:        cageSvc,
-		Findings:     findingStore,
-		Bus:          findingsBus,
-		Coordinator:  findingsCoordinator,
-		Fleet:        fleetSignaler,
-		Assessments:  assessmentSvc,
-		Tokens:       tokenMeter,
-		LLMClient:    llmClient,
-		ConfigServer: configServer,
-		Alerter:      alertDispatcher,
-		Log:          log,
+		Cages:         cageSvc,
+		Findings:      findingStore,
+		Bus:           findingsBus,
+		Coordinator:   findingsCoordinator,
+		Fleet:         fleetSignaler,
+		Assessments:   assessmentSvc,
+		Tokens:        tokenMeter,
+		LLMClient:     llmClient,
+		ConfigServer:  configServer,
+		Alerter:       alertDispatcher,
+		Interventions: &interventionQueueAdapter{q: iQueue},
+		ReviewTimeout: cfg.Assessment.ReviewTimeout,
+		Log:           log,
 	})
 
 	configYAML, _ := config.Marshal(cfg)
