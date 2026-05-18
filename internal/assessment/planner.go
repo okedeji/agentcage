@@ -21,7 +21,7 @@ const coordinatorSystemPrompt = `You coordinate an autonomous penetration test. 
 
 STATE SCHEMA:
 - target: {host, ports, paths} the authorized scope (single host per assessment)
-- agent_capabilities.exploitation: ["sqli","xss",...] vuln classes the agent can test. You may ONLY request these.
+- agent_capabilities.exploitation: ["sqli","xss-fuzzer","idor-enum",...] tools the agent has loaded for exploitation. Free-text names chosen by the agent author. Treat them as a resume of what the agent can do — pick descriptive vuln_class labels for your actions and the agent dispatches each action to whichever loaded tool matches.
 - findings[]: {id, title, severity, vuln_class, endpoint, status, chain_depth} discovered so far
 - coverage: {host: [vuln_classes_already_tested]} what has been tested. Do not re-test these combinations.
 - cages_completed[]: {cage_type, scope, vuln_class, objective, outcome, error, findings_count} prior cages and whether they succeeded
@@ -49,7 +49,7 @@ CAGE TYPES:
 - validator: independently confirms a finding is real. Requires finding_id. Do NOT use for testing new endpoints.
 
 RULES:
-1. Only request vuln classes from agent_capabilities.exploitation. If the list is empty, set done=true immediately.
+1. If agent_capabilities.exploitation is empty, the agent has no exploitation tools loaded — set done=true immediately.
 2. Check coverage before planning. If coverage[host] already includes a vuln class, skip it.
 3. Prioritize: auth endpoints, admin panels, API routes, file upload, anything accepting user input.
 4. Each action needs a specific objective the agent can act on. "test for SQLi" is too vague. "test /api/users?id= for error-based SQL injection" is actionable.

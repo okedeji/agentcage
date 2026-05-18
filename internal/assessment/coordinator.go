@@ -12,17 +12,21 @@ import (
 // each iteration. The coordinator reasons about what has been tested, what
 // was found, and decides what to test next.
 type CoordinatorState struct {
-	AssessmentID      string                     `json:"assessment_id"`
-	Target            cage.Scope                 `json:"target"`
-	Iteration         int                        `json:"iteration"`
-	MaxIterations     int                        `json:"max_iterations"`
-	Findings          []FindingSummary           `json:"findings"`
-	CagesCompleted    []CageSummary              `json:"cages_completed"`
-	Coverage          map[string][]string        `json:"coverage"`
-	TokensUsed        int64                      `json:"tokens_used"`
-	TokenBudget       int64                      `json:"token_budget"`
-	TimeElapsed       time.Duration              `json:"time_elapsed"`
-	TimeLimit         time.Duration              `json:"time_limit"`
+	AssessmentID   string              `json:"assessment_id"`
+	Target         cage.Scope          `json:"target"`
+	Iteration      int                 `json:"iteration"`
+	MaxIterations  int                 `json:"max_iterations"`
+	Findings       []FindingSummary    `json:"findings"`
+	CagesCompleted []CageSummary       `json:"cages_completed"`
+	Coverage       map[string][]string `json:"coverage"`
+	TokensUsed     int64               `json:"tokens_used"`
+	TokenBudget    int64               `json:"token_budget"`
+	TimeElapsed    time.Duration       `json:"time_elapsed"`
+	TimeLimit      time.Duration       `json:"time_limit"`
+	// AgentCapabilities advertises what the agent has loaded. Discovery
+	// and Validation are phase markers; Exploitation is a free-text list
+	// of tool names the LLM reads as a resume. The LLM decides what
+	// actions to plan based on what's listed here.
 	AgentCapabilities cagefile.AgentCapabilities `json:"agent_capabilities"`
 }
 

@@ -24,8 +24,13 @@ var SupportedTools = func() map[string]bool {
 	return m
 }()
 
-// AgentCapabilities declares what the agent can do. The coordinator
-// uses this to only plan actions the agent supports.
+// AgentCapabilities declares what the agent can do. The Discovery and
+// Validation booleans gate workflow phase participation. Exploitation
+// is a free-text list of tools/modules the agent has loaded for the
+// exploitation phase — not validated against any taxonomy. The
+// orchestrator LLM reads the tool names as a resume and decides what
+// to ask the agent to do; the agent dispatches incoming actions to
+// whatever it registered locally.
 type AgentCapabilities struct {
 	Discovery    bool     `json:"discovery,omitempty"`
 	Exploitation []string `json:"exploitation,omitempty"`
@@ -139,7 +144,7 @@ func Parse(r io.Reader) (*Manifest, error) {
 				m.Capabilities.Discovery = true
 			case "exploitation":
 				if len(parts) < 2 {
-					return nil, fmt.Errorf("line %d: capability exploitation requires at least one vuln class", lineNum)
+					return nil, fmt.Errorf("line %d: capability exploitation requires at least one tool name", lineNum)
 				}
 				m.Capabilities.Exploitation = append(m.Capabilities.Exploitation, parts[1:]...)
 			case "validation":
