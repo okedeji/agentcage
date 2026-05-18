@@ -11,7 +11,7 @@ const vsockCIDHost = 2
 
 // On non-Linux, the proxy is built but not actually invoked. These
 // stubs let it compile so make test/build works on macOS.
-type vsockListener struct{ port uint32 }
+type vsockListener struct{}
 
 func listenVsock(port uint32) (*vsockListener, error) {
 	return nil, fmt.Errorf("vsock not supported on this platform")

@@ -93,29 +93,29 @@ type FleetPool interface {
 // dependency is logged and skipped so local mode works without SPIRE,
 // Vault, or Falco.
 type ActivityImpl struct {
-	provisioner       VMProvisioner
-	rootfs            *RootfsBuilder
-	bundleStoreDir    string
-	network           NetworkPolicy
-	validator         ScopeValidator
-	alertHandler      AlertHandler
-	alertNotifier     AlertNotifier
-	falcoReader       *FalcoAlertReader
-	fleetPool         FleetPool
-	identity          identity.SVIDIssuer
-	secrets           identity.SecretFetcher
-	auditStore        audit.Store
-	interventionQueue InterventionEnqueuer
-	payloadHolds      *PayloadHoldHandler
-	agentHolds        *AgentHoldListener
-	targetCreds       TargetCredentialReader
-	directiveWriter   *DirectiveWriter
-	logCollector      *VsockCollector
-	findingsBus       findings.Bus
-	cageService       *Service
-	logDir            string
-	log               logr.Logger
-	allocMu           sync.Mutex
+	provisioner           VMProvisioner
+	rootfs                *RootfsBuilder
+	bundleStoreDir        string
+	network               NetworkPolicy
+	validator             ScopeValidator
+	alertHandler          AlertHandler
+	alertNotifier         AlertNotifier
+	falcoReader           *FalcoAlertReader
+	fleetPool             FleetPool
+	identity              identity.SVIDIssuer
+	secrets               identity.SecretFetcher
+	auditStore            audit.Store
+	interventionQueue     InterventionEnqueuer
+	payloadHolds          *PayloadHoldHandler
+	agentHolds            *AgentHoldListener
+	targetCreds           TargetCredentialReader
+	directiveWriter       *DirectiveWriter
+	logCollector          *VsockCollector
+	findingsBus           findings.Bus
+	cageService           *Service
+	logDir                string
+	log                   logr.Logger
+	allocMu               sync.Mutex
 	tokenMeter            ProxyTokenMeter
 	allocs                map[string]string       // vmID -> hostID
 	vsockPaths            map[string]string       // vmID -> vsock UDS path
@@ -194,24 +194,24 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 	return &ActivityImpl{
-		provisioner:       cfg.Provisioner,
-		rootfs:            cfg.Rootfs,
-		bundleStoreDir:    cfg.BundleStoreDir,
-		network:           cfg.Network,
-		validator:         cfg.Validator,
-		alertHandler:      cfg.AlertHandler,
-		alertNotifier:     cfg.AlertNotifier,
-		falcoReader:       cfg.FalcoReader,
-		fleetPool:         cfg.FleetPool,
-		identity:          cfg.Identity,
-		secrets:           cfg.Secrets,
-		auditStore:        cfg.AuditStore,
-		interventionQueue: cfg.InterventionQueue,
-		payloadHolds:      cfg.PayloadHolds,
-		agentHolds:        cfg.AgentHolds,
-		targetCreds:       cfg.TargetCreds,
-		directiveWriter:   NewDirectiveWriter(),
-		logCollector:      cfg.LogCollector,
+		provisioner:           cfg.Provisioner,
+		rootfs:                cfg.Rootfs,
+		bundleStoreDir:        cfg.BundleStoreDir,
+		network:               cfg.Network,
+		validator:             cfg.Validator,
+		alertHandler:          cfg.AlertHandler,
+		alertNotifier:         cfg.AlertNotifier,
+		falcoReader:           cfg.FalcoReader,
+		fleetPool:             cfg.FleetPool,
+		identity:              cfg.Identity,
+		secrets:               cfg.Secrets,
+		auditStore:            cfg.AuditStore,
+		interventionQueue:     cfg.InterventionQueue,
+		payloadHolds:          cfg.PayloadHolds,
+		agentHolds:            cfg.AgentHolds,
+		targetCreds:           cfg.TargetCreds,
+		directiveWriter:       NewDirectiveWriter(),
+		logCollector:          cfg.LogCollector,
 		findingsBus:           cfg.FindingsBus,
 		tokenMeter:            cfg.TokenMeter,
 		cageService:           cfg.CageService,

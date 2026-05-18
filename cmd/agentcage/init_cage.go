@@ -130,7 +130,6 @@ func openFalcoReader(ctx context.Context, cfg *config.Config, log logr.Logger) (
 	return cage.NewFalcoAlertReader(alertFile, log), nil
 }
 
-
 // interventionQueueAdapter bridges cage.InterventionEnqueuer (int params)
 // and intervention.Queue (typed params) so the cage package does not
 // import intervention.
