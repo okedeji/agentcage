@@ -26,13 +26,14 @@ budget:
   max_duration: 4h
 limits:
 guidance:
-  priorities:
-    vuln_classes:
-      - sqli
+  attack_surface:
+    endpoints:
+      - /api/auth
+    limit_to_listed: true
   strategy:
     context: "Django app"
-  validation:
-    require_poc: true
+    known_weaknesses:
+      - "password reset flow not rate-limited"
 tags:
   team: red-team
 customer_id: acme
@@ -48,9 +49,10 @@ customer_id: acme
 	assert.Equal(t, []string{"/health"}, p.Target.SkipPaths)
 	assert.Equal(t, int64(500000), p.Budget.Tokens)
 	assert.Equal(t, "4h", p.Budget.MaxDuration)
-	assert.Equal(t, []string{"sqli"}, p.Guidance.Priorities.VulnClasses)
+	assert.Equal(t, []string{"/api/auth"}, p.Guidance.AttackSurface.Endpoints)
+	assert.True(t, BoolVal(p.Guidance.AttackSurface.LimitToListed))
 	assert.Equal(t, "Django app", p.Guidance.Strategy.Context)
-	assert.True(t, BoolVal(p.Guidance.Validation.RequirePoC))
+	assert.Equal(t, []string{"password reset flow not rate-limited"}, p.Guidance.Strategy.KnownWeaknesses)
 	assert.Equal(t, "red-team", p.Tags["team"])
 	assert.Equal(t, "acme", p.CustomerID)
 }
@@ -125,20 +127,20 @@ func TestMerge_BooleanOverrideBothDirections(t *testing.T) {
 	fa := boolPtr(false)
 
 	base := &Plan{
-		Guidance: Guidance{Validation: Validation{RequirePoC: tr}},
+		Guidance: Guidance{AttackSurface: AttackSurface{LimitToListed: tr}},
 	}
 
 	// Explicit false overrides true.
 	override := &Plan{
-		Guidance: Guidance{Validation: Validation{RequirePoC: fa}},
+		Guidance: Guidance{AttackSurface: AttackSurface{LimitToListed: fa}},
 	}
 	result := Merge(base, override)
-	assert.False(t, BoolVal(result.Guidance.Validation.RequirePoC))
+	assert.False(t, BoolVal(result.Guidance.AttackSurface.LimitToListed))
 
 	// nil (omitted) does not clobber base.
 	override2 := &Plan{}
 	result2 := Merge(base, override2)
-	assert.True(t, BoolVal(result2.Guidance.Validation.RequirePoC))
+	assert.True(t, BoolVal(result2.Guidance.AttackSurface.LimitToListed))
 }
 
 func TestMerge_CageTypesOverridePerKey(t *testing.T) {
@@ -247,14 +249,14 @@ func TestValidate_ZeroTokensRejected(t *testing.T) {
 
 func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
 	explicit := map[string]bool{
-		"agent":  true,
-		"target": true,
-		"focus":  true,
+		"agent":    true,
+		"target":   true,
+		"endpoint": true,
 	}
 	f := RawFlags{
 		Agent:       "./my-agent",
 		Target:      "a.com",
-		Focus:       []string{"sqli", "xss"},
+		Endpoints:   []string{"/api/auth", "/api/admin"},
 		TokenBudget: 999999,
 	}
 
@@ -263,7 +265,7 @@ func TestFlagsToOverride_OnlyExplicitFlags(t *testing.T) {
 
 	assert.Equal(t, "./my-agent", p.Agent)
 	assert.Equal(t, "a.com", p.Target.Host)
-	assert.Equal(t, []string{"sqli", "xss"}, p.Guidance.Priorities.VulnClasses)
+	assert.Equal(t, []string{"/api/auth", "/api/admin"}, p.Guidance.AttackSurface.Endpoints)
 	assert.Equal(t, int64(0), p.Budget.Tokens)
 }
 

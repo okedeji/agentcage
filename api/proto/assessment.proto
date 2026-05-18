@@ -61,9 +61,7 @@ message NotificationConfig {
 
 message Guidance {
   AttackSurfaceGuidance attack_surface = 1;
-  PrioritiesGuidance priorities = 2;
   AttackStrategyGuidance attack_strategy = 3;
-  ValidationGuidance validation = 4;
 }
 
 message AttackSurfaceGuidance {
@@ -72,19 +70,9 @@ message AttackSurfaceGuidance {
   bool limit_to_listed = 3;
 }
 
-message PrioritiesGuidance {
-  repeated string vuln_classes = 1;
-  repeated string skip_paths = 2;
-}
-
 message AttackStrategyGuidance {
   repeated string known_weaknesses = 1;
   string context = 2;
-}
-
-message ValidationGuidance {
-  bool require_poc = 1;
-  bool headless_browser_xss = 2;
 }
 
 message AssessmentStats {

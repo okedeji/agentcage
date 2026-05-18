@@ -35,20 +35,12 @@ func configToPlan(cfg Config) *plan.Plan {
 		if cfg.Guidance.AttackSurface != nil {
 			p.Guidance.AttackSurface.Endpoints = cfg.Guidance.AttackSurface.Endpoints
 			p.Guidance.AttackSurface.APISpecs = cfg.Guidance.AttackSurface.APISpecs
-		}
-		if cfg.Guidance.Priorities != nil {
-			p.Guidance.Priorities.VulnClasses = cfg.Guidance.Priorities.VulnClasses
-			p.Guidance.Priorities.SkipPaths = cfg.Guidance.Priorities.SkipPaths
+			limit := cfg.Guidance.AttackSurface.LimitToListed
+			p.Guidance.AttackSurface.LimitToListed = &limit
 		}
 		if cfg.Guidance.AttackStrategy != nil {
 			p.Guidance.Strategy.Context = cfg.Guidance.AttackStrategy.Context
 			p.Guidance.Strategy.KnownWeaknesses = cfg.Guidance.AttackStrategy.KnownWeaknesses
-		}
-		if cfg.Guidance.Validation != nil {
-			poc := cfg.Guidance.Validation.RequirePoC
-			p.Guidance.Validation.RequirePoC = &poc
-			xss := cfg.Guidance.Validation.HeadlessBrowserXSS
-			p.Guidance.Validation.HeadlessBrowserXSS = &xss
 		}
 	}
 

@@ -185,22 +185,10 @@ func guidanceFromProto(p *pb.Guidance) *assessment.Guidance {
 			LimitToListed: as.GetLimitToListed(),
 		}
 	}
-	if pr := p.GetPriorities(); pr != nil {
-		g.Priorities = &assessment.PrioritiesGuidance{
-			VulnClasses: pr.GetVulnClasses(),
-			SkipPaths:   pr.GetSkipPaths(),
-		}
-	}
 	if as := p.GetAttackStrategy(); as != nil {
 		g.AttackStrategy = &assessment.AttackStrategyGuidance{
 			KnownWeaknesses: as.GetKnownWeaknesses(),
 			Context:         as.GetContext(),
-		}
-	}
-	if v := p.GetValidation(); v != nil {
-		g.Validation = &assessment.ValidationGuidance{
-			RequirePoC:         v.GetRequirePoc(),
-			HeadlessBrowserXSS: v.GetHeadlessBrowserXss(),
 		}
 	}
 	return g
@@ -325,22 +313,10 @@ func guidanceToProto(g *assessment.Guidance) *pb.Guidance {
 			LimitToListed: g.AttackSurface.LimitToListed,
 		}
 	}
-	if g.Priorities != nil {
-		out.Priorities = &pb.PrioritiesGuidance{
-			VulnClasses: g.Priorities.VulnClasses,
-			SkipPaths:   g.Priorities.SkipPaths,
-		}
-	}
 	if g.AttackStrategy != nil {
 		out.AttackStrategy = &pb.AttackStrategyGuidance{
 			KnownWeaknesses: g.AttackStrategy.KnownWeaknesses,
 			Context:         g.AttackStrategy.Context,
-		}
-	}
-	if g.Validation != nil {
-		out.Validation = &pb.ValidationGuidance{
-			RequirePoc:         g.Validation.RequirePoC,
-			HeadlessBrowserXss: g.Validation.HeadlessBrowserXSS,
 		}
 	}
 	return out

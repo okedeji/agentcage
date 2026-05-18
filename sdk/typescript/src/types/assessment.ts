@@ -13,17 +13,9 @@ export interface Guidance {
     apiSpecs?: string[];
     limitToListed?: boolean;
   };
-  priorities?: {
-    vulnClasses?: string[];
-    skipPaths?: string[];
-  };
   strategy?: {
     context?: string;
     knownWeaknesses?: string[];
-  };
-  validation?: {
-    requirePoc?: boolean;
-    headlessBrowserXss?: boolean;
   };
 }
 

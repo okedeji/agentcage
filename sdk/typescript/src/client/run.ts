@@ -22,13 +22,10 @@ export interface RunConfig {
 
   // Guidance
   context?: string;                // --context
-  focus?: string[];                // --focus (repeatable)
-  deprioritize?: string[];         // --deprioritize (repeatable)
   endpoints?: string[];            // --endpoint (repeatable)
   apiSpecs?: string[];             // --api-spec (repeatable)
   knownWeaknesses?: string[];      // --known-weakness (repeatable)
-  requirePoc?: boolean;            // --require-poc
-  headlessXss?: boolean;           // --headless-xss
+  limitToListed?: boolean;         // --limit-to-listed
 
   // Notifications
   notify?: string;                 // --notify (webhook URL)
@@ -77,21 +74,14 @@ function buildAssessmentConfig(rc: RunConfig): AssessmentConfig {
     maxTotalCages: rc.maxTotalCages,
     maxIterations: rc.maxIterations,
     guidance: {
-      attackSurface: (rc.endpoints?.length || rc.apiSpecs?.length) ? {
+      attackSurface: (rc.endpoints?.length || rc.apiSpecs?.length || rc.limitToListed) ? {
         endpoints: rc.endpoints,
         apiSpecs: rc.apiSpecs,
-      } : undefined,
-      priorities: (rc.focus?.length || rc.deprioritize?.length) ? {
-        vulnClasses: rc.focus,
-        skipPaths: rc.deprioritize,
+        limitToListed: rc.limitToListed,
       } : undefined,
       strategy: (rc.context || rc.knownWeaknesses?.length) ? {
         context: rc.context,
         knownWeaknesses: rc.knownWeaknesses,
-      } : undefined,
-      validation: (rc.requirePoc || rc.headlessXss) ? {
-        requirePoc: rc.requirePoc,
-        headlessBrowserXss: rc.headlessXss,
       } : undefined,
     },
     notifications: (rc.notify || rc.notifyOnFinding || rc.notifyOnComplete) ? {

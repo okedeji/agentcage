@@ -99,26 +99,10 @@ func buildGuidanceProto(p *plan.Plan) *pb.Guidance {
 		hasContent = true
 	}
 
-	if len(p.Guidance.Priorities.VulnClasses) > 0 || len(p.Guidance.Priorities.SkipPaths) > 0 {
-		g.Priorities = &pb.PrioritiesGuidance{
-			VulnClasses: p.Guidance.Priorities.VulnClasses,
-			SkipPaths:   p.Guidance.Priorities.SkipPaths,
-		}
-		hasContent = true
-	}
-
 	if p.Guidance.Strategy.Context != "" || len(p.Guidance.Strategy.KnownWeaknesses) > 0 {
 		g.AttackStrategy = &pb.AttackStrategyGuidance{
 			Context:         p.Guidance.Strategy.Context,
 			KnownWeaknesses: p.Guidance.Strategy.KnownWeaknesses,
-		}
-		hasContent = true
-	}
-
-	if plan.BoolVal(p.Guidance.Validation.RequirePoC) || plan.BoolVal(p.Guidance.Validation.HeadlessBrowserXSS) {
-		g.Validation = &pb.ValidationGuidance{
-			RequirePoc:         plan.BoolVal(p.Guidance.Validation.RequirePoC),
-			HeadlessBrowserXss: plan.BoolVal(p.Guidance.Validation.HeadlessBrowserXSS),
 		}
 		hasContent = true
 	}

@@ -30,7 +30,6 @@ const (
 	maxPaths           = 500
 	maxExtraPatterns   = 100
 	maxPatternLen      = 1024
-	maxVulnClasses     = 50
 	maxKnownWeaknesses = 50
 	maxEndpoints       = 200
 	maxAPISpecs        = 50
@@ -183,9 +182,7 @@ type CageType struct {
 
 type Guidance struct {
 	AttackSurface AttackSurface `yaml:"attack_surface"`
-	Priorities    Priorities    `yaml:"priorities"`
 	Strategy      Strategy      `yaml:"strategy"`
-	Validation    Validation    `yaml:"validation"`
 }
 
 type AttackSurface struct {
@@ -194,19 +191,9 @@ type AttackSurface struct {
 	LimitToListed *bool    `yaml:"limit_to_listed,omitempty"`
 }
 
-type Priorities struct {
-	VulnClasses []string `yaml:"vuln_classes"`
-	SkipPaths   []string `yaml:"skip_paths"`
-}
-
 type Strategy struct {
 	Context         string   `yaml:"context"`
 	KnownWeaknesses []string `yaml:"known_weaknesses"`
-}
-
-type Validation struct {
-	RequirePoC         *bool `yaml:"require_poc,omitempty"`
-	HeadlessBrowserXSS *bool `yaml:"headless_browser_xss,omitempty"`
 }
 
 type Notifications struct {
@@ -236,7 +223,9 @@ func Load(path string) (*Plan, error) {
 	return &p, nil
 }
 
-// --require-poc=false can override a plan that has require_poc: true.
+// Pointer-valued bool overrides like --limit-to-listed=false distinguish
+// "explicitly set false" from "not set at all"; explicit values replace
+// the base, nil leaves the base intact.
 func Merge(base, override *Plan) *Plan {
 	out := *base
 
@@ -262,8 +251,6 @@ func Merge(base, override *Plan) *Plan {
 	out.Payload.ExtraFlag = copyPatterns(base.Payload.ExtraFlag)
 	out.Guidance.AttackSurface.Endpoints = copyStrings(base.Guidance.AttackSurface.Endpoints)
 	out.Guidance.AttackSurface.APISpecs = copyStrings(base.Guidance.AttackSurface.APISpecs)
-	out.Guidance.Priorities.VulnClasses = copyStrings(base.Guidance.Priorities.VulnClasses)
-	out.Guidance.Priorities.SkipPaths = copyStrings(base.Guidance.Priorities.SkipPaths)
 	out.Guidance.Strategy.KnownWeaknesses = copyStrings(base.Guidance.Strategy.KnownWeaknesses)
 
 	if override.Name != "" {
@@ -340,23 +327,11 @@ func Merge(base, override *Plan) *Plan {
 	if override.Guidance.AttackSurface.LimitToListed != nil {
 		out.Guidance.AttackSurface.LimitToListed = override.Guidance.AttackSurface.LimitToListed
 	}
-	if len(override.Guidance.Priorities.VulnClasses) > 0 {
-		out.Guidance.Priorities.VulnClasses = override.Guidance.Priorities.VulnClasses
-	}
-	if len(override.Guidance.Priorities.SkipPaths) > 0 {
-		out.Guidance.Priorities.SkipPaths = override.Guidance.Priorities.SkipPaths
-	}
 	if override.Guidance.Strategy.Context != "" {
 		out.Guidance.Strategy.Context = override.Guidance.Strategy.Context
 	}
 	if len(override.Guidance.Strategy.KnownWeaknesses) > 0 {
 		out.Guidance.Strategy.KnownWeaknesses = override.Guidance.Strategy.KnownWeaknesses
-	}
-	if override.Guidance.Validation.RequirePoC != nil {
-		out.Guidance.Validation.RequirePoC = override.Guidance.Validation.RequirePoC
-	}
-	if override.Guidance.Validation.HeadlessBrowserXSS != nil {
-		out.Guidance.Validation.HeadlessBrowserXSS = override.Guidance.Validation.HeadlessBrowserXSS
 	}
 
 	if override.Notifications.Webhook != "" {
@@ -523,10 +498,6 @@ func Validate(p *Plan) error {
 			return fmt.Errorf("guidance.attack_surface.api_specs entry exceeds %d characters", maxAPISpecLen)
 		}
 	}
-	if len(p.Guidance.Priorities.VulnClasses) > maxVulnClasses {
-		return fmt.Errorf("guidance.priorities.vuln_classes has %d entries, max %d", len(p.Guidance.Priorities.VulnClasses), maxVulnClasses)
-	}
-
 	// Tags.
 	if len(p.Tags) > maxTags {
 		return fmt.Errorf("tags has %d entries, max %d", len(p.Tags), maxTags)
@@ -681,13 +652,10 @@ type RawFlags struct {
 	MaxTotalCages    int
 	MaxIterations    int
 	Context          string
-	Focus            []string
-	Skip             []string
 	Endpoints        []string
 	APISpecs         []string
 	KnownWeaknesses  []string
-	RequirePoC       bool
-	HeadlessXSS      bool
+	LimitToListed    bool
 	Notify           string
 	NotifyOnFinding  bool
 	NotifyOnComplete bool
@@ -739,12 +707,6 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) (*Plan, error) {
 	if explicit["context"] {
 		p.Guidance.Strategy.Context = f.Context
 	}
-	if explicit["focus"] {
-		p.Guidance.Priorities.VulnClasses = f.Focus
-	}
-	if explicit["deprioritize"] {
-		p.Guidance.Priorities.SkipPaths = f.Skip
-	}
 	if explicit["endpoint"] {
 		p.Guidance.AttackSurface.Endpoints = f.Endpoints
 	}
@@ -754,11 +716,8 @@ func FlagsToOverride(explicit map[string]bool, f RawFlags) (*Plan, error) {
 	if explicit["known-weakness"] {
 		p.Guidance.Strategy.KnownWeaknesses = f.KnownWeaknesses
 	}
-	if explicit["require-poc"] {
-		p.Guidance.Validation.RequirePoC = boolPtr(f.RequirePoC)
-	}
-	if explicit["headless-xss"] {
-		p.Guidance.Validation.HeadlessBrowserXSS = boolPtr(f.HeadlessXSS)
+	if explicit["limit-to-listed"] {
+		p.Guidance.AttackSurface.LimitToListed = boolPtr(f.LimitToListed)
 	}
 	if explicit["notify"] {
 		p.Notifications.Webhook = f.Notify

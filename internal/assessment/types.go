@@ -107,9 +107,7 @@ type NotificationConfig struct {
 
 type Guidance struct {
 	AttackSurface  *AttackSurfaceGuidance  `json:"attack_surface,omitempty"`
-	Priorities     *PrioritiesGuidance     `json:"priorities,omitempty"`
 	AttackStrategy *AttackStrategyGuidance `json:"attack_strategy,omitempty"`
-	Validation     *ValidationGuidance     `json:"validation,omitempty"`
 }
 
 type AttackSurfaceGuidance struct {
@@ -118,19 +116,9 @@ type AttackSurfaceGuidance struct {
 	LimitToListed bool     `json:"limit_to_listed,omitempty"`
 }
 
-type PrioritiesGuidance struct {
-	VulnClasses []string `json:"vuln_classes,omitempty"`
-	SkipPaths   []string `json:"skip_paths,omitempty"`
-}
-
 type AttackStrategyGuidance struct {
 	KnownWeaknesses []string `json:"known_weaknesses,omitempty"`
 	Context         string   `json:"context,omitempty"`
-}
-
-type ValidationGuidance struct {
-	RequirePoC         bool `json:"require_poc,omitempty"`
-	HeadlessBrowserXSS bool `json:"headless_browser_xss,omitempty"`
 }
 
 type CageTypeConfig struct {

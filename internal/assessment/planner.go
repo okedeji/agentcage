@@ -22,6 +22,7 @@ const coordinatorSystemPrompt = `You coordinate an autonomous penetration test. 
 STATE SCHEMA:
 - target: {host, ports, paths} the authorized scope (single host per assessment)
 - agent_capabilities.exploitation: ["sqli","xss-fuzzer","idor-enum",...] tools the agent has loaded for exploitation. Free-text names chosen by the agent author. Treat them as a resume of what the agent can do — pick descriptive vuln_class labels for your actions and the agent dispatches each action to whichever loaded tool matches.
+- guidance: operator-supplied direction. attack_surface.endpoints/api_specs name specific things to test; attack_surface.limit_to_listed=true means ONLY test those, ignore other discovery findings. attack_strategy.context is free-text background ("Django app, just rewrote OAuth"); attack_strategy.known_weaknesses are hints. Weight your planning toward these.
 - findings[]: {id, title, severity, vuln_class, endpoint, status, chain_depth} discovered so far
 - coverage: {host: [vuln_classes_already_tested]} what has been tested. Do not re-test these combinations.
 - cages_completed[]: {cage_type, scope, vuln_class, objective, outcome, error, findings_count} prior cages and whether they succeeded

@@ -24,13 +24,10 @@ type runFlags struct {
 	maxTotalCages    int
 	maxIterations    int
 	context          string
-	focus            stringSliceFlag
-	skip             stringSliceFlag
 	endpoints        stringSliceFlag
 	apiSpecs         stringSliceFlag
 	knownWeaknesses  stringSliceFlag
-	requirePoC       bool
-	headlessXSS      bool
+	limitToListed    bool
 	notify           string
 	notifyOnFinding  bool
 	notifyOnComplete bool
@@ -57,13 +54,10 @@ func parseRunFlags(args []string) (*runFlags, *flag.FlagSet) {
 	fs.IntVar(&rf.maxTotalCages, "max-total-cages", 0, "total cage cap for the assessment (0 = use server default)")
 	fs.IntVar(&rf.maxIterations, "max-iterations", 0, "max coordinator iterations (0 = use server default)")
 	fs.StringVar(&rf.context, "context", "", "free-text context for the LLM coordinator")
-	fs.Var(&rf.focus, "focus", "vuln class to prioritize (repeatable)")
-	fs.Var(&rf.skip, "deprioritize", "path to deprioritize (repeatable)")
 	fs.Var(&rf.endpoints, "endpoint", "endpoint to focus on (repeatable)")
 	fs.Var(&rf.apiSpecs, "api-spec", "OpenAPI/GraphQL spec URL (repeatable)")
 	fs.Var(&rf.knownWeaknesses, "known-weakness", "known weakness hint (repeatable)")
-	fs.BoolVar(&rf.requirePoC, "require-poc", false, "require PoC for every finding")
-	fs.BoolVar(&rf.headlessXSS, "headless-xss", false, "headless browser for XSS validation")
+	fs.BoolVar(&rf.limitToListed, "limit-to-listed", false, "test only the listed endpoints; ignore other discovery findings")
 	fs.StringVar(&rf.notify, "notify", "", "webhook URL for notifications")
 	fs.BoolVar(&rf.notifyOnFinding, "notify-on-finding", false, "notify per validated finding")
 	fs.BoolVar(&rf.notifyOnComplete, "notify-on-complete", false, "notify when assessment finishes")
@@ -92,7 +86,7 @@ func printRunUsage() {
 Examples:
   agentcage run --agent c9116254345e --target example.com --customer-id cust-1
   agentcage run --plan plans/staging.yaml --follow
-  agentcage run --agent c9116254345e --target api.example.com --focus sqli --require-poc
+  agentcage run --agent c9116254345e --target api.example.com --endpoint /api/auth --context "Django app, just rewrote OAuth"
 
 Required (unless in plan file):
   --agent              agent name:tag or ref (e.g. agent-starter:latest)
@@ -115,13 +109,10 @@ Budget & limits:
 
 Guidance:
   --context            free-text context for the LLM coordinator
-  --focus              vuln class to prioritize (repeatable)
-  --deprioritize       path to deprioritize (repeatable)
   --endpoint           endpoint to focus on (repeatable)
   --api-spec           OpenAPI/GraphQL spec URL (repeatable)
   --known-weakness     known weakness hint (repeatable)
-  --require-poc        require PoC for every finding
-  --headless-xss       headless browser for XSS validation
+  --limit-to-listed    test only the listed endpoints; ignore other discovery findings
 
 Notifications:
   --notify             webhook URL for notifications

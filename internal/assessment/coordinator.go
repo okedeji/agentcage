@@ -28,6 +28,11 @@ type CoordinatorState struct {
 	// of tool names the LLM reads as a resume. The LLM decides what
 	// actions to plan based on what's listed here.
 	AgentCapabilities cagefile.AgentCapabilities `json:"agent_capabilities"`
+	// Guidance is operator-supplied direction. AttackSurface flags
+	// specific endpoints/specs to test (with LimitToListed restricting
+	// to only those). AttackStrategy carries free-text context and
+	// known-weakness hints. Weight planning toward these.
+	Guidance *Guidance `json:"guidance,omitempty"`
 }
 
 // FindingSummary is a compact representation of a finding for the

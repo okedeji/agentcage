@@ -202,6 +202,7 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 			TimeElapsed:       elapsed,
 			TimeLimit:         cfg.MaxDuration,
 			AgentCapabilities: cfg.Capabilities,
+			Guidance:          cfg.Guidance,
 		}
 
 		decision, err := planNextActions(ctx, state)
