@@ -14,7 +14,7 @@ func createTestAgent(t *testing.T) string {
 	dir := t.TempDir()
 
 	cagefile := `runtime python3
-deps chromium nmap
+deps chromium httpx
 pip requests==2.31.0 httpx==0.27.0
 entrypoint python3 solver.py
 capability discovery
@@ -37,7 +37,7 @@ func TestPackToFile_ProducesBundle(t *testing.T) {
 
 	assert.Equal(t, "python3", manifest.Runtime)
 	assert.Equal(t, "python3 solver.py", manifest.Entrypoint)
-	assert.Equal(t, []string{"chromium", "nmap"}, manifest.SystemDeps)
+	assert.Equal(t, []string{"chromium", "httpx"}, manifest.SystemDeps)
 	assert.Equal(t, []string{"requests==2.31.0", "httpx==0.27.0"}, manifest.PipDeps)
 	assert.True(t, len(manifest.FilesHash) > 10)
 
@@ -59,7 +59,7 @@ func TestPackAndUnpack_RoundTrip(t *testing.T) {
 
 	assert.Equal(t, "python3", manifest.Runtime)
 	assert.Equal(t, "python3 solver.py", manifest.Entrypoint)
-	assert.Equal(t, []string{"chromium", "nmap"}, manifest.SystemDeps)
+	assert.Equal(t, []string{"chromium", "httpx"}, manifest.SystemDeps)
 	assert.Equal(t, []string{"requests==2.31.0", "httpx==0.27.0"}, manifest.PipDeps)
 
 	// Check manifest.json was extracted

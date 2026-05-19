@@ -80,11 +80,14 @@ sudo chroot "$MOUNTPOINT" /bin/sh -c "
 "
 
 # Install security tools. Some are in Alpine repos, others need
-# pip or direct download.
+# pip or direct download. Chromium stays for screenshot evidence and
+# DOM/SPA testing; bind-tools for DNS sanity checks during scope
+# validation. httpx/katana/nuclei cover what an HTTP agent
+# would actually reach for.
 echo "Installing security tools..."
 sudo chroot "$MOUNTPOINT" /bin/sh -c "
     apk add --no-cache \
-        chromium nmap curl wget jq bind-tools
+        chromium curl wget jq bind-tools
     pip3 install --break-system-packages sqlmap
 "
 

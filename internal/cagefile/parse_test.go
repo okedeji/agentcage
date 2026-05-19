@@ -11,7 +11,7 @@ func TestParse_FullCagefile(t *testing.T) {
 	input := `
 # XBOW solver agent
 runtime python3
-deps chromium nmap sqlmap interactsh
+deps chromium httpx sqlmap interactsh
 pip requests==2.31.0 playwright==1.40.0 httpx==0.27.0 beautifulsoup4==4.12.2
 entrypoint python3 solver.py
 capability discovery
@@ -21,7 +21,7 @@ capability discovery
 
 	assert.Equal(t, "python3", m.Runtime)
 	assert.Equal(t, "python3 solver.py", m.Entrypoint)
-	assert.Equal(t, []string{"chromium", "nmap", "sqlmap", "interactsh"}, m.SystemDeps)
+	assert.Equal(t, []string{"chromium", "httpx", "sqlmap", "interactsh"}, m.SystemDeps)
 	assert.Equal(t, []string{"requests==2.31.0", "playwright==1.40.0", "httpx==0.27.0", "beautifulsoup4==4.12.2"}, m.PipDeps)
 }
 
@@ -60,7 +60,7 @@ func TestParse_GoRuntime(t *testing.T) {
 	input := `
 runtime go
 go-deps github.com/projectdiscovery/nuclei/v3@v3.1.0
-deps nmap
+deps httpx
 entrypoint ./scanner
 capability discovery
 `
@@ -206,7 +206,7 @@ capability discovery
 func TestParse_MultipleDepsLines(t *testing.T) {
 	input := `
 runtime python3
-deps chromium nmap
+deps chromium httpx
 deps sqlmap curl
 pip requests==2.31.0
 pip httpx==0.27.0 playwright==1.40.0
@@ -215,6 +215,6 @@ capability discovery
 `
 	m, err := ParseString(input)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"chromium", "nmap", "sqlmap", "curl"}, m.SystemDeps)
+	assert.Equal(t, []string{"chromium", "httpx", "sqlmap", "curl"}, m.SystemDeps)
 	assert.Equal(t, []string{"requests==2.31.0", "httpx==0.27.0", "playwright==1.40.0"}, m.PipDeps)
 }

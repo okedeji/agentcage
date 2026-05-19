@@ -5,7 +5,6 @@ package cagefile
 // list to know what to pre-install.
 var ToolPackages = map[string]string{
 	"chromium":   "chromium",
-	"nmap":       "nmap",
 	"sqlmap":     "sqlmap",
 	"ffuf":       "ffuf",
 	"curl":       "curl",
