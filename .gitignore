@@ -1,6 +1,10 @@
 # Binaries
 bin/
 /agentcage
+/cage-init
+/directive-sidecar
+/findings-sidecar
+/payload-proxy
 *.cage
 *.exe
 *.exe~
