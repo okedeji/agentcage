@@ -40,3 +40,15 @@ The `@agentcage/sdk` TypeScript package is not published to the npm registry. np
 **Details:** see [docs/macos-removal.md](macos-removal.md)
 
 agentcage requires Linux with `/dev/kvm`. The macOS support layer (Apple Virtualization.framework with nested KVM) was removed because Apple VZ does not expose VHE to the guest CPU, preventing Firecracker guests from booting. CLI commands (`run`, `logs`, `findings`) work from macOS against a remote Linux orchestrator.
+
+## Non-descriptive agent capability tool names degrade silently
+
+**Status:** open (convention-only enforcement)
+**Severity:** low
+**Affects:** `internal/cagefile/parse.go`, `internal/assessment/planner.go`
+
+Trailing tokens on `capability exploitation <tool ...>` are opaque free-text by design — agentcage does not validate them against any taxonomy. If an agent author writes uninformative tool names (`capability exploitation thing1 asdf`), the orchestrator LLM cannot reason about them, produces poor exploitation plans (or sets `done=true` early), and the agent receives actions whose `vuln_class` does not match its dispatcher, returning empty findings and wasting cages.
+
+**Mitigated by:** convention. Agent authors should pick descriptive tool names (e.g. `sqli`, `xss-mutator`, `idor-fuzzer`) that reflect what each tool tests for. Cost falls on the agent author through their own empty reports — self-correcting feedback loop.
+
+**Fix:** add an optional `tool <name> "description"` Cagefile directive. The orchestrator would pass descriptions alongside tool names in `CoordinatorState`, giving the LLM real context for tools whose names are not obvious. Additive change; deferred until real agents in the wild show what shape descriptions take.
