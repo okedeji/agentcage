@@ -69,6 +69,11 @@ message FindingInfo {
   string remediation = 17;
   ValidationProof validation_proof = 18;
   FindingKind kind = 19;
+  // Set when Evidence.screenshot would be non-empty. Surfaced so list
+  // views can show a marker without shipping the bytes; ListFindings
+  // strips Evidence entirely so this is the only way the list view
+  // learns about screenshots.
+  bool has_screenshot = 20;
 }
 
 message ListFindingsRequest {

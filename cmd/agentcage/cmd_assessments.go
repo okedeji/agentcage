@@ -161,7 +161,11 @@ func showAssessment(ctx context.Context, conn *grpc.ClientConn, id string) {
 			sev := friendlySeverity(f.GetSeverity().String())
 			status := strings.TrimPrefix(f.GetStatus().String(), "FINDING_STATUS_")
 			status = strings.ToLower(status)
-			fmt.Printf("  %-8s %-40s (%s)\n", sev, f.GetTitle(), status)
+			marker := "      "
+			if f.GetHasScreenshot() {
+				marker = "[shot]"
+			}
+			fmt.Printf("  %s %-8s %-40s (%s)\n", marker, sev, f.GetTitle(), status)
 		}
 	}
 	if stats != nil && stats.GetFindingsCandidate()+stats.GetFindingsValidated()+stats.GetFindingsRejected() == 0 {

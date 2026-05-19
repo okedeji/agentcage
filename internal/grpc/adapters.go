@@ -714,6 +714,12 @@ func (a *findingsAdapter) ListFindings(ctx context.Context, req *pb.ListFindings
 	pbItems := make([]*pb.FindingInfo, len(items))
 	for i := range items {
 		pbItems[i] = findingToProto(&items[i])
+		// Strip evidence bytes from list responses. A list of 100
+		// findings with 5MB screenshots each is 500MB on the wire,
+		// which is operator-hostile and pointless — the screenshot
+		// is rendered from the dedicated GetFinding call. has_screenshot
+		// is preserved so the list view shows the marker.
+		pbItems[i].Evidence = nil
 	}
 	return &pb.ListFindingsResponse{Findings: pbItems}, nil
 }

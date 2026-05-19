@@ -33,6 +33,13 @@ export interface Finding {
   vulnClass?: string;
   endpoint: string;
   evidence?: Evidence;
+  /**
+   * True when the finding has a screenshot. Surfaced separately from
+   * `evidence.screenshot` because list responses strip evidence bytes
+   * to keep wire size bounded; the full screenshot is only returned by
+   * a single-finding fetch.
+   */
+  hasScreenshot?: boolean;
   parentFindingId?: string;
   chainDepth?: number;
   cwe?: string;

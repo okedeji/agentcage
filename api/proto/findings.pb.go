@@ -354,8 +354,13 @@ type FindingInfo struct {
 	Remediation     string                 `protobuf:"bytes,17,opt,name=remediation,proto3" json:"remediation,omitempty"`
 	ValidationProof *ValidationProof       `protobuf:"bytes,18,opt,name=validation_proof,json=validationProof,proto3" json:"validation_proof,omitempty"`
 	Kind            FindingKind            `protobuf:"varint,19,opt,name=kind,proto3,enum=agentcage.findings.v1.FindingKind" json:"kind,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Set when Evidence.screenshot would be non-empty. Surfaced so list
+	// views can show a marker without shipping the bytes; ListFindings
+	// strips Evidence entirely so this is the only way the list view
+	// learns about screenshots.
+	HasScreenshot bool `protobuf:"varint,20,opt,name=has_screenshot,json=hasScreenshot,proto3" json:"has_screenshot,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FindingInfo) Reset() {
@@ -519,6 +524,13 @@ func (x *FindingInfo) GetKind() FindingKind {
 		return x.Kind
 	}
 	return FindingKind_FINDING_KIND_UNSPECIFIED
+}
+
+func (x *FindingInfo) GetHasScreenshot() bool {
+	if x != nil {
+		return x.HasScreenshot
+	}
+	return false
 }
 
 type ListFindingsRequest struct {
@@ -910,7 +922,7 @@ const file_api_proto_findings_proto_rawDesc = "" +
 	"\tconfirmed\x18\x02 \x01(\bR\tconfirmed\x12$\n" +
 	"\rdeterministic\x18\x03 \x01(\bR\rdeterministic\x12*\n" +
 	"\x11validator_cage_id\x18\x04 \x01(\tR\x0fvalidatorCageId\x12\x1a\n" +
-	"\bevidence\x18\x05 \x01(\tR\bevidence\"\xc8\x06\n" +
+	"\bevidence\x18\x05 \x01(\tR\bevidence\"\xef\x06\n" +
 	"\vFindingInfo\x12\x1d\n" +
 	"\n" +
 	"finding_id\x18\x01 \x01(\tR\tfindingId\x12#\n" +
@@ -936,7 +948,8 @@ const file_api_proto_findings_proto_rawDesc = "" +
 	"cvss_score\x18\x10 \x01(\x01R\tcvssScore\x12 \n" +
 	"\vremediation\x18\x11 \x01(\tR\vremediation\x12Q\n" +
 	"\x10validation_proof\x18\x12 \x01(\v2&.agentcage.findings.v1.ValidationProofR\x0fvalidationProof\x126\n" +
-	"\x04kind\x18\x13 \x01(\x0e2\".agentcage.findings.v1.FindingKindR\x04kind\"\xec\x01\n" +
+	"\x04kind\x18\x13 \x01(\x0e2\".agentcage.findings.v1.FindingKindR\x04kind\x12%\n" +
+	"\x0ehas_screenshot\x18\x14 \x01(\bR\rhasScreenshot\"\xec\x01\n" +
 	"\x13ListFindingsRequest\x12#\n" +
 	"\rassessment_id\x18\x01 \x01(\tR\fassessmentId\x12I\n" +
 	"\rstatus_filter\x18\x02 \x01(\x0e2$.agentcage.findings.v1.FindingStatusR\fstatusFilter\x12O\n" +

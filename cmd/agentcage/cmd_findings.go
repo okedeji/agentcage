@@ -25,6 +25,7 @@ func cmdFindings(args []string) {
 	statusFilter := fs.String("status", "", "filter by status: candidate, validated, rejected")
 	severity := fs.String("severity", "", "filter by severity: critical, high, medium, low, info")
 	limit := fs.Int("limit", 100, "max results to return")
+	exportScreenshot := fs.String("export-screenshot", "", "write the finding's screenshot to this path (requires --id)")
 	_ = fs.Parse(args)
 
 	if *findingID == "" && *assessmentID == "" {
@@ -60,8 +61,17 @@ func cmdFindings(args []string) {
 			fmt.Fprintln(os.Stderr, "error: --id cannot be combined with --assessment, --status, or --severity")
 			os.Exit(1)
 		}
+		if *exportScreenshot != "" {
+			exportFindingScreenshot(ctx, client, *findingID, *exportScreenshot)
+			return
+		}
 		showFinding(ctx, client, *findingID)
 		return
+	}
+
+	if *exportScreenshot != "" {
+		fmt.Fprintln(os.Stderr, "error: --export-screenshot requires --id")
+		os.Exit(1)
 	}
 
 	listFindings(ctx, client, *assessmentID, *statusFilter, *severity, int32(*limit))
@@ -170,6 +180,9 @@ func showFinding(ctx context.Context, client pb.FindingsServiceClient, id string
 	if ev := f.GetEvidence(); ev != nil && ev.GetPoc() != "" {
 		fmt.Printf("\n  PoC:\n  %s\n", ev.GetPoc())
 	}
+	if ev := f.GetEvidence(); ev != nil && len(ev.GetScreenshot()) > 0 {
+		fmt.Printf("\n  Screenshot: %d bytes (export with --export-screenshot <path>)\n", len(ev.GetScreenshot()))
+	}
 	if vp := f.GetValidationProof(); vp != nil && vp.GetConfirmed() {
 		fmt.Printf("\n  Validation Proof:\n")
 		fmt.Printf("    Confirmed by cage %s\n", vp.GetValidatorCageId())
@@ -178,6 +191,31 @@ func showFinding(ctx context.Context, client pb.FindingsServiceClient, id string
 		}
 		fmt.Printf("    Deterministic: %v\n", vp.GetDeterministic())
 	}
+}
+
+// exportFindingScreenshot writes the finding's screenshot bytes to
+// path. Errors when the finding has no screenshot, when the path
+// already exists (no accidental overwrites), or when the write fails.
+func exportFindingScreenshot(ctx context.Context, client pb.FindingsServiceClient, id, path string) {
+	resp, err := client.GetFinding(ctx, &pb.GetFindingRequest{FindingId: id})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	ev := resp.GetFinding().GetEvidence()
+	if ev == nil || len(ev.GetScreenshot()) == 0 {
+		fmt.Fprintf(os.Stderr, "error: finding %s has no screenshot\n", id)
+		os.Exit(1)
+	}
+	if _, err := os.Stat(path); err == nil {
+		fmt.Fprintf(os.Stderr, "error: %s already exists (refusing to overwrite)\n", path)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(path, ev.GetScreenshot(), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "error: writing screenshot: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Wrote %d bytes to %s\n", len(ev.GetScreenshot()), path)
 }
 
 func listFindings(ctx context.Context, client pb.FindingsServiceClient, assessmentID, statusFilter, severityFilter string, limit int32) {
@@ -225,8 +263,13 @@ func listFindings(ctx context.Context, client pb.FindingsServiceClient, assessme
 		if class == "" {
 			class = friendlyFindingKind(f.GetKind())
 		}
-		fmt.Printf("  %s  %-10s  %-9s  %-15s  %s  %s\n",
+		marker := "      "
+		if f.GetHasScreenshot() {
+			marker = "[shot]"
+		}
+		fmt.Printf("  %s  %s  %-10s  %-9s  %-15s  %s  %s\n",
 			f.GetFindingId(),
+			marker,
 			f.GetStatus(),
 			f.GetSeverity(),
 			class,
@@ -290,14 +333,16 @@ Examples:
   agentcage findings --assessment <assessment-id> --severity critical
   agentcage findings --assessment <assessment-id> --status validated
   agentcage findings --id <finding-id>
+  agentcage findings --id <finding-id> --export-screenshot poc.png
   agentcage findings delete --id <finding-id>
   agentcage findings delete --assessment <assessment-id>
 
 Flags:
-  --assessment   assessment ID (required for listing or bulk delete)
-  --id           finding ID to show details for or delete
-  --status       filter by status: candidate, validated, rejected
-  --severity     filter by severity: critical, high, medium, low, info
-  --limit        max results to return (default 100)
+  --assessment         assessment ID (required for listing or bulk delete)
+  --id                 finding ID to show details for or delete
+  --status             filter by status: candidate, validated, rejected
+  --severity           filter by severity: critical, high, medium, low, info
+  --limit              max results to return (default 100)
+  --export-screenshot  write the finding's screenshot PNG to this path (requires --id)
 `)
 }

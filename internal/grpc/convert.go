@@ -648,6 +648,7 @@ func findingToProto(f *findings.Finding) *pb.FindingInfo {
 			Metadata:   f.Evidence.Metadata,
 		}
 	}
+	info.HasScreenshot = len(f.Evidence.Screenshot) > 0
 	if f.ValidationProof != nil {
 		info.ValidationProof = &pb.ValidationProof{
 			ReproductionSteps: f.ValidationProof.ReproductionSteps,
