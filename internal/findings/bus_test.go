@@ -29,6 +29,7 @@ func TestMessageMarshalRoundTrip(t *testing.T) {
 			ID:           "f-001",
 			AssessmentID: "a-001",
 			CageID:       "c-001",
+			Kind:         KindVulnerability,
 			Status:       StatusCandidate,
 			Severity:     SeverityHigh,
 			Title:        "SQL Injection in /api/users",
@@ -58,6 +59,7 @@ func TestMessageMarshalRoundTrip(t *testing.T) {
 	assert.Equal(t, original.Finding.ID, decoded.Finding.ID)
 	assert.Equal(t, original.Finding.AssessmentID, decoded.Finding.AssessmentID)
 	assert.Equal(t, original.Finding.CageID, decoded.Finding.CageID)
+	assert.Equal(t, original.Finding.Kind, decoded.Finding.Kind)
 	assert.Equal(t, original.Finding.Title, decoded.Finding.Title)
 	assert.Equal(t, original.Finding.VulnClass, decoded.Finding.VulnClass)
 	assert.Equal(t, original.Finding.Evidence.Request, decoded.Finding.Evidence.Request)
@@ -73,6 +75,7 @@ func TestMessageMarshalProducesValidJSON(t *testing.T) {
 			ID:              "f-002",
 			AssessmentID:    "a-002",
 			CageID:          "c-002",
+			Kind:            KindVulnerability,
 			Status:          StatusValidated,
 			Severity:        SeverityCritical,
 			Title:           "RCE via deserialization",

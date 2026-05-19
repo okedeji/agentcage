@@ -13,6 +13,7 @@ func TestSummarizeFindings(t *testing.T) {
 	ff := []findings.Finding{
 		{
 			ID:         "f-1",
+			Kind:       findings.KindVulnerability,
 			Title:      "SQL Injection in /api/login",
 			Severity:   findings.SeverityHigh,
 			VulnClass:  "sqli",
@@ -22,6 +23,7 @@ func TestSummarizeFindings(t *testing.T) {
 		},
 		{
 			ID:         "f-2",
+			Kind:       findings.KindVulnerability,
 			Title:      "XSS in /search",
 			Severity:   findings.SeverityMedium,
 			VulnClass:  "xss",

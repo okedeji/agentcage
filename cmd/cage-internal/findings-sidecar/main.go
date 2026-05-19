@@ -113,7 +113,7 @@ func handleConnection(conn net.Conn, hostConn net.Conn, assessmentID, cageID str
 			continue
 		}
 
-		fmt.Printf("findings-sidecar: finding forwarded (id=%s vuln_class=%s)\n", finding.ID, finding.VulnClass)
+		fmt.Printf("findings-sidecar: finding forwarded (id=%s kind=%s vuln_class=%s)\n", finding.ID, finding.Kind, finding.VulnClass)
 	}
 
 	if err := scanner.Err(); err != nil {
