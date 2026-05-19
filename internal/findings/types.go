@@ -130,15 +130,45 @@ func ParseSeverity(s string) Severity {
 	}
 }
 
+// Kind distinguishes finding shapes that share the table but differ in
+// what fields they meaningfully populate. A discovery output ("here's
+// an endpoint worth testing") is not a vulnerability and has no
+// vuln_class — putting it in the same field as confirmed exploits
+// conflates two different things.
+type Kind string
+
+const (
+	KindVulnerability Kind = "vulnerability"
+	KindDiscovery     Kind = "discovery"
+)
+
+func (k Kind) Valid() bool {
+	switch k {
+	case KindVulnerability, KindDiscovery:
+		return true
+	default:
+		return false
+	}
+}
+
+func ParseKind(s string) Kind {
+	k := Kind(s)
+	if k.Valid() {
+		return k
+	}
+	return ""
+}
+
 type Finding struct {
 	ID              string     `json:"id"`
 	AssessmentID    string     `json:"assessment_id"`
 	CageID          string     `json:"cage_id"`
+	Kind            Kind       `json:"kind"`
 	Status          Status     `json:"status"`
 	Severity        Severity   `json:"severity"`
 	Title           string     `json:"title"`
 	Description     string     `json:"description,omitempty"`
-	VulnClass       string     `json:"vuln_class"`
+	VulnClass       string     `json:"vuln_class,omitempty"`
 	Endpoint        string     `json:"endpoint"`
 	Evidence        Evidence   `json:"evidence,omitempty"`
 	ParentFindingID string     `json:"parent_finding_id,omitempty"`

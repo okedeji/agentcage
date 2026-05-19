@@ -122,6 +122,9 @@ func formatReportText(r *assessment.Report) []byte {
 	w("FINDINGS\n\n")
 	for i, f := range r.Findings {
 		w("  %d. [%s/%s] %s\n", i+1, f.Severity, f.Status, f.Title)
+		if f.Kind != "" {
+			w("     Kind:       %s\n", f.Kind)
+		}
 		if f.CWE != "" {
 			w("     CWE: %s", f.CWE)
 			if f.CVSSScore > 0 {
@@ -129,7 +132,9 @@ func formatReportText(r *assessment.Report) []byte {
 			}
 			w("\n")
 		}
-		w("     Vuln Class: %s\n", f.VulnClass)
+		if f.VulnClass != "" {
+			w("     Vuln Class: %s\n", f.VulnClass)
+		}
 		w("     Endpoint:   %s\n", f.Endpoint)
 		if f.Description != "" {
 			w("     %s\n", f.Description)

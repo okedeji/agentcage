@@ -166,6 +166,7 @@ func newTestFinding() Finding {
 		ID:           "f-001",
 		AssessmentID: "a-001",
 		CageID:       "c-001",
+		Kind:         KindVulnerability,
 		Status:       StatusCandidate,
 		Severity:     SeverityHigh,
 		Title:        "SQL Injection in /api/users",

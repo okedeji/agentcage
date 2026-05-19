@@ -131,9 +131,12 @@ func showFinding(ctx context.Context, client pb.FindingsServiceClient, id string
 	f := resp.GetFinding()
 	fmt.Printf("Finding %s\n", f.GetFindingId())
 	fmt.Printf("  Title:      %s\n", f.GetTitle())
+	fmt.Printf("  Kind:       %s\n", friendlyFindingKind(f.GetKind()))
 	fmt.Printf("  Status:     %s\n", f.GetStatus())
 	fmt.Printf("  Severity:   %s\n", f.GetSeverity())
-	fmt.Printf("  VulnClass:  %s\n", f.GetVulnClass())
+	if f.GetVulnClass() != "" {
+		fmt.Printf("  VulnClass:  %s\n", f.GetVulnClass())
+	}
 	if f.GetEndpoint() != "" {
 		fmt.Printf("  Endpoint:   %s\n", f.GetEndpoint())
 	}
@@ -218,11 +221,15 @@ func listFindings(ctx context.Context, client pb.FindingsServiceClient, assessme
 		if f.GetCreatedAt() != nil {
 			created = f.GetCreatedAt().AsTime().Format(time.RFC3339)
 		}
+		class := f.GetVulnClass()
+		if class == "" {
+			class = friendlyFindingKind(f.GetKind())
+		}
 		fmt.Printf("  %s  %-10s  %-9s  %-15s  %s  %s\n",
 			f.GetFindingId(),
 			f.GetStatus(),
 			f.GetSeverity(),
-			f.GetVulnClass(),
+			class,
 			truncate(f.GetTitle(), 50),
 			created,
 		)

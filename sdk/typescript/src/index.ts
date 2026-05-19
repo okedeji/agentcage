@@ -22,6 +22,7 @@ export { AccessClient } from './client/access';
 export * from './types/enums';
 export type { AssessmentInfo, AssessmentConfig, Report, CreateAssessmentRequest, ListAssessmentsRequest } from './types/assessment';
 export type { Finding, Evidence, ValidationProof, ListFindingsRequest } from './types/findings';
+export { FindingKind } from './types/findings';
 export type { Intervention, ListInterventionsRequest, ResolveCageRequest, ResolveReviewRequest } from './types/intervention';
 export type { FleetStatus, HostInfo, Capacity, DrainHostRequest } from './types/fleet';
 export type { CageInfo, CageLogs } from './types/cage';

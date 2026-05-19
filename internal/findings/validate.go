@@ -31,8 +31,18 @@ func ValidateFinding(f Finding) error {
 	if f.Title == "" {
 		errs = append(errs, fmt.Errorf("title is required"))
 	}
-	if f.VulnClass == "" {
-		errs = append(errs, fmt.Errorf("vuln class is required"))
+	if !f.Kind.Valid() {
+		errs = append(errs, fmt.Errorf("kind is required (vulnerability or discovery)"))
+	}
+	switch f.Kind {
+	case KindVulnerability:
+		if f.VulnClass == "" {
+			errs = append(errs, fmt.Errorf("vuln class is required for vulnerability findings"))
+		}
+	case KindDiscovery:
+		if f.VulnClass != "" {
+			errs = append(errs, fmt.Errorf("vuln class must be empty for discovery findings"))
+		}
 	}
 	if f.Endpoint == "" {
 		errs = append(errs, fmt.Errorf("endpoint is required"))

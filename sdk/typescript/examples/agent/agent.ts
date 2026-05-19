@@ -9,7 +9,7 @@
  * validation agents are separate.
  */
 
-import { AgentSDK, Severity, DirectiveInstruction, newFindingId, fetch } from '@agentcage/sdk';
+import { AgentSDK, Severity, FindingKind, DirectiveInstruction, newFindingId, fetch } from '@agentcage/sdk';
 
 // ── Environment ─────────────────────────────────────────────
 
@@ -304,9 +304,9 @@ async function submitSurface(target: string, surface: SurfaceEntry[]): Promise<v
 
     await agent.submitFinding({
       id: newFindingId(),
+      kind: FindingKind.Discovery,
       severity: Severity.Info,
       title: `Discovered: ${entry.endpoint}`,
-      vulnClass: 'surface',
       endpoint: `https://${target}${entry.endpoint}`,
       description: `${entry.reason}. Technologies: ${entry.technologies.join(', ') || 'unknown'}. Suggested tests: ${entry.vuln_classes.join(', ')}. Priority: ${entry.priority}.`,
       evidence: {

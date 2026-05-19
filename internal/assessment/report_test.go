@@ -12,11 +12,11 @@ import (
 
 func TestGenerateReport_MixedSeverities(t *testing.T) {
 	validated := []findings.Finding{
-		{ID: "f-1", Title: "SQL Injection", Severity: findings.SeverityCritical, VulnClass: "sqli", Endpoint: "/api/users", Description: "Blind SQLi in user param"},
-		{ID: "f-2", Title: "XSS Reflected", Severity: findings.SeverityHigh, VulnClass: "xss", Endpoint: "/search", Description: "Reflected XSS in search query"},
-		{ID: "f-3", Title: "Info Disclosure", Severity: findings.SeverityMedium, VulnClass: "info_disclosure", Endpoint: "/debug", Description: "Stack trace in error response"},
-		{ID: "f-4", Title: "Missing Header", Severity: findings.SeverityLow, VulnClass: "headers", Endpoint: "/", Description: "Missing X-Frame-Options"},
-		{ID: "f-5", Title: "Server Banner", Severity: findings.SeverityInfo, VulnClass: "info", Endpoint: "/", Description: "Server version disclosed"},
+		{ID: "f-1", Kind: findings.KindVulnerability, Title: "SQL Injection", Severity: findings.SeverityCritical, VulnClass: "sqli", Endpoint: "/api/users", Description: "Blind SQLi in user param"},
+		{ID: "f-2", Kind: findings.KindVulnerability, Title: "XSS Reflected", Severity: findings.SeverityHigh, VulnClass: "xss", Endpoint: "/search", Description: "Reflected XSS in search query"},
+		{ID: "f-3", Kind: findings.KindVulnerability, Title: "Info Disclosure", Severity: findings.SeverityMedium, VulnClass: "info_disclosure", Endpoint: "/debug", Description: "Stack trace in error response"},
+		{ID: "f-4", Kind: findings.KindVulnerability, Title: "Missing Header", Severity: findings.SeverityLow, VulnClass: "headers", Endpoint: "/", Description: "Missing X-Frame-Options"},
+		{ID: "f-5", Kind: findings.KindVulnerability, Title: "Server Banner", Severity: findings.SeverityInfo, VulnClass: "info", Endpoint: "/", Description: "Server version disclosed"},
 	}
 
 	report, err := GenerateReport(context.Background(), "assess-1", "cust-1", validated, "target.example.com", nil)
@@ -53,6 +53,7 @@ func TestGenerateReport_FindingFieldsMapping(t *testing.T) {
 	validated := []findings.Finding{
 		{
 			ID:          "f-1",
+			Kind:        findings.KindVulnerability,
 			Title:       "SQL Injection",
 			Severity:    findings.SeverityCritical,
 			VulnClass:   "sqli",

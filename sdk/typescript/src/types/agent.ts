@@ -1,12 +1,15 @@
 import { FindingStatus, Severity, DirectiveType } from './enums';
+import { FindingKind } from './findings';
 
 export interface AgentFinding {
   id: string;
+  kind: FindingKind;
   status?: FindingStatus;
   severity: Severity;
   title: string;
   description?: string;
-  vulnClass: string;
+  // Required when kind=vulnerability, must be empty when kind=discovery.
+  vulnClass?: string;
   endpoint: string;
   evidence?: {
     request?: Buffer;
@@ -20,9 +23,9 @@ export interface AgentFinding {
   cwe?: string;
   cvssScore?: number;
   remediation?: string;
-  // Required for vulnerability findings (severity != info). The validator
-  // cage replays reproductionSteps to confirm the finding independently.
-  // Optional for surface/info findings discovered during mapping.
+  // Required for kind=vulnerability. The validator cage replays
+  // reproductionSteps to confirm the finding independently. Optional
+  // (typically omitted) for kind=discovery.
   validationProof?: {
     reproductionSteps: string;
     confirmed: boolean;

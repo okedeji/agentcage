@@ -40,9 +40,10 @@ type CoordinatorState struct {
 // coordinator only needs metadata to reason about coverage.
 type FindingSummary struct {
 	ID         string `json:"id"`
+	Kind       string `json:"kind"`
 	Title      string `json:"title"`
 	Severity   string `json:"severity"`
-	VulnClass  string `json:"vuln_class"`
+	VulnClass  string `json:"vuln_class,omitempty"`
 	Endpoint   string `json:"endpoint"`
 	Status     string `json:"status"`
 	ChainDepth int32  `json:"chain_depth"`
@@ -85,6 +86,7 @@ func SummarizeFindings(ff []findings.Finding) []FindingSummary {
 	for i, f := range ff {
 		summaries[i] = FindingSummary{
 			ID:         f.ID,
+			Kind:       string(f.Kind),
 			Title:      f.Title,
 			Severity:   f.Severity.String(),
 			VulnClass:  f.VulnClass,

@@ -40,18 +40,26 @@ func (s *PGStore) SaveFinding(ctx context.Context, finding Finding) error {
 		}
 	}
 
+	// VulnClass is NULL for discovery findings — Postgres's CHECK
+	// constraint rejects the row otherwise.
+	var vulnClass *string
+	if finding.VulnClass != "" {
+		vulnClass = &finding.VulnClass
+	}
+
 	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO findings (id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+		`INSERT INTO findings (id, assessment_id, cage_id, kind, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		 ON CONFLICT (id) DO NOTHING`,
 		finding.ID,
 		finding.AssessmentID,
 		finding.CageID,
+		string(finding.Kind),
 		finding.Status.String(),
 		finding.Severity.String(),
 		finding.Title,
 		finding.Description,
-		finding.VulnClass,
+		vulnClass,
 		finding.Endpoint,
 		evidence,
 		parentID,
@@ -84,24 +92,24 @@ func (s *PGStore) FindingExists(ctx context.Context, findingID string) (bool, er
 
 func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error) {
 	var (
-		f                      Finding
-		statusStr, severityStr string
-		description, endpoint  *string
-		cwe, remediation       *string
-		cvssScore              *float64
-		evidence               []byte
-		validationProofJSON    []byte
-		parentID               *string
-		validatedAt            *time.Time
+		f                                Finding
+		kindStr, statusStr, severityStr  string
+		description, endpoint, vulnClass *string
+		cwe, remediation                 *string
+		cvssScore                        *float64
+		evidence                         []byte
+		validationProofJSON              []byte
+		parentID                         *string
+		validatedAt                      *time.Time
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at
+		`SELECT id, assessment_id, cage_id, kind, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at
 		 FROM findings WHERE id = $1`,
 		findingID,
 	).Scan(
 		&f.ID, &f.AssessmentID, &f.CageID,
-		&statusStr, &severityStr,
-		&f.Title, &description, &f.VulnClass, &endpoint,
+		&kindStr, &statusStr, &severityStr,
+		&f.Title, &description, &vulnClass, &endpoint,
 		&evidence, &parentID, &f.ChainDepth,
 		&cwe, &cvssScore, &remediation, &validationProofJSON,
 		&validatedAt, &f.CreatedAt, &f.UpdatedAt,
@@ -112,9 +120,13 @@ func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error
 	if err != nil {
 		return Finding{}, fmt.Errorf("loading finding %s: %w", findingID, err)
 	}
+	f.Kind = ParseKind(kindStr)
 	f.Status = parseStatus(statusStr)
 	f.Severity = parseSeverity(severityStr)
 	f.ValidatedAt = validatedAt
+	if vulnClass != nil {
+		f.VulnClass = *vulnClass
+	}
 	if description != nil {
 		f.Description = *description
 	}
@@ -150,7 +162,7 @@ func (s *PGStore) GetByID(ctx context.Context, findingID string) (Finding, error
 
 func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, status Status) ([]Finding, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, assessment_id, cage_id, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at
+		`SELECT id, assessment_id, cage_id, kind, status, severity, title, description, vuln_class, endpoint, evidence, parent_finding_id, chain_depth, cwe, cvss_score, remediation, validation_proof, validated_at, created_at, updated_at
 		 FROM findings
 		 WHERE assessment_id = $1 AND status = $2
 		 ORDER BY created_at`,
@@ -164,8 +176,8 @@ func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, stat
 	var results []Finding
 	for rows.Next() {
 		var f Finding
-		var statusStr, severityStr string
-		var description, endpoint *string
+		var kindStr, statusStr, severityStr string
+		var description, endpoint, vulnClass *string
 		var cwe, remediation *string
 		var cvssScore *float64
 		var evidence []byte
@@ -175,8 +187,8 @@ func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, stat
 
 		if err := rows.Scan(
 			&f.ID, &f.AssessmentID, &f.CageID,
-			&statusStr, &severityStr,
-			&f.Title, &description, &f.VulnClass, &endpoint,
+			&kindStr, &statusStr, &severityStr,
+			&f.Title, &description, &vulnClass, &endpoint,
 			&evidence, &parentID, &f.ChainDepth,
 			&cwe, &cvssScore, &remediation, &validationProofJSON,
 			&validatedAt, &f.CreatedAt, &f.UpdatedAt,
@@ -184,9 +196,13 @@ func (s *PGStore) GetByAssessment(ctx context.Context, assessmentID string, stat
 			return nil, fmt.Errorf("scanning finding row: %w", err)
 		}
 
+		f.Kind = ParseKind(kindStr)
 		f.Status = parseStatus(statusStr)
 		f.Severity = parseSeverity(severityStr)
 		f.ValidatedAt = validatedAt
+		if vulnClass != nil {
+			f.VulnClass = *vulnClass
+		}
 		if description != nil {
 			f.Description = *description
 		}
@@ -238,7 +254,7 @@ func (s *PGStore) ListFindings(ctx context.Context, filters ListFilters) ([]Find
 		limit = 100
 	}
 
-	query := `SELECT id, assessment_id, cage_id, status, severity, title, vuln_class, endpoint, parent_finding_id, chain_depth, cwe, cvss_score, validated_at, created_at
+	query := `SELECT id, assessment_id, cage_id, kind, status, severity, title, vuln_class, endpoint, parent_finding_id, chain_depth, cwe, cvss_score, validated_at, created_at
 		 FROM findings`
 	var whereClauses []string
 	var args []any
@@ -277,8 +293,8 @@ func (s *PGStore) ListFindings(ctx context.Context, filters ListFilters) ([]Find
 	var results []Finding
 	for rows.Next() {
 		var f Finding
-		var statusStr, severityStr string
-		var endpoint *string
+		var kindStr, statusStr, severityStr string
+		var endpoint, vulnClass *string
 		var cwe *string
 		var cvssScore *float64
 		var parentID *string
@@ -286,8 +302,8 @@ func (s *PGStore) ListFindings(ctx context.Context, filters ListFilters) ([]Find
 
 		if err := rows.Scan(
 			&f.ID, &f.AssessmentID, &f.CageID,
-			&statusStr, &severityStr,
-			&f.Title, &f.VulnClass, &endpoint,
+			&kindStr, &statusStr, &severityStr,
+			&f.Title, &vulnClass, &endpoint,
 			&parentID, &f.ChainDepth,
 			&cwe, &cvssScore,
 			&validatedAt, &f.CreatedAt,
@@ -295,9 +311,13 @@ func (s *PGStore) ListFindings(ctx context.Context, filters ListFilters) ([]Find
 			return nil, fmt.Errorf("scanning finding row: %w", err)
 		}
 
+		f.Kind = ParseKind(kindStr)
 		f.Status = parseStatus(statusStr)
 		f.Severity = parseSeverity(severityStr)
 		f.ValidatedAt = validatedAt
+		if vulnClass != nil {
+			f.VulnClass = *vulnClass
+		}
 		if endpoint != nil {
 			f.Endpoint = *endpoint
 		}

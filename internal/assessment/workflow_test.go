@@ -109,6 +109,7 @@ func newAssessmentTestEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 func candidateFinding(id, endpoint, vulnClass string, severity findings.Severity) findings.Finding {
 	return findings.Finding{
 		ID:        id,
+		Kind:      findings.KindVulnerability,
 		Endpoint:  endpoint,
 		VulnClass: vulnClass,
 		Status:    findings.StatusCandidate,
@@ -119,6 +120,7 @@ func candidateFinding(id, endpoint, vulnClass string, severity findings.Severity
 func validatedFinding(id string, severity findings.Severity) findings.Finding {
 	return findings.Finding{
 		ID:       id,
+		Kind:     findings.KindVulnerability,
 		Status:   findings.StatusValidated,
 		Severity: severity,
 	}
@@ -303,6 +305,7 @@ func TestAssessmentWorkflow_ChainDepthEnforced(t *testing.T) {
 
 	atMaxDepth := findings.Finding{
 		ID:         "f-1",
+		Kind:       findings.KindVulnerability,
 		Status:     findings.StatusValidated,
 		Severity:   findings.SeverityCritical,
 		ChainDepth: 3,

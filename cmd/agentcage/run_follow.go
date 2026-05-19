@@ -323,6 +323,11 @@ func friendlySeverity(s string) string {
 	return strings.ToUpper(s)
 }
 
+func friendlyFindingKind(k pb.FindingKind) string {
+	s := strings.TrimPrefix(k.String(), "FINDING_KIND_")
+	return strings.ToLower(s)
+}
+
 func sleepCtx(ctx context.Context, d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()

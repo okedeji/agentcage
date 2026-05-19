@@ -15,6 +15,7 @@ func validFinding() Finding {
 		ID:           "f-001",
 		AssessmentID: "a-001",
 		CageID:       "c-001",
+		Kind:         KindVulnerability,
 		Status:       StatusCandidate,
 		Severity:     SeverityHigh,
 		Title:        "SQL Injection in /api/users",
@@ -41,7 +42,9 @@ func TestValidateFinding_MissingFields(t *testing.T) {
 		{"missing AssessmentID", func(f *Finding) { f.AssessmentID = "" }, "assessment ID"},
 		{"missing CageID", func(f *Finding) { f.CageID = "" }, "cage ID"},
 		{"missing Title", func(f *Finding) { f.Title = "" }, "title"},
-		{"missing VulnClass", func(f *Finding) { f.VulnClass = "" }, "vuln class"},
+		{"missing VulnClass on vuln kind", func(f *Finding) { f.VulnClass = "" }, "vuln class"},
+		{"missing Kind", func(f *Finding) { f.Kind = "" }, "kind"},
+		{"discovery with VulnClass", func(f *Finding) { f.Kind = KindDiscovery; f.VulnClass = "sqli" }, "vuln class must be empty"},
 		{"missing Endpoint", func(f *Finding) { f.Endpoint = "" }, "endpoint"},
 		{"zero Status", func(f *Finding) { f.Status = 0 }, "status"},
 		{"zero Severity", func(f *Finding) { f.Severity = 0 }, "severity"},
@@ -68,7 +71,8 @@ func TestValidateFinding_MultipleViolations(t *testing.T) {
 	assert.Contains(t, err.Error(), "assessment ID")
 	assert.Contains(t, err.Error(), "cage ID")
 	assert.Contains(t, err.Error(), "title")
-	assert.Contains(t, err.Error(), "vuln class")
+	assert.Contains(t, err.Error(), "kind")
+	assert.Contains(t, err.Error(), "endpoint")
 	assert.Contains(t, err.Error(), "status")
 	assert.Contains(t, err.Error(), "severity")
 }

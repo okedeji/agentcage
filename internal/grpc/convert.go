@@ -595,11 +595,23 @@ func findingSeverityToProto(s findings.Severity) pb.FindingSeverity {
 	}
 }
 
+func findingKindToProto(k findings.Kind) pb.FindingKind {
+	switch k {
+	case findings.KindVulnerability:
+		return pb.FindingKind_FINDING_KIND_VULNERABILITY
+	case findings.KindDiscovery:
+		return pb.FindingKind_FINDING_KIND_DISCOVERY
+	default:
+		return pb.FindingKind_FINDING_KIND_UNSPECIFIED
+	}
+}
+
 func findingToProto(f *findings.Finding) *pb.FindingInfo {
 	info := &pb.FindingInfo{
 		FindingId:       f.ID,
 		AssessmentId:    f.AssessmentID,
 		CageId:          f.CageID,
+		Kind:            findingKindToProto(f.Kind),
 		Status:          findingStatusToProto(f.Status),
 		Severity:        findingSeverityToProto(f.Severity),
 		Title:           f.Title,

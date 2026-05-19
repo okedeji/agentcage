@@ -1,5 +1,10 @@
 import { FindingStatus, Severity } from './enums';
 
+export enum FindingKind {
+  Vulnerability = 'vulnerability',
+  Discovery = 'discovery',
+}
+
 export interface Evidence {
   request?: Buffer;
   response?: Buffer;
@@ -20,11 +25,12 @@ export interface Finding {
   id: string;
   assessmentId: string;
   cageId: string;
+  kind: FindingKind;
   status: FindingStatus;
   severity: Severity;
   title: string;
   description?: string;
-  vulnClass: string;
+  vulnClass?: string;
   endpoint: string;
   evidence?: Evidence;
   parentFindingId?: string;

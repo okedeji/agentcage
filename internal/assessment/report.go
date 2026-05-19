@@ -34,10 +34,11 @@ type ReportSummary struct {
 
 type ReportFinding struct {
 	ID              string  `json:"id"`
+	Kind            string  `json:"kind"`
 	Title           string  `json:"title"`
 	Status          string  `json:"status"`
 	Severity        string  `json:"severity"`
-	VulnClass       string  `json:"vuln_class"`
+	VulnClass       string  `json:"vuln_class,omitempty"`
 	CWE             string  `json:"cwe,omitempty"`
 	CVSSScore       float64 `json:"cvss_score,omitempty"`
 	Endpoint        string  `json:"endpoint"`
@@ -93,6 +94,7 @@ func GenerateReport(ctx context.Context, assessmentID, customerID string, allFin
 
 		reportFindings = append(reportFindings, ReportFinding{
 			ID:              f.ID,
+			Kind:            string(f.Kind),
 			Title:           f.Title,
 			Status:          f.Status.String(),
 			Severity:        f.Severity.String(),

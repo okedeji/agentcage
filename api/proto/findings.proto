@@ -27,6 +27,12 @@ enum FindingSeverity {
   FINDING_SEVERITY_CRITICAL = 5;
 }
 
+enum FindingKind {
+  FINDING_KIND_UNSPECIFIED = 0;
+  FINDING_KIND_VULNERABILITY = 1;
+  FINDING_KIND_DISCOVERY = 2;
+}
+
 message FindingEvidence {
   bytes request = 1;
   bytes response = 2;
@@ -62,6 +68,7 @@ message FindingInfo {
   double cvss_score = 16;
   string remediation = 17;
   ValidationProof validation_proof = 18;
+  FindingKind kind = 19;
 }
 
 message ListFindingsRequest {

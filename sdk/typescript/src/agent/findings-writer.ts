@@ -29,10 +29,17 @@ export class FindingsWriter {
 
   async submit(finding: AgentFinding): Promise<void> {
     // Vulnerability findings must include reproduction steps so the
-    // validator cage can confirm them independently. Surface/info
-    // findings (e.g. discovery results) don't need a proof.
-    if (finding.severity !== 'info' && !finding.validationProof?.reproductionSteps) {
-      throw new Error(`finding ${finding.id}: validationProof.reproductionSteps is required for severity=${finding.severity}`);
+    // validator cage can confirm them independently. Discovery findings
+    // don't need a proof and must not carry a vuln_class.
+    if (finding.kind === 'vulnerability') {
+      if (!finding.vulnClass) {
+        throw new Error(`finding ${finding.id}: vulnClass is required for kind=vulnerability`);
+      }
+      if (!finding.validationProof?.reproductionSteps) {
+        throw new Error(`finding ${finding.id}: validationProof.reproductionSteps is required for kind=vulnerability`);
+      }
+    } else if (finding.kind === 'discovery' && finding.vulnClass) {
+      throw new Error(`finding ${finding.id}: vulnClass must be empty for kind=discovery`);
     }
     const sock = await this.ensureConnection();
 
@@ -41,6 +48,7 @@ export class FindingsWriter {
     // into a wire format the Go side will silently reject.
     const payload: Record<string, unknown> = {
       id: finding.id,
+      kind: finding.kind,
       status: finding.status ?? 'candidate',
       severity: finding.severity,
       title: finding.title,
