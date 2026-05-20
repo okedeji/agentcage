@@ -31,7 +31,9 @@ echo "deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c
 curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey | \
   sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg
 sudo apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq timescaledb-2-postgresql-16
+# Single -q (not -qq) so the broken-package dependency tree is logged
+# when install fails, instead of just the "held broken" summary.
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q timescaledb-2-postgresql-16
 
 # ---------------------------------------------------------------
 # Disable system PostgreSQL (agentcage manages its own)
