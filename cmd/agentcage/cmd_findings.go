@@ -254,6 +254,8 @@ func listFindings(ctx context.Context, client pb.FindingsServiceClient, assessme
 		return
 	}
 
+	const rowFmt = "  %-14s  %-6s  %-10s  %-8s  %-15s  %-50s  %s\n"
+	fmt.Printf(rowFmt, "ID", "SHOT", "STATUS", "SEVERITY", "CLASS", "TITLE", "CREATED")
 	for _, f := range items {
 		created := ""
 		if f.GetCreatedAt() != nil {
@@ -263,15 +265,16 @@ func listFindings(ctx context.Context, client pb.FindingsServiceClient, assessme
 		if class == "" {
 			class = friendlyFindingKind(f.GetKind())
 		}
-		marker := "      "
+		marker := ""
 		if f.GetHasScreenshot() {
 			marker = "[shot]"
 		}
-		fmt.Printf("  %s  %s  %-10s  %-9s  %-15s  %s  %s\n",
+		status := strings.ToLower(strings.TrimPrefix(f.GetStatus().String(), "FINDING_STATUS_"))
+		fmt.Printf(rowFmt,
 			f.GetFindingId(),
 			marker,
-			f.GetStatus(),
-			f.GetSeverity(),
+			status,
+			friendlySeverity(f.GetSeverity().String()),
 			class,
 			truncate(f.GetTitle(), 50),
 			created,
