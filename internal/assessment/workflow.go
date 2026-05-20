@@ -883,9 +883,20 @@ func validateFindings(
 		}
 	}
 
-	// TrustAgentProof: mark findings validated without spawning a
-	// validation cage. Opt-in only; default is always validate.
-	if cfg.TrustAgentProof {
+	// Mirror the exploitation-capability gating: if the agent did not
+	// declare VALIDATION, spawning validation cages would run the
+	// agent's placeholder runValidation() which can't actually replay
+	// proofs. Trust the agent's submitted proof in that case so
+	// findings still get promoted to validated instead of stranded as
+	// candidates. Agents that DO declare VALIDATION get the
+	// independent re-test cage path.
+	trustAgentProof := cfg.TrustAgentProof || !cfg.Capabilities.Validation
+	if trustAgentProof && !cfg.TrustAgentProof {
+		workflow.GetLogger(ctx).Info("agent did not declare VALIDATION capability; trusting submitted proofs without independent re-test",
+			"assessment_id", assessmentID,
+			"provable_count", len(provable))
+	}
+	if trustAgentProof {
 		for _, f := range provable {
 			actCtx := withActivityTimeout(ctx, TimeoutUpdateFinding)
 			if err := workflow.ExecuteActivity(actCtx, "UpdateFindingStatus", f.ID, findings.StatusValidated).Get(ctx, nil); err != nil {
