@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/gateway"
 )
@@ -62,7 +63,8 @@ RULES:
 6. Maximum 10 actions per response.
 7. Set done=true when coverage is sufficient, budget is low, or time is short.
 8. Set recommended_judge=true when the action submits state-changing or destructive payloads the target could act on: sqli (any non-read template), auth_bypass with credential stuffing, broken_auth weak-password attempts, idor against paths with verbs like delete/update, real CSRF POSTs. Leave false for purely read-only probes (headers, cors, csrf-form-inspection, info_disclosure, rate_limit with GETs).
-9. Every exploitation action targets exactly ONE path. If you want to test two paths for the same vuln_class, emit two separate actions — do not put multiple entries in scope.paths.`
+9. Every exploitation action targets exactly ONE path. If you want to test two paths for the same vuln_class, emit two separate actions — do not put multiple entries in scope.paths.
+10. When findings is empty (no discovery ran), draw your candidate paths from target.paths and guidance.attack_surface.endpoints. The operator declared those as in-scope; treat them as the only paths you may target.`
 
 // PlanNextActions sends the coordinator state to the LLM and returns
 // structured decisions about what cages to spawn.
@@ -183,7 +185,7 @@ func (p *Planner) GenerateGoal(ctx context.Context, assessmentID string, target 
 	return goal, nil
 }
 
-const planProposalSystemPrompt = `You propose a concrete exploitation plan an operator will review before any exploit cage spawns. You are given the assessment's goal, the operator's guidance, the discovery findings, and the agent's loaded capabilities.
+const planProposalSystemPrompt = `You propose a concrete exploitation plan an operator will review before any exploit cage spawns. You are given the assessment's goal, the operator's target (host + scope paths), the operator's guidance, the discovery findings, and the agent's loaded capabilities.
 
 Produce JSON only:
 {
@@ -208,7 +210,8 @@ RULES:
 3. Each action's objective must be concrete (a specific endpoint and how to probe it), not generic.
 4. estimated_cages = len(actions). estimated_tokens is a rough total (use 10-20K per cage as a heuristic).
 5. If the operator provided feedback on a prior proposal, treat it as revisions and adjust accordingly. Mention what changed in notes.
-6. If discovery found nothing actionable or the agent has no exploitation tools, return an empty actions array with notes explaining why.`
+6. If discovery found nothing actionable or the agent has no exploitation tools, return an empty actions array with notes explaining why.
+7. When findings is empty (no discovery ran or it surfaced nothing), plan actions against target.paths and guidance.attack_surface.endpoints — those are the operator-supplied paths in scope. One action per (path, vuln_class) pair, same constraints as RULE 9 in the coordinator prompt.`
 
 // PlanProposalInput bundles everything GenerateExploitationPlan needs.
 // Bundled so the signature does not churn as the planner learns to
@@ -216,6 +219,7 @@ RULES:
 type PlanProposalInput struct {
 	AssessmentID     string
 	Goal             string                     `json:"goal"`
+	Target           cage.Scope                 `json:"target"`
 	Guidance         *Guidance                  `json:"guidance,omitempty"`
 	Findings         []FindingSummary           `json:"findings"`
 	Capabilities     cagefile.AgentCapabilities `json:"agent_capabilities"`

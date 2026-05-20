@@ -127,23 +127,38 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		return failResult(ctx, input.AssessmentID, result, "updating status to mapping: %v", err), nil
 	}
 
-	discoveryCageID, err := createDiscoveryCage(ctx, input.AssessmentID, cfg, goal)
-	if err != nil {
-		return failResult(ctx, input.AssessmentID, result, "creating discovery cage for surface mapping: %v", err), nil
-	}
-	result.TotalCages++
-	cagesCompleted = append(cagesCompleted, CageSummary{
-		CageID:   discoveryCageID,
-		CageType: "discovery",
-	})
-	syncStats(ctx, input.AssessmentID, result, 1)
+	// Discovery is required to seed the coordinator's exploitation plan.
+	// The agent's DISCOVERY capability is the primary source; operator-
+	// supplied scope.paths is the fallback. If neither exists the
+	// assessment has no actionable surface — fail fast rather than spawn
+	// exploitation cages against nothing.
+	switch {
+	case cfg.Capabilities.Discovery:
+		discoveryCageID, err := createDiscoveryCage(ctx, input.AssessmentID, cfg, goal)
+		if err != nil {
+			return failResult(ctx, input.AssessmentID, result, "creating discovery cage for surface mapping: %v", err), nil
+		}
+		result.TotalCages++
+		discoverySummaryIdx := len(cagesCompleted)
+		cagesCompleted = append(cagesCompleted, CageSummary{
+			CageID:   discoveryCageID,
+			CageType: "discovery",
+		})
+		syncStats(ctx, input.AssessmentID, result, 1)
 
-	waitForCageOrTimeout(ctx, discoveryCageID, TimeoutWaitForCage)
-	syncStats(ctx, input.AssessmentID, result, 0)
+		waitForCageOrTimeout(ctx, discoveryCageID, TimeoutWaitForCage)
+		syncStats(ctx, input.AssessmentID, result, 0)
 
-	resolveCageOutcome(ctx, &cagesCompleted[0])
-	if cagesCompleted[0].Outcome == "failed" {
-		return failResult(ctx, input.AssessmentID, result, "discovery cage failed (see: agentcage logs cage %s)", discoveryCageID), nil
+		resolveCageOutcome(ctx, &cagesCompleted[discoverySummaryIdx])
+		if cagesCompleted[discoverySummaryIdx].Outcome == "failed" {
+			return failResult(ctx, input.AssessmentID, result, "discovery cage failed (see: agentcage logs cage %s)", discoveryCageID), nil
+		}
+	case len(cfg.Target.Paths) > 0:
+		logger.Info("agent has no DISCOVERY capability; using operator-supplied scope paths as the exploitation seed",
+			"assessment_id", input.AssessmentID,
+			"path_count", len(cfg.Target.Paths))
+	default:
+		return failResult(ctx, input.AssessmentID, result, "agent has no DISCOVERY capability and no scope paths were supplied; assessment has no actionable surface"), nil
 	}
 
 	// Skip exploitation if agent has no exploitation capabilities.
@@ -543,6 +558,7 @@ func runPlanApprovalGate(ctx workflow.Context, assessmentID string, cfg Config, 
 		proposal, err := generateExploitationPlan(ctx, PlanProposalInput{
 			AssessmentID:     assessmentID,
 			Goal:             goal,
+			Target:           cfg.Target,
 			Guidance:         cfg.Guidance,
 			Findings:         SummarizeFindings(findingsList),
 			Capabilities:     cfg.Capabilities,
