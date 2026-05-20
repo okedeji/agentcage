@@ -71,6 +71,10 @@ module "webhook" {
   llm_provider_url            = var.llm_provider_url
   llm_provider_key            = var.llm_provider_key
   llm_model                   = var.llm_model
+  judge_provider_url          = var.judge_provider_url
+  judge_provider_key          = var.judge_provider_key
+  judge_model                 = var.judge_model
+  agentcage_version           = var.agentcage_version_override != "" ? var.agentcage_version_override : "0.1.0"
 }
 
 module "agentcage" {

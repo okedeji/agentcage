@@ -33,6 +33,11 @@ output "webhook_endpoint" {
   value       = module.webhook.endpoint
 }
 
+output "webhook_judge_endpoint" {
+  description = "Judge webhook URL — set this as judge.endpoint in agentcage config"
+  value       = module.webhook.judge_endpoint
+}
+
 output "webhook_instance_id" {
   value = module.webhook.instance_id
 }

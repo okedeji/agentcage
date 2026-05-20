@@ -70,3 +70,22 @@ variable "llm_model" {
   type        = string
   default     = "gpt-5.5"
 }
+
+variable "judge_provider_url" {
+  description = "LLM provider endpoint for judge calls. Empty string reuses llm_provider_url."
+  type        = string
+  default     = ""
+}
+
+variable "judge_provider_key" {
+  description = "API key for the judge LLM provider. Empty string reuses llm_provider_key."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "judge_model" {
+  description = "Model the webhook uses for judge calls. Judge runs on every flagged request — a cheaper model than llm_model is usually the right pick."
+  type        = string
+  default     = "gpt-5.5"
+}

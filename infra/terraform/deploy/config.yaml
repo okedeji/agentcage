@@ -1,8 +1,16 @@
 posture: dev
-# llm.endpoint is set after deploy via:
-#.  agentcage connect $(terraform output -raw grpc_addr) --insecure
+# llm.endpoint and judge.endpoint are set after deploy via:
+#   agentcage connect $(terraform output -raw grpc_addr) --insecure
 #   agentcage config set llm.endpoint $(terraform output -raw webhook_endpoint)
+#   agentcage config set judge.endpoint $(terraform output -raw webhook_judge_endpoint)
 llm:
   endpoint: ""
+# Judge is optional. Without it, agents that set X-Agentcage-Judge=required
+# (or cages spawned with coordinator's recommended_judge=true) fall through
+# to payload-review interventions instead of automated review.
+judge:
+  endpoint: ""
+  confidence_threshold: 0.7
+  timeout: 10s
 assessment:
   max_total_cages: 2

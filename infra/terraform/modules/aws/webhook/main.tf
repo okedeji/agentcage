@@ -77,11 +77,15 @@ resource "aws_instance" "webhook" {
 
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/userdata.sh.tpl", {
-    webhook_api_key  = var.webhook_api_key
-    llm_provider_url = var.llm_provider_url
-    llm_provider_key = var.llm_provider_key
-    llm_model        = var.llm_model
-    port             = var.port
+    webhook_api_key    = var.webhook_api_key
+    llm_provider_url   = var.llm_provider_url
+    llm_provider_key   = var.llm_provider_key
+    llm_model          = var.llm_model
+    judge_provider_url = var.judge_provider_url
+    judge_provider_key = var.judge_provider_key
+    judge_model        = var.judge_model
+    port               = var.port
+    agentcage_version  = var.agentcage_version
   })
 
   tags = {

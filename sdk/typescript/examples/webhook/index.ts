@@ -19,6 +19,7 @@
 
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { handleLLM } from './llm';
+import { handleJudge } from './judge';
 
 const API_KEY = process.env.WEBHOOK_API_KEY ?? '';
 const PORT = parseInt(process.env.PORT ?? '8082', 10);
@@ -63,10 +64,15 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (url.startsWith('/judge')) {
+    await handleJudge(req, res);
+    return;
+  }
+
   sendJSON(res, 404, { error: 'not found' });
 });
 
 server.listen(PORT, () => {
   console.log(`agentcage webhook gateway listening on :${PORT}`);
-  console.log(`Routes: /llm`);
+  console.log(`Routes: /llm, /judge`);
 });
