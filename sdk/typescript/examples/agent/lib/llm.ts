@@ -1,9 +1,19 @@
 import { fetch } from '@agentcage/sdk';
 import { env } from './env';
 
+// Loose shape covering plain chat messages, assistant messages with
+// tool_calls, and tool-role responses with tool_call_id. Multi-turn
+// tool-use needs all three.
 export interface LLMMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+  name?: string;
 }
 
 export interface ToolDefinition {
@@ -13,6 +23,7 @@ export interface ToolDefinition {
 }
 
 export interface ToolCall {
+  id: string;
   name: string;
   arguments: Record<string, unknown>;
 }
@@ -51,7 +62,7 @@ export async function callLLMWithTools(
   messages: LLMMessage[],
   tools: ToolDefinition[],
   opts: { toolChoice?: 'auto' | 'required' | 'none' } = {},
-): Promise<{ toolCall: ToolCall | null; message: string }> {
+): Promise<{ toolCall: ToolCall | null; assistantMessage: LLMMessage; message: string }> {
   const data = await postLLM({
     messages,
     tools: tools.map((t) => ({
@@ -61,7 +72,13 @@ export async function callLLMWithTools(
     tool_choice: opts.toolChoice ?? 'auto',
   });
   const choice = data.choices?.[0];
-  const rawCall = choice?.message?.tool_calls?.[0];
+  const rawMessage = choice?.message;
+  const assistantMessage: LLMMessage = {
+    role: 'assistant',
+    content: rawMessage?.content ?? null,
+    tool_calls: rawMessage?.tool_calls,
+  };
+  const rawCall = rawMessage?.tool_calls?.[0];
   if (rawCall?.function?.name) {
     let args: Record<string, unknown> = {};
     try {
@@ -69,9 +86,13 @@ export async function callLLMWithTools(
     } catch {
       // LLM returned malformed JSON in arguments; treat as empty
     }
-    return { toolCall: { name: rawCall.function.name, arguments: args }, message: '' };
+    return {
+      toolCall: { id: rawCall.id ?? '', name: rawCall.function.name, arguments: args },
+      assistantMessage,
+      message: '',
+    };
   }
-  return { toolCall: null, message: choice?.message?.content ?? '' };
+  return { toolCall: null, assistantMessage, message: rawMessage?.content ?? '' };
 }
 
 // Strip markdown code fences that LLMs commonly wrap JSON in.

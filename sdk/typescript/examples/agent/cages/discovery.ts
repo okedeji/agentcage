@@ -1,208 +1,115 @@
-// Discovery cage: map the target's attack surface and file one
-// discovery finding per interesting endpoint. No exploitation.
+// Discovery cage: agentic loop.
 //
-// Flow: fetch seed pages → ask LLM for paths → crawl → ask LLM to
-// analyze the surface → submit findings.
+// Registers 6 tools with the LLM (fetch_path, crawl, dir_fuzz,
+// recon_scan, submit_finding, done). The LLM picks one tool per turn,
+// sees the result, picks the next. Capped at MAX_ITERATIONS to bound
+// cost. Stops early when the LLM calls `done`.
+//
+// Pattern contrast with the exploitation cage: exploitation is a
+// single-shot decision (pick one tool, run it, done). Discovery is
+// an iterative loop because surface mapping is many small decisions
+// — what to fetch next depends on what was just seen.
 
-import { FindingKind, Severity, newFindingId } from '@agentcage/sdk';
-import { agent, isTerminated } from '../lib/sdk';
 import { env } from '../lib/env';
-import { fetchSafe, HttpResponse } from '../lib/http';
-import { askLLM, extractJSON } from '../lib/llm';
+import { callLLMWithTools, LLMMessage } from '../lib/llm';
+import { DiscoveryTool } from '../tools/discovery/types';
+import { fetchPath } from '../tools/discovery/fetch-path';
+import { crawl } from '../tools/discovery/crawl';
+import { probePaths } from '../tools/discovery/probe-paths';
+import { dirFuzz } from '../tools/discovery/dir-fuzz';
+import { reconScan } from '../tools/discovery/recon-scan';
+import { submitFinding } from '../tools/discovery/submit-finding';
+import { done } from '../tools/discovery/done';
 
-interface SeedData {
-  homepage: HttpResponse | null;
-  robots: HttpResponse | null;
-  sitemap: HttpResponse | null;
-}
+const TOOLS: DiscoveryTool[] = [fetchPath, crawl, probePaths, dirFuzz, reconScan, submitFinding, done];
+const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 
-async function seedCrawl(t: string): Promise<SeedData> {
-  console.log('Fetching seed pages (/, /robots.txt, /sitemap.xml)...');
-  const [homepage, robots, sitemap] = await Promise.all([
-    fetchSafe(`https://${t}/`),
-    fetchSafe(`https://${t}/robots.txt`),
-    fetchSafe(`https://${t}/sitemap.xml`),
-  ]);
-  return { homepage, robots, sitemap };
-}
+const MAX_ITERATIONS = 25;
 
-function extractLinks(html: string): string[] {
-  const paths: string[] = [];
-  const seen = new Set<string>();
-  const pattern = /href=["']([^"']+)["']/g;
-  let match;
-  while ((match = pattern.exec(html)) !== null) {
-    const href = match[1];
-    if (href.startsWith('/') && !href.startsWith('//') && !seen.has(href)) {
-      seen.add(href);
-      paths.push(href);
-    }
-  }
-  return paths.slice(0, 50);
-}
+const SYSTEM_PROMPT = `You are a penetration testing agent performing attack surface discovery.
 
-async function planCrawl(t: string, seed: SeedData): Promise<string[]> {
-  console.log('Asking LLM to plan crawl paths...');
-  let seedSummary = '';
-  if (seed.homepage) {
-    seedSummary += `Homepage (HTTP ${seed.homepage.status}):\n${seed.homepage.body.slice(0, 2000)}\n\n`;
-    seedSummary += `Response headers: ${JSON.stringify(seed.homepage.headers)}\n\n`;
-  } else {
-    seedSummary += 'Homepage: unreachable\n\n';
-  }
-  if (seed.robots && seed.robots.status === 200) {
-    seedSummary += `robots.txt:\n${seed.robots.body.slice(0, 2000)}\n\n`;
-  }
-  if (seed.sitemap && seed.sitemap.status === 200) {
-    seedSummary += `sitemap.xml:\n${seed.sitemap.body.slice(0, 2000)}\n\n`;
-  }
-  if (env.scopePaths.length > 0) {
-    seedSummary += `Operator-supplied paths in scope (already queued for crawl):\n${env.scopePaths.join('\n')}\n\n`;
-  }
+Your goal: map the target's surface and submit Discovery findings for endpoints worth exploitation testing. The coordinator will read your findings to plan exploitation cages, so call out paths that look meaningfully exploitable (admin panels, auth endpoints, API routes, file uploads, exposed configs).
 
-  const response = await askLLM([
-    {
-      role: 'system',
-      content: `You are a penetration testing assistant performing attack surface discovery.
+Strategy guidelines:
+- Start with recon_scan on / to identify the tech stack and surface obvious exposures.
+- Use fetch_path to look at one specific endpoint in detail when you need its body/headers.
+- Use crawl when the target looks like a SPA or has heavy JavaScript (renders routes client-side).
+- Use probe_paths to check candidate paths YOU generated from prior context — the tech stack you identified, references seen in HTML/JS bundles, conventions of the framework you detected (e.g. Next.js → /_next/data, Rails → /rails/info/routes, Spring → /actuator/*). This is your primary discovery tool once you have any context.
+- Use dir_fuzz only as a last resort when you have no context to generate candidates — blind brute-force with a generic wordlist. Prefer probe_paths if you can guess intelligently.
+- Submit findings as you discover them — do not hoard until the end. The coordinator works with findings as they arrive.
+- Call done when you have a reasonable map of the surface. Better to stop slightly early than to burn iterations on diminishing returns.
 
-Based on the target's homepage, robots.txt, sitemap, and any operator-supplied paths, determine what additional paths to crawl. Return a JSON array of paths to crawl (max 50): ["/api/v1", "/login", "/admin", ...]
-
-Only include paths likely to exist on THIS target. Do not guess generic paths with no evidence. Skip paths already listed under operator-supplied paths (they're already queued).`,
-    },
-    { role: 'user', content: `Target: ${t}\nObjective: ${env.objective || 'Full security assessment'}\n\n${seedSummary}` },
-  ]);
-
-  let planned: string[] = [];
-  try {
-    const paths = extractJSON(response);
-    if (Array.isArray(paths)) {
-      planned = paths.filter((p: any) => typeof p === 'string' && p.startsWith('/')).slice(0, 50);
-    }
-  } catch {
-    console.log('LLM response was not valid JSON, raw:', response.slice(0, 200));
-  }
-
-  if (planned.length === 0) {
-    const links = extractLinks(seed.homepage?.body ?? '');
-    if (links.length > 0) {
-      console.log(`Extracted ${links.length} links from homepage HTML`);
-      planned = links;
-    } else {
-      console.log('No paths from LLM or HTML, using minimal seed list');
-      planned = ['/', '/api', '/login', '/admin', '/docs', '/graphql', '/health', '/search', '/sitemap.xml'];
-    }
-  }
-
-  // Always crawl operator-supplied paths first, deduplicated against LLM plan.
-  const seen = new Set(env.scopePaths);
-  return [...env.scopePaths, ...planned.filter((p) => !seen.has(p))];
-}
-
-interface Endpoint {
-  path: string;
-  status: number;
-  contentType: string;
-  headers: Record<string, string>;
-  snippet: string;
-}
-
-async function crawlPaths(t: string, paths: string[]): Promise<Endpoint[]> {
-  const endpoints: Endpoint[] = [];
-  for (const path of paths) {
-    if (isTerminated()) break;
-    const resp = await fetchSafe(`https://${t}${path}`);
-    if (resp && resp.status < 500) {
-      endpoints.push({
-        path,
-        status: resp.status,
-        contentType: resp.headers['content-type'] ?? '',
-        headers: resp.headers,
-        snippet: resp.body.slice(0, 500),
-      });
-    }
-  }
-  return endpoints;
-}
-
-interface SurfaceEntry {
-  endpoint: string;
-  technologies: string[];
-  vuln_classes: string[];
-  priority: string;
-  reason: string;
-}
-
-async function analyzeSurface(t: string, endpoints: Endpoint[]): Promise<SurfaceEntry[]> {
-  console.log('Asking LLM to analyze attack surface...');
-  const summary = endpoints
-    .map((e) => `${e.path} [HTTP ${e.status}] ${e.contentType}\n${e.snippet.slice(0, 200)}`)
-    .join('\n\n');
-  const response = await askLLM([
-    {
-      role: 'system',
-      content: `You are a penetration testing assistant. Analyze crawled endpoints and produce a prioritized attack surface map.
-
-For each interesting endpoint, identify technologies, applicable vuln_classes, priority, and reason.
-Return JSON array (max 20):
-[{"endpoint": "/path", "technologies": ["express"], "vuln_classes": ["sqli", "xss"], "priority": "high", "reason": "why"}]`,
-    },
-    { role: 'user', content: `Target: ${t}\n\nCrawled endpoints:\n${summary}` },
-  ]);
-
-  try {
-    const parsed = extractJSON(response);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-  } catch {
-    console.log('LLM analysis was not valid JSON, raw:', response.slice(0, 200));
-  }
-
-  console.log('Falling back to raw endpoints as surface map');
-  return endpoints
-    .filter((e) => e.status < 400)
-    .map((e) => ({
-      endpoint: e.path,
-      technologies: [],
-      vuln_classes: ['unknown'],
-      priority: 'medium',
-      reason: `HTTP ${e.status}, ${e.contentType}`,
-    }));
-}
-
-async function submitSurface(t: string, surface: SurfaceEntry[]): Promise<void> {
-  for (const entry of surface) {
-    if (isTerminated()) break;
-    await agent.submitFinding({
-      id: newFindingId(),
-      kind: FindingKind.Discovery,
-      severity: Severity.Info,
-      title: `Discovered: ${entry.endpoint}`,
-      endpoint: `https://${t}${entry.endpoint}`,
-      description: `${entry.reason}. Technologies: ${entry.technologies.join(', ') || 'unknown'}. Suggested tests: ${entry.vuln_classes.join(', ')}. Priority: ${entry.priority}.`,
-      evidence: {
-        metadata: {
-          priority: entry.priority,
-          vuln_classes: entry.vuln_classes.join(','),
-          technologies: entry.technologies.join(','),
-        },
-      },
-    });
-    console.log(`  [${entry.priority}] ${entry.endpoint} → ${entry.vuln_classes.join(', ')}`);
-  }
-}
+You are bounded: maximum ${MAX_ITERATIONS} tool calls. Pace yourself.`;
 
 export async function runDiscovery(): Promise<void> {
-  console.log(`\n── Discovering ${env.target} ──`);
-  const seed = await seedCrawl(env.target);
-  const paths = await planCrawl(env.target, seed);
-  console.log(`LLM planned ${paths.length} paths to crawl`);
-  const endpoints = await crawlPaths(env.target, paths);
-  console.log(`${endpoints.length} live endpoints found`);
-  if (endpoints.length === 0) {
-    console.log('No live endpoints, target may be unreachable');
-    return;
+  console.log(`\n── Discovery: target=${env.target} ──`);
+  if (env.scopePaths.length > 0) {
+    console.log(`Operator-supplied paths: ${env.scopePaths.join(', ')}`);
   }
-  const surface = await analyzeSurface(env.target, endpoints);
-  console.log(`${surface.length} interesting endpoints identified`);
-  await submitSurface(env.target, surface);
-  console.log('\nDiscovery complete.');
+
+  const history: LLMMessage[] = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: buildInitialPrompt(),
+    },
+  ];
+
+  const visited = new Set<string>();
+  let submittedCount = 0;
+  let stopped = false;
+
+  for (let iter = 1; iter <= MAX_ITERATIONS && !stopped; iter++) {
+    const { toolCall, assistantMessage, message } = await callLLMWithTools(history, TOOLS, {
+      toolChoice: 'required',
+    });
+    history.push(assistantMessage);
+
+    if (!toolCall) {
+      console.log(`Iteration ${iter}: LLM produced no tool call (msg: ${message.slice(0, 200)}). Stopping.`);
+      break;
+    }
+
+    const tool = TOOLS_BY_NAME.get(toolCall.name);
+    if (!tool) {
+      const errMsg = `Unknown tool: ${toolCall.name}. Registered tools: ${TOOLS.map((t) => t.name).join(', ')}`;
+      console.log(`Iteration ${iter}: ${errMsg}`);
+      history.push({ role: 'tool', tool_call_id: toolCall.id, content: errMsg });
+      continue;
+    }
+
+    console.log(`Iter ${iter}/${MAX_ITERATIONS}: ${toolCall.name}(${JSON.stringify(toolCall.arguments).slice(0, 120)})`);
+
+    const result = await tool.run(toolCall.arguments);
+    history.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
+
+    if (toolCall.name === 'fetch_path' || toolCall.name === 'crawl' || toolCall.name === 'dir_fuzz' || toolCall.name === 'recon_scan') {
+      const probedPath = (toolCall.arguments.path ?? toolCall.arguments.seed_path ?? toolCall.arguments.base_path) as string;
+      if (probedPath) visited.add(probedPath);
+    } else if (toolCall.name === 'probe_paths') {
+      const probedPaths = (toolCall.arguments.paths ?? []) as string[];
+      for (const p of probedPaths) visited.add(p);
+    }
+    if (toolCall.name === 'submit_finding') submittedCount++;
+    if (toolCall.name === 'done') stopped = true;
+  }
+
+  if (!stopped) {
+    console.log(`Discovery hit iteration cap (${MAX_ITERATIONS}) without 'done'. Submitted ${submittedCount} findings.`);
+  } else {
+    console.log(`\nDiscovery complete. Submitted ${submittedCount} findings across ${visited.size} probes.`);
+  }
+}
+
+function buildInitialPrompt(): string {
+  const parts: string[] = [];
+  parts.push(`Target: https://${env.target}`);
+  if (env.objective) parts.push(`Objective: ${env.objective}`);
+  if (env.scopePaths.length > 0) {
+    parts.push(`Operator-supplied paths in scope (start here):\n${env.scopePaths.map((p) => `  ${p}`).join('\n')}`);
+  } else {
+    parts.push(`No operator-supplied paths. Start with recon_scan on / to characterize the target.`);
+  }
+  parts.push(`\nBegin discovery. Pick your first tool call.`);
+  return parts.join('\n');
 }

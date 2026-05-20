@@ -4,7 +4,7 @@
 
 import { Severity } from '@agentcage/sdk';
 import { auth } from '../../lib/auth';
-import { runCmd } from './cmd';
+import { runCmd } from '../../lib/cmd';
 
 export interface NucleiHit {
   templateID: string;
