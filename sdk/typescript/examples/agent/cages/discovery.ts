@@ -1,9 +1,15 @@
 // Discovery cage: agentic loop.
 //
-// Registers 6 tools with the LLM (fetch_path, crawl, dir_fuzz,
-// recon_scan, submit_finding, done). The LLM picks one tool per turn,
-// sees the result, picks the next. Capped at MAX_ITERATIONS to bound
-// cost. Stops early when the LLM calls `done`.
+// Registers tools with the LLM. Each turn the LLM picks one tool, sees
+// the result, picks the next. Capped at MAX_ITERATIONS to bound cost.
+// Stops early when the LLM calls `done`.
+//
+// State injection: before every turn the loop hands the LLM a fresh
+// "operator notes" message at the head of the message list — visited
+// paths, technologies the recon scan named, findings already filed.
+// The notes are rebuilt each iteration and never stored in history,
+// so the LLM always sees current state without the conversation
+// growing with stale duplicates.
 //
 // Pattern contrast with the exploitation cage: exploitation is a
 // single-shot decision (pick one tool, run it, done). Discovery is
@@ -30,16 +36,63 @@ const SYSTEM_PROMPT = `You are a penetration testing agent performing attack sur
 
 Your goal: map the target's surface and submit Discovery findings for endpoints worth exploitation testing. The coordinator will read your findings to plan exploitation cages, so call out paths that look meaningfully exploitable (admin panels, auth endpoints, API routes, file uploads, exposed configs).
 
+Each turn begins with an "Operator notes" user message summarizing what you have already done (visited paths, recon highlights, findings filed). Read it before deciding the next tool call. Do not re-fetch paths listed there. Do not brute-force surface you already have context for.
+
 Strategy guidelines:
 - Start with recon_scan on / to identify the tech stack and surface obvious exposures.
 - Use fetch_path to look at one specific endpoint in detail when you need its body/headers.
 - Use crawl when the target looks like a SPA or has heavy JavaScript (renders routes client-side).
 - Use probe_paths to check candidate paths YOU generated from prior context — the tech stack you identified, references seen in HTML/JS bundles, conventions of the framework you detected (e.g. Next.js → /_next/data, Rails → /rails/info/routes, Spring → /actuator/*). This is your primary discovery tool once you have any context.
-- Use dir_fuzz only as a last resort when you have no context to generate candidates — blind brute-force with a generic wordlist. Prefer probe_paths if you can guess intelligently.
+- Use dir_fuzz only as a last resort when you have NO context to generate candidates. If the operator notes already list a tech stack or any visited paths, you have context — use probe_paths instead.
 - Submit findings as you discover them — do not hoard until the end. The coordinator works with findings as they arrive.
 - Call done when you have a reasonable map of the surface. Better to stop slightly early than to burn iterations on diminishing returns.
 
 You are bounded: maximum ${MAX_ITERATIONS} tool calls. Pace yourself.`;
+
+interface SubmittedFinding {
+  path: string;
+  priority: string;
+  reason: string;
+}
+
+interface DiscoveryState {
+  visited: Set<string>;
+  reconSummary: string;
+  findings: SubmittedFinding[];
+  iter: number;
+}
+
+function buildOperatorNotes(state: DiscoveryState): LLMMessage {
+  const parts: string[] = [`Operator notes (iter ${state.iter}/${MAX_ITERATIONS}):`];
+  if (state.reconSummary) {
+    parts.push(`Recon highlights: ${state.reconSummary}`);
+  }
+  if (state.visited.size > 0) {
+    const sorted = [...state.visited].sort();
+    parts.push(`Visited paths (${state.visited.size}): ${sorted.join(', ')}`);
+  } else {
+    parts.push('Visited paths: none yet.');
+  }
+  if (state.findings.length > 0) {
+    parts.push(`Findings filed (${state.findings.length}):`);
+    for (const f of state.findings) {
+      parts.push(`  - [${f.priority}] ${f.path} — ${f.reason.slice(0, 100)}`);
+    }
+  } else {
+    parts.push('Findings filed: none yet.');
+  }
+  return { role: 'user', content: parts.join('\n') };
+}
+
+// extractReconSummary keeps the first ~250 chars of the recon_scan
+// result. The full output stays in history; this short version
+// surfaces the technology/exposure highlights at the head of every
+// future prompt so the LLM doesn't have to scan back.
+function extractReconSummary(toolResult: string): string {
+  const trimmed = toolResult.trim();
+  if (trimmed.length <= 250) return trimmed;
+  return trimmed.slice(0, 250) + '…';
+}
 
 export async function runDiscovery(): Promise<void> {
   console.log(`\n── Discovery: target=${env.target} ──`);
@@ -47,20 +100,28 @@ export async function runDiscovery(): Promise<void> {
     console.log(`Operator-supplied paths: ${env.scopePaths.join(', ')}`);
   }
 
-  const history: LLMMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: buildInitialPrompt(),
-    },
-  ];
+  const initialUser: LLMMessage = { role: 'user', content: buildInitialPrompt() };
+  const systemMsg: LLMMessage = { role: 'system', content: SYSTEM_PROMPT };
 
-  const visited = new Set<string>();
-  let submittedCount = 0;
+  // history holds the canonical conversation: assistant tool_call
+  // messages and their matching tool responses. The operator notes
+  // message is rebuilt every iter and never stored here, so it stays
+  // current without bloating the conversation.
+  const history: LLMMessage[] = [initialUser];
+
+  const state: DiscoveryState = {
+    visited: new Set<string>(),
+    reconSummary: '',
+    findings: [],
+    iter: 0,
+  };
+
   let stopped = false;
 
   for (let iter = 1; iter <= MAX_ITERATIONS && !stopped; iter++) {
-    const { toolCall, assistantMessage, message } = await callLLMWithTools(history, TOOLS, {
+    state.iter = iter;
+    const messagesForLLM: LLMMessage[] = [systemMsg, buildOperatorNotes(state), ...history];
+    const { toolCall, assistantMessage, message } = await callLLMWithTools(messagesForLLM, TOOLS, {
       toolChoice: 'required',
     });
     history.push(assistantMessage);
@@ -83,21 +144,55 @@ export async function runDiscovery(): Promise<void> {
     const result = await tool.run(toolCall.arguments);
     history.push({ role: 'tool', tool_call_id: toolCall.id, content: result });
 
-    if (toolCall.name === 'fetch_path' || toolCall.name === 'crawl' || toolCall.name === 'dir_fuzz' || toolCall.name === 'recon_scan') {
-      const probedPath = (toolCall.arguments.path ?? toolCall.arguments.seed_path ?? toolCall.arguments.base_path) as string;
-      if (probedPath) visited.add(probedPath);
-    } else if (toolCall.name === 'probe_paths') {
-      const probedPaths = (toolCall.arguments.paths ?? []) as string[];
-      for (const p of probedPaths) visited.add(p);
-    }
-    if (toolCall.name === 'submit_finding') submittedCount++;
+    updateState(state, toolCall.name, toolCall.arguments, result);
     if (toolCall.name === 'done') stopped = true;
   }
 
   if (!stopped) {
-    console.log(`Discovery hit iteration cap (${MAX_ITERATIONS}) without 'done'. Submitted ${submittedCount} findings.`);
+    console.log(`Discovery hit iteration cap (${MAX_ITERATIONS}) without 'done'. Submitted ${state.findings.length} findings.`);
   } else {
-    console.log(`\nDiscovery complete. Submitted ${submittedCount} findings across ${visited.size} probes.`);
+    console.log(`\nDiscovery complete. Submitted ${state.findings.length} findings across ${state.visited.size} probes.`);
+  }
+}
+
+function updateState(
+  state: DiscoveryState,
+  toolName: string,
+  args: Record<string, unknown>,
+  result: string,
+): void {
+  switch (toolName) {
+    case 'fetch_path':
+    case 'recon_scan': {
+      const path = args.path as string | undefined;
+      if (path) state.visited.add(path);
+      if (toolName === 'recon_scan' && !state.reconSummary) {
+        state.reconSummary = extractReconSummary(result);
+      }
+      break;
+    }
+    case 'crawl': {
+      const seed = args.seed_path as string | undefined;
+      if (seed) state.visited.add(seed);
+      break;
+    }
+    case 'dir_fuzz': {
+      const base = args.base_path as string | undefined;
+      if (base) state.visited.add(base);
+      break;
+    }
+    case 'probe_paths': {
+      const paths = (args.paths ?? []) as string[];
+      for (const p of paths) state.visited.add(p);
+      break;
+    }
+    case 'submit_finding': {
+      const path = (args.path as string) ?? '';
+      const priority = (args.priority as string) ?? 'medium';
+      const reason = (args.reason as string) ?? '';
+      if (path) state.findings.push({ path, priority, reason });
+      break;
+    }
   }
 }
 
