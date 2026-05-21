@@ -244,6 +244,8 @@ func typeFromString(s string) Type {
 		return TypePolicyViolation
 	case "agent_hold":
 		return TypeAgentHold
+	case "plan_approval":
+		return TypePlanApproval
 	default:
 		return 0
 	}

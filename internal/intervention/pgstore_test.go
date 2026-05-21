@@ -42,6 +42,9 @@ func TestTypeFromString(t *testing.T) {
 		{"tripwire_escalation", TypeTripwireEscalation},
 		{"payload_review", TypePayloadReview},
 		{"report_review", TypeReportReview},
+		{"policy_violation", TypePolicyViolation},
+		{"agent_hold", TypeAgentHold},
+		{"plan_approval", TypePlanApproval},
 		{"garbage", 0},
 	}
 	for _, tt := range tests {
