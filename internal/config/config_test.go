@@ -284,7 +284,7 @@ func TestMerge_LLMOverride(t *testing.T) {
 
 	result := Merge(base, override)
 	assert.Equal(t, "https://llm.example.com/v1", result.LLM.Endpoint)
-	assert.Equal(t, 30*time.Second, result.LLM.Timeout, "default timeout preserved")
+	assert.Equal(t, 90*time.Second, result.LLM.Timeout, "default timeout preserved")
 }
 
 func TestRateLimit(t *testing.T) {

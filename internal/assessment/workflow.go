@@ -19,12 +19,17 @@ const (
 	WorkflowName = "AssessmentWorkflow"
 	SignalFinish = "assessment_finish"
 
-	TimeoutCreateCage      = 30 * time.Second
-	TimeoutGetFindings     = 15 * time.Second
-	TimeoutUpdateStatus    = 5 * time.Second
-	TimeoutGenerateReport  = 30 * time.Second
-	TimeoutUpdateFinding   = 5 * time.Second
-	TimeoutPlanNextActions = 60 * time.Second
+	TimeoutCreateCage     = 30 * time.Second
+	TimeoutGetFindings    = 15 * time.Second
+	TimeoutUpdateStatus   = 5 * time.Second
+	TimeoutGenerateReport = 30 * time.Second
+	TimeoutUpdateFinding  = 5 * time.Second
+	// Plan-generation and goal-generation issue a single chat-completion
+	// request whose latency is dominated by the model writing the
+	// response. With GPT-5.5 emitting 2-3K completion tokens for a
+	// realistic plan, we measured ~50s end-to-end; 200s leaves room for
+	// the gateway's retry budget and slower-than-typical responses.
+	TimeoutPlanNextActions = 200 * time.Second
 	TimeoutReviewDeadline  = 24 * time.Hour
 	TimeoutWaitForCage     = 10 * time.Minute
 	DefaultMaxBatchSize    = int32(1)

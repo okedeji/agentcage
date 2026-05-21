@@ -690,7 +690,11 @@ func Defaults() *Config {
 	return &Config{
 		Notifications: NotificationsConfig{},
 		LLM: LLMConfig{
-			Timeout: 30 * time.Second,
+			// GPT-5.5 emits 2-3K completion tokens for a realistic plan
+			// in roughly 50s. 90s leaves headroom for slower responses
+			// without making transient hangs cost the full Temporal
+			// activity budget.
+			Timeout: 90 * time.Second,
 		},
 		Cages: map[string]CageTypeConfig{
 			"discovery": {

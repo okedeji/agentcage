@@ -37,6 +37,12 @@ type AlertNotifier interface {
 // request so config set llm.endpoint takes effect immediately.
 type EndpointFunc func() string
 
+// TimeoutFunc returns the per-request timeout. Called on every
+// request so config set llm.timeout takes effect without restarting
+// the orchestrator. Falls back to 30s when the resolver returns a
+// non-positive value.
+type TimeoutFunc func() time.Duration
+
 type Client struct {
 	endpointFn EndpointFunc
 	apiKey     string
@@ -44,20 +50,19 @@ type Client struct {
 	meter      *TokenMeter
 	budget     *BudgetEnforcer
 	alerter    AlertNotifier
-	timeout    time.Duration
+	timeoutFn  TimeoutFunc
 
 	authFailMu    sync.Mutex
 	authFailures  int
 	authAlertSent bool
 }
 
-func NewClient(endpointFn EndpointFunc, apiKey string, timeout time.Duration, meter *TokenMeter, budget *BudgetEnforcer, alerter AlertNotifier) *Client {
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
+func NewClient(endpointFn EndpointFunc, apiKey string, timeoutFn TimeoutFunc, meter *TokenMeter, budget *BudgetEnforcer, alerter AlertNotifier) *Client {
 	// Tuned for high-concurrency single-endpoint workload: thousands of cages
 	// all talking to one gateway. Default MaxIdleConnsPerHost=2 would force
-	// most requests to redo TCP+TLS handshakes.
+	// most requests to redo TCP+TLS handshakes. The http.Client has no
+	// Timeout; per-request deadlines come from the request context, which
+	// the retry loop derives from the live timeoutFn value.
 	transport := otelhttp.NewTransport(&http.Transport{
 		MaxIdleConns:        500,
 		MaxIdleConnsPerHost: 100,
@@ -66,15 +71,23 @@ func NewClient(endpointFn EndpointFunc, apiKey string, timeout time.Duration, me
 	return &Client{
 		endpointFn: endpointFn,
 		apiKey:     apiKey,
-		httpClient: &http.Client{
-			Transport: transport,
-			Timeout:   timeout + 5*time.Second,
-		},
-		meter:   meter,
-		budget:  budget,
-		alerter: alerter,
-		timeout: timeout,
+		httpClient: &http.Client{Transport: transport},
+		meter:      meter,
+		budget:     budget,
+		alerter:    alerter,
+		timeoutFn:  timeoutFn,
 	}
+}
+
+func (c *Client) requestTimeout() time.Duration {
+	if c.timeoutFn == nil {
+		return 30 * time.Second
+	}
+	t := c.timeoutFn()
+	if t <= 0 {
+		return 30 * time.Second
+	}
+	return t
 }
 
 func (c *Client) ChatCompletion(ctx context.Context, cageID, assessmentID string, tokenBudget int64, req LLMRequest) (*LLMResponse, error) {
@@ -127,7 +140,7 @@ func (c *Client) doWithRetry(ctx context.Context, body []byte) ([]byte, error) {
 			}
 		}
 
-		reqCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		reqCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
 		httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.endpointFn(), bytes.NewReader(body))
 		if err != nil {
 			cancel()

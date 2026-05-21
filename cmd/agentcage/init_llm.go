@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -32,8 +33,11 @@ func buildLLMClient(ctx context.Context, cfg *config.Config, configServer *confi
 	endpointFn := func() string {
 		return configServer.GetConfig(ctx).LLM.Endpoint
 	}
+	timeoutFn := func() time.Duration {
+		return configServer.GetConfig(ctx).LLM.Timeout
+	}
 
-	client := gateway.NewClient(endpointFn, apiKey, cfg.LLM.Timeout, meter, budgetEnforcer, alertDispatcher)
+	client := gateway.NewClient(endpointFn, apiKey, timeoutFn, meter, budgetEnforcer, alertDispatcher)
 	log.Info("LLM gateway client configured", "endpoint", cfg.LLM.Endpoint, "auth", apiKey != "", "live_reload", true)
 	return client, meter, apiKey, nil
 }
