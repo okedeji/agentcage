@@ -135,12 +135,12 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 
 	// Set up TAP device for this VM
 	tapName := fmt.Sprintf("tap-%s", vmID[:8])
-	ipAddr, ipErr := p.allocateIP()
+	hostIP, guestIP, ipErr := p.allocateIPPair()
 	if ipErr != nil {
 		return nil, ipErr
 	}
 
-	if err := setupTAP(ctx, tapName, ipAddr); err != nil {
+	if err := setupTAP(ctx, tapName, hostIP); err != nil {
 		return nil, fmt.Errorf("setting up TAP device %s: %w", tapName, err)
 	}
 
@@ -205,7 +205,7 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 		return nil, fmt.Errorf("waiting for firecracker API socket: %w", err)
 	}
 
-	if err := p.configureVM(ctx, socketPath, kernelPath, rootfsPath, config, tapName, ipAddr); err != nil {
+	if err := p.configureVM(ctx, socketPath, kernelPath, rootfsPath, config, tapName, hostIP, guestIP); err != nil {
 		_ = cmd.Process.Kill()
 		cleanup()
 		return nil, fmt.Errorf("configuring VM: %w", err)
@@ -219,7 +219,7 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	handle := &VMHandle{
 		ID:         vmID,
 		CageID:     config.CageID,
-		IPAddress:  ipAddr,
+		IPAddress:  guestIP,
 		SocketPath: socketPath,
 		VsockPath:  vsockPath,
 	}
@@ -237,7 +237,7 @@ func (p *FirecrackerProvisioner) Provision(ctx context.Context, config VMConfig)
 	p.log.Info("VM provisioned (not yet booted)",
 		"cage_id", config.CageID,
 		"vm_id", vmID,
-		"ip", ipAddr,
+		"ip", guestIP,
 	)
 
 	return handle, nil
@@ -350,15 +350,15 @@ func (p *FirecrackerProvisioner) ResumeVM(ctx context.Context, vmID string) erro
 
 // configureVM sends boot source, drives, machine config, and network config
 // to the Firecracker API.
-func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernelPath, rootfsPath string, cfg VMConfig, tapName, hostIP string) error {
-	// Derive guest IP from the host TAP IP. Both sit on a /30;
-	// the guest gets host - 1 so they're adjacent.
-	guestIP := incrementIP(hostIP)
-
+func (p *FirecrackerProvisioner) configureVM(ctx context.Context, socket, kernelPath, rootfsPath string, cfg VMConfig, tapName, hostIP, guestIP string) error {
 	// Set boot source. The ip= parameter configures guest eth0
-	// at boot without DHCP. Format: ip=<client>::<gw>:<mask>::<dev>:off
+	// at boot without DHCP. Format: ip=<client>::<gw>:<mask>::<dev>:off.
+	// /31 (RFC 3021) means both addresses are valid hosts on a point-
+	// to-point link; allocateIPPair guarantees host and guest sit in
+	// the same /31, so the kernel's "Gateway not on directly connected
+	// network" check in ic_setup_routes always passes.
 	bootArgs := fmt.Sprintf(
-		"console=ttyS0 earlycon=uart,io,0x3f8 reboot=k panic=1 i8042.noaux i8042.nomux i8042.dumbkbd nomodule ip=%s::%s:255.255.255.252::eth0:off",
+		"console=ttyS0 earlycon=uart,io,0x3f8 reboot=k panic=1 i8042.noaux i8042.nomux i8042.dumbkbd nomodule ip=%s::%s:255.255.255.254::eth0:off",
 		guestIP, hostIP,
 	)
 	bootSource := map[string]any{
@@ -462,10 +462,12 @@ func firecrackerAPI(ctx context.Context, socketPath, method, path string, body a
 }
 
 // setupTAP creates a TAP device and assigns an IP for host-side networking.
+// /31 (RFC 3021) is the point-to-point prefix length: the host gets one
+// address, the guest the other, no wasted network/broadcast slots.
 func setupTAP(ctx context.Context, tapName, ipAddr string) error {
 	commands := [][]string{
 		{"ip", "tuntap", "add", "dev", tapName, "mode", "tap"},
-		{"ip", "addr", "add", ipAddr + "/30", "dev", tapName},
+		{"ip", "addr", "add", ipAddr + "/31", "dev", tapName},
 		{"ip", "link", "set", tapName, "up"},
 	}
 	for _, args := range commands {
@@ -501,33 +503,37 @@ func waitForSocket(ctx context.Context, path string, timeout time.Duration) erro
 	return fmt.Errorf("socket %s did not appear within %s", path, timeout)
 }
 
-var ipCounter uint32 = 1
+// Each cage takes one /31 block (2 IPs: host TAP + guest eth0). Slots
+// start at offset 4 inside 172.20.0.0/16 so we never touch the all-
+// zeros or low addresses that some infra reserves. Cap at 32760 cages
+// per orchestrator lifetime — more than any realistic single-host
+// workload, and well under the /16 limit. The counter never recycles;
+// torn-down cages don't free their slot, but at 32k headroom this is
+// not the resource that runs out first.
+const (
+	ipBlockBase    = 4
+	ipMaxSlots     = 32760
+	cageIPPrefixLo = 172
+	cageIPPrefixHi = 20
+)
+
+var ipCounter uint32
 var ipMu sync.Mutex
 
-func (p *FirecrackerProvisioner) allocateIP() (string, error) {
+func (p *FirecrackerProvisioner) allocateIPPair() (string, string, error) {
 	ipMu.Lock()
 	defer ipMu.Unlock()
+	slot := ipCounter
+	if slot >= ipMaxSlots {
+		return "", "", fmt.Errorf("cage IP space exhausted (172.20.0.0/16, %d /31 blocks used)", slot)
+	}
 	ipCounter++
-	third := ipCounter / 252
-	fourth := (ipCounter % 252) + 2
-	if third > 255 {
-		return "", fmt.Errorf("IP address space exhausted (172.20.0.0/16, %d VMs allocated)", ipCounter)
-	}
-	return fmt.Sprintf("172.20.%d.%d", third, fourth), nil
-}
-
-// incrementIP adds 1 to the last octet of an IPv4 address.
-// The guest IP must be in the same /30 as the host TAP IP.
-// Host gets the base of the /30 block; guest gets base + 1.
-func incrementIP(ip string) string {
-	parts := strings.Split(ip, ".")
-	if len(parts) != 4 {
-		return ip
-	}
-	last := 0
-	_, _ = fmt.Sscanf(parts[3], "%d", &last)
-	last++
-	return fmt.Sprintf("%s.%s.%s.%d", parts[0], parts[1], parts[2], last)
+	offset := uint32(ipBlockBase) + slot*2
+	third := uint8(offset >> 8)
+	fourth := uint8(offset & 0xFF)
+	hostIP := fmt.Sprintf("%d.%d.%d.%d", cageIPPrefixLo, cageIPPrefixHi, third, fourth)
+	guestIP := fmt.Sprintf("%d.%d.%d.%d", cageIPPrefixLo, cageIPPrefixHi, third, fourth+1)
+	return hostIP, guestIP, nil
 }
 
 func generateMAC(cageID string) string {

@@ -44,7 +44,10 @@ async function postLLM(body: object): Promise<any> {
     body: JSON.stringify(body),
     timeoutMs: 60000,
   });
-  if (!resp.ok) throw new Error(`LLM returned ${resp.status}`);
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '<unreadable>');
+    throw new Error(`LLM returned ${resp.status}: ${body.slice(0, 2000)}`);
+  }
   return resp.json();
 }
 
