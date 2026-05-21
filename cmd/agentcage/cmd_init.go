@@ -211,7 +211,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 	if fleetSetup.autoscaler != nil {
 		fleetSignaler = fleetSetup.autoscaler
 	}
-	assessmentSvc := assessment.NewService(temporalClient, db, fleetSignaler, cfg, filepath.Join(embedded.DataDir(), "bundles"))
+	assessmentSvc := assessment.NewService(temporalClient, db, fleetSignaler, findingStore, cfg, filepath.Join(embedded.DataDir(), "bundles"))
 
 	iQueue := intervention.NewQueue(iStore, notifier, log.WithValues("component", "intervention-queue"))
 	iSvc := intervention.NewService(iQueue, temporalClient, log.WithValues("component", "intervention-service"))

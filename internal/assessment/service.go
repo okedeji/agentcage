@@ -17,6 +17,7 @@ import (
 	"github.com/okedeji/agentcage/internal/cage"
 	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/findings"
 	"github.com/okedeji/agentcage/internal/ids"
 	"github.com/okedeji/agentcage/internal/plan"
 )
@@ -32,25 +33,52 @@ type FleetSignaler interface {
 	OnAssessmentComplete(assessmentID string)
 }
 
+// FindingCounter reports live candidate/validated/rejected counts for
+// an assessment. Defined here as a narrow interface so GetAssessment
+// can return current numbers without waiting for the workflow's
+// periodic syncStats call — findings arrive on a stream between syncs,
+// so the cached Stats lag by minutes for an active discovery cage.
+type FindingCounter interface {
+	CountByAssessment(ctx context.Context, assessmentID string) (findings.StatusCounts, error)
+}
+
 type Service struct {
 	temporal       client.Client
 	db             *sql.DB
 	fleet          FleetSignaler
+	findings       FindingCounter
 	operatorCfg    *config.Config
 	bundleStoreDir string
 	mu             sync.RWMutex
 	assessments    map[string]*Info
 }
 
-func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, operatorCfg *config.Config, bundleStoreDir string) *Service {
+func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, findings FindingCounter, operatorCfg *config.Config, bundleStoreDir string) *Service {
 	return &Service{
 		temporal:       temporal,
 		db:             db,
 		fleet:          fleet,
+		findings:       findings,
 		operatorCfg:    operatorCfg,
 		bundleStoreDir: bundleStoreDir,
 		assessments:    make(map[string]*Info),
 	}
+}
+
+// overlayLiveCounts replaces info.Stats.FindingsCandidate/Validated/
+// Rejected with live counts from the findings store. Best-effort: on
+// error we leave the cached values in place rather than zeroing.
+func (s *Service) overlayLiveCounts(ctx context.Context, info *Info) {
+	if s.findings == nil || info == nil {
+		return
+	}
+	counts, err := s.findings.CountByAssessment(ctx, info.ID)
+	if err != nil {
+		return
+	}
+	info.Stats.FindingsCandidate = counts.Candidate
+	info.Stats.FindingsValidated = counts.Validated
+	info.Stats.FindingsRejected = counts.Rejected
 }
 
 func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, error) {
@@ -243,10 +271,14 @@ func (s *Service) forceStatus(ctx context.Context, assessmentID string, status S
 
 func (s *Service) GetAssessment(ctx context.Context, assessmentID string) (*Info, error) {
 	s.mu.RLock()
-	info, ok := s.assessments[assessmentID]
+	cached, ok := s.assessments[assessmentID]
 	s.mu.RUnlock()
 	if ok {
-		return info, nil
+		// Copy so the live-count overlay doesn't mutate the cached row
+		// other callers share.
+		view := *cached
+		s.overlayLiveCounts(ctx, &view)
+		return &view, nil
 	}
 
 	info, err := s.loadAssessment(ctx, assessmentID)
@@ -257,7 +289,9 @@ func (s *Service) GetAssessment(ctx context.Context, assessmentID string) (*Info
 	s.mu.Lock()
 	s.assessments[assessmentID] = info
 	s.mu.Unlock()
-	return info, nil
+	view := *info
+	s.overlayLiveCounts(ctx, &view)
+	return &view, nil
 }
 
 type ListFilters struct {
@@ -346,6 +380,13 @@ func (s *Service) ListAssessments(ctx context.Context, filters ListFilters) ([]I
 		}
 	}
 	s.mu.RUnlock()
+
+	// Live-count overlay: findings arrive between workflow syncStats
+	// calls, so cached counts lag for active assessments. Done after
+	// the cache copy so it always wins.
+	for i := range results {
+		s.overlayLiveCounts(ctx, &results[i])
+	}
 
 	// The DB filtered by persisted status, but the cache overlay may
 	// have updated a row's status since the last write. Drop rows that
