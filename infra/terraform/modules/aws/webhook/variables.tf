@@ -22,12 +22,6 @@ variable "webhook_api_key" {
   sensitive   = true
 }
 
-variable "agentcage_version" {
-  description = "agentcage release version (used to download the CLI on the webhook instance for `agentcage sdk install`)"
-  type        = string
-  default     = "0.1.0"
-}
-
 variable "llm_provider_url" {
   description = "LLM provider endpoint (e.g. https://api.openai.com/v1/chat/completions)"
   type        = string

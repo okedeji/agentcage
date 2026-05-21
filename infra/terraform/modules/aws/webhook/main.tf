@@ -85,7 +85,6 @@ resource "aws_instance" "webhook" {
     judge_provider_key = var.judge_provider_key
     judge_model        = var.judge_model
     port               = var.port
-    agentcage_version  = var.agentcage_version
   })
 
   tags = {

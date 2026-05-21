@@ -9,13 +9,6 @@ export { AgentSDK, type AgentConfig, newFindingId, fetch, type FetchOptions, rea
 // The agent-side CageType from readCageEnv is a string-literal union and is
 // referenced via the CageEnv shape.
 
-// Judge: building blocks for writing a payload-safety classifier
-// service. Types describe the wire format; validators parse and check
-// incoming requests / outgoing responses. The customer brings their
-// own HTTP framework, auth, observability, and LLM logic.
-export { validatePayloads, validateResults } from './judge';
-export type { JudgePayload, JudgeResult } from './judge';
-
 // Provisioner server — HTTP framework for bare-metal host management.
 export { createProvisionerServer, type ProvisionerHandler, type ProvisionerServerConfig } from './provisioner';
 

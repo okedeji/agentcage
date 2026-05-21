@@ -258,13 +258,21 @@ func main() {
 		}
 		if needsJudge {
 			if judge != nil {
+				// Judge consumes tokens too. Refuse to fire when the cage
+				// is out of budget so the agent gets a single 429 signal
+				// instead of one judge call slipping past the meter.
+				if *tokenBudget >= 0 && tokensConsumed.Load() >= *tokenBudget {
+					logger.Info("token budget exhausted, refusing judge call", "consumed", tokensConsumed.Load(), "budget", *tokenBudget)
+					http.Error(w, "token budget exhausted", http.StatusTooManyRequests)
+					return
+				}
 				headerMap := make(map[string]string, len(r.Header))
 				for k, v := range r.Header {
 					if len(v) > 0 {
 						headerMap[k] = v[0]
 					}
 				}
-				jDecision, jReason, jErr := judge.Evaluate(enforcement.EvaluateInput{
+				jOut, jErr := judge.Evaluate(enforcement.EvaluateInput{
 					CageType:     *cageType,
 					VulnClass:    *vulnClass,
 					AssessmentID: *assessmentID,
@@ -275,20 +283,39 @@ func main() {
 					Objective:    *objective,
 					AgentReason:  agentReason,
 				})
-				if jErr != nil {
-					logger.Error(jErr, "judge evaluation failed, blocking (fail-closed)", "method", r.Method, "url", r.URL.String())
-					http.Error(w, "blocked by payload proxy: judge unreachable", http.StatusForbidden)
-					return
+				// Count judge LLM tokens against the cage budget regardless
+				// of the decision — the call was made and billed.
+				if jOut.Usage.TotalTokens > 0 {
+					tokensConsumed.Add(jOut.Usage.TotalTokens)
+					logger.Info("judge_usage",
+						"prompt_tokens", jOut.Usage.PromptTokens,
+						"completion_tokens", jOut.Usage.CompletionTokens,
+						"total_tokens", jOut.Usage.TotalTokens,
+						"consumed", tokensConsumed.Load(),
+					)
+					reportTokenUsage(*cageID, *assessmentID, tokensConsumed.Load())
 				}
-				switch jDecision {
+				// On any judge error (network / malformed response / missing
+				// tool_call / invalid confidence), JudgeClient returns
+				// Decision=PayloadHold with a reason. Route it through the
+				// hold path — uncertainty is the operator's call, not the
+				// proxy's. Block is reserved for "judge said no with
+				// confidence."
+				if jErr != nil {
+					logger.Error(jErr, "judge evaluation errored, escalating to human review", "method", r.Method, "url", r.URL.String(), "reason", jOut.Reason)
+				}
+				switch jOut.Decision {
 				case enforcement.PayloadBlock:
-					logger.Info("payload blocked by judge", "method", r.Method, "url", r.URL.String(), "reason", jReason)
-					http.Error(w, fmt.Sprintf("blocked by judge: %s", jReason), http.StatusForbidden)
+					logger.Info("payload blocked by judge", "method", r.Method, "url", r.URL.String(), "reason", jOut.Reason)
+					http.Error(w, fmt.Sprintf("blocked by judge: %s", jOut.Reason), http.StatusForbidden)
 					return
 				case enforcement.PayloadHold:
-					if handlePayloadHold(w, r, holdMgr, holdTimeout, *cageID, jReason, logger) {
+					if handlePayloadHold(w, r, holdMgr, holdTimeout, *cageID, jOut.Reason, logger) {
 						return
 					}
+					// Holds disabled or hold queue full — fail closed.
+					http.Error(w, fmt.Sprintf("blocked: %s (hold mechanism unavailable)", jOut.Reason), http.StatusForbidden)
+					return
 				}
 			} else {
 				// Agent asked for a second opinion but no judge is wired
