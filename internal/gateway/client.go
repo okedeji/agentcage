@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,23 +168,44 @@ func (c *Client) doWithRetry(ctx context.Context, body []byte) ([]byte, error) {
 			continue
 		}
 
-		// Retry on 5xx (transient gateway/provider failures), give up on 4xx (client errors)
+		// Retry on 5xx (transient gateway/provider failures), give up on 4xx (client errors).
+		// Body excerpt is included on non-2xx so the actual provider
+		// error (e.g. "You exceeded your current quota") shows up in
+		// orchestrator logs instead of just the bare status code.
 		if httpResp.StatusCode >= 500 {
-			lastErr = fmt.Errorf("LLM gateway returned HTTP %d (attempt %d)", httpResp.StatusCode, attempt+1)
+			lastErr = fmt.Errorf("LLM gateway returned HTTP %d (attempt %d): %s", httpResp.StatusCode, attempt+1, bodyExcerpt(respBody))
 			continue
 		}
 		if httpResp.StatusCode == http.StatusUnauthorized || httpResp.StatusCode == http.StatusForbidden {
 			c.recordAuthFailure(ctx, httpResp.StatusCode)
+			// Auth-error bodies sometimes echo the rejected key. Suppress
+			// the body to keep partial credentials out of logs.
 			return nil, fmt.Errorf("LLM gateway returned HTTP %d (auth)", httpResp.StatusCode)
 		}
 		if httpResp.StatusCode >= 400 {
-			return nil, fmt.Errorf("LLM gateway returned HTTP %d", httpResp.StatusCode)
+			return nil, fmt.Errorf("LLM gateway returned HTTP %d: %s", httpResp.StatusCode, bodyExcerpt(respBody))
 		}
 
 		c.resetAuthFailures()
 		return respBody, nil
 	}
 	return nil, fmt.Errorf("LLM gateway failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+// bodyExcerpt returns a single-line view of a response body suitable
+// for embedding in an error message. Caps at 2KB so a giant provider
+// response can't blow up the orchestrator log line.
+func bodyExcerpt(b []byte) string {
+	const cap = 2048
+	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return "<empty body>"
+	}
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) > cap {
+		return s[:cap] + "…"
+	}
+	return s
 }
 
 func (c *Client) recordAuthFailure(ctx context.Context, status int) {
