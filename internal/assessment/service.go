@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"go.temporal.io/sdk/client"
 
 	"github.com/okedeji/agentcage/internal/cage"
+	"github.com/okedeji/agentcage/internal/cagefile"
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/ids"
 	"github.com/okedeji/agentcage/internal/plan"
@@ -31,25 +33,43 @@ type FleetSignaler interface {
 }
 
 type Service struct {
-	temporal    client.Client
-	db          *sql.DB
-	fleet       FleetSignaler
-	operatorCfg *config.Config
-	mu          sync.RWMutex
-	assessments map[string]*Info
+	temporal       client.Client
+	db             *sql.DB
+	fleet          FleetSignaler
+	operatorCfg    *config.Config
+	bundleStoreDir string
+	mu             sync.RWMutex
+	assessments    map[string]*Info
 }
 
-func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, operatorCfg *config.Config) *Service {
+func NewService(temporal client.Client, db *sql.DB, fleet FleetSignaler, operatorCfg *config.Config, bundleStoreDir string) *Service {
 	return &Service{
-		temporal:    temporal,
-		db:          db,
-		fleet:       fleet,
-		operatorCfg: operatorCfg,
-		assessments: make(map[string]*Info),
+		temporal:       temporal,
+		db:             db,
+		fleet:          fleet,
+		operatorCfg:    operatorCfg,
+		bundleStoreDir: bundleStoreDir,
+		assessments:    make(map[string]*Info),
 	}
 }
 
 func (s *Service) CreateAssessment(ctx context.Context, cfg Config) (*Info, error) {
+	// Capabilities live in the agent's .cage manifest, not in the gRPC
+	// request — the proto deliberately doesn't carry them so the bundle
+	// is the single source of truth. The workflow's discovery gate, the
+	// exploitation skip, and the validation-proof trust default all read
+	// cfg.Capabilities, so the bundle must be read here before
+	// ExecuteWorkflow. Cage activities re-read the manifest at spawn
+	// time for env wiring, which is independent of this load.
+	if cfg.BundleRef != "" && s.bundleStoreDir != "" {
+		bundlePath := filepath.Join(s.bundleStoreDir, cfg.BundleRef+".cage")
+		manifest, err := cagefile.ReadManifest(bundlePath)
+		if err != nil {
+			return nil, fmt.Errorf("reading agent manifest from bundle %s: %w", cfg.BundleRef, err)
+		}
+		cfg.Capabilities = manifest.Capabilities
+	}
+
 	// Same merge order as the CLI: operator defaults → request overrides →
 	// apply defaults → validate → enforce ceilings. SDK users who don't
 	// set tokenBudget get the operator's default instead of zero.

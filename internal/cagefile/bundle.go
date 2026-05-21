@@ -404,6 +404,76 @@ func UnpackFile(bundlePath, destDir string) (*BundleManifest, error) {
 	return UnpackFileWithOpts(bundlePath, destDir, nil)
 }
 
+// ReadManifest returns the manifest from a .cage bundle without
+// extracting any other files. The signature hash is still verified so
+// callers get the same tamper-detection guarantee as Unpack.
+func ReadManifest(bundlePath string) (*BundleManifest, error) {
+	f, err := os.Open(bundlePath)
+	if err != nil {
+		return nil, fmt.Errorf("opening bundle %s: %w", bundlePath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	gr, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("opening gzip: %w", err)
+	}
+	defer func() { _ = gr.Close() }()
+
+	tr := tar.NewReader(&io.LimitedReader{R: gr, N: maxDecompressedSize})
+
+	var manifestBytes, signatureBytes []byte
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading tar entry: %w", err)
+		}
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+		switch header.Name {
+		case "manifest.json":
+			manifestBytes, err = io.ReadAll(tr)
+			if err != nil {
+				return nil, fmt.Errorf("reading manifest entry: %w", err)
+			}
+		case bundleSignatureFile:
+			signatureBytes, err = io.ReadAll(tr)
+			if err != nil {
+				return nil, fmt.Errorf("reading signature entry: %w", err)
+			}
+		}
+		if manifestBytes != nil && signatureBytes != nil {
+			break
+		}
+	}
+
+	if manifestBytes == nil {
+		return nil, fmt.Errorf("bundle does not contain manifest.json")
+	}
+	if signatureBytes == nil {
+		return nil, fmt.Errorf("bundle is missing signature.json, repack with a current agentcage version")
+	}
+
+	var sig bundleSignature
+	if err := json.Unmarshal(signatureBytes, &sig); err != nil {
+		return nil, fmt.Errorf("parsing bundle signature: %w", err)
+	}
+	expected := "sha256:" + sha256Hex(manifestBytes)
+	if sig.ManifestHash != expected {
+		return nil, fmt.Errorf("bundle manifest hash mismatch, manifest may be tampered (expected %s, got %s)", sig.ManifestHash, expected)
+	}
+
+	var manifest BundleManifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return nil, fmt.Errorf("parsing manifest: %w", err)
+	}
+	return &manifest, nil
+}
+
 func UnpackFileWithOpts(bundlePath, destDir string, opts *UnpackOptions) (*BundleManifest, error) {
 	f, err := os.Open(bundlePath)
 	if err != nil {
