@@ -73,6 +73,10 @@ export async function callLLMWithTools(
       function: { name: t.name, description: t.description, parameters: t.parameters },
     })),
     tool_choice: opts.toolChoice ?? 'auto',
+    // The loop dispatches one tool per turn; OpenAI returning multiple
+    // parallel tool_calls in a single response would leave the extras
+    // unanswered in the next message, which the API rejects with 400.
+    parallel_tool_calls: false,
   });
   const choice = data.choices?.[0];
   const rawMessage = choice?.message;
