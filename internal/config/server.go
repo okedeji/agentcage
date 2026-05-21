@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -188,6 +189,27 @@ func setYAMLMapValue(tree map[string]any, path, value string) error {
 		return fmt.Errorf("key %q not found", lastKey)
 	}
 
-	m[lastKey] = value
+	m[lastKey] = coerceScalar(value)
 	return nil
+}
+
+// coerceScalar maps the CLI-supplied string into the right YAML scalar
+// type so the round-trip through Marshal+Parse hits the matching Go
+// struct field. Without this, integers and bools come through as
+// quoted strings and Parse fails ("cannot unmarshal !!str into int").
+// Duration strings (e.g. "30s") and URLs intentionally stay as
+// strings — the int/bool checks only match pure literals.
+func coerceScalar(value string) any {
+	if i, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return i
+	}
+	if b, err := strconv.ParseBool(value); err == nil {
+		// Only treat lowercase/title true|false as bool to avoid
+		// surprising operators with strings like "0" or "1" being
+		// silently turned into booleans.
+		if value == "true" || value == "false" || value == "True" || value == "False" {
+			return b
+		}
+	}
+	return value
 }
