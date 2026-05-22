@@ -74,6 +74,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	// activity-side cageHosts map. TeardownVM clears the slot via
 	// vmToCage in lockstep, so the safety-net ReleaseCageSlot at the
 	// end of the workflow is a no-op when teardown ran cleanly.
+	setState(ctx, t, input.CageID, StateQueued)
 	acquireCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 30 * time.Minute,
 		HeartbeatTimeout:    60 * time.Second,
@@ -84,6 +85,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		return failResult(ctx, t, result, "acquiring fleet slot: %v", err), nil
 	}
 	_ = hostID // host is captured in activity-side state
+	setState(ctx, t, input.CageID, StateProvisioning)
 
 	env := Env{
 		CageID:                     input.CageID,
@@ -166,12 +168,14 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 
 	// --- Monitor phase ---
 
+	setState(ctx, t, input.CageID, StateRunning)
 	stopReason := runMonitorWithSignals(ctx, cfg, input.CageID, vmHandle.ID, t, input.InterventionTimeout)
 
 	// --- Teardown phase ---
 	// All steps execute regardless of individual failures. An orphaned VM
 	// running exploit code with valid credentials is the worst outcome.
 
+	setState(ctx, t, input.CageID, StateTearingDown)
 	var teardownErrs []error
 
 	if tErr := execActivity(withTimeout(ctx, t.ExportAuditLog), "ExportAuditLog", input.CageID); tErr != nil {
@@ -460,6 +464,15 @@ func withHeartbeat(ctx workflow.Context, timeout, heartbeat time.Duration) workf
 
 func execActivity(ctx workflow.Context, name string, args ...interface{}) error {
 	return workflow.ExecuteActivity(ctx, name, args...).Get(ctx, nil)
+}
+
+// setState writes a mid-flight cage state transition. Best-effort: a
+// transient DB blip when reporting the new state must not kill an
+// otherwise-healthy cage. The terminal state still gets written
+// authoritatively by UpdateCageResult inside failResult / at the end
+// of the happy path.
+func setState(ctx workflow.Context, t Timeouts, cageID string, state State) {
+	_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "UpdateCageState", cageID, state.String())
 }
 
 func failResult(ctx workflow.Context, t Timeouts, result CageWorkflowResult, format string, args ...interface{}) CageWorkflowResult {

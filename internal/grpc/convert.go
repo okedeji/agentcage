@@ -72,6 +72,8 @@ func cageStateToProto(s cage.State) pb.CageState {
 	switch s {
 	case cage.StatePending:
 		return pb.CageState_CAGE_STATE_PENDING
+	case cage.StateQueued:
+		return pb.CageState_CAGE_STATE_QUEUED
 	case cage.StateProvisioning:
 		return pb.CageState_CAGE_STATE_PROVISIONING
 	case cage.StateRunning:

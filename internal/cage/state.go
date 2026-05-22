@@ -6,7 +6,8 @@ import (
 )
 
 var validTransitions = map[State][]State{
-	StatePending:      {StateProvisioning, StateFailed},
+	StatePending:      {StateQueued, StateFailed},
+	StateQueued:       {StateProvisioning, StateFailed},
 	StateProvisioning: {StateRunning, StateFailed},
 	StateRunning:      {StatePaused, StateTearingDown, StateFailed},
 	StatePaused:       {StateRunning, StateTearingDown, StateFailed},

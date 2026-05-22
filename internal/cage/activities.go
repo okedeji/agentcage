@@ -88,6 +88,7 @@ type Activities interface {
 	FetchSecrets(ctx context.Context, svid *identity.SVID, assessmentID string) (*identity.VaultToken, error)
 	AcquireCageSlot(ctx context.Context, cageID string) (string, error)
 	ReleaseCageSlot(ctx context.Context, cageID string) error
+	UpdateCageState(ctx context.Context, cageID string, state string) error
 	AssembleRootfs(ctx context.Context, cageID string, bundleRef string, env Env) (string, error)
 	ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error)
 	ApplyNetworkPolicy(ctx context.Context, cageID string, scope Scope, extras []string) error

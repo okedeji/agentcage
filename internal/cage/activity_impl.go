@@ -194,6 +194,7 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("CollectCageLogs", a.CollectCageLogs)
 	pin("ReadAgentResult", a.ReadAgentResult)
 	pin("UpdateCageResult", a.UpdateCageResult)
+	pin("UpdateCageState", a.UpdateCageState)
 }
 
 func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
@@ -1168,5 +1169,19 @@ func (a *ActivityImpl) UpdateCageResult(ctx context.Context, cageID string, fina
 		return fmt.Errorf("updating cage %s result: %w", cageID, err)
 	}
 	a.log.Info("cage result persisted", "cage_id", cageID, "state", state, "error", errorMsg)
+	return nil
+}
+
+// UpdateCageState writes a mid-flight state transition. Distinct from
+// UpdateCageResult, which carries the terminal state plus error
+// message at workflow end. Called at every workflow checkpoint so the
+// CLI status reflects what the cage is actually doing instead of
+// permanently showing "pending".
+func (a *ActivityImpl) UpdateCageState(ctx context.Context, cageID string, stateStr string) error {
+	state := StateFromString(stateStr)
+	if err := a.cageService.updateCageState(ctx, cageID, state, ""); err != nil {
+		return fmt.Errorf("updating cage %s state to %s: %w", cageID, stateStr, err)
+	}
+	a.log.V(1).Info("cage state updated", "cage_id", cageID, "state", state)
 	return nil
 }

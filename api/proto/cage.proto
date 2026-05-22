@@ -30,6 +30,7 @@ enum CageState {
   CAGE_STATE_TEARING_DOWN = 5;
   CAGE_STATE_COMPLETED = 6;
   CAGE_STATE_FAILED = 7;
+  CAGE_STATE_QUEUED = 8;
 }
 
 message TargetScope {

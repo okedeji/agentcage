@@ -86,6 +86,7 @@ const (
 	CageState_CAGE_STATE_TEARING_DOWN CageState = 5
 	CageState_CAGE_STATE_COMPLETED    CageState = 6
 	CageState_CAGE_STATE_FAILED       CageState = 7
+	CageState_CAGE_STATE_QUEUED       CageState = 8
 )
 
 // Enum value maps for CageState.
@@ -99,6 +100,7 @@ var (
 		5: "CAGE_STATE_TEARING_DOWN",
 		6: "CAGE_STATE_COMPLETED",
 		7: "CAGE_STATE_FAILED",
+		8: "CAGE_STATE_QUEUED",
 	}
 	CageState_value = map[string]int32{
 		"CAGE_STATE_UNSPECIFIED":  0,
@@ -109,6 +111,7 @@ var (
 		"CAGE_STATE_TEARING_DOWN": 5,
 		"CAGE_STATE_COMPLETED":    6,
 		"CAGE_STATE_FAILED":       7,
+		"CAGE_STATE_QUEUED":       8,
 	}
 )
 
@@ -1403,7 +1406,7 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\x15CAGE_TYPE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13CAGE_TYPE_DISCOVERY\x10\x01\x12\x18\n" +
 	"\x14CAGE_TYPE_VALIDATION\x10\x02\x12\x1a\n" +
-	"\x16CAGE_TYPE_EXPLOITATION\x10\x04*\xd9\x01\n" +
+	"\x16CAGE_TYPE_EXPLOITATION\x10\x04*\xf0\x01\n" +
 	"\tCageState\x12\x1a\n" +
 	"\x16CAGE_STATE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12CAGE_STATE_PENDING\x10\x01\x12\x1b\n" +
@@ -1412,7 +1415,8 @@ const file_api_proto_cage_proto_rawDesc = "" +
 	"\x11CAGE_STATE_PAUSED\x10\x04\x12\x1b\n" +
 	"\x17CAGE_STATE_TEARING_DOWN\x10\x05\x12\x18\n" +
 	"\x14CAGE_STATE_COMPLETED\x10\x06\x12\x15\n" +
-	"\x11CAGE_STATE_FAILED\x10\a*\xa0\x01\n" +
+	"\x11CAGE_STATE_FAILED\x10\a\x12\x15\n" +
+	"\x11CAGE_STATE_QUEUED\x10\b*\xa0\x01\n" +
 	"\x0fRoutingStrategy\x12 \n" +
 	"\x1cROUTING_STRATEGY_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fROUTING_STRATEGY_COST_OPTIMIZED\x10\x01\x12\"\n" +
