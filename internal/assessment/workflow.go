@@ -1015,13 +1015,26 @@ func validateFindingGroup(
 	var cagesSpawned int32
 
 	for _, f := range group {
+		cageCfg := cage.Config{
+			AssessmentID:       assessmentID,
+			CustomerID:         cfg.CustomerID,
+			Type:               cage.TypeValidation,
+			BundleRef:          cfg.BundleRef,
+			Scope:              cage.Scope{Host: cfg.Target.Host, Paths: []string{f.Endpoint}},
+			ParentFindingID:    f.ID,
+			VulnClass:          f.VulnClass,
+			IdentifyInRequests: cfg.IdentifyInRequests,
+			ProxyConfig: cage.ProxyConfig{
+				JudgeEndpoint:   cfg.JudgeEndpoint,
+				JudgeConfidence: cfg.JudgeConfidence,
+				JudgeTimeoutSec: cfg.JudgeTimeoutSec,
+			},
+		}
+		applyCageDefaults(&cageCfg, cfg)
+
 		actCtx := withActivityTimeout(ctx, TimeoutCreateCage)
 		var cageID string
-		if err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", assessmentID, cfg.CustomerID, cfg.IdentifyInRequests, f, proof, cfg.BundleRef, cage.ProxyConfig{
-			JudgeEndpoint:   cfg.JudgeEndpoint,
-			JudgeConfidence: cfg.JudgeConfidence,
-			JudgeTimeoutSec: cfg.JudgeTimeoutSec,
-		}).Get(ctx, &cageID); err != nil {
+		if err := workflow.ExecuteActivity(actCtx, "CreateValidatorCage", cageCfg, proof).Get(ctx, &cageID); err != nil {
 			return validatedCount, cagesSpawned, fmt.Errorf("creating validation cage for finding %s: %w", f.ID, err)
 		}
 		cagesSpawned++

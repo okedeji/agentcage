@@ -138,8 +138,8 @@ func ParseSeverity(s string) Severity {
 type Kind string
 
 const (
-	KindVulnerability Kind = "vulnerability"
-	KindDiscovery     Kind = "discovery"
+	KindVulnerability   Kind = "vulnerability"
+	KindDiscovery       Kind = "discovery"
 	KindValidationProof Kind = "validation_proof"
 )
 

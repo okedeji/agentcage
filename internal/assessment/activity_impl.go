@@ -244,43 +244,37 @@ func (a *ActivityImpl) CreateExploitationCage(ctx context.Context, assessmentID 
 	return info.ID, nil
 }
 
-func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, assessmentID, customerID string, identifyInRequests bool, finding findings.Finding, proof *Proof, bundleRef string, proxyCfg cage.ProxyConfig) (string, error) {
+// CreateValidatorCage takes a fully-built cage.Config (resources,
+// timeouts, LLM budget, etc. already merged by the workflow via
+// applyCageDefaults) and a Proof. Refusing destructive proofs is the
+// only validation-specific safety gate kept here — everything else is
+// the same CreateCage path the exploitation activity uses.
+func (a *ActivityImpl) CreateValidatorCage(ctx context.Context, config cage.Config, proof *Proof) (string, error) {
 	if proof != nil && proof.Safety.Destructive {
 		a.log.Info("skipping destructive proof",
-			"assessment_id", assessmentID,
-			"finding_id", finding.ID,
-			"vuln_class", finding.VulnClass,
+			"assessment_id", config.AssessmentID,
+			"finding_id", config.ParentFindingID,
+			"vuln_class", config.VulnClass,
 			"rationale", proof.Safety.Rationale,
 		)
-		return "", fmt.Errorf("proof for %s is marked destructive, skipping validation", finding.VulnClass)
+		return "", fmt.Errorf("proof for %s is marked destructive, skipping validation", config.VulnClass)
 	}
 
-	config := cage.Config{
-		AssessmentID:       assessmentID,
-		CustomerID:         customerID,
-		Type:               cage.TypeValidation,
-		BundleRef:          bundleRef,
-		Scope:              cage.Scope{Host: finding.Endpoint},
-		ParentFindingID:    finding.ID,
-		VulnClass:          finding.VulnClass,
-		IdentifyInRequests: identifyInRequests,
-		ProxyConfig:        proxyCfg,
-	}
 	if proof != nil {
 		// Serialize the full structured proof so the validation cage receives
 		// the deterministic plan (payload, confirmation, safety, bounds), not
 		// just the human-readable description.
 		data, err := json.Marshal(proof)
 		if err != nil {
-			return "", fmt.Errorf("marshaling proof for finding %s: %w", finding.ID, err)
+			return "", fmt.Errorf("marshaling proof for finding %s: %w", config.ParentFindingID, err)
 		}
 		config.InputContext = data
 	}
 	info, err := a.cages.CreateCage(ctx, config)
 	if err != nil {
-		return "", fmt.Errorf("creating validation cage for finding %s: %w", finding.ID, err)
+		return "", fmt.Errorf("creating validation cage for finding %s: %w", config.ParentFindingID, err)
 	}
-	a.log.Info("validation cage created", "assessment_id", assessmentID, "cage_id", info.ID, "finding_id", finding.ID)
+	a.log.Info("validation cage created", "assessment_id", config.AssessmentID, "cage_id", info.ID, "finding_id", config.ParentFindingID)
 	return info.ID, nil
 }
 
