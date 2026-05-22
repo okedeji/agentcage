@@ -21,32 +21,52 @@ type NetworkEnforcer interface {
 	Remove(ctx context.Context, cageID string) error
 }
 
+// AllowEntry is a single (CIDR, ports) pair in a cage's allow list.
+// Each entry carries its own port restriction because targets, the
+// webhook, NATS, and any other extras run on different ports. A
+// single global port list (the prior shape) silently restricted the
+// webhook to whatever ports the operator's target used — typically
+// 443 — and dropped LLM traffic at the cage's egress filter.
+type AllowEntry struct {
+	CIDR  string
+	Ports []string // empty means any TCP port
+}
+
 // EgressRule is a deployment-agnostic representation of a cage's allowed
 // network destinations. The enforcer translates this to nftables rules.
 type EgressRule struct {
 	CageID     string
 	TAPDevice  string
-	AllowIPs   []string
+	Allows     []AllowEntry
 	AllowFQDNs []string
-	AllowPorts []string
+}
+
+// AllowIPs returns just the CIDRs from Allows. Kept for tests and
+// callers that only care about reachable destinations.
+func (r EgressRule) AllowIPs() []string {
+	out := make([]string, len(r.Allows))
+	for i, a := range r.Allows {
+		out[i] = a.CIDR
+	}
+	return out
 }
 
 // BuildEgressRules parses scope + extras into structured egress rules.
 // Resolves FQDNs to IPs so nftables can enforce at the network
 // layer. The DNS resolver inside the cage is the primary control;
 // resolved IPs here are a second layer for hardcoded-IP bypass.
+//
+// Port handling: the target uses scope.Ports (operator-supplied,
+// typically ["443"] for HTTPS pentests). Each extra URL carries its
+// own port — extracted from the URL or defaulted from the scheme —
+// because the LLM webhook, judge webhook, and NATS each live on a
+// different port from the target.
 func BuildEgressRules(cageID string, scope cage.Scope, extras []string, tapDevice string) EgressRule {
 	rule := EgressRule{CageID: cageID, TAPDevice: tapDevice}
 
-	allHosts := make([]string, 0, 1+len(extras))
-	if scope.Host != "" {
-		allHosts = append(allHosts, scope.Host)
-	}
-	allHosts = append(allHosts, extras...)
-
-	for _, host := range allHosts {
+	addEntry := func(host string, ports []string) {
 		if host == "" {
-			continue
+			return
 		}
 		// Extras may be full URLs (e.g. "https://api.openai.com/v1").
 		// Extract the hostname so DNS lookup and nftables work.
@@ -60,31 +80,72 @@ func BuildEgressRules(cageID string, scope cage.Scope, extras []string, tapDevic
 			host = h
 		}
 		if ip := net.ParseIP(host); ip != nil {
-			if ip.To4() != nil {
-				rule.AllowIPs = append(rule.AllowIPs, host+"/32")
-			} else {
-				rule.AllowIPs = append(rule.AllowIPs, host+"/128")
+			cidr := host + "/32"
+			if ip.To4() == nil {
+				cidr = host + "/128"
 			}
-		} else {
-			rule.AllowFQDNs = append(rule.AllowFQDNs, host)
-			addrs, err := net.LookupHost(host)
-			if err != nil {
+			rule.Allows = append(rule.Allows, AllowEntry{CIDR: cidr, Ports: ports})
+			return
+		}
+		rule.AllowFQDNs = append(rule.AllowFQDNs, host)
+		addrs, err := net.LookupHost(host)
+		if err != nil {
+			return
+		}
+		for _, addr := range addrs {
+			ip := net.ParseIP(addr)
+			if ip == nil {
 				continue
 			}
-			for _, addr := range addrs {
-				if ip := net.ParseIP(addr); ip != nil {
-					if ip.To4() != nil {
-						rule.AllowIPs = append(rule.AllowIPs, addr+"/32")
-					} else {
-						rule.AllowIPs = append(rule.AllowIPs, addr+"/128")
-					}
-				}
+			cidr := addr + "/32"
+			if ip.To4() == nil {
+				cidr = addr + "/128"
 			}
+			rule.Allows = append(rule.Allows, AllowEntry{CIDR: cidr, Ports: ports})
 		}
 	}
 
-	rule.AllowPorts = scope.Ports
+	// Target gets the operator-supplied ports list (empty = any port).
+	addEntry(scope.Host, scope.Ports)
+
+	// Each extra carries its own port. "http://10.0.0.157:8082/llm"
+	// → port 8082. "nats.internal:4222" → port 4222. Bare hostnames
+	// fall back to any-port.
+	for _, ex := range extras {
+		addEntry(ex, extraPorts(ex))
+	}
+
 	return rule
+}
+
+// extraPorts returns the single TCP port for an extra URL or
+// host:port pair. Empty when no port can be derived — the resulting
+// AllowEntry then permits any port to that CIDR, which is the safe
+// fallback for operator-supplied bare hostnames.
+func extraPorts(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return nil
+		}
+		if p := u.Port(); p != "" {
+			return []string{p}
+		}
+		switch u.Scheme {
+		case "https":
+			return []string{"443"}
+		case "http":
+			return []string{"80"}
+		}
+		return nil
+	}
+	if _, port, err := net.SplitHostPort(raw); err == nil && port != "" {
+		return []string{port}
+	}
+	return nil
 }
 
 // NFTablesEnforcer applies network isolation using nftables rules on the host.
@@ -194,23 +255,20 @@ func GenerateNFTRules(rule EgressRule) string {
 		b.WriteString("    tcp dport 53 accept\n\n")
 	}
 
-	// Per-IP rules, scoped to allowed ports when specified.
-	if len(rule.AllowPorts) > 0 {
-		ports := strings.Join(rule.AllowPorts, ", ")
-		for _, cidr := range rule.AllowIPs {
-			family := "ip"
-			if strings.Contains(cidr, ":") {
-				family = "ip6"
-			}
-			fmt.Fprintf(&b, "    %s daddr %s tcp dport { %s } accept\n", family, cidr, ports)
+	// Per-(CIDR, ports) accept lines. Each AllowEntry carries its own
+	// port list because the target, the webhook, NATS, and any other
+	// extra each listens on a different port; a single global port
+	// filter silently dropped LLM traffic in the prior shape.
+	for _, a := range rule.Allows {
+		family := "ip"
+		if strings.Contains(a.CIDR, ":") {
+			family = "ip6"
 		}
-	} else {
-		for _, cidr := range rule.AllowIPs {
-			family := "ip"
-			if strings.Contains(cidr, ":") {
-				family = "ip6"
-			}
-			fmt.Fprintf(&b, "    %s daddr %s accept\n", family, cidr)
+		if len(a.Ports) > 0 {
+			ports := strings.Join(a.Ports, ", ")
+			fmt.Fprintf(&b, "    %s daddr %s tcp dport { %s } accept\n", family, a.CIDR, ports)
+		} else {
+			fmt.Fprintf(&b, "    %s daddr %s accept\n", family, a.CIDR)
 		}
 	}
 
