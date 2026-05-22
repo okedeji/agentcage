@@ -665,7 +665,7 @@ func findingToProto(f *findings.Finding) *pb.FindingInfo {
 			ReproductionSteps: f.ValidationProof.ReproductionSteps,
 			Confirmed:         f.ValidationProof.Confirmed,
 			Deterministic:     f.ValidationProof.Deterministic,
-			ValidatorCageId:   f.ValidationProof.ValidatorCageID,
+			ValidationCageId:  f.ValidationProof.ValidationCageID,
 			Evidence:          f.ValidationProof.Evidence,
 		}
 	}

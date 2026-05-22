@@ -75,7 +75,7 @@ export class FindingsWriter {
         reproduction_steps: finding.validationProof.reproductionSteps,
         confirmed: finding.validationProof.confirmed,
         deterministic: finding.validationProof.deterministic,
-        validator_cage_id: finding.validationProof.validatorCageId,
+        validation_cage_id: finding.validationProof.validationCageId,
         evidence: finding.validationProof.evidence,
       };
     }

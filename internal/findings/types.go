@@ -195,6 +195,6 @@ type Proof struct {
 	ReproductionSteps string `json:"reproduction_steps"`
 	Confirmed         bool   `json:"confirmed"`
 	Deterministic     bool   `json:"deterministic"`
-	ValidatorCageID   string `json:"validator_cage_id"`
+	ValidationCageID  string `json:"validation_cage_id"`
 	Evidence          string `json:"evidence,omitempty"`
 }

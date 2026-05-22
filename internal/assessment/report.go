@@ -86,7 +86,7 @@ func GenerateReport(ctx context.Context, assessmentID, customerID string, allFin
 
 		var proofSummary string
 		if f.ValidationProof != nil && f.ValidationProof.Confirmed {
-			proofSummary = fmt.Sprintf("Confirmed by cage %s", f.ValidationProof.ValidatorCageID)
+			proofSummary = fmt.Sprintf("Confirmed by cage %s", f.ValidationProof.ValidationCageID)
 			if f.ValidationProof.ReproductionSteps != "" {
 				proofSummary += ": " + f.ValidationProof.ReproductionSteps
 			}

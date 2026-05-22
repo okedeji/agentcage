@@ -915,13 +915,13 @@ func validateFindings(
 		}
 	}
 
-	// Only spawn validators for actual vulnerabilities — non-Info
-	// severity, with reproduction steps the validation cage can replay.
-	// Discovery findings ("here's an endpoint") and clean Info probes
-	// ("looked at this, found nothing") have nothing for a validator to
-	// reproduce, and ValidationProof children would themselves loop
-	// through this filter if not excluded. The reproductionSteps gate
-	// is the technical requirement; kind+severity is the intent gate.
+	// Only spawn validation cages for actual vulnerabilities — non-Info
+	// severity, with reproduction steps the cage can replay. Discovery
+	// findings ("here's an endpoint") and clean Info probes ("looked at
+	// this, found nothing") have nothing to reproduce, and
+	// ValidationProof children would themselves loop through this filter
+	// if not excluded. The reproductionSteps gate is the technical
+	// requirement; kind+severity is the intent gate.
 	var provable []findings.Finding
 	for _, f := range candidates {
 		if f.Status != findings.StatusCandidate {
@@ -1055,9 +1055,9 @@ func validateFindingGroup(
 			if u.ID == f.ID && u.Status == findings.StatusValidated {
 				validatedCount++
 				validationProof := findings.Proof{
-					Confirmed:       true,
-					Deterministic:   true,
-					ValidatorCageID: cageID,
+					Confirmed:        true,
+					Deterministic:    true,
+					ValidationCageID: cageID,
 				}
 				_ = workflow.ExecuteActivity(
 					withActivityTimeout(ctx, TimeoutUpdateStatus),

@@ -30,7 +30,7 @@ export interface AgentFinding {
     reproductionSteps: string;
     confirmed: boolean;
     deterministic: boolean;
-    validatorCageId: string;
+    validationCageId: string;
     evidence?: string;
   };
 }

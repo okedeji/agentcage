@@ -185,7 +185,7 @@ func showFinding(ctx context.Context, client pb.FindingsServiceClient, id string
 	}
 	if vp := f.GetValidationProof(); vp != nil && vp.GetConfirmed() {
 		fmt.Printf("\n  Validation Proof:\n")
-		fmt.Printf("    Confirmed by cage %s\n", vp.GetValidatorCageId())
+		fmt.Printf("    Confirmed by cage %s\n", vp.GetValidationCageId())
 		if vp.GetReproductionSteps() != "" {
 			fmt.Printf("    Steps: %s\n", vp.GetReproductionSteps())
 		}

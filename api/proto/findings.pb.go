@@ -262,7 +262,7 @@ type ValidationProof struct {
 	ReproductionSteps string                 `protobuf:"bytes,1,opt,name=reproduction_steps,json=reproductionSteps,proto3" json:"reproduction_steps,omitempty"`
 	Confirmed         bool                   `protobuf:"varint,2,opt,name=confirmed,proto3" json:"confirmed,omitempty"`
 	Deterministic     bool                   `protobuf:"varint,3,opt,name=deterministic,proto3" json:"deterministic,omitempty"`
-	ValidatorCageId   string                 `protobuf:"bytes,4,opt,name=validator_cage_id,json=validatorCageId,proto3" json:"validator_cage_id,omitempty"`
+	ValidationCageId  string                 `protobuf:"bytes,4,opt,name=validation_cage_id,json=validationCageId,proto3" json:"validation_cage_id,omitempty"`
 	Evidence          string                 `protobuf:"bytes,5,opt,name=evidence,proto3" json:"evidence,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -319,9 +319,9 @@ func (x *ValidationProof) GetDeterministic() bool {
 	return false
 }
 
-func (x *ValidationProof) GetValidatorCageId() string {
+func (x *ValidationProof) GetValidationCageId() string {
 	if x != nil {
-		return x.ValidatorCageId
+		return x.ValidationCageId
 	}
 	return ""
 }
@@ -916,12 +916,12 @@ const file_api_proto_findings_proto_rawDesc = "" +
 	"\bmetadata\x18\x05 \x03(\v24.agentcage.findings.v1.FindingEvidence.MetadataEntryR\bmetadata\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcc\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xce\x01\n" +
 	"\x0fValidationProof\x12-\n" +
 	"\x12reproduction_steps\x18\x01 \x01(\tR\x11reproductionSteps\x12\x1c\n" +
 	"\tconfirmed\x18\x02 \x01(\bR\tconfirmed\x12$\n" +
-	"\rdeterministic\x18\x03 \x01(\bR\rdeterministic\x12*\n" +
-	"\x11validator_cage_id\x18\x04 \x01(\tR\x0fvalidatorCageId\x12\x1a\n" +
+	"\rdeterministic\x18\x03 \x01(\bR\rdeterministic\x12,\n" +
+	"\x12validation_cage_id\x18\x04 \x01(\tR\x10validationCageId\x12\x1a\n" +
 	"\bevidence\x18\x05 \x01(\tR\bevidence\"\xef\x06\n" +
 	"\vFindingInfo\x12\x1d\n" +
 	"\n" +

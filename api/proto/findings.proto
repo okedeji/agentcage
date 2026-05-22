@@ -45,7 +45,7 @@ message ValidationProof {
   string reproduction_steps = 1;
   bool confirmed = 2;
   bool deterministic = 3;
-  string validator_cage_id = 4;
+  string validation_cage_id = 4;
   string evidence = 5;
 }
 

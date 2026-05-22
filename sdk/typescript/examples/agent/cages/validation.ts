@@ -15,7 +15,7 @@
 // timing-dependent results, and probes that depend on session state
 // the original cage had but a fresh validation cage doesn't. It does
 // NOT catch "the tool's detection logic is wrong" — that needs
-// per-vuln-class dedicated validators.
+// per-vuln-class dedicated validation tools.
 
 import { FindingKind, Severity, newFindingId } from '@agentcage/sdk';
 import { agent } from '../lib/sdk';
@@ -60,7 +60,7 @@ export async function runValidation(): Promise<void> {
     await submitProof({
       detected: false,
       severity: Severity.Info,
-      title: `No validator for vuln_class="${env.vulnClass}"`,
+      title: `No validation tool for vuln_class="${env.vulnClass}"`,
       description: `The validation cage has no tool registered for vuln_class="${env.vulnClass}". Treating the candidate as unconfirmable.`,
       request: '',
       response: '',
@@ -143,7 +143,7 @@ async function submitProof(p: ProofSubmission): Promise<void> {
       reproductionSteps: p.reproductionSteps,
       confirmed: p.detected,
       deterministic: true,
-      validatorCageId: env.cageId,
+      validationCageId: env.cageId,
     },
   });
 
