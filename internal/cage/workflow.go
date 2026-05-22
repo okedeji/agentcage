@@ -66,6 +66,25 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		return failResult(ctx, t, result, "fetching secrets: %v", err), nil
 	}
 
+	// Acquire a fleet slot before the heavy AssembleRootfs step. Without
+	// this gate, N concurrent cage workflows on a 1-slot host all race
+	// to cp a multi-GB rootfs at the same time and trip activity
+	// timeouts. AcquireCageSlot blocks (with heartbeats) until a slot
+	// frees; ProvisionVM later reads the pre-assigned host out of the
+	// activity-side cageHosts map. TeardownVM clears the slot via
+	// vmToCage in lockstep, so the safety-net ReleaseCageSlot at the
+	// end of the workflow is a no-op when teardown ran cleanly.
+	acquireCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 30 * time.Minute,
+		HeartbeatTimeout:    60 * time.Second,
+	})
+	var hostID string
+	if err := workflow.ExecuteActivity(acquireCtx, "AcquireCageSlot", input.CageID).Get(ctx, &hostID); err != nil {
+		cleanupIdentity(ctx, t, svid.ID, &token)
+		return failResult(ctx, t, result, "acquiring fleet slot: %v", err), nil
+	}
+	_ = hostID // host is captured in activity-side state
+
 	env := Env{
 		CageID:                     input.CageID,
 		AssessmentID:               cfg.AssessmentID,
@@ -111,6 +130,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 		withHeartbeat(ctx, t.ProvisionVM, t.HeartbeatProvisionVM),
 		"AssembleRootfs", input.CageID, cfg.BundleRef, env,
 	).Get(ctx, &rootfsPath); err != nil {
+		_ = execActivity(withTimeout(ctx, t.TeardownVM), "ReleaseCageSlot", input.CageID)
 		cleanupIdentity(ctx, t, svid.ID, &token)
 		return failResult(ctx, t, result, "assembling rootfs: %v", err), nil
 	}
@@ -125,6 +145,7 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 			RootfsPath:   rootfsPath,
 		},
 	).Get(ctx, &vmHandle); err != nil {
+		_ = execActivity(withTimeout(ctx, t.TeardownVM), "ReleaseCageSlot", input.CageID)
 		cleanupIdentity(ctx, t, svid.ID, &token)
 		return failResult(ctx, t, result, "provisioning VM: %v", err), nil
 	}
@@ -186,6 +207,12 @@ func CageWorkflow(ctx workflow.Context, input CageWorkflowInput) (CageWorkflowRe
 	if tErr := execActivity(withTimeout(ctx, t.VerifyCleanup), "VerifyCleanup", input.CageID, vmHandle.ID); tErr != nil {
 		teardownErrs = append(teardownErrs, fmt.Errorf("verifying cleanup: %w", tErr))
 	}
+
+	// Safety-net slot release. TeardownVM already cleared cageHosts in
+	// lockstep when setupReachedVM was true, so this is a no-op for the
+	// happy path. It catches the case where TeardownVM was skipped
+	// (e.g. ProvisionVM failed without ever returning a handle).
+	_ = execActivity(withTimeout(ctx, t.TeardownVM), "ReleaseCageSlot", input.CageID)
 
 	if v == workflow.DefaultVersion {
 		_ = execActivity(withTimeout(ctx, t.ExportAuditLog), "CollectCageLogs", input.CageID)

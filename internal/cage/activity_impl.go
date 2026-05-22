@@ -118,6 +118,8 @@ type ActivityImpl struct {
 	allocMu               sync.Mutex
 	tokenMeter            ProxyTokenMeter
 	allocs                map[string]string       // vmID -> hostID
+	cageHosts             map[string]string       // cageID -> hostID (set by AcquireCageSlot, read by ProvisionVM)
+	vmToCage              map[string]string       // vmID -> cageID (set by ProvisionVM, read by TeardownVM to clear cageHosts in lockstep)
 	vsockPaths            map[string]string       // vmID -> vsock UDS path
 	tapDevices            map[string]string       // cageID -> TAP device name
 	logListeners          map[string]net.Listener // vmID -> pre-created log listener
@@ -169,6 +171,8 @@ func (a *ActivityImpl) RegisterActivities(w worker.ActivityRegistry) {
 	pin("ValidateCageConfig", a.ValidateCageConfig)
 	pin("IssueIdentity", a.IssueIdentity)
 	pin("FetchSecrets", a.FetchSecrets)
+	pin("AcquireCageSlot", a.AcquireCageSlot)
+	pin("ReleaseCageSlot", a.ReleaseCageSlot)
 	pin("AssembleRootfs", a.AssembleRootfs)
 	pin("ProvisionVM", a.ProvisionVM)
 	pin("ApplyNetworkPolicy", a.ApplyNetworkPolicy)
@@ -218,6 +222,8 @@ func NewActivityImpl(cfg ActivityImplConfig) *ActivityImpl {
 		logDir:                cfg.LogDir,
 		log:                   cfg.Log.WithValues("component", "cage-activities"),
 		allocs:                make(map[string]string),
+		cageHosts:             make(map[string]string),
+		vmToCage:              make(map[string]string),
 		vsockPaths:            make(map[string]string),
 		tapDevices:            make(map[string]string),
 		logListeners:          make(map[string]net.Listener),
@@ -309,12 +315,73 @@ func (a *ActivityImpl) AssembleRootfs(ctx context.Context, cageID string, bundle
 }
 
 const (
-	fleetPoolActive    = 1 // matches fleet.PoolActive
-	fleetPoolWarm      = 2 // matches fleet.PoolWarm
-	maxSlotRetries     = 3
-	maxCapacityRetries = 3
-	capacityRetryDelay = 10 * time.Second
+	fleetPoolActive = 1 // matches fleet.PoolActive
+	fleetPoolWarm   = 2 // matches fleet.PoolWarm
+	// slotAcquirePoll is how often AcquireCageSlot retries when the
+	// fleet is full. The activity heartbeats on every poll, so the
+	// orchestrator can detect a wedged acquire long before the
+	// StartToClose ceiling fires.
+	slotAcquirePoll = 5 * time.Second
 )
+
+// AcquireCageSlot blocks until the fleet pool can reserve a slot for
+// this cage. Returns the host ID that owns the slot. Subsequent
+// ProvisionVM reads cageHosts[cageID] to find the same host instead
+// of racing to allocate one of its own. Heartbeats every poll so a
+// wedged loop surfaces as an activity timeout rather than running
+// silently for 30 minutes.
+func (a *ActivityImpl) AcquireCageSlot(ctx context.Context, cageID string) (string, error) {
+	if a.fleetPool == nil {
+		return "", nil
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("cage %s: context cancelled while waiting for slot: %w", cageID, err)
+		}
+		host, err := a.fleetPool.GetAvailableHost()
+		if err == nil {
+			if host.Pool == fleetPoolWarm {
+				_ = a.fleetPool.MoveHost(host.ID, fleetPoolActive)
+			}
+			if allocErr := a.fleetPool.AllocateCageSlot(host.ID); allocErr == nil {
+				a.allocMu.Lock()
+				a.cageHosts[cageID] = host.ID
+				a.allocMu.Unlock()
+				a.log.Info("cage slot acquired", "cage_id", cageID, "host_id", host.ID)
+				return host.ID, nil
+			}
+			// Race with another acquire; fall through and retry.
+		}
+		activity.RecordHeartbeat(ctx, "waiting for fleet slot")
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("cage %s: context cancelled while waiting for slot: %w", cageID, ctx.Err())
+		case <-time.After(slotAcquirePoll):
+		}
+	}
+}
+
+// ReleaseCageSlot returns the slot reserved by AcquireCageSlot. Safe
+// to call even when no slot was ever acquired (no-op).
+func (a *ActivityImpl) ReleaseCageSlot(_ context.Context, cageID string) error {
+	if a.fleetPool == nil {
+		return nil
+	}
+	a.allocMu.Lock()
+	hostID, ok := a.cageHosts[cageID]
+	if ok {
+		delete(a.cageHosts, cageID)
+	}
+	a.allocMu.Unlock()
+	if !ok {
+		return nil
+	}
+	if err := a.fleetPool.ReleaseCageSlot(hostID); err != nil {
+		return fmt.Errorf("cage %s: releasing slot on host %s: %w", cageID, hostID, err)
+	}
+	a.log.Info("cage slot released", "cage_id", cageID, "host_id", hostID)
+	return nil
+}
 
 func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMHandle, error) {
 	provisionStart := time.Now()
@@ -328,56 +395,32 @@ func (a *ActivityImpl) ProvisionVM(ctx context.Context, vmConfig VMConfig) (*VMH
 		return nil, fmt.Errorf("cage %s: no VM provisioner configured", vmConfig.CageID)
 	}
 
+	// Slot is owned by the AcquireCageSlot activity that ran earlier in
+	// the workflow. ProvisionVM just looks up the assigned host and
+	// provisions on it. If no host is recorded, the workflow skipped
+	// the acquire step (programming error, not a runtime fallback).
 	var hostID string
 	if a.fleetPool != nil {
-		var allocated bool
-		for capacityAttempt := 0; capacityAttempt < maxCapacityRetries; capacityAttempt++ {
-			for slotAttempt := 0; slotAttempt < maxSlotRetries; slotAttempt++ {
-				host, err := a.fleetPool.GetAvailableHost()
-				if err != nil {
-					break // no hosts at all, go to capacity retry
-				}
-				if host.Pool == fleetPoolWarm {
-					_ = a.fleetPool.MoveHost(host.ID, fleetPoolActive)
-				}
-				if err := a.fleetPool.AllocateCageSlot(host.ID); err != nil {
-					a.log.V(1).Info("slot allocation race, retrying", "host_id", host.ID, "attempt", slotAttempt+1)
-					continue
-				}
-				hostID = host.ID
-				allocated = true
-				break
-			}
-			if allocated {
-				break
-			}
-			if capacityAttempt < maxCapacityRetries-1 {
-				a.log.Info("no fleet capacity, waiting for autoscaler", "cage_id", vmConfig.CageID, "retry", capacityAttempt+1)
-				select {
-				case <-ctx.Done():
-					return nil, fmt.Errorf("cage %s: context cancelled while waiting for capacity: %w", vmConfig.CageID, ctx.Err())
-				case <-time.After(capacityRetryDelay):
-				}
-			}
+		a.allocMu.Lock()
+		preassigned, ok := a.cageHosts[vmConfig.CageID]
+		a.allocMu.Unlock()
+		if !ok {
+			return nil, fmt.Errorf("cage %s: no host pre-assigned; AcquireCageSlot was not called before ProvisionVM", vmConfig.CageID)
 		}
-		if !allocated {
-			return nil, fmt.Errorf("cage %s: no fleet capacity after %d attempts (waited %s)", vmConfig.CageID, maxCapacityRetries, time.Duration(maxCapacityRetries)*capacityRetryDelay)
-		}
+		hostID = preassigned
 	}
 
 	handle, err := a.provisioner.Provision(ctx, vmConfig)
 	if err != nil {
-		if hostID != "" {
-			if relErr := a.fleetPool.ReleaseCageSlot(hostID); relErr != nil {
-				a.log.Error(relErr, "releasing cage slot after provision failure", "host_id", hostID, "cage_id", vmConfig.CageID)
-			}
-		}
+		// Slot release on provision failure is the workflow's
+		// responsibility via ReleaseCageSlot; nothing to undo here.
 		return nil, fmt.Errorf("cage %s: provisioning VM: %w", vmConfig.CageID, err)
 	}
 
 	if hostID != "" {
 		a.allocMu.Lock()
 		a.allocs[handle.ID] = hostID
+		a.vmToCage[handle.ID] = vmConfig.CageID
 		a.allocMu.Unlock()
 	}
 
@@ -913,6 +956,11 @@ func (a *ActivityImpl) TeardownVM(ctx context.Context, vmID string) error {
 		hostID, ok := a.allocs[vmID]
 		if ok {
 			delete(a.allocs, vmID)
+		}
+
+		if cageID, hasCage := a.vmToCage[vmID]; hasCage {
+			delete(a.vmToCage, vmID)
+			delete(a.cageHosts, cageID)
 		}
 		a.allocMu.Unlock()
 		if ok {
