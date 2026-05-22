@@ -58,10 +58,11 @@ async function run(rawArgs: Record<string, unknown>): Promise<string> {
     return 'ERROR: fetch_path requires a string `path` argument';
   }
   const url = `https://${env.target}${args.path}`;
-  const resp = await fetchSafe(url);
-  if (!resp) {
-    return `ERROR: ${url} unreachable (network error or timeout)`;
+  const result = await fetchSafe(url);
+  if (!result.ok) {
+    return `ERROR: ${url} fetch failed: ${result.error}`;
   }
+  const resp = result.response;
 
   const interesting: Record<string, string> = {};
   for (const k of ['content-type', 'server', 'x-powered-by', 'set-cookie', 'location', 'www-authenticate']) {
