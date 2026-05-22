@@ -74,6 +74,9 @@ module "webhook" {
   judge_provider_url          = var.judge_provider_url
   judge_provider_key          = var.judge_provider_key
   judge_model                 = var.judge_model
+  enable_ssh                  = var.enable_ssh
+  key_name                    = var.enable_ssh ? aws_key_pair.ssh[0].key_name : ""
+  ssh_cidrs                   = [var.my_ip]
 }
 
 module "agentcage" {

@@ -63,3 +63,21 @@ variable "port" {
   type    = number
   default = 8082
 }
+
+variable "enable_ssh" {
+  description = "Open port 22 on the webhook EC2 (for inspection during dev)"
+  type        = bool
+  default     = false
+}
+
+variable "key_name" {
+  description = "Name of the EC2 key pair to attach when enable_ssh = true"
+  type        = string
+  default     = ""
+}
+
+variable "ssh_cidrs" {
+  description = "CIDRs allowed SSH access (only when enable_ssh = true)"
+  type        = list(string)
+  default     = []
+}

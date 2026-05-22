@@ -54,6 +54,17 @@ resource "aws_security_group" "webhook" {
   }
 }
 
+resource "aws_security_group_rule" "ssh" {
+  count             = var.enable_ssh ? 1 : 0
+  type              = "ingress"
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = var.ssh_cidrs
+  security_group_id = aws_security_group.webhook.id
+  description       = "SSH"
+}
+
 # ---------------------------------------------------------------------
 # Instance — t3.micro (free tier)
 # ---------------------------------------------------------------------
@@ -62,6 +73,7 @@ resource "aws_instance" "webhook" {
   ami           = data.aws_ami.al2023.id
   instance_type = "t3.micro"
   subnet_id     = var.subnet_id
+  key_name      = var.enable_ssh ? var.key_name : null
 
   vpc_security_group_ids = [aws_security_group.webhook.id]
 
