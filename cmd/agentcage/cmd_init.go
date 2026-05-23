@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -268,6 +269,7 @@ func runInit(configFile, grpcAddr, secretsFile string, debug bool) (initErr erro
 		AuditStore:        cageRuntime.auditStore,
 		Identity:          svidIssuer,
 		Secrets:           secretFetcher,
+		TargetCreds:       newVaultTargetCredentialReader(secretReader),
 		InterventionQueue: &interventionQueueAdapter{q: iQueue},
 		PayloadHolds:      payloadHoldHandler,
 		AgentHolds:        agentHoldListener,
@@ -499,15 +501,32 @@ func seedSecrets(ctx context.Context, reader identity.SecretReader, path string)
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
 
-		vaultPath, known := identity.EnvToVaultPath[key]
-		if !known {
+		if vaultPath, known := identity.EnvToVaultPath[key]; known {
+			if err := reader.WriteSecret(ctx, vaultPath, map[string]any{"value": value}); err != nil {
+				return fmt.Errorf("writing %s: %w", key, err)
+			}
+			seeded++
 			continue
 		}
-
-		if err := reader.WriteSecret(ctx, vaultPath, map[string]any{"value": value}); err != nil {
-			return fmt.Errorf("writing %s: %w", key, err)
+		if strings.HasPrefix(key, "AGENTCAGE_TARGET_") {
+			targetKey := strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(key, "AGENTCAGE_TARGET_"), "_", "-"))
+			if targetKey == "" {
+				continue
+			}
+			var payload map[string]any
+			if strings.HasPrefix(strings.TrimSpace(value), "{") {
+				if err := json.Unmarshal([]byte(value), &payload); err != nil {
+					return fmt.Errorf("parsing %s as JSON: %w", key, err)
+				}
+			} else {
+				payload = map[string]any{"value": value}
+			}
+			if err := reader.WriteSecret(ctx, identity.TargetPrefix+targetKey, payload); err != nil {
+				return fmt.Errorf("writing target/%s: %w", targetKey, err)
+			}
+			seeded++
+			continue
 		}
-		seeded++
 	}
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("reading secrets file: %w", err)

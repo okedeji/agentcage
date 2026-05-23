@@ -167,11 +167,11 @@ type Workflow struct {
 }
 
 type Target struct {
-	Host      string   `yaml:"host"`
-	Ports     []string `yaml:"ports"`
-	Paths     []string `yaml:"paths"`
-	SkipPaths []string `yaml:"skip_paths"`
-	CredentialsKey string `yaml:"credentials_key,omitempty"`
+	Host           string   `yaml:"host"`
+	Ports          []string `yaml:"ports"`
+	Paths          []string `yaml:"paths"`
+	SkipPaths      []string `yaml:"skip_paths"`
+	CredentialsKey string   `yaml:"credentials_key,omitempty"`
 }
 
 type Budget struct {
