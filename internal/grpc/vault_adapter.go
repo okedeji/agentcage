@@ -49,7 +49,7 @@ func (a *vaultAdapter) GetSecret(ctx context.Context, req *pb.GetSecretRequest) 
 }
 
 func (a *vaultAdapter) ListSecrets(ctx context.Context, req *pb.ListSecretsRequest) (*pb.ListSecretsResponse, error) {
-	prefix, err := vaultPrefix(req.GetScope())
+	prefix, err := identity.ScopeMetadataPrefix(req.GetScope())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
@@ -74,7 +74,7 @@ func (a *vaultAdapter) DeleteSecret(ctx context.Context, req *pb.DeleteSecretReq
 }
 
 func vaultPath(scope, key string) (string, error) {
-	prefix, err := vaultPrefix(scope)
+	prefix, err := identity.ScopeDataPrefix(scope)
 	if err != nil {
 		return "", err
 	}
@@ -82,15 +82,4 @@ func vaultPath(scope, key string) (string, error) {
 		return "", fmt.Errorf("key is required")
 	}
 	return prefix + key, nil
-}
-
-func vaultPrefix(scope string) (string, error) {
-	switch scope {
-	case "orchestrator":
-		return "secret/data/agentcage/orchestrator/", nil
-	case "target":
-		return "secret/data/agentcage/target/", nil
-	default:
-		return "", fmt.Errorf("scope must be 'orchestrator' or 'target', got %q", scope)
-	}
 }
