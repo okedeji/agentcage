@@ -37,6 +37,8 @@ const (
 	AssessmentStatus_ASSESSMENT_STATUS_UNREVIEWED             AssessmentStatus = 8
 	AssessmentStatus_ASSESSMENT_STATUS_AWAITING_PLAN_APPROVAL AssessmentStatus = 9
 	AssessmentStatus_ASSESSMENT_STATUS_PLAN_UNAPPROVED        AssessmentStatus = 10
+	AssessmentStatus_ASSESSMENT_STATUS_ENRICHMENT             AssessmentStatus = 11
+	AssessmentStatus_ASSESSMENT_STATUS_REPORT_GENERATION      AssessmentStatus = 12
 )
 
 // Enum value maps for AssessmentStatus.
@@ -53,6 +55,8 @@ var (
 		8:  "ASSESSMENT_STATUS_UNREVIEWED",
 		9:  "ASSESSMENT_STATUS_AWAITING_PLAN_APPROVAL",
 		10: "ASSESSMENT_STATUS_PLAN_UNAPPROVED",
+		11: "ASSESSMENT_STATUS_ENRICHMENT",
+		12: "ASSESSMENT_STATUS_REPORT_GENERATION",
 	}
 	AssessmentStatus_value = map[string]int32{
 		"ASSESSMENT_STATUS_UNSPECIFIED":            0,
@@ -66,6 +70,8 @@ var (
 		"ASSESSMENT_STATUS_UNREVIEWED":             8,
 		"ASSESSMENT_STATUS_AWAITING_PLAN_APPROVAL": 9,
 		"ASSESSMENT_STATUS_PLAN_UNAPPROVED":        10,
+		"ASSESSMENT_STATUS_ENRICHMENT":             11,
+		"ASSESSMENT_STATUS_REPORT_GENERATION":      12,
 	}
 )
 
@@ -1601,7 +1607,7 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\tcancelled\x18\x01 \x01(\bR\tcancelled\">\n" +
 	"\x17FinishAssessmentRequest\x12#\n" +
 	"\rassessment_id\x18\x01 \x01(\tR\fassessmentId\"\x1a\n" +
-	"\x18FinishAssessmentResponse*\x97\x03\n" +
+	"\x18FinishAssessmentResponse*\xe2\x03\n" +
 	"\x10AssessmentStatus\x12!\n" +
 	"\x1dASSESSMENT_STATUS_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bASSESSMENT_STATUS_DISCOVERY\x10\x01\x12\"\n" +
@@ -1614,7 +1620,9 @@ const file_api_proto_assessment_proto_rawDesc = "" +
 	"\x1cASSESSMENT_STATUS_UNREVIEWED\x10\b\x12,\n" +
 	"(ASSESSMENT_STATUS_AWAITING_PLAN_APPROVAL\x10\t\x12%\n" +
 	"!ASSESSMENT_STATUS_PLAN_UNAPPROVED\x10\n" +
-	"2\xc8\x05\n" +
+	"\x12 \n" +
+	"\x1cASSESSMENT_STATUS_ENRICHMENT\x10\v\x12'\n" +
+	"#ASSESSMENT_STATUS_REPORT_GENERATION\x10\f2\xc8\x05\n" +
 	"\x11AssessmentService\x12w\n" +
 	"\x10CreateAssessment\x120.agentcage.assessment.v1.CreateAssessmentRequest\x1a1.agentcage.assessment.v1.CreateAssessmentResponse\x12n\n" +
 	"\rGetAssessment\x12-.agentcage.assessment.v1.GetAssessmentRequest\x1a..agentcage.assessment.v1.GetAssessmentResponse\x12t\n" +

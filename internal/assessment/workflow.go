@@ -385,11 +385,16 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 		}
 		result.Findings = int32(len(validated))
 
-		enrichFindings(ctx, input.AssessmentID, validated)
+		if len(validated) > 0 {
+			if err := updateStatus(ctx, input.AssessmentID, StatusEnrichment); err != nil {
+				return failResult(ctx, input.AssessmentID, result, "updating status to enrichment: %v", err), nil
+			}
+			enrichFindings(ctx, input.AssessmentID, validated)
 
-		validated, err = getValidatedFindings(ctx, input.AssessmentID)
-		if err != nil {
-			return failResult(ctx, input.AssessmentID, result, "fetching enriched findings for report: %v", err), nil
+			validated, err = getValidatedFindings(ctx, input.AssessmentID)
+			if err != nil {
+				return failResult(ctx, input.AssessmentID, result, "fetching enriched findings for report: %v", err), nil
+			}
 		}
 	}
 	// Include candidates so discovery-only runs (and any unvalidated
@@ -400,18 +405,22 @@ func AssessmentWorkflow(ctx workflow.Context, input AssessmentWorkflowInput) (As
 	}
 	allFindings := append(validated, candidates...)
 
-	// Flip the row BEFORE writing the report blob. Without this swap,
-	// a reader between StoreReport and updateStatus sees the report
-	// claiming pending_review while the row still says validation.
-	// With it, the only window is "row=pending_review, report=null",
-	// which makes the report fetch return the honest "not generated
-	// yet" instead of a stale snapshot.
-	if err := updateStatus(ctx, input.AssessmentID, StatusPendingReview); err != nil {
-		return failResult(ctx, input.AssessmentID, result, "updating status to pending_review: %v", err), nil
+	// report_generation is a visible phase, not a silent step between
+	// validation and pending_review. Operators watching the status flip
+	// can tell the assessment is still working. Setting the row before
+	// StoreReport runs preserves the invariant that no reader ever sees
+	// (status=validation, report=ready) — only (status=report_generation,
+	// report=null) or (status=pending_review, report=ready).
+	if err := updateStatus(ctx, input.AssessmentID, StatusReportGeneration); err != nil {
+		return failResult(ctx, input.AssessmentID, result, "updating status to report_generation: %v", err), nil
 	}
 
 	if err := generateReport(ctx, input.AssessmentID, cfg.CustomerID, cfg.Target.Host, allFindings); err != nil {
 		return failResult(ctx, input.AssessmentID, result, "generating draft report: %v", err), nil
+	}
+
+	if err := updateStatus(ctx, input.AssessmentID, StatusPendingReview); err != nil {
+		return failResult(ctx, input.AssessmentID, result, "updating status to pending_review: %v", err), nil
 	}
 
 	// Without this, the assessment would silently hang at pending_review

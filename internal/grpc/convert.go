@@ -192,6 +192,10 @@ func assessmentStatusToProto(s assessment.Status) pb.AssessmentStatus {
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_EXPLOITATION
 	case assessment.StatusValidation:
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_VALIDATION
+	case assessment.StatusEnrichment:
+		return pb.AssessmentStatus_ASSESSMENT_STATUS_ENRICHMENT
+	case assessment.StatusReportGeneration:
+		return pb.AssessmentStatus_ASSESSMENT_STATUS_REPORT_GENERATION
 	case assessment.StatusPendingReview:
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW
 	case assessment.StatusApproved:
@@ -219,6 +223,10 @@ func assessmentStatusFromProto(s pb.AssessmentStatus) assessment.Status {
 		return assessment.StatusExploitation
 	case pb.AssessmentStatus_ASSESSMENT_STATUS_VALIDATION:
 		return assessment.StatusValidation
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_ENRICHMENT:
+		return assessment.StatusEnrichment
+	case pb.AssessmentStatus_ASSESSMENT_STATUS_REPORT_GENERATION:
+		return assessment.StatusReportGeneration
 	case pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW:
 		return assessment.StatusPendingReview
 	case pb.AssessmentStatus_ASSESSMENT_STATUS_APPROVED:

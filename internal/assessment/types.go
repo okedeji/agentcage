@@ -17,6 +17,17 @@ const (
 	StatusAwaitingPlanApproval
 	StatusExploitation
 	StatusValidation
+	// StatusEnrichment fills in CWE, CVSS, and remediation for every
+	// validated finding via the enrichment LLM call. Surfaces as its
+	// own phase so operators can tell the assessment hasn't stalled —
+	// otherwise validation → pending_review looks like an instant jump
+	// even when enrichment is running.
+	StatusEnrichment
+	// StatusReportGeneration runs the GenerateReport activity that
+	// builds the operator-facing report blob. Separate from Enrichment
+	// because report generation runs even for assessments with zero
+	// validated findings (the discovery-only artifact still ships).
+	StatusReportGeneration
 	StatusPendingReview
 	StatusApproved
 	StatusRejected
@@ -42,6 +53,10 @@ func (s Status) String() string {
 		return "exploitation"
 	case StatusValidation:
 		return "validation"
+	case StatusEnrichment:
+		return "enrichment"
+	case StatusReportGeneration:
+		return "report_generation"
 	case StatusPendingReview:
 		return "pending_review"
 	case StatusApproved:
@@ -69,6 +84,10 @@ func StatusFromString(s string) Status {
 		return StatusExploitation
 	case "validation":
 		return StatusValidation
+	case "enrichment":
+		return StatusEnrichment
+	case "report_generation":
+		return StatusReportGeneration
 	case "pending_review":
 		return StatusPendingReview
 	case "approved":
@@ -198,9 +217,11 @@ var validTransitions = map[Status][]Status{
 	StatusDiscovery:            {StatusAwaitingPlanApproval, StatusExploitation, StatusRejected, StatusFailed},
 	StatusAwaitingPlanApproval: {StatusExploitation, StatusPlanUnapproved, StatusRejected, StatusFailed},
 	StatusExploitation:         {StatusValidation, StatusRejected, StatusFailed},
-	StatusValidation:           {StatusPendingReview, StatusRejected, StatusFailed},
+	StatusValidation:           {StatusEnrichment, StatusReportGeneration, StatusRejected, StatusFailed},
+	StatusEnrichment:           {StatusReportGeneration, StatusFailed},
+	StatusReportGeneration:     {StatusPendingReview, StatusFailed},
 	StatusPendingReview:        {StatusApproved, StatusRejected, StatusUnreviewed, StatusFailed},
-	StatusPlanUnapproved:       {StatusPendingReview, StatusFailed},
+	StatusPlanUnapproved:       {StatusReportGeneration, StatusFailed},
 }
 
 var ErrInvalidTransition = errors.New("invalid assessment state transition")

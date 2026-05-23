@@ -34,7 +34,7 @@ func cmdAssessments(args []string) {
 	follow := fs.Bool("follow", false, "follow live progress")
 	followShort := fs.Bool("f", false, "follow live progress (short)")
 	format := fs.String("format", "", "output format: json")
-	statusFilter := fs.String("status", "", "filter by status: discovery, awaiting_plan_approval, exploitation, validation, pending_review, approved, rejected, unreviewed, plan_unapproved, failed")
+	statusFilter := fs.String("status", "", "filter by status: discovery, awaiting_plan_approval, exploitation, validation, enrichment, report_generation, pending_review, approved, rejected, unreviewed, plan_unapproved, failed")
 	limit := fs.Int("limit", 50, "max results to return")
 	_ = fs.Parse(args)
 
@@ -234,7 +234,7 @@ func listAssessments(ctx context.Context, client pb.AssessmentServiceClient, sta
 	if statusFilter != "" {
 		s, ok := parseAssessmentStatusFilter(statusFilter)
 		if !ok {
-			fmt.Fprintf(os.Stderr, "error: unknown status %q (valid: discovery, awaiting_plan_approval, exploitation, validation, pending_review, approved, rejected, unreviewed, plan_unapproved, failed)\n", statusFilter)
+			fmt.Fprintf(os.Stderr, "error: unknown status %q (valid: discovery, awaiting_plan_approval, exploitation, validation, enrichment, report_generation, pending_review, approved, rejected, unreviewed, plan_unapproved, failed)\n", statusFilter)
 			os.Exit(1)
 		}
 		req.StatusFilter = s
@@ -284,6 +284,10 @@ func parseAssessmentStatusFilter(s string) (pb.AssessmentStatus, bool) {
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_EXPLOITATION, true
 	case "validation":
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_VALIDATION, true
+	case "enrichment":
+		return pb.AssessmentStatus_ASSESSMENT_STATUS_ENRICHMENT, true
+	case "report_generation":
+		return pb.AssessmentStatus_ASSESSMENT_STATUS_REPORT_GENERATION, true
 	case "pending_review":
 		return pb.AssessmentStatus_ASSESSMENT_STATUS_PENDING_REVIEW, true
 	case "approved":
