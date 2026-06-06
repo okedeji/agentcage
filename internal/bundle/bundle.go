@@ -35,6 +35,22 @@ func SetBuiltWith(s string) { builtWith = s }
 // nowFunc is overridable so tests can pin BuiltAt without flakiness.
 var nowFunc = time.Now
 
+// Option configures one Build invocation.
+type Option func(*options)
+
+type options struct {
+	onStep func(step, total int, message string)
+}
+
+// WithProgress registers a callback fired before each major step of the
+// build. step is 1-indexed; total is fixed at the number of steps the
+// current Build implementation runs (currently 3).
+func WithProgress(fn func(step, total int, message string)) Option {
+	return Option(func(o *options) { o.onStep = fn })
+}
+
+const buildSteps = 3
+
 // Build packages the source tree at srcDir into a .agent file written
 // to outPath.
 //
@@ -44,13 +60,24 @@ var nowFunc = time.Now
 // The resulting .agent file is a gzip-tar with a manifest.json at the
 // root and a files/ directory holding every file from srcDir (except
 // VCS metadata and the output file itself).
-func Build(srcDir, outPath string) error {
+func Build(srcDir, outPath string, opts ...Option) error {
+	cfg := options{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	notify := func(step int, msg string) {
+		if cfg.onStep != nil {
+			cfg.onStep(step, buildSteps, msg)
+		}
+	}
+
 	srcDir = filepath.Clean(srcDir)
 	outAbs, err := filepath.Abs(outPath)
 	if err != nil {
 		return fmt.Errorf("resolving output path: %w", err)
 	}
 
+	notify(1, "Parsing Agentfile")
 	af, err := readAgentfile(srcDir)
 	if err != nil {
 		return err
@@ -58,6 +85,7 @@ func Build(srcDir, outPath string) error {
 
 	skip := bundleSkip(srcDir, outAbs)
 
+	notify(2, "Hashing source tree")
 	hash, err := hashFiles(srcDir, skip)
 	if err != nil {
 		return fmt.Errorf("hashing source tree: %w", err)
@@ -65,6 +93,7 @@ func Build(srcDir, outPath string) error {
 
 	manifest := buildManifest(af, hash)
 
+	notify(3, "Sealing bundle → "+outPath)
 	return writeBundle(outAbs, srcDir, skip, manifest)
 }
 

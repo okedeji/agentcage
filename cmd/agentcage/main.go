@@ -3,39 +3,29 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/okedeji/agentcage/internal/bundle"
 )
 
+// version is set at build time via -ldflags.
 var version = "dev"
 
 func main() {
-	if len(os.Args) < 2 {
-		printUsage()
+	bundle.SetBuiltWith("agentcage " + version)
+
+	root := &cobra.Command{
+		Use:           "agentcage",
+		Short:         "Build, ship, and run agents",
+		Version:       version,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	root.AddCommand(newBuildCmd())
+
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
-
-	switch os.Args[1] {
-	case "version":
-		fmt.Printf("agentcage %s\n", version)
-	case "help", "--help", "-h":
-		printUsage()
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
-		fmt.Fprintln(os.Stderr, "v0 is in development. See DESIGN.md for the target spec.")
-		os.Exit(1)
-	}
-}
-
-func printUsage() {
-	fmt.Printf(`agentcage %s (v0 in development)
-
-Usage: agentcage <command>
-
-Commands:
-  version    Print version
-  help       Print this help
-
-This is the v0 redesign. Implementation is being built from scratch
-against the spec in DESIGN.md. The first milestone (M1) adds the
-Agentfile parser, build, container runtime, and a minimal SDK.
-`, version)
 }
