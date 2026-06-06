@@ -5,10 +5,7 @@ import (
 	"os"
 )
 
-// version is set at build time via -ldflags:
-//
-//	go build -ldflags "-X main.version=v0.0.1" ./cmd/agentcage/
-var version = "v0-dev"
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
