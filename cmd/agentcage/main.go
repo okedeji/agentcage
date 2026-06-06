@@ -37,8 +37,8 @@ Commands:
   version    Print version
   help       Print this help
 
-This branch is the v0 redesign in progress. The implementation milestones
-(build, run, push, pull, daemon, serve, eval, etc.) are being added one by
-one. See DESIGN.md and .claude/skills/agentcage-v0/SKILL.md for the spec.
+This is the v0 redesign. Implementation is being built from scratch
+against the spec in DESIGN.md. The first milestone (M1) adds the
+Agentfile parser, build, container runtime, and a minimal SDK.
 `, version)
 }
