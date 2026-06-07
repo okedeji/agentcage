@@ -2,7 +2,7 @@
 
 GO := go
 VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo dev)
-LDFLAGS := -X main.version=$(VERSION:v%=%)
+LDFLAGS := -X github.com/okedeji/agentcage/internal/identity.Version=$(VERSION:v%=%)
 GOFLAGS := -trimpath -ldflags '$(LDFLAGS)'
 BINDIR := bin
 

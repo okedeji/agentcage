@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/containerd/containerd/v2/client"
+
+	"github.com/okedeji/agentcage/internal/identity"
 )
 
 // DefaultContainerdAddress is the conventional socket path containerd
@@ -17,7 +19,7 @@ const DefaultContainerdAddress = "/run/containerd/containerd.sock"
 // scopes all of its images, containers, and snapshots into. Using a
 // dedicated namespace means `nerdctl --namespace=default ps` and our
 // objects do not see each other, which matters on shared dev machines.
-const DefaultContainerdNamespace = "agentcage"
+const DefaultContainerdNamespace = identity.Name
 
 // Containerd wraps a containerd client with the agentcage namespace
 // already configured. Close must be called when the wrapper is no

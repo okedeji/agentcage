@@ -7,18 +7,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/agentcage/internal/identity"
 )
 
-// version is set at build time via -ldflags.
-var version = "dev"
-
 func main() {
-	bundle.SetBuiltWith("agentcage " + version)
+	bundle.SetBuiltWith(identity.Name + " " + identity.Version)
 
 	root := &cobra.Command{
-		Use:           "agentcage",
+		Use:           identity.Name,
 		Short:         "Build, ship, and run agents",
-		Version:       version,
+		Version:       identity.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
