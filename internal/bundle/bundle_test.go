@@ -18,9 +18,9 @@ func minimalSource(t *testing.T, dir string) {
 	t.Helper()
 	writeFile(t, filepath.Join(dir, "Agentfile"), `BASE python:3.12-slim
 BUILD pip install --no-cache-dir agentcage-sdk
-ENTRYPOINT python3 agent.py
 MODEL anthropic/claude-3.5
 META description "test agent"
+ENTRYPOINT python3 agent.py
 `)
 	writeFile(t, filepath.Join(dir, "agent.py"), "print('hello')\n")
 }
@@ -64,7 +64,7 @@ func TestBuild_HappyPath(t *testing.T) {
 		t.Errorf("Agentfile.Model = %q, want anthropic/claude-3.5", manifest.Agentfile.Model)
 	}
 	want := map[string]string{
-		"files/Agentfile": "BASE python:3.12-slim\nBUILD pip install --no-cache-dir agentcage-sdk\nENTRYPOINT python3 agent.py\nMODEL anthropic/claude-3.5\nMETA description \"test agent\"\n",
+		"files/Agentfile": "BASE python:3.12-slim\nBUILD pip install --no-cache-dir agentcage-sdk\nMODEL anthropic/claude-3.5\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
 		"files/agent.py":  "print('hello')\n",
 	}
 	if len(files) != len(want) {

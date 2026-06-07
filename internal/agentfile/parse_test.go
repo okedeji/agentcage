@@ -25,7 +25,6 @@ ENTRYPOINT python3 -m agent
 func TestParse_AllDirectives(t *testing.T) {
 	src := `# Comment line at the top.
 BASE python:3.12-slim
-ENTRYPOINT python3 -m researcher
 BUILD pip install --no-cache-dir agentcage-sdk
 BUILD pip install --no-cache-dir anthropic==0.34.0
 MODEL anthropic/claude-3.5
@@ -39,6 +38,7 @@ NETWORK allow:api.example.com,docs.example.com
 META description "A research agent"
 META license "MIT"
 EVAL ./tests/eval.yaml
+ENTRYPOINT python3 -m researcher
 `
 	got, err := Parse(strings.NewReader(src))
 	if err != nil {
@@ -130,8 +130,8 @@ ENTRYPOINT python3 -m agent
 // `url#sha256=...` pin specs.
 func TestParse_InlineHashIsNotComment(t *testing.T) {
 	src := `BASE python:3.12-slim # not a comment
-ENTRYPOINT python3 -m agent
 BUILD pip install foo @ https://example.com/foo.tar.gz#sha256=abc
+ENTRYPOINT python3 -m agent
 `
 	got, err := Parse(strings.NewReader(src))
 	if err != nil {
