@@ -4,5 +4,6 @@ MODEL anthropic/claude-3-5-sonnet
 SECRETS anthropic_api_key
 BUDGET 100000
 NETWORK allow:api.anthropic.com
-META description "A trivial agent that greets warmly using the LLM."
+MAIN respond
+META description "A trivial agent that responds warmly using the LLM."
 ENTRYPOINT python3 agent.py

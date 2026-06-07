@@ -8,21 +8,29 @@ Typical use:
 
     import agentcage
 
-    agent = agentcage.Agent("hello", "A trivial agent")
+    agent = agentcage.Agent("researcher", "A research assistant")
 
-    @agent.tool()
-    def smart_greet(name: str) -> str:
+    @agent.main()                         # ← runs on `agentcage run BUNDLE "..."`
+    def respond(prompt: str) -> str:
         return agentcage.llm.complete(
-            system="You are friendly.",
-            user=f"Greet {name} in one sentence.",
+            system="You are a research assistant.",
+            user=prompt,
         )
+
+    @agent.tool(expose=True)              # ← public direct tool
+    def fetch_paper(doi: str) -> str:
+        ...
+
+    @agent.tool()                         # ← private; only respond() can call
+    def parse_doi(doi: str) -> dict:
+        ...
 
     if __name__ == "__main__":
         agent.run()
 
 Public surface:
 
-    Agent                    MCP server. Re-exports mcp.server.fastmcp.FastMCP.
+    Agent                    MCP server with @main()/@tool() decorators mirroring the Agentfile.
     llm.complete             Single-turn LLM call. Routes to Anthropic or OpenAI by model name.
     llm.anthropic_client     Preconfigured Anthropic SDK client for advanced features.
     llm.openai_client        Preconfigured OpenAI SDK client for advanced features.
@@ -30,13 +38,14 @@ Public surface:
     run                      Current run metadata: run.id, run.agent_ref.
     budget                   Budget introspection: budget.total, budget.used, budget.remaining_tokens().
 
-Every helper has a standard-library equivalent, so skipping the SDK
-and writing against MCP, anthropic, and openai directly does not
-change platform behavior.
+The Agentfile is the platform contract for MAIN and EXPOSE. The Python
+decorators are sugar — pair every `@agent.main()` with `MAIN <name>`
+in the Agentfile, and every `@agent.tool(expose=True)` with
+`EXPOSE <name>`. Authors who skip the SDK and write MCP directly just
+add the Agentfile directives; the platform reads from there.
 """
 
-from mcp.server.fastmcp import FastMCP as Agent
-
+from ._agent_class import Agent
 from . import llm
 from ._agents import agents
 from .runtime import budget, run

@@ -23,13 +23,20 @@ import agentcage
 
 agent = agentcage.Agent("hello", "A trivial agent.")
 
-@agent.tool()
-def greet(name: str) -> str:
-    """Greet someone warmly."""
+@agent.main()                              # ← runs when you call `agentcage run`
+def respond(prompt: str) -> str:
     return agentcage.llm.complete(
         system="You are friendly and concise.",
-        user=f"Greet {name} in one sentence.",
+        user=prompt,
     )
+
+@agent.tool(expose=True)                   # ← public direct tool
+def echo(message: str) -> str:
+    return message
+
+@agent.tool()                              # ← private; only respond() can call
+def _helper(x: str) -> str:
+    return x.strip()
 
 if __name__ == "__main__":
     agent.run()
@@ -43,7 +50,9 @@ RUN pip install --no-cache-dir agentcage-sdk
 MODEL anthropic/claude-3-5-sonnet
 SECRETS anthropic_api_key
 NETWORK allow:api.anthropic.com
-META description "A trivial agent that greets warmly using the LLM."
+MAIN respond
+EXPOSE echo
+META description "A trivial agent."
 ENTRYPOINT python3 agent.py
 ```
 
@@ -51,7 +60,7 @@ ENTRYPOINT python3 agent.py
 
 | Surface | Purpose |
 |---|---|
-| `agentcage.Agent` | The MCP server. Re-exports `mcp.server.fastmcp.FastMCP`. |
+| `agentcage.Agent` | MCP server subclassing `FastMCP`, adds `@main()` and `expose=` keyword on `@tool()`. |
 | `agentcage.llm.complete` | Single-turn LLM call. Routes to Anthropic or OpenAI based on the model name (`anthropic/claude-3-5-sonnet`, `openai/gpt-4o`). |
 | `agentcage.llm.anthropic_client()` | Preconfigured Anthropic SDK client. Reach for this when you need multi-turn, tool use, streaming, vision, or anything else the Anthropic API exposes. |
 | `agentcage.llm.openai_client()` | Preconfigured OpenAI SDK client. Same shape as above. |
