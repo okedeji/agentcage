@@ -51,7 +51,14 @@ func DefaultProvisioner() (Provisioner, error) {
 	case "darwin":
 		return defaultLimaProvisioner()
 	case "windows":
-		return nil, fmt.Errorf("windows runtime support is not yet wired (slice 3)")
+		// Windows support is on the v0 roadmap via Lima's WSL2 driver,
+		// but the WSL2 driver does not forward Unix sockets cleanly
+		// the way the macOS VZ driver does, so the slice 2 architecture
+		// does not port over directly. Likely landing after the macOS
+		// + Linux end-to-end demo is solid. For now, build on the
+		// agentcage CLI on Windows works (it just writes a .agent file
+		// from any host); `agentcage run` requires a Linux runtime.
+		return nil, fmt.Errorf("the agentcage runtime is not yet supported on Windows; for now run agents on a macOS or Linux host (or run the agentcage CLI inside a WSL2 distro that has containerd + buildkitd)")
 	default:
 		return nil, fmt.Errorf("unsupported host OS: %s", runtime.GOOS)
 	}
