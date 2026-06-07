@@ -1,0 +1,137 @@
+package bundle
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestExtract_RoundTrip(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+RUN pip install --no-cache-dir agentcage-sdk
+MODEL anthropic/claude-3.5
+META description "test agent"
+ENTRYPOINT python3 agent.py
+`)
+	writeFile(t, filepath.Join(src, "agent.py"), "print('hello')\n")
+	writeFile(t, filepath.Join(src, "nested", "helper.py"), "# helper\n")
+
+	out := filepath.Join(t.TempDir(), "agent.agent")
+	if err := Build(src, out); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	dest := t.TempDir()
+	manifest, err := Extract(out, dest)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	if manifest.Agentfile.From != "python:3.12-slim" {
+		t.Errorf("Manifest.From = %q", manifest.Agentfile.From)
+	}
+	if !strings.HasPrefix(manifest.FilesHash, "sha256:") {
+		t.Errorf("FilesHash = %q", manifest.FilesHash)
+	}
+
+	// Verify the files round-tripped exactly.
+	for path, want := range map[string]string{
+		"Agentfile":        "FROM python:3.12-slim\nRUN pip install --no-cache-dir agentcage-sdk\nMODEL anthropic/claude-3.5\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
+		"agent.py":         "print('hello')\n",
+		"nested/helper.py": "# helper\n",
+	} {
+		body, err := os.ReadFile(filepath.Join(dest, path))
+		if err != nil {
+			t.Errorf("missing %s: %v", path, err)
+			continue
+		}
+		if string(body) != want {
+			t.Errorf("%s body = %q, want %q", path, string(body), want)
+		}
+	}
+}
+
+func TestExtract_MissingBundle(t *testing.T) {
+	_, err := Extract(filepath.Join(t.TempDir(), "nope.agent"), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "open bundle") {
+		t.Errorf("expected open error, got %v", err)
+	}
+}
+
+func TestExtract_NotAGzip(t *testing.T) {
+	junk := filepath.Join(t.TempDir(), "bogus.agent")
+	writeFile(t, junk, "this is not a gzip stream\n")
+	_, err := Extract(junk, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "gunzip") {
+		t.Errorf("expected gunzip error, got %v", err)
+	}
+}
+
+func TestExtract_RefusesPathTraversal(t *testing.T) {
+	// Build a tar whose entry name escapes the destination directory.
+	// Build()'s own writer cannot produce one (it strips ".." from
+	// source-tree walks), so we craft the tar manually.
+	bundlePath := filepath.Join(t.TempDir(), "evil.agent")
+	mustWriteEvilBundle(t, bundlePath)
+
+	_, err := Extract(bundlePath, t.TempDir())
+	if err == nil {
+		t.Fatalf("expected path-traversal error")
+	}
+	if !strings.Contains(err.Error(), "escapes") {
+		t.Errorf("error %q should name the traversal", err.Error())
+	}
+}
+
+// mustWriteEvilBundle writes a malformed bundle: a valid manifest plus
+// one "files/" entry whose relative path tries to climb above the
+// destination directory. Extract is expected to refuse it.
+func mustWriteEvilBundle(t *testing.T, path string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create evil bundle: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	gz := gzip.NewWriter(f)
+	defer func() { _ = gz.Close() }()
+	tw := tar.NewWriter(gz)
+	defer func() { _ = tw.Close() }()
+
+	// Minimal valid manifest first so the loop reaches the evil entry.
+	manifestBody, err := json.Marshal(&Manifest{
+		SpecVersion: "0.1",
+		Agentfile:   AgentfileSpec{From: "x", Entrypoint: "y"},
+		FilesHash:   "sha256:deadbeef",
+	})
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "manifest.json",
+		Mode: 0o644,
+		Size: int64(len(manifestBody)),
+	}); err != nil {
+		t.Fatalf("write manifest header: %v", err)
+	}
+	if _, err := tw.Write(manifestBody); err != nil {
+		t.Fatalf("write manifest body: %v", err)
+	}
+
+	body := []byte("pwned\n")
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "files/../../escaped.txt",
+		Mode: 0o644,
+		Size: int64(len(body)),
+	}); err != nil {
+		t.Fatalf("write evil header: %v", err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		t.Fatalf("write evil body: %v", err)
+	}
+}
