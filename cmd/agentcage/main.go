@@ -21,6 +21,8 @@ func main() {
 		SilenceErrors: true,
 	}
 	root.AddCommand(newBuildCmd())
+	root.AddCommand(newRunCmd())
+	root.AddCommand(newCallCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
