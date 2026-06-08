@@ -21,6 +21,7 @@ func main() {
 		SilenceErrors: true,
 	}
 	root.AddCommand(newBuildCmd())
+	root.AddCommand(newInitCmd())
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newCallCmd())
 

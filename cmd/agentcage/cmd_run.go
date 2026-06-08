@@ -10,6 +10,7 @@ import (
 )
 
 func newRunCmd() *cobra.Command {
+	var verbose bool
 	cmd := &cobra.Command{
 		Use:   "run BUNDLE [PROMPT]",
 		Short: "Run an agent (routes the prompt to its MAIN tool)",
@@ -52,9 +53,17 @@ Examples:
 				return fmt.Errorf("bundle %s has no MAIN — it is a tool collection. Use 'agentcage call %s TOOL --arg KEY=VALUE' to call one of its tools directly", bundlePath, bundlePath)
 			}
 
+			// The positional prompt gets wrapped as a single-user-turn
+			// messages array — the same {role, content} shape OpenAI
+			// and Anthropic accept. Agents that want multi-turn
+			// continuity receive prior turns through this same arg
+			// when the caller sends them; the platform itself stores
+			// no conversation state.
 			toolArgs := map[string]any{}
 			if prompt != "" {
-				toolArgs["prompt"] = prompt
+				toolArgs["messages"] = []map[string]string{
+					{"role": "user", "content": prompt},
+				}
 			}
 			return runtime.Run(cmd.Context(), runtime.RunInput{
 				BundlePath: bundlePath,
@@ -62,8 +71,10 @@ Examples:
 				Args:       toolArgs,
 				Stdout:     cmd.OutOrStdout(),
 				Stderr:     cmd.ErrOrStderr(),
+				Verbose:    verbose,
 			})
 		},
 	}
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "stream the underlying provisioner output during first-time setup")
 	return cmd
 }

@@ -1,0 +1,107 @@
+package runtime
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"github.com/okedeji/agentcage/internal/progress"
+)
+
+// TestSetupTap_DetectsLimaPhases walks setupTap through representative
+// Lima output and confirms the phase advance order we depend on. The
+// markers come from real `limactl create`/`start` runs observed on
+// macOS during the slice-5 smoke; this test pins the parsing
+// expectations so a Lima upgrade that quietly renames a log line
+// shows up as a CI failure rather than a silent UX regression.
+func TestSetupTap_DetectsLimaPhases(t *testing.T) {
+	var buf bytes.Buffer
+	ui := progress.NewSetupPlain(&buf, "", "", SetupPhases)
+
+	tap := newSetupTap(ui)
+	limaOutput := strings.Join([]string{
+		`INFO[0000] Creating an instance "agentcage"`,
+		`INFO[0005] Pulling: https://cloud-images.ubuntu.com/.../ubuntu.img`,
+		`INFO[0020] Downloading the image: 142 MB / 600 MB`,
+		`INFO[0050] Created an instance "agentcage"`,
+		`INFO[0051] Starting the instance "agentcage" with VM driver "vz"`,
+		`INFO[0060] [hostagent] Waiting for the guest agent to be running`,
+		`INFO[0062] [hostagent] Waiting for the final requirement 1 of 1: "boot scripts must have finished"`,
+		`INFO[0090] READY. Run ` + "`limactl shell agentcage`" + ` to open the shell.`,
+		"",
+	}, "\n")
+
+	if _, err := tap.Write([]byte(limaOutput)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	ui.Done()
+
+	out := buf.String()
+	// Order matters: Preparing happens before Booting.
+	prepIdx := strings.Index(out, "-> "+SetupPhasePreparing)
+	bootIdx := strings.Index(out, "-> "+SetupPhaseBooting)
+	if prepIdx < 0 {
+		t.Errorf("expected %q phase, got:\n%s", SetupPhasePreparing, out)
+	}
+	if bootIdx < 0 {
+		t.Errorf("expected %q phase, got:\n%s", SetupPhaseBooting, out)
+	}
+	if prepIdx > 0 && bootIdx > 0 && prepIdx > bootIdx {
+		t.Errorf("phase order wrong: preparing should precede booting, got:\n%s", out)
+	}
+}
+
+func TestSetupTap_BuffersAcrossWrites(t *testing.T) {
+	// Real provisioner output arrives in network-sized chunks that
+	// rarely align to line boundaries. The tap must buffer across
+	// writes; otherwise mid-line splits would lose phase markers.
+	var buf bytes.Buffer
+	ui := progress.NewSetupPlain(&buf, "", "", SetupPhases)
+	tap := newSetupTap(ui)
+
+	full := `INFO[0000] Creating an instance "agentcage"` + "\n"
+	mid := len(full) / 2
+	if _, err := tap.Write([]byte(full[:mid])); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	if _, err := tap.Write([]byte(full[mid:])); err != nil {
+		t.Fatalf("second write: %v", err)
+	}
+	ui.Done()
+
+	if !strings.Contains(buf.String(), "-> "+SetupPhasePreparing) {
+		t.Errorf("split write across \\n boundary lost the phase marker:\n%s", buf.String())
+	}
+}
+
+func TestSetupTap_UnknownLinesAreDiscarded(t *testing.T) {
+	var buf bytes.Buffer
+	ui := progress.NewSetupPlain(&buf, "", "", SetupPhases)
+	tap := newSetupTap(ui)
+	noisy := strings.Repeat("noise that is not a phase marker\n", 10)
+	if _, err := tap.Write([]byte(noisy)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	ui.Done()
+	// Plain UI prints "-> phase" lines on transitions; with no
+	// transitions we should see at most the final "Setup complete"
+	// line and no leak of the raw input.
+	if strings.Contains(buf.String(), "noise that is not a phase marker") {
+		t.Errorf("tap leaked unmatched Lima output to UI:\n%s", buf.String())
+	}
+}
+
+func TestTrimLimaPrefix(t *testing.T) {
+	cases := map[string]string{
+		"":                                     "",
+		"plain text":                           "plain text",
+		"INFO[0030] [hostagent] Downloading X": "Downloading X",
+		"INFO[0030] Pulling: foo":              "Pulling: foo",
+		"WARN[0030] [hostagent] warning":       "warning",
+	}
+	for in, want := range cases {
+		if got := trimLimaPrefix(in); got != want {
+			t.Errorf("trimLimaPrefix(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

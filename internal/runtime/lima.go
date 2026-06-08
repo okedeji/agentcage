@@ -67,27 +67,29 @@ type LimaVM struct {
 //
 // Lookup order:
 //
-//  1. <directory of os.Executable()>/lima/limactl — the bundled
-//     binary, what an installed agentcage will see.
-//  2. ./bin/lima/limactl relative to the current working directory —
-//     what `go run` and `make build` produce in dev.
+//  1. <directory of os.Executable()>/lima/bin/limactl — the bundled
+//     binary inside the Lima distribution layout (templates and guest
+//     agents sit alongside in share/lima/). What an installed
+//     agentcage and `make lima-deps` produce.
+//  2. ./bin/lima/bin/limactl relative to the current working
+//     directory — same layout, dev mode.
 //  3. limactl on PATH — fall back for developers who installed Lima
-//     via brew or apt.
+//     via brew or apt. Lima resolves its own data files in this case.
 //
-// Returns an error wrapped with all three tried paths so an operator
-// can see exactly what was searched.
+// Returns an error wrapped with all tried paths so an operator can see
+// exactly what was searched.
 func FindLimactl() (string, error) {
 	var tried []string
 
 	if exe, err := os.Executable(); err == nil {
-		bundled := filepath.Join(filepath.Dir(exe), "lima", "limactl")
+		bundled := filepath.Join(filepath.Dir(exe), "lima", "bin", "limactl")
 		if isExecutable(bundled) {
 			return bundled, nil
 		}
 		tried = append(tried, bundled)
 	}
 
-	devPath := filepath.Join("bin", "lima", "limactl")
+	devPath := filepath.Join("bin", "lima", "bin", "limactl")
 	if abs, err := filepath.Abs(devPath); err == nil {
 		if isExecutable(abs) {
 			return abs, nil

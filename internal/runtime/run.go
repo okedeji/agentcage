@@ -2,17 +2,11 @@ package runtime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
-
-	"github.com/containerd/containerd/v2/client"
-	"github.com/containerd/containerd/v2/pkg/cio"
-	"github.com/containerd/containerd/v2/pkg/oci"
 
 	"github.com/okedeji/agentcage/internal/agentfile"
 	"github.com/okedeji/agentcage/internal/bundle"
@@ -44,6 +38,12 @@ type RunInput struct {
 	// pass os.Stdout and os.Stderr; tests can capture into a buffer.
 	Stdout io.Writer
 	Stderr io.Writer
+
+	// Verbose, when true, streams the underlying provisioner output
+	// (Lima's stdout/stderr on macOS) directly to Stderr instead of
+	// the clean phase UI. Operators set this with `--verbose` when
+	// the polite renderer is hiding something they need to see.
+	Verbose bool
 }
 
 // Run is the end-to-end flow behind `agentcage run`. It:
@@ -88,95 +88,74 @@ func Run(ctx context.Context, in RunInput) error {
 		return fmt.Errorf("re-parsing bundled Agentfile: %w", err)
 	}
 
-	// 2. Provisioner up.
+	// 2. Provisioner up. When the runtime is not yet provisioned
+	//    (first run), show a phase-aware setup UI rather than dumping
+	//    Lima's raw output at the operator. The UI is suppressed when
+	//    the runtime is already ready, so subsequent runs show nothing
+	//    here at all.
 	provisioner, err := DefaultProvisioner()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = provisioner.Close() }()
-	if err := provisioner.EnsureReady(ctx, in.Stdout, in.Stderr); err != nil {
-		return err
+
+	if !SetupAlreadyReady(ctx, provisioner) {
+		var ui = NewSetupUI(in.Stderr)
+		if err := EnsureBootstrap(ctx, provisioner, ui, in.Verbose, in.Stderr); err != nil {
+			return err
+		}
 	}
 
-	// 3. Dial daemons.
-	cd, err := DialContainerd(provisioner.ContainerdAddress())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = cd.Close() }()
-
+	// 3. Build the image via BuildKit. BuildKit's gRPC API is
+	//    namespace-mount-agnostic, so this works through the
+	//    forwarded socket without any of the cross-host snapshot
+	//    pain that container lifecycle would hit.
 	bk, err := DialBuildKit(ctx, provisioner.BuildKitAddress())
 	if err != nil {
 		return err
 	}
 	defer func() { _ = bk.Close() }()
 
-	// 4. Build the image.
 	imageRef := deriveImageRef(in.BundlePath)
-	if err := BuildAgent(ctx, bk, BuildInput{
+	if err := buildWithProgress(ctx, bk, BuildInput{
 		Agentfile: af,
 		Manifest:  manifest,
 		SourceDir: srcDir,
 		ImageRef:  imageRef,
-	}); err != nil {
+	}, in.Stderr); err != nil {
 		return err
 	}
 
-	// 5. Container + task lifecycle.
-	image, err := cd.Client().GetImage(ctx, imageRef)
-	if err != nil {
-		return fmt.Errorf("looking up image %s: %w", imageRef, err)
-	}
-
+	// 4. Run the container via the provisioner. On macOS this enters
+	//    the Lima VM's rootless mount namespace via `limactl shell
+	//    agentcage nerdctl run`, sidestepping the namespace barrier
+	//    the containerd Go client cannot cross from outside the VM.
+	//    On Linux we shell out to nerdctl on the host directly.
 	runID := in.RunID
 	if runID == "" {
 		runID = deriveRunID(in.BundlePath, manifest.FilesHash)
 	}
 
-	container, err := cd.Client().NewContainer(ctx, runID,
-		client.WithImage(image),
-		client.WithNewSnapshot(runID+"-snapshot", image),
-		client.WithNewSpec(oci.WithImageConfig(image)),
-	)
+	cmd := provisioner.PrepareRunContainer(ctx, runID, imageRef)
+	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("creating container %s: %w", runID, err)
+		return fmt.Errorf("stdin pipe: %w", err)
 	}
-	defer func() {
-		_ = container.Delete(context.Background(), client.WithSnapshotCleanup)
-	}()
-
-	// Stdio pipes: we write to the agent's stdin (our writes leave
-	// stdinW), the agent reads from stdinR. The agent writes to
-	// stdoutW, we read its responses on stdoutR. stderr passes
-	// through to the operator's stderr so any agent log shows up.
-	stdinR, stdinW := io.Pipe()
-	stdoutR, stdoutW := io.Pipe()
-	defer func() { _ = stdinW.Close() }()
-	defer func() { _ = stdoutR.Close() }()
-
-	task, err := container.NewTask(ctx, cio.NewCreator(
-		cio.WithStreams(stdinR, stdoutW, in.Stderr),
-	))
+	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("creating task: %w", err)
+		return fmt.Errorf("stdout pipe: %w", err)
 	}
-	defer func() {
-		_, _ = task.Delete(context.Background())
-	}()
+	cmd.Stderr = in.Stderr
 
-	// Subscribe to the task's wait channel BEFORE starting so we never
-	// race past the exit signal.
-	statusCh, err := task.Wait(ctx)
-	if err != nil {
-		return fmt.Errorf("subscribing to task exit: %w", err)
-	}
-	if err := task.Start(ctx); err != nil {
-		return fmt.Errorf("starting task: %w", err)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("starting container subprocess: %w", err)
 	}
 
-	// 6. MCP session over the agent's stdio.
-	mcpClient, err := mcp.Connect(ctx, stdoutR, stdinW)
+	// 5. MCP session over the subprocess's stdio.
+	mcpClient, err := mcp.Connect(ctx, stdoutPipe, stdinPipe)
 	if err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
 		return fmt.Errorf("MCP connect: %w", err)
 	}
 	defer func() { _ = mcpClient.Close() }()
@@ -196,13 +175,15 @@ func Run(ctx context.Context, in RunInput) error {
 		return fmt.Errorf("writing result: %w", err)
 	}
 
-	// 9. Tear down. SIGTERM is the polite request; if it does not exit
-	// before the deferred Delete runs containerd will SIGKILL the
-	// process for us. Either way it does not survive Run's return.
-	if err := task.Kill(ctx, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
-		return fmt.Errorf("signalling task: %w", err)
+	// 6. Tear down. Closing the MCP client closes stdin to the agent,
+	//    which is the agent's signal to exit cleanly. nerdctl's --rm
+	//    flag then removes the container. Wait reaps the subprocess
+	//    so the host does not leak a zombie.
+	_ = mcpClient.Close()
+	_ = stdinPipe.Close()
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("container subprocess exited with error: %w", err)
 	}
-	<-statusCh
 
 	return nil
 }

@@ -56,35 +56,35 @@ func TestBuildAgent_RejectsEmptyImageRef(t *testing.T) {
 	}
 }
 
-func TestWriteDockerfile_ProducesReadableFile(t *testing.T) {
+func TestWriteBuildContext_ProducesReadableFile(t *testing.T) {
 	in := BuildInput{
 		Agentfile: &agentfile.Agentfile{
 			From:       "python:3.12-slim",
 			Entrypoint: "python3 main.py",
 		},
 	}
-	dir, cleanup, err := writeDockerfile(in)
+	dir, cleanup, err := writeBuildContext(in)
 	if err != nil {
-		t.Fatalf("writeDockerfile: %v", err)
+		t.Fatalf("writeBuildContext: %v", err)
 	}
 	defer cleanup()
 
-	content, err := os.ReadFile(filepath.Join(dir, "Dockerfile"))
+	content, err := os.ReadFile(filepath.Join(dir, "Agentfile"))
 	if err != nil {
-		t.Fatalf("read Dockerfile: %v", err)
+		t.Fatalf("read Agentfile: %v", err)
 	}
 	if !strings.Contains(string(content), "FROM python:3.12-slim") {
-		t.Errorf("Dockerfile missing FROM line:\n%s", content)
+		t.Errorf("Agentfile missing FROM line:\n%s", content)
 	}
 }
 
-func TestWriteDockerfile_CleanupRemovesDir(t *testing.T) {
+func TestWriteBuildContext_CleanupRemovesDir(t *testing.T) {
 	in := BuildInput{
 		Agentfile: &agentfile.Agentfile{From: "x", Entrypoint: "y"},
 	}
-	dir, cleanup, err := writeDockerfile(in)
+	dir, cleanup, err := writeBuildContext(in)
 	if err != nil {
-		t.Fatalf("writeDockerfile: %v", err)
+		t.Fatalf("writeBuildContext: %v", err)
 	}
 	cleanup()
 	if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
@@ -116,6 +116,28 @@ func TestLabelsFromManifest_PopulatesProvenance(t *testing.T) {
 	for k, v := range wantSubset {
 		if got[k] != v {
 			t.Errorf("label %q = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+func TestRewriteAgentcageDisplay(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{"[internal] load build definition from Dockerfile", "[internal] load build definition from Agentfile"},
+		{"[internal] load .dockerignore", "[internal] load .agentignore"},
+		{"transferring dockerfile: 493B done", "transferring agentfile: 493B done"},
+		{"[internal] load metadata for docker.io/library/python:3.12-slim", "[internal] load metadata for python:3.12-slim"},
+		{"FROM docker.io/library/node:20-slim", "FROM node:20-slim"},
+		{"docker.io/myorg/custom:1.0", "myorg/custom:1.0"},
+		// Non-Docker strings pass through unchanged.
+		{"[2/4] WORKDIR /agent", "[2/4] WORKDIR /agent"},
+		{"exporting to image", "exporting to image"},
+	}
+	for _, tc := range cases {
+		if got := rewriteAgentcageDisplay(tc.in); got != tc.want {
+			t.Errorf("rewriteAgentcageDisplay(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }

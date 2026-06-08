@@ -147,6 +147,108 @@ def test_openai_returns_empty_when_content_is_none():
         assert llm.complete(user="Hi", model="openai/x") == ""
 
 
+# ----- Multi-turn messages parameter -------------------------------------
+
+# The platform does not store conversation history; the caller passes
+# the full {role, content} array and the agent forwards it to complete().
+# These tests pin the contract: messages= must work with both providers
+# and across the user/system folding rules.
+
+
+def test_messages_routes_to_anthropic_with_system_split_out():
+    fake = MagicMock()
+    fake.messages.create.return_value = _anthropic_response("multi-turn anthropic")
+    msgs = [
+        {"role": "system", "content": "You are concise."},
+        {"role": "user", "content": "Hi"},
+        {"role": "assistant", "content": "Hello!"},
+        {"role": "user", "content": "What's my name?"},
+    ]
+    with patch("agentcage.llm.Anthropic", return_value=fake):
+        result = llm.complete(messages=msgs, model="anthropic/x")
+    assert result == "multi-turn anthropic"
+    kwargs = fake.messages.create.call_args.kwargs
+    # Anthropic puts system in its own param, not in the messages list.
+    assert kwargs["system"] == "You are concise."
+    assert kwargs["messages"] == msgs[1:]
+
+
+def test_messages_routes_to_openai_with_system_inline():
+    fake = MagicMock()
+    fake.chat.completions.create.return_value = _openai_response("multi-turn openai")
+    msgs = [
+        {"role": "system", "content": "You are concise."},
+        {"role": "user", "content": "Hi"},
+        {"role": "assistant", "content": "Hello!"},
+        {"role": "user", "content": "What's my name?"},
+    ]
+    with patch("agentcage.llm.OpenAI", return_value=fake):
+        result = llm.complete(messages=msgs, model="openai/x")
+    assert result == "multi-turn openai"
+    # OpenAI keeps system in the messages list.
+    assert fake.chat.completions.create.call_args.kwargs["messages"] == msgs
+
+
+def test_messages_with_system_kwarg_prepends_when_no_system_role_present():
+    fake = MagicMock()
+    fake.messages.create.return_value = _anthropic_response("ok")
+    with patch("agentcage.llm.Anthropic", return_value=fake):
+        llm.complete(
+            messages=[{"role": "user", "content": "Hi"}],
+            system="You are concise.",
+            model="anthropic/x",
+        )
+    assert fake.messages.create.call_args.kwargs["system"] == "You are concise."
+
+
+def test_messages_with_system_kwarg_does_not_override_existing_system_role():
+    fake = MagicMock()
+    fake.messages.create.return_value = _anthropic_response("ok")
+    with patch("agentcage.llm.Anthropic", return_value=fake):
+        llm.complete(
+            messages=[
+                {"role": "system", "content": "From messages."},
+                {"role": "user", "content": "Hi"},
+            ],
+            system="From kwarg.",
+            model="anthropic/x",
+        )
+    assert fake.messages.create.call_args.kwargs["system"] == "From messages."
+
+
+def test_messages_wins_when_both_user_and_messages_passed():
+    fake = MagicMock()
+    fake.chat.completions.create.return_value = _openai_response("ok")
+    with patch("agentcage.llm.OpenAI", return_value=fake):
+        llm.complete(
+            user="ignored",
+            messages=[{"role": "user", "content": "from messages"}],
+            model="openai/x",
+        )
+    sent = fake.chat.completions.create.call_args.kwargs["messages"]
+    assert sent == [{"role": "user", "content": "from messages"}]
+
+
+def test_complete_rejects_call_with_neither_user_nor_messages():
+    with pytest.raises(ValueError, match="user= or messages="):
+        llm.complete(model="anthropic/x")
+
+
+def test_anthropic_concatenates_multiple_system_messages():
+    fake = MagicMock()
+    fake.messages.create.return_value = _anthropic_response("ok")
+    with patch("agentcage.llm.Anthropic", return_value=fake):
+        llm.complete(
+            messages=[
+                {"role": "system", "content": "Be concise."},
+                {"role": "system", "content": "And friendly."},
+                {"role": "user", "content": "Hi"},
+            ],
+            model="anthropic/x",
+        )
+    assert fake.messages.create.call_args.kwargs["system"] == "Be concise.\n\nAnd friendly."
+
+
 def test_openai_raises_without_api_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     llm.reset_client()

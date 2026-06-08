@@ -14,10 +14,44 @@ import "time"
 type Manifest struct {
 	SpecVersion string        `json:"spec_version"`
 	Agentfile   AgentfileSpec `json:"agentfile"`
+	Tools       []Tool        `json:"tools,omitempty"`
 	FilesHash   string        `json:"files_hash"`
 	BuiltAt     time.Time     `json:"built_at"`
 	BuiltWith   string        `json:"built_with"`
 }
+
+// Tool is one entry in the agent's tool catalog. The catalog lists
+// *every* tool the agent has — main, public, and private — so
+// consumers can review the agent's full capability surface before
+// adopting it as a USES dependency. Listing a private tool here does
+// not make it callable from outside the cage; visibility stays the
+// access-control gate.
+//
+// In M1 the catalog is populated from the Agentfile's MAIN and
+// EXPOSE directives only — name and visibility, no description or
+// schema, no private tools. M2's build-time introspection enriches
+// each entry (description, JSON schema) and adds private tools the
+// SDK has registered. See DESIGN.md §5 catalog section for details.
+type Tool struct {
+	Name        string         `json:"name"`
+	Visibility  Visibility     `json:"visibility"`
+	Description string         `json:"description,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty"`
+}
+
+// Visibility distinguishes the three roles a tool can have in an
+// agent. The platform's MCP routing layer uses visibility to decide
+// whether an external caller can reach a tool: main and public are
+// reachable, private is not. The catalog publishes private entries
+// for transparency — readers can audit the full surface — but the
+// access gate stays closed.
+type Visibility string
+
+const (
+	VisibilityMain    Visibility = "main"
+	VisibilityPublic  Visibility = "public"
+	VisibilityPrivate Visibility = "private"
+)
 
 // AgentfileSpec is the wire-format representation of a parsed Agentfile.
 // It is decoupled from the parser's in-memory types so that the manifest
@@ -43,11 +77,14 @@ type AgentfileSpec struct {
 }
 
 // UseSpec is one entry in AgentfileSpec.Uses. Public mirrors the
-// USES PUBLIC modifier in the Agentfile.
+// USES PUBLIC modifier; Deny carries the parent's exclusion list from
+// the `USES @ref:ver DENY tool1,tool2` clause. An empty Deny means
+// the parent accepts every EXPOSE'd tool of the sub-agent.
 type UseSpec struct {
-	Ref     string `json:"ref"`
-	Version string `json:"version"`
-	Public  bool   `json:"public"`
+	Ref     string   `json:"ref"`
+	Version string   `json:"version"`
+	Public  bool     `json:"public,omitempty"`
+	Deny    []string `json:"deny,omitempty"`
 }
 
 // specVersion is the on-disk version of the manifest schema. Bump when

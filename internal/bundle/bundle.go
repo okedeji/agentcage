@@ -158,6 +158,7 @@ func buildManifest(af *agentfile.Agentfile, hash string) *Manifest {
 	return &Manifest{
 		SpecVersion: specVersion,
 		Agentfile:   spec,
+		Tools:       catalogFromAgentfile(af),
 		FilesHash:   hash,
 		BuiltAt:     nowFunc().UTC(),
 		BuiltWith:   builtWith,
@@ -170,9 +171,32 @@ func usesToSpec(uses []agentfile.Use) []UseSpec {
 	}
 	out := make([]UseSpec, len(uses))
 	for i, u := range uses {
-		out[i] = UseSpec{Ref: u.Ref, Version: u.Version, Public: u.Public}
+		out[i] = UseSpec{
+			Ref:     u.Ref,
+			Version: u.Version,
+			Public:  u.Public,
+			Deny:    u.Deny,
+		}
 	}
 	return out
+}
+
+// catalogFromAgentfile builds the M1 tool catalog from the Agentfile's
+// MAIN and EXPOSE directives. M2's build-time introspection step will
+// extend this to include private tools and enrich each entry with a
+// description and JSON schema (see DESIGN.md §5 catalog section).
+func catalogFromAgentfile(af *agentfile.Agentfile) []Tool {
+	if af.Main == "" && len(af.Expose) == 0 {
+		return nil
+	}
+	tools := make([]Tool, 0, 1+len(af.Expose))
+	if af.Main != "" {
+		tools = append(tools, Tool{Name: af.Main, Visibility: VisibilityMain})
+	}
+	for _, name := range af.Expose {
+		tools = append(tools, Tool{Name: name, Visibility: VisibilityPublic})
+	}
+	return tools
 }
 
 // writeBundle creates the .agent file at outAbs and streams the manifest

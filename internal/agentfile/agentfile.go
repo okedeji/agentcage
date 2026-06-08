@@ -34,10 +34,20 @@ type Agentfile struct {
 // Public mirrors the USES PUBLIC modifier: true exposes the sub-agent
 // alongside the parent's external surface, false leaves it encapsulated
 // as an internal dependency.
+//
+// Deny lists tool names from the sub-agent that this parent does not
+// want to call (or, for private tools, does not want the sub-agent to
+// invoke on its behalf). An empty Deny means the parent accepts every
+// EXPOSE'd tool — the default. The Agentfile's DENY clause records
+// the contract; the runtime layer turns it into MCP-routing-level
+// rejections (public tools) and, in later milestones, honor-system
+// guards inside the sub-agent's cage (private tools). See DESIGN.md
+// §5 for the M1 → M2 → M4 enforcement progression.
 type Use struct {
 	Ref     string // canonical "@org/name", without the tag
 	Version string // tag, never "latest"
 	Public  bool
+	Deny    []string // tool names denied; nil means "everything they EXPOSE"
 }
 
 // Model is the parsed MODEL directive.

@@ -48,6 +48,29 @@ func TestGenerateDockerfile_RunStepsInOrder(t *testing.T) {
 	}
 }
 
+func TestGenerateDockerfile_RunPrecedesCopy(t *testing.T) {
+	// Cache-friendly ordering: RUN before COPY. Editing the agent's
+	// source busts the COPY layer; the expensive dependency install
+	// stays cached. Regressing this would push rebuild times from
+	// seconds back into the 20–30s range.
+	af := &agentfile.Agentfile{
+		From:       "python:3.12-slim",
+		Entrypoint: "python3 agent.py",
+		Run:        []string{"pip install agentcage-sdk"},
+	}
+	got := generateDockerfile(dockerfileInput{Agentfile: af})
+
+	runIdx := strings.Index(got, "RUN pip install agentcage-sdk")
+	copyIdx := strings.Index(got, "COPY . /agent")
+	if runIdx < 0 || copyIdx < 0 {
+		t.Fatalf("expected RUN and COPY lines, got:\n%s", got)
+	}
+	if runIdx > copyIdx {
+		t.Errorf("RUN must precede COPY for cache friendliness; got RUN at %d, COPY at %d:\n%s",
+			runIdx, copyIdx, got)
+	}
+}
+
 func TestGenerateDockerfile_EnvDeterministic(t *testing.T) {
 	af := &agentfile.Agentfile{
 		From:       "python:3.12-slim",

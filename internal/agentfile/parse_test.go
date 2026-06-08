@@ -58,10 +58,10 @@ ENTRYPOINT python3 -m researcher
 	if len(got.Uses) != 2 {
 		t.Fatalf("Uses len = %d, want 2", len(got.Uses))
 	}
-	if got.Uses[0] != (Use{Ref: "@anthropic/web-search", Version: "1.2.0"}) {
+	if !reflect.DeepEqual(got.Uses[0], Use{Ref: "@anthropic/web-search", Version: "1.2.0"}) {
 		t.Errorf("Uses[0] = %+v", got.Uses[0])
 	}
-	if got.Uses[1] != (Use{Ref: "@user/web-tool", Version: "0.5.0", Public: true}) {
+	if !reflect.DeepEqual(got.Uses[1], Use{Ref: "@user/web-tool", Version: "0.5.0", Public: true}) {
 		t.Errorf("Uses[1] = %+v", got.Uses[1])
 	}
 	if got.Budget != 100000 {
@@ -125,6 +125,50 @@ EXPOSE news
 	}
 	if !reflect.DeepEqual(got.Expose, []string{"search", "news"}) {
 		t.Errorf("Expose = %v", got.Expose)
+	}
+}
+
+func TestParse_UsesDeny(t *testing.T) {
+	src := `FROM python:3.12-slim
+ENTRYPOINT python3 -m agent
+USES @anthropic/web-search:1.2.0 DENY deep_crawl
+USES PUBLIC @user/billing:0.5.0 DENY charge_card,refund
+USES @vendor/safe:1.0.0 DENY a, b, c
+USES @vendor/other:1.0.0 DENY a b c
+USES @vendor/dedup:1.0.0 DENY a,a,b
+`
+	got, err := Parse(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(got.Uses) != 5 {
+		t.Fatalf("Uses len = %d, want 5", len(got.Uses))
+	}
+	want := []Use{
+		{Ref: "@anthropic/web-search", Version: "1.2.0", Deny: []string{"deep_crawl"}},
+		{Ref: "@user/billing", Version: "0.5.0", Public: true, Deny: []string{"charge_card", "refund"}},
+		{Ref: "@vendor/safe", Version: "1.0.0", Deny: []string{"a", "b", "c"}},
+		{Ref: "@vendor/other", Version: "1.0.0", Deny: []string{"a", "b", "c"}},
+		{Ref: "@vendor/dedup", Version: "1.0.0", Deny: []string{"a", "b"}},
+	}
+	for i, w := range want {
+		if !reflect.DeepEqual(got.Uses[i], w) {
+			t.Errorf("Uses[%d] = %+v, want %+v", i, got.Uses[i], w)
+		}
+	}
+}
+
+func TestParse_UsesWithoutDenyIsUnchanged(t *testing.T) {
+	src := `FROM x
+ENTRYPOINT y
+USES @anthropic/web-search:1.2.0
+`
+	got, err := Parse(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got.Uses[0].Deny != nil {
+		t.Errorf("Deny = %v, want nil for USES without DENY clause", got.Uses[0].Deny)
 	}
 }
 
@@ -246,6 +290,21 @@ func TestParse_Errors(t *testing.T) {
 			"uses missing org slash name",
 			"FROM x\nENTRYPOINT y\nUSES @web-search:1.0",
 			"must be @org/name:version",
+		},
+		{
+			"uses unknown keyword after ref",
+			"FROM x\nENTRYPOINT y\nUSES @anthropic/web-search:1.0 ALLOW search",
+			"expected DENY after reference",
+		},
+		{
+			"uses DENY with no tools",
+			"FROM x\nENTRYPOINT y\nUSES @anthropic/web-search:1.0 DENY",
+			"DENY requires at least one tool name",
+		},
+		{
+			"uses DENY with only separators",
+			"FROM x\nENTRYPOINT y\nUSES @anthropic/web-search:1.0 DENY , ,",
+			"DENY requires at least one non-empty tool name",
 		},
 		{
 			"budget negative",

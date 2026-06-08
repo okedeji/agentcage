@@ -4,8 +4,6 @@ import (
 	"fmt"
 
 	"github.com/containerd/containerd/v2/client"
-
-	"github.com/okedeji/agentcage/internal/identity"
 )
 
 // DefaultContainerdAddress is the conventional socket path containerd
@@ -16,10 +14,30 @@ import (
 const DefaultContainerdAddress = "/run/containerd/containerd.sock"
 
 // DefaultContainerdNamespace is the containerd namespace agentcage
-// scopes all of its images, containers, and snapshots into. Using a
-// dedicated namespace means `nerdctl --namespace=default ps` and our
-// objects do not see each other, which matters on shared dev machines.
-const DefaultContainerdNamespace = identity.Name
+// reads from. It matches what rootless BuildKit writes its image
+// exports into by default — the `default` namespace, which is also
+// what `nerdctl` picks up without `--namespace`. Using our own
+// namespace ("agentcage") would require reconfiguring BuildKit's
+// containerd worker; for v0 we accept sharing `default` and rely on
+// OCI image labels (io.agentcage.*) to identify our objects.
+const DefaultContainerdNamespace = "default"
+
+// DefaultSnapshotter names the containerd snapshotter plugin agentcage
+// uses to unpack images and mount container root filesystems. We use
+// "overlayfs" because that is what BuildKit's containerd worker (the
+// one nerdctl-full installs and starts by default inside Lima) writes
+// its image exports into. Reading from a different snapshotter would
+// see an empty snapshot chain even when the image is unpacked there.
+//
+// You can verify by inspecting the buildkitd process inside the VM:
+//
+//	ps -ef | grep buildkitd
+//	# ... --containerd-worker-snapshotter=overlayfs ...
+//
+// containerd's built-in default ("erofs") is registered but reports
+// "skip" for the rootless setup, which is why we cannot just leave
+// the snapshotter unset.
+const DefaultSnapshotter = "overlayfs"
 
 // Containerd wraps a containerd client with the agentcage namespace
 // already configured. Close must be called when the wrapper is no

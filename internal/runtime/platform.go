@@ -5,29 +5,40 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 )
 
-// Provisioner is the platform-specific gate that gets a containerd and
-// a buildkitd into reach. On Linux it expects the daemons to be running
-// on the host. On macOS it provisions a Lima VM the first time the
-// agentcage CLI needs them. On Windows it will provision a Lima/WSL2
-// distro in a follow-up slice.
+// Provisioner is the platform-specific gate to a Linux container
+// environment with containerd and buildkitd.
 //
 // EnsureReady is idempotent: subsequent calls after the first successful
 // one return quickly. Implementations stream provisioning progress
 // (which may take minutes on first run) to stdout/stderr so the CLI
 // can render a "first-time setup" UX.
 //
-// ContainerdAddress and BuildKitAddress return the socket addresses
-// the rest of internal/runtime should use; both can change between
-// implementations (system path vs Lima-forwarded path) but the addresses
-// satisfy the same expectations downstream.
+// ContainerdAddress and BuildKitAddress return socket addresses
+// reachable from this process. BuildKit's address is the one we
+// genuinely talk to programmatically — its gRPC API works over a
+// forwarded socket. ContainerdAddress is exposed for diagnostics and
+// future use; we do not drive container lifecycle through it because
+// the containerd Go client expects to share a mount namespace with
+// the daemon, which fails when the daemon is rootless inside a Lima
+// VM and we are not.
+//
+// PrepareRunContainer is how the runtime actually starts containers:
+// the Provisioner returns an unstarted *exec.Cmd configured to run
+// nerdctl in the right environment (inside the Lima VM on macOS,
+// directly on Linux). The caller wires Stdin/Stdout/Stderr and calls
+// Start. This mirrors what Finch, Rancher Desktop, and Colima do for
+// the same reason — shell-out to nerdctl is the working pattern for
+// rootless-containerd-in-a-VM setups.
 type Provisioner interface {
 	EnsureReady(ctx context.Context, stdout, stderr io.Writer) error
 	ContainerdAddress() string
 	BuildKitAddress() string
+	PrepareRunContainer(ctx context.Context, runID, imageRef string) *exec.Cmd
 	Close() error
 }
 
@@ -80,6 +91,17 @@ func (n *NativeProvisioner) ContainerdAddress() string { return DefaultContainer
 func (n *NativeProvisioner) BuildKitAddress() string   { return DefaultBuildKitAddress }
 func (n *NativeProvisioner) Close() error              { return nil }
 
+// PrepareRunContainer constructs `nerdctl run --rm -i --name <runID>
+// <imageRef>` on the host. Operators are expected to have nerdctl on
+// PATH when running agentcage on Linux without Lima.
+func (n *NativeProvisioner) PrepareRunContainer(ctx context.Context, runID, imageRef string) *exec.Cmd {
+	return exec.CommandContext(ctx, "nerdctl",
+		"run", "--rm", "-i",
+		"--name", runID,
+		imageRef,
+	)
+}
+
 // LimaProvisioner runs the containerd + buildkitd stack inside a Lima VM
 // on macOS (and eventually Windows via Lima's WSL2 driver). EnsureReady
 // is what makes the "first-time setup" UX appear; subsequent calls are
@@ -127,3 +149,21 @@ func (l *LimaProvisioner) EnsureReady(ctx context.Context, stdout, stderr io.Wri
 func (l *LimaProvisioner) ContainerdAddress() string { return l.VM.ContainerdAddress() }
 func (l *LimaProvisioner) BuildKitAddress() string   { return l.VM.BuildKitAddress() }
 func (l *LimaProvisioner) Close() error              { return nil }
+
+// PrepareRunContainer constructs `limactl shell <instance> nerdctl run
+// --rm -i --name <runID> <imageRef>`. The limactl shell wrapper enters
+// the Lima VM's user shell — and crucially, the rootless mount
+// namespace where snapshot paths actually exist. nerdctl then drives
+// containerd from inside that namespace, sidestepping the cross-host
+// snapshot-path problem entirely.
+//
+// LIMA_HOME is injected via the wrapper's command builder so our
+// state stays isolated from the user's other Lima instances.
+func (l *LimaProvisioner) PrepareRunContainer(ctx context.Context, runID, imageRef string) *exec.Cmd {
+	return l.VM.command(ctx,
+		"shell", l.VM.instanceName(),
+		"nerdctl", "run", "--rm", "-i",
+		"--name", runID,
+		imageRef,
+	)
+}

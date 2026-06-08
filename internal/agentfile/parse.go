@@ -192,13 +192,56 @@ func parseUses(af *Agentfile, rest string, lineNo int) error {
 		public = true
 		rest = strings.TrimSpace(rest[len("PUBLIC"):])
 	}
-	use, err := parseUseRef(rest, lineNo)
+
+	// USES <ref> [DENY tool1,tool2 ...]
+	// Split on whitespace: first token is the ref, remaining tokens are
+	// the optional DENY clause.
+	parts := strings.Fields(rest)
+	if len(parts) == 0 {
+		return fmt.Errorf("line %d: USES requires a reference", lineNo)
+	}
+	use, err := parseUseRef(parts[0], lineNo)
 	if err != nil {
 		return err
 	}
 	use.Public = public
+
+	if len(parts) > 1 {
+		if !strings.EqualFold(parts[1], "DENY") {
+			return fmt.Errorf("line %d: USES expected DENY after reference, got %q", lineNo, parts[1])
+		}
+		if len(parts) < 3 {
+			return fmt.Errorf("line %d: USES DENY requires at least one tool name", lineNo)
+		}
+		deny := parseDenyList(strings.Join(parts[2:], " "))
+		if len(deny) == 0 {
+			return fmt.Errorf("line %d: USES DENY requires at least one non-empty tool name", lineNo)
+		}
+		use.Deny = deny
+	}
+
 	af.Uses = append(af.Uses, use)
 	return nil
+}
+
+// parseDenyList splits a DENY clause's tail into a deduped list of
+// tool names. Accepts commas, spaces, or tabs as separators so an
+// author can write `DENY a,b,c` or `DENY a b c` and get the same
+// result. Empty entries (from `a,,b`) are dropped.
+func parseDenyList(s string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, raw := range strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	}) {
+		name := strings.TrimSpace(raw)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
 }
 
 func parseUseRef(ref string, lineNo int) (Use, error) {

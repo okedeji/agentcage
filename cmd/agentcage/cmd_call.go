@@ -12,6 +12,7 @@ import (
 
 func newCallCmd() *cobra.Command {
 	var argPairs []string
+	var verbose bool
 	cmd := &cobra.Command{
 		Use:   "call BUNDLE TOOL",
 		Short: "Call a specific tool on an agent by name",
@@ -63,10 +64,12 @@ Examples:
 				Args:       toolArgs,
 				Stdout:     cmd.OutOrStdout(),
 				Stderr:     cmd.ErrOrStderr(),
+				Verbose:    verbose,
 			})
 		},
 	}
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "tool argument as KEY=VALUE (repeatable)")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "stream the underlying provisioner output during first-time setup")
 	return cmd
 }
 

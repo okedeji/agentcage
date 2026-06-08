@@ -48,8 +48,8 @@ tidy:
 # falling back to PATH.
 lima-deps:
 	@mkdir -p $(BINDIR)/lima
-	@if [ -x "$(BINDIR)/lima/limactl" ]; then \
-		echo "limactl already at $(BINDIR)/lima/limactl (rm to force re-download)"; \
+	@if [ -x "$(BINDIR)/lima/bin/limactl" ]; then \
+		echo "limactl already at $(BINDIR)/lima/bin/limactl (rm -rf $(BINDIR)/lima to force re-download)"; \
 		exit 0; \
 	fi; \
 	os=$$(uname -s); arch=$$(uname -m); \
@@ -66,7 +66,6 @@ lima-deps:
 	curl -sSL "$$url" -o "$$tmpdir/$$tarball" || { echo "lima-deps: download failed"; exit 1; }; \
 	got=$$(shasum -a 256 "$$tmpdir/$$tarball" | awk '{print $$1}'); \
 	if [ "$$got" != "$$want" ]; then echo "lima-deps: sha256 mismatch (got $$got, want $$want)"; exit 1; fi; \
-	tar -xzf "$$tmpdir/$$tarball" -C "$$tmpdir" || { echo "lima-deps: extract failed"; exit 1; }; \
-	cp "$$tmpdir/bin/limactl" "$(BINDIR)/lima/limactl"; \
-	chmod +x "$(BINDIR)/lima/limactl"; \
-	echo "installed $(BINDIR)/lima/limactl (lima v$(LIMA_VERSION))"
+	tar -xzf "$$tmpdir/$$tarball" -C "$(BINDIR)/lima" || { echo "lima-deps: extract failed"; exit 1; }; \
+	chmod +x "$(BINDIR)/lima/bin/limactl"; \
+	echo "installed $(BINDIR)/lima/bin/limactl (lima v$(LIMA_VERSION)) with templates and guest agents"

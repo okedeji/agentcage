@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,16 @@ func TestBuild_HappyPath(t *testing.T) {
 	}
 	if len(manifest.Agentfile.Expose) != 1 || manifest.Agentfile.Expose[0] != "fetch_paper" {
 		t.Errorf("Agentfile.Expose = %v, want [fetch_paper]", manifest.Agentfile.Expose)
+	}
+
+	// Catalog mirrors MAIN + EXPOSE in M1. Private tools and descriptions
+	// arrive in M2 once the build introspects the running agent.
+	wantTools := []Tool{
+		{Name: "respond", Visibility: VisibilityMain},
+		{Name: "fetch_paper", Visibility: VisibilityPublic},
+	}
+	if !reflect.DeepEqual(manifest.Tools, wantTools) {
+		t.Errorf("Tools = %+v, want %+v", manifest.Tools, wantTools)
 	}
 	want := map[string]string{
 		"files/Agentfile": "FROM python:3.12-slim\nRUN pip install --no-cache-dir agentcage-sdk\nMODEL anthropic/claude-3.5\nMAIN respond\nEXPOSE fetch_paper\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
@@ -144,6 +155,56 @@ func TestBuild_SkipsVCSDir(t *testing.T) {
 		if strings.HasPrefix(path, "files/.git/") {
 			t.Errorf("bundle contains VCS metadata: %s", path)
 		}
+	}
+}
+
+func TestBuild_UsesDenyRoundTrip(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+RUN pip install --no-cache-dir agentcage-sdk
+MAIN respond
+USES @anthropic/web-search:1.2.0 DENY deep_crawl
+USES PUBLIC @user/billing:0.5.0 DENY charge_card,refund
+USES @vendor/safe:1.0.0
+ENTRYPOINT python3 agent.py
+`)
+	writeFile(t, filepath.Join(src, "agent.py"), "print('x')\n")
+
+	out := filepath.Join(t.TempDir(), "a.agent")
+	if err := Build(src, out); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	manifest, _ := extract(t, out)
+
+	want := []UseSpec{
+		{Ref: "@anthropic/web-search", Version: "1.2.0", Deny: []string{"deep_crawl"}},
+		{Ref: "@user/billing", Version: "0.5.0", Public: true, Deny: []string{"charge_card", "refund"}},
+		{Ref: "@vendor/safe", Version: "1.0.0"},
+	}
+	if !reflect.DeepEqual(manifest.Agentfile.Uses, want) {
+		t.Errorf("Uses = %+v, want %+v", manifest.Agentfile.Uses, want)
+	}
+}
+
+func TestBuild_CatalogOmittedForToolCollectionWithoutMainOrExpose(t *testing.T) {
+	// Pathological case for v0: a bundle that ships an MCP server but
+	// declares neither MAIN nor EXPOSE. The build still succeeds; the
+	// catalog is empty (omitempty drops it from JSON). The bundle is
+	// not callable via run or call, but that is the operator's problem,
+	// not the build's.
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+ENTRYPOINT python3 agent.py
+`)
+	writeFile(t, filepath.Join(src, "agent.py"), "print('x')\n")
+
+	out := filepath.Join(t.TempDir(), "a.agent")
+	if err := Build(src, out); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	manifest, _ := extract(t, out)
+	if manifest.Tools != nil {
+		t.Errorf("Tools = %+v, want nil for bundle with no MAIN or EXPOSE", manifest.Tools)
 	}
 }
 

@@ -3,11 +3,14 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	bkclient "github.com/moby/buildkit/client"
+	"github.com/moby/buildkit/util/progress/progressui"
 	"github.com/tonistiigi/fsutil"
 
 	"github.com/okedeji/agentcage/internal/agentfile"
@@ -63,9 +66,9 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 		return fmt.Errorf("image ref is empty")
 	}
 
-	dockerfileDir, cleanup, err := writeDockerfile(in)
+	buildCtxDir, cleanup, err := writeBuildContext(in)
 	if err != nil {
-		return fmt.Errorf("writing generated Dockerfile: %w", err)
+		return fmt.Errorf("writing generated build context: %w", err)
 	}
 	defer cleanup()
 
@@ -73,15 +76,20 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 	if err != nil {
 		return fmt.Errorf("mounting source dir %s: %w", in.SourceDir, err)
 	}
-	dfMount, err := fsutil.NewFS(dockerfileDir)
+	dfMount, err := fsutil.NewFS(buildCtxDir)
 	if err != nil {
-		return fmt.Errorf("mounting dockerfile dir %s: %w", dockerfileDir, err)
+		return fmt.Errorf("mounting build context dir %s: %w", buildCtxDir, err)
 	}
 
+	// We feed BuildKit's dockerfile.v0 frontend a file named "Agentfile"
+	// so progress output reads "load build definition from Agentfile"
+	// rather than "from Dockerfile". The frontend still parses
+	// Dockerfile syntax — that is its job — but the operator sees
+	// agentcage's vocabulary in the build progress.
 	opt := bkclient.SolveOpt{
 		Frontend: "dockerfile.v0",
 		FrontendAttrs: map[string]string{
-			"filename": "Dockerfile",
+			"filename": "Agentfile",
 		},
 		LocalMounts: map[string]fsutil.FS{
 			"context":    srcMount,
@@ -122,11 +130,13 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 	return nil
 }
 
-// writeDockerfile materializes the generated Dockerfile into a fresh
-// temp directory and returns its path along with a cleanup function the
+// writeBuildContext materializes the generated build instructions
+// into a fresh temp directory as a file named "Agentfile" (still
+// Dockerfile syntax internally, but presented as agentcage's
+// vocabulary) and returns its path along with a cleanup function the
 // caller must defer.
-func writeDockerfile(in BuildInput) (string, func(), error) {
-	dir, err := os.MkdirTemp("", "agentcage-dockerfile-*")
+func writeBuildContext(in BuildInput) (string, func(), error) {
+	dir, err := os.MkdirTemp("", "agentcage-build-*")
 	if err != nil {
 		return "", func() {}, err
 	}
@@ -136,7 +146,7 @@ func writeDockerfile(in BuildInput) (string, func(), error) {
 		Agentfile: in.Agentfile,
 		Labels:    labelsFromManifest(in.Manifest),
 	})
-	path := filepath.Join(dir, "Dockerfile")
+	path := filepath.Join(dir, "Agentfile")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		cleanup()
 		return "", func() {}, err
@@ -161,4 +171,75 @@ func labelsFromManifest(m *bundle.Manifest) map[string]string {
 		labels["io.agentcage.built_at"] = m.BuiltAt.UTC().Format(time.RFC3339)
 	}
 	return labels
+}
+
+// buildWithProgress runs BuildAgent and renders BuildKit's status
+// stream to w using AutoMode, the same shape `docker build` produces:
+// a live-updating `[+] Building 0.4s (9/9) FINISHED` dashboard when w
+// is a terminal, plain `#1 ... DONE` lines when it is a pipe or file.
+// AutoMode handles the TTY detection for us; CI logs stay readable
+// without us needing to detect them by hand.
+//
+// Before status events reach the display we rewrite vertex names so
+// the operator sees agentcage's vocabulary in places where BuildKit
+// would otherwise leak Docker terminology: "Dockerfile" becomes
+// "Agentfile", "docker.io/library/" is stripped from image refs,
+// ".dockerignore" becomes ".agentignore". The Dockerfile frontend
+// itself still parses Dockerfile syntax — that is how BuildKit works
+// — but the operator never has to see the word.
+func buildWithProgress(ctx context.Context, bk *BuildKit, in BuildInput, w io.Writer) error {
+	statusCh := make(chan *bkclient.SolveStatus, 16)
+	displayDone := make(chan struct{})
+
+	go func() {
+		defer close(displayDone)
+		d, err := progressui.NewDisplay(w, progressui.AutoMode)
+		if err != nil {
+			// If the display cannot be constructed, drain the
+			// channel so BuildAgent does not block on a backed-up
+			// status pipe.
+			for range statusCh {
+			}
+			return
+		}
+		_, _ = d.UpdateFrom(context.Background(), statusCh)
+	}()
+
+	in.OnStatus = func(s *bkclient.SolveStatus) {
+		rewriteStatusForAgentcage(s)
+		statusCh <- s
+	}
+	err := BuildAgent(ctx, bk, in)
+	close(statusCh)
+	<-displayDone
+	return err
+}
+
+// rewriteStatusForAgentcage rewrites vertex and sub-status names in
+// place so the build progress reads as agentcage's. The substitutions
+// are intentionally narrow: anything that is not display-text noise
+// (errors, log lines, digests) is left untouched so a real failure
+// still points at what BuildKit actually saw.
+func rewriteStatusForAgentcage(s *bkclient.SolveStatus) {
+	for _, v := range s.Vertexes {
+		v.Name = rewriteAgentcageDisplay(v.Name)
+	}
+	for _, vs := range s.Statuses {
+		vs.Name = rewriteAgentcageDisplay(vs.Name)
+		vs.ID = rewriteAgentcageDisplay(vs.ID)
+	}
+}
+
+func rewriteAgentcageDisplay(s string) string {
+	if s == "" {
+		return s
+	}
+	// Order matters: replace longer substrings first so the shorter
+	// ones do not partial-match.
+	s = strings.ReplaceAll(s, "docker.io/library/", "")
+	s = strings.ReplaceAll(s, "docker.io/", "")
+	s = strings.ReplaceAll(s, ".dockerignore", ".agentignore")
+	s = strings.ReplaceAll(s, "Dockerfile", "Agentfile")
+	s = strings.ReplaceAll(s, "dockerfile", "agentfile")
+	return s
 }

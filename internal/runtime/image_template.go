@@ -45,14 +45,28 @@ func generateDockerfile(in dockerfileInput) string {
 	fmt.Fprintf(&b, "FROM %s\n", af.From)
 	fmt.Fprintf(&b, "WORKDIR /agent\n")
 
-	// COPY everything from the bundle's files/ into /agent before
-	// RUNs, so RUN steps can install from requirements.txt /
-	// package.json / Cargo.toml that live in the source tree.
-	fmt.Fprintf(&b, "COPY . /agent\n")
-
+	// RUNs come BEFORE the source COPY. The common case is
+	// "RUN pip install agentcage-sdk anthropic" — a dependency
+	// declaration whose inputs are entirely in the line itself,
+	// not in the agent's source tree. Putting RUN first means
+	// editing agent.py only busts the cheap COPY layer, not the
+	// expensive pip install. Build times after the first one stay
+	// in the seconds-not-minutes range.
+	//
+	// Trade-off: this breaks "RUN pip install -r requirements.txt"
+	// (and equivalent Node / Cargo patterns) because the file is
+	// not in the image yet when RUN executes. Authors that need
+	// that pattern either inline the deps in RUN (the agentcage
+	// convention) or, when M2 ships smarter codegen, declare a
+	// dependency-manifest file explicitly.
 	for _, cmd := range af.Run {
 		fmt.Fprintf(&b, "RUN %s\n", cmd)
 	}
+
+	// COPY the agent's source tree last so changes to it only
+	// invalidate cache from this layer onward, not the RUN layers
+	// above.
+	fmt.Fprintf(&b, "COPY . /agent\n")
 
 	// ENV is ordered for determinism. BuildKit cares about the order
 	// only for the cache key, not for runtime semantics, but a stable

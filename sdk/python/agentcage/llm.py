@@ -52,37 +52,75 @@ _openai_client: Optional[OpenAI] = None
 
 
 def complete(
-    user: str,
+    user: str | None = None,
     *,
+    messages: list[dict] | None = None,
     system: str = "",
     model: str | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
-    """Issue a single text completion and return the response text.
+    """Issue a chat completion and return the response text.
 
-    Intentionally single-turn and text-only. For multi-turn
-    conversations, tool use, streaming, vision, or any provider feature
-    outside the simple ask-receive case, drop to the native SDK via
-    anthropic_client() or openai_client().
+    Two call shapes are accepted:
+
+        # Single-turn: pass `user` (and optionally `system`).
+        complete(user="Hi", system="You are concise.")
+
+        # Multi-turn: pass the full `messages` array (the same shape
+        # OpenAI and Anthropic accept).
+        complete(messages=[
+            {"role": "system",    "content": "You are concise."},
+            {"role": "user",      "content": "Hi"},
+            {"role": "assistant", "content": "Hello!"},
+            {"role": "user",      "content": "What's my name?"},
+        ])
+
+    When both `messages` and `user` are passed, `messages` wins. If the
+    `system` keyword is set and the messages list does not already
+    contain a system message, one is prepended.
+
+    For richer flows (tool use, streaming, vision, structured outputs,
+    multimodal blocks) drop to the native SDK via anthropic_client() or
+    openai_client().
 
     Args:
-        user: The user message.
-        system: Optional system prompt steering the model's behavior.
+        user: A single user message. Shortcut for messages=[{role:user,
+            content:<user>}].
+        messages: A list of {role, content} dicts. Roles: system, user,
+            assistant. Same shape both providers accept.
+        system: Optional system prompt. Folded into messages.
         model: "provider/model-name" (e.g. "anthropic/claude-3-5-sonnet").
             When omitted, AGENTCAGE_MODEL is read from the environment.
         max_tokens: Cap on the response length. Defaults to 1024.
 
     Returns:
-        The text content of the model's response. Returns empty string
-        when the response contains no text block.
+        The text content of the model's response. Empty string when no
+        text block is present.
 
     Raises:
+        ValueError: neither `user` nor `messages` was passed.
         RuntimeError: model is missing or malformed, provider is unknown,
             or the required API key env var is not set.
     """
+    resolved_messages = _normalize_messages(user=user, messages=messages, system=system)
     resolved = _resolve_model(model)
     provider, model_name = _split_provider(resolved)
-    return _dispatch(provider, model_name, user, system, max_tokens)
+    return _dispatch(provider, model_name, resolved_messages, max_tokens)
+
+
+def _normalize_messages(
+    *, user: str | None, messages: list[dict] | None, system: str
+) -> list[dict]:
+    """Reduce the two call shapes (single `user` vs `messages` array)
+    into one canonical messages list. Adds the `system` prefix when
+    one is set and not already present."""
+    if messages is None and user is None:
+        raise ValueError("complete() requires either user= or messages=")
+    if messages is None:
+        messages = [{"role": "user", "content": user}]
+    if system and not any(m.get("role") == "system" for m in messages):
+        messages = [{"role": "system", "content": system}, *messages]
+    return messages
 
 
 def reset_client() -> None:
@@ -120,25 +158,38 @@ def _split_provider(model: str) -> tuple[str, str]:
     return provider, name
 
 
-def _dispatch(provider: str, model: str, user: str, system: str, max_tokens: int) -> str:
+def _dispatch(provider: str, model: str, messages: list[dict], max_tokens: int) -> str:
     if provider == "anthropic":
-        return _complete_anthropic(user, system, model, max_tokens)
+        return _complete_anthropic(messages, model, max_tokens)
     if provider == "openai":
-        return _complete_openai(user, system, model, max_tokens)
+        return _complete_openai(messages, model, max_tokens)
     raise RuntimeError(
         f"unknown provider {provider!r} (supported: anthropic, openai)."
     )
 
 
-def _complete_anthropic(user: str, system: str, model: str, max_tokens: int) -> str:
+def _complete_anthropic(messages: list[dict], model: str, max_tokens: int) -> str:
+    # Anthropic's messages API takes system as a separate parameter
+    # and only accepts user/assistant turns in the messages list. Split
+    # them apart before sending.
+    system_parts: list[str] = []
+    chat_messages: list[dict] = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            content = msg.get("content", "")
+            if content:
+                system_parts.append(content)
+        else:
+            chat_messages.append(msg)
+
     client = anthropic_client()
     kwargs: dict = {
         "model": model,
         "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": user}],
+        "messages": chat_messages,
     }
-    if system:
-        kwargs["system"] = system
+    if system_parts:
+        kwargs["system"] = "\n\n".join(system_parts)
     response = client.messages.create(**kwargs)
     for block in response.content:
         if getattr(block, "type", None) == "text":
@@ -146,12 +197,10 @@ def _complete_anthropic(user: str, system: str, model: str, max_tokens: int) -> 
     return ""
 
 
-def _complete_openai(user: str, system: str, model: str, max_tokens: int) -> str:
+def _complete_openai(messages: list[dict], model: str, max_tokens: int) -> str:
+    # OpenAI's chat.completions endpoint takes the full messages list
+    # including system turns. Pass through as-is.
     client = openai_client()
-    messages: list[dict] = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": user})
     response = client.chat.completions.create(
         model=model,
         max_tokens=max_tokens,
