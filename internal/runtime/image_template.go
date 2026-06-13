@@ -33,7 +33,7 @@ type dockerfileInput struct {
 //     the image carries the bundle's provenance
 //
 // The output is deterministic. Given the same Agentfile and the same
-// labels map, this returns byte-identical bytes — important because
+// labels map, this returns byte-identical bytes, important because
 // BuildKit's cache key hashes the input.
 func generateDockerfile(in dockerfileInput) string {
 	af := in.Agentfile
@@ -46,7 +46,7 @@ func generateDockerfile(in dockerfileInput) string {
 	fmt.Fprintf(&b, "WORKDIR /agent\n")
 
 	// RUNs come BEFORE the source COPY. The common case is
-	// "RUN pip install agentcage-sdk anthropic" — a dependency
+	// "RUN pip install agentcage-sdk anthropic", a dependency
 	// declaration whose inputs are entirely in the line itself,
 	// not in the agent's source tree. Putting RUN first means
 	// editing agent.py only busts the cheap COPY layer, not the
@@ -89,7 +89,7 @@ func generateDockerfile(in dockerfileInput) string {
 
 	// ENTRYPOINT goes last by convention. Using shell form (sh -c "...")
 	// because the Agentfile's ENTRYPOINT is a single command string,
-	// not a JSON array — shell form interprets it identically to how a
+	// not a JSON array. Shell form interprets it identically to how a
 	// shell would.
 	fmt.Fprintf(&b, "ENTRYPOINT [\"sh\", \"-c\", %s]\n", dockerfileQuote(af.Entrypoint))
 

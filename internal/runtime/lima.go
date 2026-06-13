@@ -67,13 +67,13 @@ type LimaVM struct {
 //
 // Lookup order:
 //
-//  1. <directory of os.Executable()>/lima/bin/limactl — the bundled
+//  1. <directory of os.Executable()>/lima/bin/limactl, the bundled
 //     binary inside the Lima distribution layout (templates and guest
 //     agents sit alongside in share/lima/). What an installed
 //     agentcage and `make lima-deps` produce.
 //  2. ./bin/lima/bin/limactl relative to the current working
-//     directory — same layout, dev mode.
-//  3. limactl on PATH — fall back for developers who installed Lima
+//     directory, same layout, dev mode.
+//  3. limactl on PATH, the fallback for developers who installed Lima
 //     via brew or apt. Lima resolves its own data files in this case.
 //
 // Returns an error wrapped with all tried paths so an operator can see
@@ -134,7 +134,7 @@ func (vm *LimaVM) command(ctx context.Context, args ...string) *exec.Cmd {
 
 // Status reports whether the VM exists, is stopped, or is running.
 // Maps the text limactl emits to LimaStatus; never errors on
-// "instance not found" — that's a normal Nonexistent.
+// "instance not found", a normal Nonexistent.
 func (vm *LimaVM) Status(ctx context.Context) (LimaStatus, error) {
 	cmd := vm.command(ctx, "ls", "-f", "{{.Status}}", vm.instanceName())
 	out, err := cmd.Output()

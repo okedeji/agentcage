@@ -23,12 +23,12 @@ and routes the prompt to the tool the Agentfile declared as MAIN.
 
 What MAIN does inside its function body is the author's call: typically
 its LLM reasons about the prompt, calls sub-agents, calls its own
-tools, and returns a synthesized response — but any other shape is
+tools, and returns a synthesized response, but any other shape is
 fine. The platform just routes the prompt to MAIN and prints whatever
 comes back.
 
-For bundles without MAIN — tool collections that expose named tools
-without designating one as the bundle's "talk to me" entry — use
+For bundles without MAIN (tool collections that expose named tools
+without designating one as the bundle's "talk to me" entry), use
 'agentcage call BUNDLE TOOL' to invoke a tool by name.
 
 Examples:
@@ -50,11 +50,11 @@ Examples:
 				return err
 			}
 			if manifest.Agentfile.Main == "" {
-				return fmt.Errorf("bundle %s has no MAIN — it is a tool collection. Use 'agentcage call %s TOOL --arg KEY=VALUE' to call one of its tools directly", bundlePath, bundlePath)
+				return fmt.Errorf("bundle %s has no MAIN; it is a tool collection. Use 'agentcage call %s TOOL --arg KEY=VALUE' to call one of its tools directly", bundlePath, bundlePath)
 			}
 
 			// The positional prompt gets wrapped as a single-user-turn
-			// messages array — the same {role, content} shape OpenAI
+			// messages array, the same {role, content} shape OpenAI
 			// and Anthropic accept. Agents that want multi-turn
 			// continuity receive prior turns through this same arg
 			// when the caller sends them; the platform itself stores

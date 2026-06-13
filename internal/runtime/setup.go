@@ -115,7 +115,7 @@ func EnsureBootstrap(ctx context.Context, p Provisioner, ui progress.Setup, verb
 
 // setupTap is an io.Writer that splits incoming bytes into lines,
 // scans each line for known Lima markers, and drives a progress.Setup
-// accordingly. Unmatched lines are discarded — the UI is the only
+// accordingly. Unmatched lines are discarded; the UI is the only
 // thing the operator sees in non-verbose mode.
 type setupTap struct {
 	ui  progress.Setup
@@ -151,7 +151,7 @@ func indexByte(b []byte, c byte) int {
 
 // handleLine is the phase-detection logic. We watch for line
 // substrings rather than full regex matches so Lima output shape
-// changes between point releases do not silently break us — at worst
+// changes between point releases do not silently break us. At worst
 // a marker stops firing and the operator sees the spinner stay on the
 // previous phase for a few extra seconds.
 //
@@ -159,7 +159,7 @@ func indexByte(b []byte, c byte) int {
 // see the smoke-test transcripts for examples.
 //
 // Order matters in the phase switch: "READY." short-circuits because
-// it must not restart Booting. "[hostagent]" comes next — once the
+// it must not restart Booting. "[hostagent]" comes next; once the
 // host agent reports anything, the VM is alive and we are in Booting.
 // "Created an instance" similarly: it is emitted at the end of
 // `limactl create`, after the downloads, so it cleanly marks the

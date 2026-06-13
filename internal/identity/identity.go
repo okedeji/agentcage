@@ -1,10 +1,10 @@
 // Package identity holds the single source of truth for what agentcage
 // calls itself when introducing itself to anything else.
 //
-// Every spot that announces "I am agentcage" — the CLI verb, the MCP
-// handshake's client name, the bundle's BuiltWith field, the containerd
-// namespace, the default Lima instance, future OCI labels, OTel
-// resource attributes, registry user agents — reads from here.
+// Every spot that announces "I am agentcage" reads from here: the CLI
+// verb, the MCP handshake's client name, the bundle's BuiltWith field,
+// the containerd namespace, the default Lima instance, future OCI labels,
+// OTel resource attributes, registry user agents.
 //
 // Renaming the product is a change to Name. Cutting a release is a
 // change to Version (linker-injected by the Makefile; falls back to

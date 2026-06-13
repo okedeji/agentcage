@@ -32,14 +32,14 @@ const (
 )
 
 // generateLimaTemplate produces the YAML that `limactl create` consumes
-// to provision agentcage's VM. The template is intentionally minimal —
-// it leans on Lima's stock `_images/ubuntu-lts` base and on the rootless
+// to provision agentcage's VM. The template is intentionally minimal. It
+// leans on Lima's stock `_images/ubuntu-lts` base and on the rootless
 // containerd that the Lima provisioning scripts install. On top of that
 // it forwards two Unix sockets back to the host:
 //
-//   - containerd.sock — so the agentcage runtime can drive containerd
+//   - containerd.sock, so the agentcage runtime can drive containerd
 //     (image lookup, container create, task spawn, stdio).
-//   - buildkitd.sock — so BuildKit's Go client can submit Solve
+//   - buildkitd.sock, so BuildKit's Go client can submit Solve
 //     requests for image builds from generated Dockerfiles.
 //
 // The output is deterministic: same input → byte-identical YAML, which

@@ -207,10 +207,10 @@ func usesToSpec(uses []agentfile.Use, resolve func(agentfile.Use) (string, error
 	return out, nil
 }
 
-// catalogFromAgentfile builds the M1 tool catalog from the Agentfile's
-// MAIN and EXPOSE directives. M2's build-time introspection step will
-// extend this to include private tools and enrich each entry with a
-// description and JSON schema (see DESIGN.md §5 catalog section).
+// catalogFromAgentfile builds the tool catalog from the Agentfile's MAIN
+// and EXPOSE directives: names and visibility, nothing more. Build-time
+// introspection later enriches each entry with a description and schema
+// and adds the private tools the SDK registered.
 func catalogFromAgentfile(af *agentfile.Agentfile) []Tool {
 	if af.Main == "" && len(af.Expose) == 0 {
 		return nil

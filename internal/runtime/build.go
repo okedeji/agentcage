@@ -84,7 +84,7 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 	// We feed BuildKit's dockerfile.v0 frontend a file named "Agentfile"
 	// so progress output reads "load build definition from Agentfile"
 	// rather than "from Dockerfile". The frontend still parses
-	// Dockerfile syntax — that is its job — but the operator sees
+	// Dockerfile syntax (that is its job) but the operator sees
 	// agentcage's vocabulary in the build progress.
 	opt := bkclient.SolveOpt{
 		Frontend: "dockerfile.v0",
@@ -185,8 +185,8 @@ func labelsFromManifest(m *bundle.Manifest) map[string]string {
 // would otherwise leak Docker terminology: "Dockerfile" becomes
 // "Agentfile", "docker.io/library/" is stripped from image refs,
 // ".dockerignore" becomes ".agentignore". The Dockerfile frontend
-// itself still parses Dockerfile syntax — that is how BuildKit works
-// — but the operator never has to see the word.
+// itself still parses Dockerfile syntax (that is how BuildKit works),
+// but the operator never has to see the word.
 func buildWithProgress(ctx context.Context, bk *BuildKit, in BuildInput, w io.Writer) error {
 	statusCh := make(chan *bkclient.SolveStatus, 16)
 	displayDone := make(chan struct{})

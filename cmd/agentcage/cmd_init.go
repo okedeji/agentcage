@@ -18,7 +18,7 @@ by the bundled Lima driver. The first time you do anything that
 needs the runtime, that VM gets created, a Linux image is
 downloaded, and a rootless container daemon is started. The whole
 process takes 2-5 minutes depending on your connection. After it
-completes, every later run is just a few seconds — the VM stays
+completes, every later run is just a few seconds; the VM stays
 around and the daemon keeps the cached images warm.
 
 'agentcage init' runs that setup explicitly so you can do it on your

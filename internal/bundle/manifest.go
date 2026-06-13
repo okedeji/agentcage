@@ -20,18 +20,15 @@ type Manifest struct {
 	BuiltWith   string        `json:"built_with"`
 }
 
-// Tool is one entry in the agent's tool catalog. The catalog lists
-// *every* tool the agent has — main, public, and private — so
-// consumers can review the agent's full capability surface before
-// adopting it as a USES dependency. Listing a private tool here does
-// not make it callable from outside the cage; visibility stays the
-// access-control gate.
+// Tool is one entry in the agent's tool catalog. The catalog lists every
+// tool the agent has (main, public, and private) so consumers can review
+// the full capability surface before depending on the agent. Listing a
+// private tool here does not make it callable from outside the cage;
+// visibility stays the access gate.
 //
-// In M1 the catalog is populated from the Agentfile's MAIN and
-// EXPOSE directives only — name and visibility, no description or
-// schema, no private tools. M2's build-time introspection enriches
-// each entry (description, JSON schema) and adds private tools the
-// SDK has registered. See DESIGN.md §5 catalog section for details.
+// Today the catalog holds only the MAIN and EXPOSE tools, with name and
+// visibility set. Build-time introspection enriches each entry with a
+// description and schema and adds the private tools the SDK registered.
 type Tool struct {
 	Name        string         `json:"name"`
 	Visibility  Visibility     `json:"visibility"`
@@ -39,12 +36,11 @@ type Tool struct {
 	Schema      map[string]any `json:"schema,omitempty"`
 }
 
-// Visibility distinguishes the three roles a tool can have in an
-// agent. The platform's MCP routing layer uses visibility to decide
-// whether an external caller can reach a tool: main and public are
-// reachable, private is not. The catalog publishes private entries
-// for transparency — readers can audit the full surface — but the
-// access gate stays closed.
+// Visibility distinguishes the three roles a tool can have in an agent.
+// The MCP routing layer uses it to decide whether an external caller can
+// reach a tool: main and public are reachable, private is not. The catalog
+// still publishes private entries so reviewers can audit the full surface;
+// the access gate stays closed regardless.
 type Visibility string
 
 const (

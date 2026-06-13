@@ -20,8 +20,8 @@ func newCallCmd() *cobra.Command {
 
 Unlike 'agentcage run' (which routes a prompt to the bundle's MAIN
 tool), 'agentcage call' invokes the tool the operator names. What
-that tool does — reason with an LLM, call sub-agents, just fetch
-data, or anything else — is whatever its author wrote. The platform
+that tool does (reason with an LLM, call sub-agents, just fetch
+data, or anything else) is whatever its author wrote. The platform
 just routes the call.
 
 Use 'call' when:

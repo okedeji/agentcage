@@ -71,7 +71,7 @@ type setupPhase struct {
 }
 
 // findPhase returns the index of the phase with the given name, or -1
-// if there is none. Match is case-sensitive — phase names are
+// if there is none. Match is case-sensitive; phase names are
 // developer-supplied strings, not user input.
 func findPhase(phases []setupPhase, name string) int {
 	for i, p := range phases {
@@ -149,7 +149,7 @@ func (t *SetupTTY) Start(name string) {
 	}
 	// Re-calling Start for the already-active phase is a no-op. The
 	// tap fires Start whenever it sees a marker, and most phases
-	// have many matching markers — without this guard each marker
+	// have many matching markers, and without this guard each marker
 	// would reset startedAt and clear detail, making the UI feel
 	// stuck at "0s" while real time elapses.
 	if t.phases[idx].state == phaseActive {
@@ -159,7 +159,7 @@ func (t *SetupTTY) Start(name string) {
 	// Complete the currently-active phase, then auto-complete any
 	// still-pending phases that sit before the new one. This keeps
 	// the UI honest when our Lima tap misses a marker (or when a
-	// phase legitimately has no work — e.g. the Ubuntu image was
+	// phase legitimately has no work, e.g. the Ubuntu image was
 	// cached so "Preparing" had nothing to do). Without this,
 	// skipped phases stay with a leading dot forever.
 	if cur := activePhaseIndex(t.phases); cur >= 0 {
@@ -269,9 +269,9 @@ func writeLine(b *strings.Builder, s string) {
 // formatSetupPhase renders one phase line. Format:
 //
 //	✓ <name>                                  3s
-//	⠼ <name> — <detail>                  1m 22s
+//	⠼ <name> - <detail>                  1m 22s
 //	· <name>
-//	✗ <name> — <error>                  (failed)
+//	✗ <name> - <error>                  (failed)
 //
 // The duration is left out for pending phases (they have no clock).
 func formatSetupPhase(p setupPhase) string {
@@ -293,10 +293,10 @@ func formatSetupPhase(p setupPhase) string {
 
 	label := p.name
 	if p.detail != "" && (p.state == phaseActive || p.state == phaseDone) {
-		label = label + " — " + p.detail
+		label = label + " - " + p.detail
 	}
 	if p.state == phaseFailed && p.err != nil {
-		label = label + " — " + p.err.Error()
+		label = label + " - " + p.err.Error()
 	}
 
 	var right string
@@ -406,7 +406,7 @@ func (p *SetupPlain) Start(name string) {
 			p.phases[i].state = phaseDone
 			p.phases[i].startedAt = now
 			p.phases[i].endedAt = now
-			_, _ = fmt.Fprintf(p.w, "  -> %s (skipped — nothing to do)\n", p.phases[i].name)
+			_, _ = fmt.Fprintf(p.w, "  -> %s (skipped, nothing to do)\n", p.phases[i].name)
 		}
 	}
 	p.phases[idx].state = phaseActive

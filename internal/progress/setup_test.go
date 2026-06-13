@@ -57,7 +57,7 @@ func TestSetupPlain_SkippedPhasesAreAutoCompleted(t *testing.T) {
 	ui.Done()
 
 	out := buf.String()
-	if !strings.Contains(out, "-> beta (skipped — nothing to do)") {
+	if !strings.Contains(out, "-> beta (skipped, nothing to do)") {
 		t.Errorf("skipped phase 'beta' was not auto-completed:\n%s", out)
 	}
 	if !strings.Contains(out, "-> gamma") {

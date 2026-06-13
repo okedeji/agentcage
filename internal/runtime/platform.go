@@ -20,7 +20,7 @@ import (
 //
 // ContainerdAddress and BuildKitAddress return socket addresses
 // reachable from this process. BuildKit's address is the one we
-// genuinely talk to programmatically — its gRPC API works over a
+// genuinely talk to programmatically. Its gRPC API works over a
 // forwarded socket. ContainerdAddress is exposed for diagnostics and
 // future use; we do not drive container lifecycle through it because
 // the containerd Go client expects to share a mount namespace with
@@ -32,7 +32,7 @@ import (
 // nerdctl in the right environment (inside the Lima VM on macOS,
 // directly on Linux). The caller wires Stdin/Stdout/Stderr and calls
 // Start. This mirrors what Finch, Rancher Desktop, and Colima do for
-// the same reason — shell-out to nerdctl is the working pattern for
+// the same reason: shell-out to nerdctl is the working pattern for
 // rootless-containerd-in-a-VM setups.
 type Provisioner interface {
 	EnsureReady(ctx context.Context, stdout, stderr io.Writer) error
@@ -45,13 +45,13 @@ type Provisioner interface {
 // DefaultProvisioner returns the right Provisioner for the host OS,
 // using sensible defaults for socket paths and Lima state directories.
 //
-// Linux: NativeProvisioner — assumes containerd at
+// Linux: NativeProvisioner assumes containerd at
 // /run/containerd/containerd.sock and buildkitd at
 // unix:///run/buildkit/buildkitd.sock. Operators who install agentcage
 // on Linux are expected to have those daemons running (systemd units
 // shipped by their distro's containerd and buildkit packages cover this).
 //
-// macOS: LimaProvisioner — provisions ~/.agentcage/lima/ on first use.
+// macOS: LimaProvisioner provisions ~/.agentcage/lima/ on first use.
 //
 // Windows: returns an error for now; slice 3 wires Lima's WSL2 driver
 // through the same LimaProvisioner type.
@@ -152,7 +152,7 @@ func (l *LimaProvisioner) Close() error              { return nil }
 
 // PrepareRunContainer constructs `limactl shell <instance> nerdctl run
 // --rm -i --name <runID> <imageRef>`. The limactl shell wrapper enters
-// the Lima VM's user shell — and crucially, the rootless mount
+// the Lima VM's user shell, and crucially the rootless mount
 // namespace where snapshot paths actually exist. nerdctl then drives
 // containerd from inside that namespace, sidestepping the cross-host
 // snapshot-path problem entirely.

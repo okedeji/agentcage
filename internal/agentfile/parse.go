@@ -141,7 +141,7 @@ func parseModel(af *Agentfile, rest string, lineNo int) error {
 // parseMain handles the MAIN directive, which names the tool that
 // runs when the agent is invoked as an agent (`agentcage run BUNDLE
 // "..."`). The validator does NOT confirm the tool actually exists in
-// the agent's MCP server — that check belongs to the build-time
+// the agent's MCP server. That check belongs to the build-time
 // introspection pass (M2 work). Here we only validate the surface
 // shape: one token, declared at most once.
 func parseMain(af *Agentfile, rest string, lineNo int) error {
