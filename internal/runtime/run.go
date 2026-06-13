@@ -134,6 +134,10 @@ type bootInput struct {
 	Network string
 	Env     map[string]string
 
+	// NoCache forces every image to rebuild even when a content-addressed
+	// image of the same source is already present.
+	NoCache bool
+
 	Stdout  io.Writer
 	Stderr  io.Writer
 	Verbose bool
@@ -223,18 +227,29 @@ func newBootSession(ctx context.Context, in bootInput, td *teardown) (*bootSessi
 	return &bootSession{provisioner: provisioner, bk: bk}, nil
 }
 
+// buildImage builds in.ImageRef unless it is already present. Image refs are
+// content-addressed, so an existing ref is provably the same source and the
+// BuildKit solve is skipped; noCache forces a rebuild regardless. This is
+// what keeps a repeated run from re-invoking BuildKit for an unchanged agent.
+func buildImage(ctx context.Context, sess *bootSession, in BuildInput, noCache bool, stderr io.Writer) error {
+	if !noCache && imageExists(ctx, sess.provisioner, in.ImageRef) {
+		return nil
+	}
+	return buildWithProgress(ctx, sess.bk, in, stderr)
+}
+
 // startAttachedAgent builds the agent's image and starts its container
 // attached over stdio, opening an MCP session the runtime drives. The
 // container's stdin EOF is its signal to exit, so this is the parent the
 // host speaks to; sub-agents start detached and speak HTTP instead. Its
 // cleanups push onto td.
 func startAttachedAgent(ctx context.Context, sess *bootSession, in bootInput, td *teardown) (*mcp.Client, error) {
-	if err := buildWithProgress(ctx, sess.bk, BuildInput{
+	if err := buildImage(ctx, sess, BuildInput{
 		Agentfile: in.Agentfile,
 		Manifest:  in.Manifest,
 		SourceDir: in.SourceDir,
 		ImageRef:  in.ImageRef,
-	}, in.Stderr); err != nil {
+	}, in.NoCache, in.Stderr); err != nil {
 		return nil, err
 	}
 

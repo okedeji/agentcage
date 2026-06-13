@@ -91,7 +91,7 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan) (*mcp.Client, fu
 	td.push(func() error { return removeNetwork(sess.provisioner, plan.Network) })
 
 	for _, a := range plan.Agents {
-		if err := buildAgentImage(ctx, sess.bk, a.Node, a.Spec.ImageRef, in.Stderr); err != nil {
+		if err := buildAgentImage(ctx, sess, a.Node, a.Spec.ImageRef, in.NoCache, in.Stderr); err != nil {
 			return nil, nil, err
 		}
 		if err := startDetached(ctx, sess.provisioner, a.Spec); err != nil {
@@ -102,9 +102,12 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan) (*mcp.Client, fu
 	}
 
 	// The gateway is the only host the parent's USES URLs resolve to, so it
-	// sees every call in the tree and enforces every edge's deny.
-	if err := BuildGatewayImage(ctx, sess.bk, in.Stderr); err != nil {
-		return nil, nil, err
+	// sees every call in the tree and enforces every edge's deny. Its image
+	// is keyed by version, so an existing one is current; skip rebuilding it.
+	if in.NoCache || !imageExists(ctx, sess.provisioner, plan.Gateway.ImageRef) {
+		if err := BuildGatewayImage(ctx, sess.bk, in.Stderr); err != nil {
+			return nil, nil, err
+		}
 	}
 	if err := startDetached(ctx, sess.provisioner, plan.Gateway); err != nil {
 		return nil, nil, err
@@ -125,7 +128,13 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan) (*mcp.Client, fu
 // buildAgentImage extracts a sub-agent's bundle to a temp dir, reparses its
 // Agentfile, and builds its image. The source is only needed during the
 // build, so it is removed as soon as the image lands in containerd.
-func buildAgentImage(ctx context.Context, bk *BuildKit, node *agentNode, imageRef string, stderr io.Writer) error {
+func buildAgentImage(ctx context.Context, sess *bootSession, node *agentNode, imageRef string, noCache bool, stderr io.Writer) error {
+	// A present content-addressed image needs no source at all, so check
+	// before paying to extract and reparse the bundle.
+	if !noCache && imageExists(ctx, sess.provisioner, imageRef) {
+		return nil
+	}
+
 	srcDir, err := os.MkdirTemp("", "agentcage-sub-*")
 	if err != nil {
 		return err
@@ -140,16 +149,35 @@ func buildAgentImage(ctx context.Context, bk *BuildKit, node *agentNode, imageRe
 	if err != nil {
 		return fmt.Errorf("re-parsing %s Agentfile: %w", node.Key, err)
 	}
-	return buildWithProgress(ctx, bk, BuildInput{
+	return buildImage(ctx, sess, BuildInput{
 		Agentfile: af,
 		Manifest:  manifest,
 		SourceDir: srcDir,
 		ImageRef:  imageRef,
-	}, stderr)
+	}, noCache, stderr)
 }
 
 func createNetwork(ctx context.Context, p Provisioner, name string) error {
 	return runNerdctl(p.Nerdctl(ctx, "network", "create", name), "creating network "+name)
+}
+
+// imageExists reports whether a local image with exactly ref is present.
+// nerdctl image inspect is unreliable here (its name resolution differs from
+// the one run uses), so we list every image by repo:tag and match exactly.
+func imageExists(ctx context.Context, p Provisioner, ref string) bool {
+	cmd := p.Nerdctl(ctx, "images", "--format", "{{.Repository}}:{{.Tag}}")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = io.Discard
+	if cmd.Run() != nil {
+		return false
+	}
+	for _, line := range strings.Split(out.String(), "\n") {
+		if strings.TrimSpace(line) == ref {
+			return true
+		}
+	}
+	return false
 }
 
 func startDetached(ctx context.Context, p Provisioner, spec ContainerSpec) error {
