@@ -39,7 +39,8 @@ var nowFunc = time.Now
 type Option func(*options)
 
 type options struct {
-	onStep func(step, total int, message string)
+	onStep        func(step, total int, message string)
+	resolveDigest func(u agentfile.Use) (string, error)
 }
 
 // WithProgress registers a callback fired before each major step of the
@@ -47,6 +48,16 @@ type options struct {
 // current Build implementation runs (currently 3).
 func WithProgress(fn func(step, total int, message string)) Option {
 	return Option(func(o *options) { o.onStep = fn })
+}
+
+// WithUsesResolver registers the function that resolves each USES
+// dependency's tag to the digest locked into the manifest. The bundle
+// package does not know how to reach a registry; the caller supplies a
+// closure over its registry client. Without this option no digests are
+// recorded. A resolver that returns an error fails the build: a bundle
+// that cannot pin its dependencies must not ship claiming it did.
+func WithUsesResolver(fn func(u agentfile.Use) (string, error)) Option {
+	return Option(func(o *options) { o.resolveDigest = fn })
 }
 
 const buildSteps = 3
@@ -91,7 +102,10 @@ func Build(srcDir, outPath string, opts ...Option) error {
 		return fmt.Errorf("hashing source tree: %w", err)
 	}
 
-	manifest := buildManifest(af, hash)
+	manifest, err := buildManifest(af, hash, cfg.resolveDigest)
+	if err != nil {
+		return err
+	}
 
 	notify(3, "Sealing bundle → "+outPath)
 	return writeBundle(outAbs, srcDir, skip, manifest)
@@ -137,14 +151,18 @@ func bundleSkip(srcDir, outAbs string) func(rel string) bool {
 	}
 }
 
-func buildManifest(af *agentfile.Agentfile, hash string) *Manifest {
+func buildManifest(af *agentfile.Agentfile, hash string, resolve func(agentfile.Use) (string, error)) (*Manifest, error) {
+	uses, err := usesToSpec(af.Uses, resolve)
+	if err != nil {
+		return nil, err
+	}
 	spec := AgentfileSpec{
 		From:       af.From,
 		Entrypoint: af.Entrypoint,
 		Run:        af.Run,
 		Main:       af.Main,
 		Expose:     af.Expose,
-		Uses:       usesToSpec(af.Uses),
+		Uses:       uses,
 		Budget:     af.Budget,
 		Env:        af.Env,
 		Secrets:    af.Secrets,
@@ -162,12 +180,12 @@ func buildManifest(af *agentfile.Agentfile, hash string) *Manifest {
 		FilesHash:   hash,
 		BuiltAt:     nowFunc().UTC(),
 		BuiltWith:   builtWith,
-	}
+	}, nil
 }
 
-func usesToSpec(uses []agentfile.Use) []UseSpec {
+func usesToSpec(uses []agentfile.Use, resolve func(agentfile.Use) (string, error)) ([]UseSpec, error) {
 	if len(uses) == 0 {
-		return nil
+		return nil, nil
 	}
 	out := make([]UseSpec, len(uses))
 	for i, u := range uses {
@@ -177,8 +195,16 @@ func usesToSpec(uses []agentfile.Use) []UseSpec {
 			Public:  u.Public,
 			Deny:    u.Deny,
 		}
+		if resolve == nil {
+			continue
+		}
+		digest, err := resolve(u)
+		if err != nil {
+			return nil, fmt.Errorf("resolving USES %s:%s: %w", u.Ref, u.Version, err)
+		}
+		out[i].Digest = digest
 	}
-	return out
+	return out, nil
 }
 
 // catalogFromAgentfile builds the M1 tool catalog from the Agentfile's

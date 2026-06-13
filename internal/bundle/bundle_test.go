@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/okedeji/agentcage/internal/agentfile"
 )
 
 // minimalSource writes a small but valid Agentfile + agent.py into dir.
@@ -183,6 +185,56 @@ ENTRYPOINT python3 agent.py
 	}
 	if !reflect.DeepEqual(manifest.Agentfile.Uses, want) {
 		t.Errorf("Uses = %+v, want %+v", manifest.Agentfile.Uses, want)
+	}
+}
+
+func TestBuild_UsesResolverLocksDigests(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+MAIN respond
+USES @anthropic/web-search:1.2.0
+USES @user/pdf:0.4.0
+ENTRYPOINT python3 agent.py
+`)
+	writeFile(t, filepath.Join(src, "agent.py"), "print('x')\n")
+
+	digests := map[string]string{
+		"@anthropic/web-search": "sha256:aaaa",
+		"@user/pdf":             "sha256:bbbb",
+	}
+	out := filepath.Join(t.TempDir(), "a.agent")
+	err := Build(src, out, WithUsesResolver(func(u agentfile.Use) (string, error) {
+		return digests[u.Ref], nil
+	}))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	manifest, _ := extract(t, out)
+	for _, u := range manifest.Agentfile.Uses {
+		if u.Digest != digests[u.Ref] {
+			t.Errorf("Uses[%s].Digest = %q, want %q", u.Ref, u.Digest, digests[u.Ref])
+		}
+	}
+}
+
+func TestBuild_UsesResolverErrorFailsBuild(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+MAIN respond
+USES @anthropic/web-search:1.2.0
+ENTRYPOINT python3 agent.py
+`)
+	writeFile(t, filepath.Join(src, "agent.py"), "print('x')\n")
+
+	out := filepath.Join(t.TempDir(), "a.agent")
+	err := Build(src, out, WithUsesResolver(func(u agentfile.Use) (string, error) {
+		return "", os.ErrNotExist
+	}))
+	if err == nil {
+		t.Fatal("expected build to fail when a USES digest cannot resolve")
+	}
+	if _, statErr := os.Stat(out); statErr == nil {
+		t.Errorf("bundle written despite resolver failure: %s", out)
 	}
 }
 

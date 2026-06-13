@@ -80,9 +80,16 @@ type AgentfileSpec struct {
 // USES PUBLIC modifier; Deny carries the parent's exclusion list from
 // the `USES @ref:ver DENY tool1,tool2` clause. An empty Deny means
 // the parent accepts every EXPOSE'd tool of the sub-agent.
+//
+// Digest is the sha256 the sub-agent's tag resolved to at build time. It
+// is the lockfile: the daemon pulls by digest, not tag, so a dependency
+// re-pushed under the same tag does not change what this bundle runs
+// against. A bundle built before the resolver carries no digest; omitempty
+// keeps that manifest valid and the daemon falls back to the tag for it.
 type UseSpec struct {
 	Ref     string   `json:"ref"`
 	Version string   `json:"version"`
+	Digest  string   `json:"digest,omitempty"`
 	Public  bool     `json:"public,omitempty"`
 	Deny    []string `json:"deny,omitempty"`
 }
