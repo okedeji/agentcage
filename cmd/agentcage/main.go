@@ -24,6 +24,8 @@ func main() {
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newCallCmd())
+	root.AddCommand(newPushCmd())
+	root.AddCommand(newPullCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
