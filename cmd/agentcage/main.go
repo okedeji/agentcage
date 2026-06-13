@@ -28,6 +28,7 @@ func main() {
 	root.AddCommand(newPullCmd())
 	root.AddCommand(newLoginCmd())
 	root.AddCommand(newInspectCmd())
+	root.AddCommand(newGatewayCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
