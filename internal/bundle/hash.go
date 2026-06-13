@@ -103,8 +103,9 @@ func defaultSkip(outPath string) func(rel string) bool {
 		if strings.HasPrefix(rel, ".git/") {
 			return true
 		}
-		// The output file, in case it lives inside srcDir.
-		if rel == outName {
+		// The output file, and the temp file writeBundle stages next to
+		// it, in case they live inside srcDir.
+		if rel == outName || rel == outName+".tmp" {
 			return true
 		}
 		return false

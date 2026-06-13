@@ -260,6 +260,29 @@ ENTRYPOINT python3 agent.py
 	}
 }
 
+func TestBuild_ExcludesOwnTempFileWhenBuildingIntoSourceDir(t *testing.T) {
+	// Building with the output inside the source directory must not
+	// package the build's own .tmp staging file. The hash walk runs
+	// before the temp exists; the tar walk runs after, so the skip filter
+	// has to exclude it or the archive disagrees with files_hash.
+	src := t.TempDir()
+	minimalSource(t, src)
+	out := filepath.Join(src, "out.agent")
+
+	if err := Build(src, out); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	_, files := extract(t, out)
+	for path := range files {
+		if strings.HasSuffix(path, ".tmp") {
+			t.Errorf("bundle leaked a temp file: %s", path)
+		}
+		if strings.HasSuffix(path, "out.agent") {
+			t.Errorf("bundle contains its own output: %s", path)
+		}
+	}
+}
+
 func TestBuild_MissingAgentfile(t *testing.T) {
 	src := t.TempDir()
 	// No Agentfile written.

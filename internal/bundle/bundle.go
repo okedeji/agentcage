@@ -141,10 +141,14 @@ func bundleSkip(srcDir, outAbs string) func(rel string) bool {
 			return true
 		}
 		abs := filepath.Join(srcDir, rel)
-		// The output file might live inside srcDir (e.g. a previous build).
-		// Compare absolute paths so we exclude it consistently.
+		// The output file, or the temp file writeBundle stages next to it,
+		// might live inside srcDir (building into the source dir). The temp
+		// exists during the tar walk but not the earlier hash walk, so
+		// without this it leaks into the archive and disagrees with
+		// files_hash. Compare absolute paths so we exclude both wherever
+		// they sit.
 		absResolved, err := filepath.Abs(abs)
-		if err == nil && absResolved == outAbs {
+		if err == nil && (absResolved == outAbs || absResolved == outAbs+".tmp") {
 			return true
 		}
 		return false
