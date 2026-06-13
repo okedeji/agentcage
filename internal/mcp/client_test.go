@@ -96,6 +96,55 @@ func TestListTools_ReturnsRegisteredTools(t *testing.T) {
 	}
 }
 
+func TestListTools_CapturesInputSchema(t *testing.T) {
+	client, _ := testServer(t, registerEchoTool)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	tools, err := client.ListTools(ctx)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+
+	var echo *Tool
+	for i := range tools {
+		if tools[i].Name == "echo" {
+			echo = &tools[i]
+		}
+	}
+	if echo == nil {
+		t.Fatal("echo tool not listed")
+	}
+	if echo.Schema == nil {
+		t.Fatal("echo tool's input schema was not captured")
+	}
+	// AddTool infers the schema from echoInput{Message string}, so the
+	// captured schema must describe a "message" property.
+	props, ok := echo.Schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema has no properties object: %+v", echo.Schema)
+	}
+	if _, ok := props["message"]; !ok {
+		t.Errorf("schema properties missing 'message': %+v", props)
+	}
+}
+
+func TestSchemaToMap(t *testing.T) {
+	if schemaToMap(nil) != nil {
+		t.Error("nil schema should map to nil")
+	}
+	if got := schemaToMap(map[string]any{"type": "object"}); got["type"] != "object" {
+		t.Errorf("map passthrough failed: %+v", got)
+	}
+	// Anything else round-trips through JSON.
+	type schema struct {
+		Type string `json:"type"`
+	}
+	if got := schemaToMap(schema{Type: "object"}); got == nil || got["type"] != "object" {
+		t.Errorf("struct should round-trip to map, got %+v", got)
+	}
+}
+
 func TestCallTool_ReturnsTextContent(t *testing.T) {
 	client, _ := testServer(t, registerEchoTool)
 

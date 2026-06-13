@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -58,12 +59,14 @@ func (c *Client) Close() error {
 	return c.session.Close()
 }
 
-// Tool is the agentcage-shaped view of one tool the agent exposes. The
-// SDK's *mcpsdk.Tool carries a JSON Schema we do not always want to
-// surface; this struct keeps the surface narrow.
+// Tool is the agentcage-shaped view of one tool the agent exposes: its
+// name, description, and input schema as the agent's MCP server reports
+// them. Build-time introspection reads these to fill the bundle's tool
+// catalog. Schema is nil when the agent declares no input schema.
 type Tool struct {
 	Name        string
 	Description string
+	Schema      map[string]any
 }
 
 // ListTools returns every tool the connected agent advertises. Used by
@@ -80,9 +83,33 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 		out = append(out, Tool{
 			Name:        t.Name,
 			Description: t.Description,
+			Schema:      schemaToMap(t.InputSchema),
 		})
 	}
 	return out, nil
+}
+
+// schemaToMap normalizes an MCP tool's input schema to a map. The SDK
+// hands the client a map[string]any already, but the field is typed `any`
+// and a server may marshal a different concrete type, so anything else is
+// round-tripped through JSON. A schema that will not marshal is dropped
+// rather than failing the listing.
+func schemaToMap(schema any) map[string]any {
+	if schema == nil {
+		return nil
+	}
+	if m, ok := schema.(map[string]any); ok {
+		return m
+	}
+	b, err := json.Marshal(schema)
+	if err != nil {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil
+	}
+	return m
 }
 
 // CallTool invokes name with the given arguments and returns the text
