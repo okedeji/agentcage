@@ -82,7 +82,7 @@ func Run(ctx context.Context, in RunInput) error {
 		runID = deriveRunID(in.BundlePath, manifest.FilesHash)
 	}
 
-	client, teardown, err := bootAgent(ctx, bootInput{
+	boot := bootInput{
 		Agentfile: af,
 		Manifest:  manifest,
 		SourceDir: srcDir,
@@ -91,7 +91,8 @@ func Run(ctx context.Context, in RunInput) error {
 		Stdout:    in.Stdout,
 		Stderr:    in.Stderr,
 		Verbose:   in.Verbose,
-	})
+	}
+	client, teardown, err := bootRun(ctx, in, boot, runID)
 	if err != nil {
 		return err
 	}
