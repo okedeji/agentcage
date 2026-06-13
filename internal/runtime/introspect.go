@@ -27,6 +27,7 @@ type IntrospectInput struct {
 	Agentfile *agentfile.Agentfile
 	SourceDir string
 	ImageRef  string
+	NoCache   bool
 	Stdout    io.Writer
 	Stderr    io.Writer
 	Verbose   bool
@@ -44,6 +45,7 @@ func Introspect(ctx context.Context, in IntrospectInput) ([]mcp.Tool, error) {
 		Manifest:  nil,
 		SourceDir: in.SourceDir,
 		ImageRef:  in.ImageRef,
+		NoCache:   in.NoCache,
 		RunID:     introspectRunID(in.ImageRef),
 		Stdout:    in.Stdout,
 		Stderr:    in.Stderr,

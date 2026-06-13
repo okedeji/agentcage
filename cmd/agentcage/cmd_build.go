@@ -27,6 +27,7 @@ func newBuildCmd() *cobra.Command {
 	var tag string
 	var skipCycleCheck bool
 	var noIntrospect bool
+	var noCache bool
 	cmd := &cobra.Command{
 		Use:   "build [PATH]",
 		Short: "Build an agent bundle from an Agentfile",
@@ -75,6 +76,7 @@ caught; --skip-cycle-check skips the walk on a graph you trust.`,
 				tag:            tag,
 				skipCycleCheck: skipCycleCheck,
 				noIntrospect:   noIntrospect,
+				noCache:        noCache,
 			})
 		},
 	}
@@ -83,6 +85,7 @@ caught; --skip-cycle-check skips the walk on a graph you trust.`,
 	cmd.Flags().StringVarP(&tag, "tag", "t", "", "reference for the agent being built (names the output and anchors USES cycle detection)")
 	cmd.Flags().BoolVar(&skipCycleCheck, "skip-cycle-check", false, "skip the transitive USES cycle walk (digests are still locked)")
 	cmd.Flags().BoolVar(&noIntrospect, "no-introspect", false, "skip booting the agent to enrich the catalog (declared-only, no runtime)")
+	cmd.Flags().BoolVar(&noCache, "no-cache", false, "rebuild the introspection image from scratch, ignoring cached and already-built images")
 	return cmd
 }
 
@@ -93,6 +96,7 @@ type buildConfig struct {
 	tag            string
 	skipCycleCheck bool
 	noIntrospect   bool
+	noCache        bool
 }
 
 // runBuild assembles the Build options (USES digest resolution, tool
@@ -176,6 +180,7 @@ func introspectionOption(ctx context.Context, stdout, stderr io.Writer, cfg buil
 		Agentfile: af,
 		SourceDir: cfg.srcDir,
 		ImageRef:  runtime.ImageRef(cfg.outPath, hash),
+		NoCache:   cfg.noCache,
 		Stdout:    stderr,
 		Stderr:    stderr,
 	})
