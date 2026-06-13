@@ -2,11 +2,23 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
+	"time"
 
 	"github.com/okedeji/agentcage/internal/agentfile"
 	"github.com/okedeji/agentcage/internal/mcp"
 )
+
+// listToolsTimeout bounds the tools/list call. The agent has already
+// booted and completed the MCP handshake by then, so listing its tools is
+// a metadata round-trip that should return in well under a second; a
+// minute is generous headroom that still stops a wedged agent from hanging
+// the build forever. The handshake itself is not bounded here: the SDK
+// ties the session's lifetime to its connect context, so timing that out
+// would kill the session we are about to use.
+const listToolsTimeout = 60 * time.Second
 
 // IntrospectInput drives Introspect. ImageRef should be the same ref the
 // later run derives (deriveImageRef of the bundle), so the image this
@@ -41,7 +53,9 @@ func Introspect(ctx context.Context, in IntrospectInput) ([]mcp.Tool, error) {
 		return nil, err
 	}
 
-	tools, err := client.ListTools(ctx)
+	listCtx, cancel := context.WithTimeout(ctx, listToolsTimeout)
+	defer cancel()
+	tools, err := client.ListTools(listCtx)
 	if err != nil {
 		_ = teardown()
 		return nil, err
@@ -52,9 +66,17 @@ func Introspect(ctx context.Context, in IntrospectInput) ([]mcp.Tool, error) {
 	return tools, nil
 }
 
-// introspectRunID names the short-lived introspection container. Distinct
-// from a run's container name so an introspection and a run of the same
-// agent do not collide.
+// introspectRunID names the short-lived introspection container. The PID
+// keeps two concurrent builds of the same agent from claiming the same
+// container name, and the -introspect tag keeps it distinct from a run of
+// the same agent.
 func introspectRunID(imageRef string) string {
-	return sanitizeRef(imageRef) + "-introspect"
+	return fmt.Sprintf("%s-introspect-%d", sanitizeRef(imageRef), os.Getpid())
+}
+
+// ImageRef is the local image tag a bundle builds and runs under. Build
+// introspection and a later run derive the same ref from the bundle path,
+// so the image is built once and the run reuses it.
+func ImageRef(bundlePath string) string {
+	return deriveImageRef(bundlePath)
 }

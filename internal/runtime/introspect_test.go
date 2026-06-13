@@ -7,8 +7,10 @@ import (
 
 func TestIntrospectRunID(t *testing.T) {
 	got := introspectRunID("agentcage/researcher:latest")
-	if !strings.HasSuffix(got, "-introspect") {
-		t.Errorf("introspectRunID = %q, want a -introspect suffix", got)
+	// Carries the -introspect tag plus a PID for uniqueness across
+	// concurrent builds.
+	if !strings.Contains(got, "-introspect-") {
+		t.Errorf("introspectRunID = %q, want a -introspect- segment", got)
 	}
 	// The image ref's slashes and colons must be sanitized to a valid
 	// container name.
