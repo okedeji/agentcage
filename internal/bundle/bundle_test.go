@@ -20,7 +20,7 @@ import (
 func minimalSource(t *testing.T, dir string) {
 	t.Helper()
 	writeFile(t, filepath.Join(dir, "Agentfile"), `FROM python:3.12-slim
-RUN pip install --no-cache-dir agentcage-sdk
+RUN pip install --no-cache-dir mcp
 MODEL anthropic/claude-3.5
 MAIN respond
 EXPOSE fetch_paper
@@ -85,7 +85,7 @@ func TestBuild_HappyPath(t *testing.T) {
 		t.Errorf("Tools = %+v, want %+v", manifest.Tools, wantTools)
 	}
 	want := map[string]string{
-		"files/Agentfile": "FROM python:3.12-slim\nRUN pip install --no-cache-dir agentcage-sdk\nMODEL anthropic/claude-3.5\nMAIN respond\nEXPOSE fetch_paper\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
+		"files/Agentfile": "FROM python:3.12-slim\nRUN pip install --no-cache-dir mcp\nMODEL anthropic/claude-3.5\nMAIN respond\nEXPOSE fetch_paper\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
 		"files/agent.py":  "print('hello')\n",
 	}
 	if len(files) != len(want) {
@@ -163,7 +163,7 @@ func TestBuild_SkipsVCSDir(t *testing.T) {
 func TestBuild_UsesDenyRoundTrip(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
-RUN pip install --no-cache-dir agentcage-sdk
+RUN pip install --no-cache-dir mcp
 MAIN respond
 USES @anthropic/web-search:1.2.0 DENY deep_crawl
 USES PUBLIC @user/billing:0.5.0 DENY charge_card,refund

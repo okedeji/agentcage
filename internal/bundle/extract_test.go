@@ -13,7 +13,7 @@ import (
 func TestExtract_RoundTrip(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
-RUN pip install --no-cache-dir agentcage-sdk
+RUN pip install --no-cache-dir mcp
 MODEL anthropic/claude-3.5
 META description "test agent"
 ENTRYPOINT python3 agent.py
@@ -41,7 +41,7 @@ ENTRYPOINT python3 agent.py
 
 	// Verify the files round-tripped exactly.
 	for path, want := range map[string]string{
-		"Agentfile":        "FROM python:3.12-slim\nRUN pip install --no-cache-dir agentcage-sdk\nMODEL anthropic/claude-3.5\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
+		"Agentfile":        "FROM python:3.12-slim\nRUN pip install --no-cache-dir mcp\nMODEL anthropic/claude-3.5\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
 		"agent.py":         "print('hello')\n",
 		"nested/helper.py": "# helper\n",
 	} {

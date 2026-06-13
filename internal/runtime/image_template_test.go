@@ -56,11 +56,11 @@ func TestGenerateDockerfile_RunPrecedesCopy(t *testing.T) {
 	af := &agentfile.Agentfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 agent.py",
-		Run:        []string{"pip install agentcage-sdk"},
+		Run:        []string{"pip install mcp"},
 	}
 	got := generateDockerfile(dockerfileInput{Agentfile: af})
 
-	runIdx := strings.Index(got, "RUN pip install agentcage-sdk")
+	runIdx := strings.Index(got, "RUN pip install mcp")
 	copyIdx := strings.Index(got, "COPY . /agent")
 	if runIdx < 0 || copyIdx < 0 {
 		t.Fatalf("expected RUN and COPY lines, got:\n%s", got)

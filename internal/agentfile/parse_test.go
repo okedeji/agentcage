@@ -25,7 +25,7 @@ ENTRYPOINT python3 -m agent
 func TestParse_AllDirectives(t *testing.T) {
 	src := `# Comment line at the top.
 FROM python:3.12-slim
-RUN pip install --no-cache-dir agentcage-sdk
+RUN pip install --no-cache-dir mcp
 RUN pip install --no-cache-dir anthropic==0.34.0
 MODEL anthropic/claude-3.5
 
@@ -49,7 +49,7 @@ ENTRYPOINT python3 -m researcher
 		t.Errorf("Model = %+v, want %+v", got.Model, wantModel)
 	}
 	wantRun := []string{
-		"pip install --no-cache-dir agentcage-sdk",
+		"pip install --no-cache-dir mcp",
 		"pip install --no-cache-dir anthropic==0.34.0",
 	}
 	if !reflect.DeepEqual(got.Run, wantRun) {
