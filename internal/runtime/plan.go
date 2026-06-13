@@ -7,6 +7,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/env"
 	"github.com/okedeji/agentcage/internal/gateway"
+	"github.com/okedeji/agentcage/internal/reference"
 )
 
 const (
@@ -65,16 +66,28 @@ func buildRunPlan(tree *runTree, runID string) (*runPlan, error) {
 		RootEnv:    map[string]string{},
 	}
 
+	wholeBanned, toolBanned, err := classifyBans(tree)
+	if err != nil {
+		return nil, err
+	}
+
 	// callerEnv collects the sub-agent URLs each non-root caller is injected
 	// with; the root's go straight into plan.RootEnv.
 	callerEnv := map[string]map[string]string{}
 	for i, e := range tree.Edges {
 		edgeKey := fmt.Sprintf("%s-%d", sanitizeRef(e.Alias), i)
-		plan.GatewayCfg.Edges[edgeKey] = gateway.Edge{
+		edge := gateway.Edge{
 			Target: "http://" + containerName(e.Sub) + ":" + agentServePort + mcpServePath,
-			Deny:   e.Deny,
 		}
+		if wholeBanned[e.Sub] {
+			edge.Banned = true
+		} else {
+			edge.Deny = mergeDeny(e.Deny, toolBanned[e.Sub])
+		}
+		plan.GatewayCfg.Edges[edgeKey] = edge
 
+		// A banned edge still gets its URL injected, so the caller reaches the
+		// gateway and gets a clean banned error rather than a missing variable.
 		url := "http://" + gatewayName + ":" + env.DefaultGatewayPort + "/" + edgeKey + mcpServePath
 		if e.Caller == tree.Root {
 			plan.RootEnv[env.UsesURL(e.Alias)] = url
@@ -87,7 +100,8 @@ func buildRunPlan(tree *runTree, runID string) (*runPlan, error) {
 	}
 
 	for _, key := range sortedNodeKeys(tree.Nodes) {
-		if key == tree.Root {
+		if key == tree.Root || wholeBanned[key] {
+			// A banned agent never starts; its edges are rejected at the gateway.
 			continue
 		}
 		agentEnv := map[string]string{env.ServeHTTP: ":" + agentServePort}
@@ -121,6 +135,60 @@ func buildRunPlan(tree *runTree, runID string) (*runPlan, error) {
 		Detached: true,
 	}
 	return plan, nil
+}
+
+// classifyBans reads the root's BAN directives and splits them per node:
+// wholeBanned names agents banned outright (not started, every edge to them
+// rejected); toolBanned names the tools to merge into every edge reaching an
+// agent. A BAN matches a node when the pinned ref shares its registry and
+// repository, so a ban takes out the agent whatever version a dependency
+// pinned. Only the root's bans apply, and the root itself is never a target.
+func classifyBans(tree *runTree) (wholeBanned map[string]bool, toolBanned map[string][]string, err error) {
+	wholeBanned = map[string]bool{}
+	toolBanned = map[string][]string{}
+	root := tree.Nodes[tree.Root].Manifest
+	if root == nil {
+		return wholeBanned, toolBanned, nil
+	}
+	for _, ban := range root.Agentfile.Ban {
+		ref, err := reference.Parse(ban.Ref)
+		if err != nil {
+			return nil, nil, fmt.Errorf("BAN %s: %w", ban.Ref, err)
+		}
+		for key, node := range tree.Nodes {
+			if key == tree.Root {
+				continue
+			}
+			if node.Ref.Registry != ref.Registry || node.Ref.Repository != ref.Repository {
+				continue
+			}
+			if len(ban.Tools) == 0 {
+				wholeBanned[key] = true
+			} else {
+				toolBanned[key] = mergeDeny(toolBanned[key], ban.Tools)
+			}
+		}
+	}
+	return wholeBanned, toolBanned, nil
+}
+
+// mergeDeny unions two deny lists, dropping duplicates and preserving order.
+func mergeDeny(a, b []string) []string {
+	if len(b) == 0 {
+		return a
+	}
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, list := range [][]string{a, b} {
+		for _, s := range list {
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // agentImageRef is the local image tag a tree node builds into. Keyed by

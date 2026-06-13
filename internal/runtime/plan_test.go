@@ -4,8 +4,23 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/okedeji/agentcage/internal/bundle"
 	"github.com/okedeji/agentcage/internal/gateway"
+	"github.com/okedeji/agentcage/internal/reference"
 )
+
+func mustParseRef(t *testing.T, s string) reference.Reference {
+	t.Helper()
+	ref, err := reference.Parse(s)
+	if err != nil {
+		t.Fatalf("parsing %q: %v", s, err)
+	}
+	return ref
+}
+
+func rootWithBans(bans ...bundle.BanSpec) *bundle.Manifest {
+	return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Ban: bans}}
+}
 
 func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	tree := &runTree{
@@ -72,6 +87,69 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	}
 	if served.Edges["sub-0"].Target != edge.Target {
 		t.Errorf("served edge target = %q, want %q", served.Edges["sub-0"].Target, edge.Target)
+	}
+}
+
+func TestBuildRunPlan_WholeAgentBan(t *testing.T) {
+	// root BANs @org/weird; it appears as a sub-agent and must not run, and
+	// its edge must be rejected at the gateway.
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root":     {Key: "root", Manifest: rootWithBans(bundle.BanSpec{Ref: "@org/weird"})},
+			"weird-ab": {Key: "weird-ab", Ref: mustParseRef(t, "@org/weird:1.0")},
+		},
+		Edges: []usesEdge{{Caller: "root", Sub: "weird-ab", Alias: "weird"}},
+	}
+
+	plan, err := buildRunPlan(tree, "run1")
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+
+	if len(plan.Agents) != 0 {
+		t.Errorf("a banned agent was scheduled to start: %+v", plan.Agents)
+	}
+	edge, ok := plan.GatewayCfg.Edges["weird-0"]
+	if !ok || !edge.Banned {
+		t.Errorf("edge weird-0 should be banned, got %+v", edge)
+	}
+	// The URL is still injected so the caller gets a clean banned error.
+	if plan.RootEnv["AGENTCAGE_USES_WEIRD_URL"] == "" {
+		t.Error("banned edge should still inject the caller's URL")
+	}
+}
+
+func TestBuildRunPlan_ToolBanMergesIntoEdgeDeny(t *testing.T) {
+	// root BANs @org/web ONLY deep_crawl; web still runs, but every edge to
+	// it denies deep_crawl on top of that edge's own DENY.
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root":  {Key: "root", Manifest: rootWithBans(bundle.BanSpec{Ref: "@org/web", Tools: []string{"deep_crawl"}})},
+			"web-1": {Key: "web-1", Ref: mustParseRef(t, "@org/web:2.0")},
+		},
+		Edges: []usesEdge{{Caller: "root", Sub: "web-1", Alias: "web", Deny: []string{"other"}}},
+	}
+
+	plan, err := buildRunPlan(tree, "run1")
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+
+	if len(plan.Agents) != 1 {
+		t.Fatalf("a tool-banned agent should still run, agents = %d", len(plan.Agents))
+	}
+	edge := plan.GatewayCfg.Edges["web-0"]
+	if edge.Banned {
+		t.Error("a tool ban must not mark the whole edge banned")
+	}
+	denies := map[string]bool{}
+	for _, d := range edge.Deny {
+		denies[d] = true
+	}
+	if !denies["other"] || !denies["deep_crawl"] {
+		t.Errorf("edge deny = %v, want both the edge's own DENY and the subtree tool ban", edge.Deny)
 	}
 }
 
