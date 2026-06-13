@@ -72,27 +72,36 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 	}
 	defer cleanup()
 
-	srcMount, err := fsutil.NewFS(in.SourceDir)
+	return solveImage(ctx, bk, in.SourceDir, buildCtxDir, in.ImageRef, in.OnStatus)
+}
+
+// solveImage runs the dockerfile.v0 frontend over a build context and a
+// directory holding the "Agentfile" definition, exporting the result into
+// containerd's image store under imageRef. The agent build and the gateway
+// build share it: the only difference is where the context and definition
+// come from.
+//
+// We name the definition file "Agentfile" so progress output reads "load
+// build definition from Agentfile" rather than "from Dockerfile". The
+// frontend still parses Dockerfile syntax (that is its job) but the
+// operator sees agentcage's vocabulary in the build progress.
+func solveImage(ctx context.Context, bk *BuildKit, contextDir, dockerfileDir, imageRef string, onStatus func(*bkclient.SolveStatus)) error {
+	ctxMount, err := fsutil.NewFS(contextDir)
 	if err != nil {
-		return fmt.Errorf("mounting source dir %s: %w", in.SourceDir, err)
+		return fmt.Errorf("mounting context dir %s: %w", contextDir, err)
 	}
-	dfMount, err := fsutil.NewFS(buildCtxDir)
+	dfMount, err := fsutil.NewFS(dockerfileDir)
 	if err != nil {
-		return fmt.Errorf("mounting build context dir %s: %w", buildCtxDir, err)
+		return fmt.Errorf("mounting definition dir %s: %w", dockerfileDir, err)
 	}
 
-	// We feed BuildKit's dockerfile.v0 frontend a file named "Agentfile"
-	// so progress output reads "load build definition from Agentfile"
-	// rather than "from Dockerfile". The frontend still parses
-	// Dockerfile syntax (that is its job) but the operator sees
-	// agentcage's vocabulary in the build progress.
 	opt := bkclient.SolveOpt{
 		Frontend: "dockerfile.v0",
 		FrontendAttrs: map[string]string{
 			"filename": "Agentfile",
 		},
 		LocalMounts: map[string]fsutil.FS{
-			"context":    srcMount,
+			"context":    ctxMount,
 			"dockerfile": dfMount,
 		},
 		Exports: []bkclient.ExportEntry{
@@ -102,10 +111,10 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 				// containerd worker (which is the production path),
 				// that's containerd's image store at the address the
 				// caller configured. Image is then loadable via
-				// containerd.Client.GetImage(ctx, ImageRef).
+				// containerd.Client.GetImage(ctx, imageRef).
 				Type: bkclient.ExporterImage,
 				Attrs: map[string]string{
-					"name": in.ImageRef,
+					"name": imageRef,
 				},
 			},
 		},
@@ -116,8 +125,8 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 	go func() {
 		defer close(statusDone)
 		for s := range ch {
-			if in.OnStatus != nil {
-				in.OnStatus(s)
+			if onStatus != nil {
+				onStatus(s)
 			}
 		}
 	}()
@@ -125,7 +134,7 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 	_, err = bk.Client().Solve(ctx, nil, opt, ch)
 	<-statusDone
 	if err != nil {
-		return fmt.Errorf("buildkit solve %s: %w", in.ImageRef, err)
+		return fmt.Errorf("buildkit solve %s: %w", imageRef, err)
 	}
 	return nil
 }
