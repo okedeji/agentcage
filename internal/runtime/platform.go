@@ -61,12 +61,16 @@ type ContainerSpec struct {
 
 // nerdctlRunArgs builds the `run ...` argument list for a spec. Env keys
 // are sorted so the command is deterministic (and testable).
+//
+// --rm only goes on the attached parent, where it reaps the container once
+// stdin closes. nerdctl rejects --rm together with -d, so a detached
+// container omits it and gets removed explicitly at teardown.
 func nerdctlRunArgs(spec ContainerSpec) []string {
-	args := []string{"run", "--rm", "--name", spec.RunID}
+	args := []string{"run", "--name", spec.RunID}
 	if spec.Detached {
 		args = append(args, "-d")
 	} else {
-		args = append(args, "-i")
+		args = append(args, "--rm", "-i")
 	}
 	if spec.Network != "" {
 		args = append(args, "--network", spec.Network)

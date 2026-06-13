@@ -44,7 +44,7 @@ func TestNerdctlRunArgs_AttachedDefault(t *testing.T) {
 		RunID:    "cg-1",
 		ImageRef: "agentcage/echo:latest",
 	}), " ")
-	want := "run --rm --name cg-1 -i agentcage/echo:latest"
+	want := "run --name cg-1 --rm -i agentcage/echo:latest"
 	if got != want {
 		t.Errorf("nerdctlRunArgs = %q, want %q", got, want)
 	}
@@ -63,7 +63,7 @@ func TestNerdctlRunArgs_DetachedNetworkedWithEnv(t *testing.T) {
 	}), " ")
 	// Env keys are sorted, so the order is deterministic regardless of map
 	// iteration. The image ref is always last.
-	want := "run --rm --name cg-sub -d --network run-net " +
+	want := "run --name cg-sub -d --network run-net " +
 		"--env AGENTCAGE_SERVE_HTTP=:8000 " +
 		"--env AGENTCAGE_USES_ECHO_URL=http://gw/echo/mcp " +
 		"agentcage/sub:latest"

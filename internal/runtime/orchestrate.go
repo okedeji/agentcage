@@ -19,10 +19,10 @@ import (
 )
 
 // containerStopTimeout bounds how long teardown waits for one detached
-// container or network to go away. nerdctl SIGTERMs then escalates to
-// SIGKILL after its own 10s; 30s leaves room for that plus the limactl
-// shell round-trip into the VM. Exceeding it abandons the container to the
-// next stray-resource sweep rather than hanging the operator's shutdown.
+// container or network to go away. rm -f kills and removes; 30s leaves room
+// for that plus the limactl shell round-trip into the VM. Exceeding it
+// abandons the container to the next stray-resource sweep rather than
+// hanging the operator's shutdown.
 const containerStopTimeout = 30 * time.Second
 
 // bootRun picks the boot path by whether the agent declares any USES: no
@@ -98,7 +98,7 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan) (*mcp.Client, fu
 			return nil, nil, err
 		}
 		name := a.Spec.RunID
-		td.push(func() error { return stopContainer(sess.provisioner, name) })
+		td.push(func() error { return removeContainer(sess.provisioner, name) })
 	}
 
 	// The gateway is the only host the parent's USES URLs resolve to, so it
@@ -109,7 +109,7 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan) (*mcp.Client, fu
 	if err := startDetached(ctx, sess.provisioner, plan.Gateway); err != nil {
 		return nil, nil, err
 	}
-	td.push(func() error { return stopContainer(sess.provisioner, plan.Gateway.RunID) })
+	td.push(func() error { return removeContainer(sess.provisioner, plan.Gateway.RunID) })
 
 	in.Network = plan.Network
 	in.Env = plan.RootEnv
@@ -156,9 +156,9 @@ func startDetached(ctx context.Context, p Provisioner, spec ContainerSpec) error
 	return runNerdctl(p.Nerdctl(ctx, nerdctlRunArgs(spec)...), "starting "+spec.RunID)
 }
 
-// removeNetwork and stopContainer run at teardown on a fresh context: the
+// removeNetwork and removeContainer run at teardown on a fresh context: the
 // boot context may already be cancelled (operator Ctrl-C) and the resources
-// still have to come down. The deadline keeps a wedged stop from hanging
+// still have to come down. The deadline keeps a wedged removal from hanging
 // shutdown.
 func removeNetwork(p Provisioner, name string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), containerStopTimeout)
@@ -166,10 +166,13 @@ func removeNetwork(p Provisioner, name string) error {
 	return runNerdctl(p.Nerdctl(ctx, "network", "rm", name), "removing network "+name)
 }
 
-func stopContainer(p Provisioner, name string) error {
+func removeContainer(p Provisioner, name string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), containerStopTimeout)
 	defer cancel()
-	return runNerdctl(p.Nerdctl(ctx, "stop", name), "stopping "+name)
+	// rm -f stops and removes in one step. Detached containers carry no
+	// --rm, so this is what reaps them; -f also makes it idempotent against
+	// a container that already exited.
+	return runNerdctl(p.Nerdctl(ctx, "rm", "-f", name), "removing "+name)
 }
 
 // runNerdctl runs a nerdctl command, discarding stdout and folding captured
