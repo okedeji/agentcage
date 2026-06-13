@@ -60,6 +60,8 @@ func parseLine(af *Agentfile, line string, lineNo int) error {
 		return parseExpose(af, rest, lineNo)
 	case "USES":
 		return parseUses(af, rest, lineNo)
+	case "BAN":
+		return parseBan(af, rest, lineNo)
 	case "BUDGET":
 		return parseBudget(af, rest, lineNo)
 	case "ENV":
@@ -263,6 +265,48 @@ func parseUseRef(ref string, lineNo int) (Use, error) {
 		return Use{}, fmt.Errorf("line %d: USES reference must be @org/name:version (got %q)", lineNo, ref)
 	}
 	return Use{Ref: name, Version: version}, nil
+}
+
+// parseBan records an agent the root forbids anywhere in its subtree. An
+// ONLY clause narrows the ban to specific tools; without it, the whole agent
+// is banned. The ref is by name only, no version: a BAN takes out the agent
+// however deep it appears and whatever version a dependency pinned, so a tag
+// would be a foot-gun (you would ban one version and miss the next).
+//
+// BAN @org/name              bans the whole agent
+// BAN @org/name ONLY t1,t2   bans those tools of that agent, subtree-wide
+func parseBan(af *Agentfile, rest string, lineNo int) error {
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return fmt.Errorf("line %d: BAN requires an @org/name reference", lineNo)
+	}
+	ref := fields[0]
+	if !strings.HasPrefix(ref, "@") {
+		return fmt.Errorf("line %d: BAN reference must start with @ (got %q)", lineNo, ref)
+	}
+	if strings.Contains(ref, ":") {
+		return fmt.Errorf("line %d: BAN bans an agent by name, not a version; write @org/name (got %q)", lineNo, ref)
+	}
+	if !strings.Contains(ref[1:], "/") {
+		return fmt.Errorf("line %d: BAN reference must be @org/name (got %q)", lineNo, ref)
+	}
+
+	var tools []string
+	if len(fields) > 1 {
+		if !strings.EqualFold(fields[1], "ONLY") {
+			return fmt.Errorf("line %d: BAN expected ONLY after reference, got %q", lineNo, fields[1])
+		}
+		if len(fields) < 3 {
+			return fmt.Errorf("line %d: BAN ONLY requires at least one tool name", lineNo)
+		}
+		tools = parseDenyList(strings.Join(fields[2:], " "))
+		if len(tools) == 0 {
+			return fmt.Errorf("line %d: BAN ONLY requires at least one non-empty tool name", lineNo)
+		}
+	}
+
+	af.Ban = append(af.Ban, Ban{Ref: ref, Tools: tools})
+	return nil
 }
 
 func parseBudget(af *Agentfile, rest string, lineNo int) error {

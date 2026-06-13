@@ -21,6 +21,7 @@ type Agentfile struct {
 	Main       string            // MAIN: name of the agent's reasoning-entry tool; empty for tool collections
 	Expose     []string          // EXPOSE: tool names that are publicly callable from outside the cage
 	Uses       []Use             // USES: registry sub-agent dependencies
+	Ban        []Ban             // BAN: agents (or their tools) forbidden anywhere in this agent's subtree
 	Budget     int               // BUDGET: max LLM tokens per run, 0 when unset
 	Env        map[string]string // ENV: author-supplied environment variables
 	Secrets    []string          // SECRETS: secret keys to inject at runtime
@@ -44,6 +45,17 @@ type Use struct {
 	Version string // tag, never "latest"
 	Public  bool
 	Deny    []string // tool names denied; nil means "everything they EXPOSE"
+}
+
+// Ban is one BAN directive: an agent the root forbids anywhere in its
+// subtree. It is the subtree-wide, inherited counterpart to USES DENY. An
+// ONLY clause sets Tools to narrow the ban to specific tool names; an empty
+// Tools bans the whole agent, so it does not run and no edge reaches it. A
+// tool-level ban leaves the agent running but rejects those tools on every
+// edge that reaches it, however deep.
+type Ban struct {
+	Ref   string   // canonical "@org/name", without a version
+	Tools []string // tool names from the ONLY clause; nil means the whole agent
 }
 
 // Model is the parsed MODEL directive.

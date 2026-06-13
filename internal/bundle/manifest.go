@@ -64,6 +64,7 @@ type AgentfileSpec struct {
 	Main       string            `json:"main,omitempty"`  // name of the tool that runs on `agentcage run`; omitted for tool collections
 	Expose     []string          `json:"expose,omitempty"`
 	Uses       []UseSpec         `json:"uses,omitempty"`
+	Ban        []BanSpec         `json:"ban,omitempty"` // agents (or their tools) forbidden anywhere in the subtree
 	Budget     int               `json:"budget,omitempty"`
 	Env        map[string]string `json:"env,omitempty"`
 	Secrets    []string          `json:"secrets,omitempty"`
@@ -88,6 +89,16 @@ type UseSpec struct {
 	Digest  string   `json:"digest,omitempty"`
 	Public  bool     `json:"public,omitempty"`
 	Deny    []string `json:"deny,omitempty"`
+}
+
+// BanSpec is one entry in AgentfileSpec.Ban: an agent the root forbids
+// anywhere in its subtree, from the `BAN @ref [ONLY tool1,tool2]` directive.
+// An empty Tools bans the whole agent (it does not run and no edge reaches
+// it); a non-empty Tools bans those tools on every edge that reaches the
+// agent, however deep.
+type BanSpec struct {
+	Ref   string   `json:"ref"`
+	Tools []string `json:"tools,omitempty"`
 }
 
 // specVersion is the on-disk version of the manifest schema. Bump when

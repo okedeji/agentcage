@@ -196,6 +196,7 @@ func buildManifest(af *agentfile.Agentfile, hash string, cfg options) (*Manifest
 		Main:       af.Main,
 		Expose:     af.Expose,
 		Uses:       uses,
+		Ban:        bansToSpec(af.Ban),
 		Budget:     af.Budget,
 		Env:        af.Env,
 		Secrets:    af.Secrets,
@@ -295,6 +296,17 @@ func usesToSpec(uses []agentfile.Use, resolve func(agentfile.Use) (string, error
 		out[i].Digest = digest
 	}
 	return out, nil
+}
+
+func bansToSpec(bans []agentfile.Ban) []BanSpec {
+	if len(bans) == 0 {
+		return nil
+	}
+	out := make([]BanSpec, len(bans))
+	for i, b := range bans {
+		out[i] = BanSpec{Ref: b.Ref, Tools: b.Tools}
+	}
+	return out
 }
 
 // catalogFromAgentfile builds the tool catalog from the Agentfile's MAIN

@@ -172,6 +172,26 @@ USES @anthropic/web-search:1.2.0
 	}
 }
 
+func TestParse_Ban(t *testing.T) {
+	src := `FROM x
+ENTRYPOINT y
+USES @org/sub:1.0.0
+BAN @org/weird-agent
+BAN @org/web-search ONLY deep_crawl,external_fetch
+`
+	got, err := Parse(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := []Ban{
+		{Ref: "@org/weird-agent"},
+		{Ref: "@org/web-search", Tools: []string{"deep_crawl", "external_fetch"}},
+	}
+	if !reflect.DeepEqual(got.Ban, want) {
+		t.Errorf("Ban = %+v, want %+v", got.Ban, want)
+	}
+}
+
 func TestParse_CaseInsensitive(t *testing.T) {
 	src := `from python:3.12-slim
 EnTrYpOiNt python3 -m agent
@@ -305,6 +325,31 @@ func TestParse_Errors(t *testing.T) {
 			"uses DENY with only separators",
 			"FROM x\nENTRYPOINT y\nUSES @anthropic/web-search:1.0 DENY , ,",
 			"DENY requires at least one non-empty tool name",
+		},
+		{
+			"ban with a version",
+			"FROM x\nENTRYPOINT y\nBAN @org/weird:1.0",
+			"by name, not a version",
+		},
+		{
+			"ban missing @",
+			"FROM x\nENTRYPOINT y\nBAN org/weird",
+			"must start with @",
+		},
+		{
+			"ban missing org slash name",
+			"FROM x\nENTRYPOINT y\nBAN @weird",
+			"must be @org/name",
+		},
+		{
+			"ban expects ONLY after ref",
+			"FROM x\nENTRYPOINT y\nBAN @org/weird @org/other",
+			"expected ONLY after reference",
+		},
+		{
+			"ban ONLY with no tools",
+			"FROM x\nENTRYPOINT y\nBAN @org/weird ONLY",
+			"ONLY requires at least one tool name",
 		},
 		{
 			"budget negative",
