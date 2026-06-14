@@ -29,6 +29,7 @@ func main() {
 	root.AddCommand(newLoginCmd())
 	root.AddCommand(newInspectCmd())
 	root.AddCommand(newTreeCmd())
+	root.AddCommand(newSecretsCmd())
 	root.AddCommand(newGatewayCmd())
 
 	if err := root.Execute(); err != nil {
