@@ -32,6 +32,8 @@ func main() {
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newSecretsCmd())
 	root.AddCommand(newGatewayCmd())
+	root.AddCommand(newLLMGatewayCmd())
+	root.AddCommand(newEgressCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
