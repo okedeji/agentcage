@@ -77,6 +77,9 @@ Examples:
 				if err != nil {
 					return fmt.Errorf("--budget %q is not a USD amount", budget)
 				}
+				if m == 0 {
+					return fmt.Errorf("--budget must be a positive amount; omit it to leave the run unbounded")
+				}
 				budgetMicros = m
 			}
 			envPool, secretPool, err := buildInputPools(envFlags, envFile, secretFlags)
