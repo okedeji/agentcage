@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/okedeji/agentcage/internal/bundle"
@@ -10,6 +11,23 @@ import (
 	"github.com/okedeji/agentcage/internal/mcpgateway"
 	"github.com/okedeji/agentcage/internal/reference"
 )
+
+// edgeKeyFromURL pulls the gateway edge key out of an injected USES URL
+// (http://<gw>:9000/<key>/mcp). The key is an opaque capability token, so tests
+// derive it rather than assume a literal <alias>-<index>.
+func edgeKeyFromURL(t *testing.T, url string) string {
+	t.Helper()
+	const suffix = "/mcp"
+	trimmed, ok := strings.CutSuffix(url, suffix)
+	if !ok {
+		t.Fatalf("USES url %q has no /mcp suffix", url)
+	}
+	i := strings.LastIndexByte(trimmed, '/')
+	if i < 0 {
+		t.Fatalf("USES url %q has no edge key", url)
+	}
+	return trimmed[i+1:]
+}
 
 func TestBuildRunPlan_RootCapAndModelHonorOperatorConfig(t *testing.T) {
 	tree := &runTree{
@@ -90,10 +108,15 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 		t.Errorf("gateway networks = %v, must include both the root and sub nets", plan.Gateway.Networks)
 	}
 
-	// The root calls the gateway, never the sub-agent directly.
-	wantURL := "http://run1-gw:9000/sub-0/mcp"
-	if got := plan.RootEnv["AGENTCAGE_USES_SUB_URL"]; got != wantURL {
-		t.Errorf("root USES url = %q, want %q", got, wantURL)
+	// The root calls the gateway by an unguessable capability key, never the
+	// sub-agent directly.
+	url := plan.RootEnv["AGENTCAGE_USES_SUB_URL"]
+	if !strings.HasPrefix(url, "http://run1-gw:9000/") {
+		t.Errorf("root USES url = %q, want the gateway prefix", url)
+	}
+	edgeKey := edgeKeyFromURL(t, url)
+	if len(edgeKey) != 32 {
+		t.Errorf("edge key = %q, want a 32-hex-char capability token, not a guessable alias-index", edgeKey)
 	}
 
 	if len(plan.Agents) != 1 {
@@ -117,9 +140,9 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 
 	// The gateway routes the edge to the sub-agent's own container and
 	// carries the deny list, so the referee is in the path.
-	edge, ok := plan.GatewayCfg.Edges["sub-0"]
+	edge, ok := plan.GatewayCfg.Edges[edgeKey]
 	if !ok {
-		t.Fatalf("no gateway edge sub-0 in %+v", plan.GatewayCfg.Edges)
+		t.Fatalf("no gateway edge %s in %+v", edgeKey, plan.GatewayCfg.Edges)
 	}
 	if edge.Target != "http://run1-sub-abc:8000/mcp" {
 		t.Errorf("edge target = %q, want http://run1-sub-abc:8000/mcp", edge.Target)
@@ -143,8 +166,8 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	if err := json.Unmarshal([]byte(plan.Gateway.Env["AGENTCAGE_MCP_CONFIG"]), &served); err != nil {
 		t.Fatalf("gateway config not valid json: %v", err)
 	}
-	if served.Edges["sub-0"].Target != edge.Target {
-		t.Errorf("served edge target = %q, want %q", served.Edges["sub-0"].Target, edge.Target)
+	if served.Edges[edgeKey].Target != edge.Target {
+		t.Errorf("served edge target = %q, want %q", served.Edges[edgeKey].Target, edge.Target)
 	}
 }
 
@@ -248,6 +271,48 @@ func TestBuildRunPlan_EgressAllowAgentsGetProxyEnv(t *testing.T) {
 	}
 }
 
+func TestBuildRunPlan_EdgeKeysAreUnguessableCapabilities(t *testing.T) {
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root": {Key: "root"}, "a": {Key: "a"}, "b": {Key: "b"},
+		},
+		Edges: []usesEdge{
+			{Caller: "root", Sub: "a", Alias: "x"},
+			{Caller: "root", Sub: "b", Alias: "x"}, // same alias must not collide
+		},
+	}
+
+	p1, err := buildRunPlan(tree, "run1", operatorInputs{})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+	if len(p1.GatewayCfg.Edges) != 2 {
+		t.Fatalf("edges = %d, want 2", len(p1.GatewayCfg.Edges))
+	}
+	for k := range p1.GatewayCfg.Edges {
+		// 32 hex chars, and never the old guessable alias-index form a caller
+		// could enumerate to reach an edge it was not granted.
+		if len(k) != 32 {
+			t.Errorf("edge key %q is not a 32-hex capability token", k)
+		}
+		if strings.HasPrefix(k, "x-") {
+			t.Errorf("edge key %q is the guessable alias-index form", k)
+		}
+	}
+
+	// A fresh plan mints fresh tokens, so a key is not predictable across runs.
+	p2, err := buildRunPlan(tree, "run1", operatorInputs{})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+	for k := range p2.GatewayCfg.Edges {
+		if _, reused := p1.GatewayCfg.Edges[k]; reused {
+			t.Errorf("edge key %q reused across plans; tokens must be unpredictable", k)
+		}
+	}
+}
+
 func TestBuildRunPlan_PerAgentNetworkIsolation(t *testing.T) {
 	tree := &runTree{
 		Root: "root",
@@ -312,13 +377,14 @@ func TestBuildRunPlan_WholeAgentBan(t *testing.T) {
 	if len(plan.Agents) != 0 {
 		t.Errorf("a banned agent was scheduled to start: %+v", plan.Agents)
 	}
-	edge, ok := plan.GatewayCfg.Edges["weird-0"]
-	if !ok || !edge.Banned {
-		t.Errorf("edge weird-0 should be banned, got %+v", edge)
-	}
 	// The URL is still injected so the caller gets a clean banned error.
 	if plan.RootEnv["AGENTCAGE_USES_WEIRD_URL"] == "" {
-		t.Error("banned edge should still inject the caller's URL")
+		t.Fatal("banned edge should still inject the caller's URL")
+	}
+	edgeKey := edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_WEIRD_URL"])
+	edge, ok := plan.GatewayCfg.Edges[edgeKey]
+	if !ok || !edge.Banned {
+		t.Errorf("edge %s should be banned, got %+v", edgeKey, edge)
 	}
 }
 
@@ -342,7 +408,7 @@ func TestBuildRunPlan_ToolBanMergesIntoEdgeDeny(t *testing.T) {
 	if len(plan.Agents) != 1 {
 		t.Fatalf("a tool-banned agent should still run, agents = %d", len(plan.Agents))
 	}
-	edge := plan.GatewayCfg.Edges["web-0"]
+	edge := plan.GatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_WEB_URL"])]
 	if edge.Banned {
 		t.Error("a tool ban must not mark the whole edge banned")
 	}
@@ -388,10 +454,14 @@ func TestBuildRunPlan_NestedCallerServesAndCalls(t *testing.T) {
 	if got := a.Spec.Env["AGENTCAGE_SERVE_HTTP"]; got != ":8000" {
 		t.Errorf("a SERVE_HTTP = %q, want :8000", got)
 	}
-	// a's url for b points at the gateway, not at b's container, so a's
-	// own deny edge to b is enforced.
-	if got := a.Spec.Env["AGENTCAGE_USES_B_URL"]; got != "http://run9-gw:9000/b-1/mcp" {
-		t.Errorf("a USES b url = %q, want http://run9-gw:9000/b-1/mcp", got)
+	// a's url for b points at the gateway by a capability key, not at b's
+	// container, so a's own deny edge to b is enforced and unguessable.
+	gotURL := a.Spec.Env["AGENTCAGE_USES_B_URL"]
+	if !strings.HasPrefix(gotURL, "http://run9-gw:9000/") {
+		t.Errorf("a USES b url = %q, want the gateway prefix", gotURL)
+	}
+	if _, ok := plan.GatewayCfg.Edges[edgeKeyFromURL(t, gotURL)]; !ok {
+		t.Errorf("a USES b url %q does not resolve to a gateway edge", gotURL)
 	}
 	// The nested edge is the gateway's, not the root's.
 	if _, isRoot := plan.RootEnv["AGENTCAGE_USES_B_URL"]; isRoot {

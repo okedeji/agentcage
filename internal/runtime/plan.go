@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -115,8 +117,11 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	// callerEnv collects the sub-agent URLs each non-root caller is injected
 	// with; the root's go straight into plan.RootEnv.
 	callerEnv := map[string]map[string]string{}
-	for i, e := range tree.Edges {
-		edgeKey := fmt.Sprintf("%s-%d", sanitizeRef(e.Alias), i)
+	for _, e := range tree.Edges {
+		edgeKey, err := edgeToken()
+		if err != nil {
+			return nil, err
+		}
 		edge := mcpgateway.Edge{
 			Target: "http://" + containerName(e.Sub) + ":" + agentServePort + mcpServePath,
 		}
@@ -288,6 +293,20 @@ func agentImageRef(node *agentNode) string {
 		tag = "build"
 	}
 	return "agentcage/" + sanitizeRef(name) + ":" + tag
+}
+
+// edgeToken is the unguessable capability a caller addresses one USES edge by.
+// It replaces a guessable <alias>-<index> key: the routing table holds every
+// edge in the tree, and the gateway authenticates no caller, so a predictable
+// key let any cage reach any sub-agent by enumerating keys. The token goes only
+// into the owning caller's injected URL, and per-agent networks keep a sibling
+// from observing it, so an edge is reachable only by the caller it was granted.
+func edgeToken() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("generating edge token: %w", err)
+	}
+	return hex.EncodeToString(b[:]), nil
 }
 
 func sortedNodeKeys(nodes map[string]*agentNode) []string {
