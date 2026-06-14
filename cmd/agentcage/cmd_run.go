@@ -16,7 +16,7 @@ import (
 func newRunCmd() *cobra.Command {
 	var verbose bool
 	var noCache bool
-	var budget, envFile, memory, cpus string
+	var budget, envFile, secretFile, memory, cpus string
 	var pids int
 	var envFlags, secretFlags []string
 	cmd := &cobra.Command{
@@ -91,7 +91,7 @@ Examples:
 			if err := runCap.Validate(); err != nil {
 				return err
 			}
-			envPool, secretPool, err := buildInputPools(envFlags, envFile, secretFlags)
+			envPool, secretPool, err := buildInputPools(envFlags, envFile, secretFlags, secretFile)
 			if err != nil {
 				return err
 			}
@@ -116,18 +116,20 @@ Examples:
 	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "supply an env value: KEY=VALUE, or KEY to pass it through from your environment (repeatable)")
 	cmd.Flags().StringVar(&envFile, "env-file", "", "read env values (KEY=VALUE per line) from a file")
 	cmd.Flags().StringArrayVar(&secretFlags, "secret", nil, "supply a secret NAME, resolved from your environment or the agentcage secret store (repeatable)")
+	cmd.Flags().StringVar(&secretFile, "secret-file", "", "read secret values (NAME=VALUE per line) from a perms-restricted file")
 	cmd.Flags().StringVar(&memory, "memory", "", "per-cage memory cap for this run, e.g. 2g (overrides the configured default)")
 	cmd.Flags().StringVar(&cpus, "cpus", "", "per-cage CPU cap for this run, e.g. 2 or 0.5")
 	cmd.Flags().IntVar(&pids, "pids", 0, "per-cage pids cap for this run")
 	return cmd
 }
 
-// buildInputPools resolves the operator's --env / --env-file / --secret flags
-// into the value pools the runtime injects per agent. Secret values come from
-// the environment or the agentcage store, never the command line, so they
-// stay out of the process table. A --secret with no value anywhere is a
-// fail-closed error.
-func buildInputPools(envFlags []string, envFile string, secretFlags []string) (envPool, secretPool map[string]string, err error) {
+// buildInputPools resolves the operator's --env / --env-file / --secret /
+// --secret-file flags into the value pools the runtime injects per agent.
+// --secret values come from the environment or the agentcage store, never the
+// command line, so they stay out of the process table; --secret-file carries
+// NAME=VALUE pairs from a perms-restricted file for a batch. A --secret with no
+// value anywhere is a fail-closed error.
+func buildInputPools(envFlags []string, envFile string, secretFlags []string, secretFile string) (envPool, secretPool map[string]string, err error) {
 	envPool = map[string]string{}
 	if envFile != "" {
 		data, err := os.ReadFile(envFile)
@@ -155,6 +157,23 @@ func buildInputPools(envFlags []string, envFile string, secretFlags []string) (e
 	}
 
 	secretPool = map[string]string{}
+	if secretFile != "" {
+		data, err := os.ReadFile(secretFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("reading --secret-file: %w", err)
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			k, v, ok := strings.Cut(line, "=")
+			if !ok {
+				return nil, nil, fmt.Errorf("--secret-file line %q is not NAME=VALUE", line)
+			}
+			secretPool[k] = v
+		}
+	}
 	if len(secretFlags) > 0 {
 		store, err := secrets.Load()
 		if err != nil {
