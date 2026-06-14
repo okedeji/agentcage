@@ -53,15 +53,16 @@ type Provisioner interface {
 // attached so the runtime speaks MCP over its stdio; sub-agents and the
 // gateway are detached, networked, and reached over HTTP.
 type ContainerSpec struct {
-	RunID    string
-	ImageRef string
-	Args     []string // command args after the image; the gateway image's mode (mcp-gateway, llm-gateway, egress)
-	Network  string
-	Env      map[string]string
-	Memory   string // nerdctl --memory cap; the runtime sets one on every cage so none runs uncapped
-	CPUs     string // nerdctl --cpus cap
-	Pids     int    // nerdctl --pids-limit cap
-	Detached bool
+	RunID         string
+	ImageRef      string
+	Args          []string // command args after the image; the gateway image's mode (mcp-gateway, llm-gateway, egress)
+	Network       string
+	EgressNetwork string // a second, egress-capable network for a gateway door; the internal run network blocks egress for everything else
+	Env           map[string]string
+	Memory        string // nerdctl --memory cap; the runtime sets one on every cage so none runs uncapped
+	CPUs          string // nerdctl --cpus cap
+	Pids          int    // nerdctl --pids-limit cap
+	Detached      bool
 }
 
 // nerdctlRunArgs builds the `run ...` argument list for a spec. Env keys
@@ -79,6 +80,9 @@ func nerdctlRunArgs(spec ContainerSpec) []string {
 	}
 	if spec.Network != "" {
 		args = append(args, "--network", spec.Network)
+	}
+	if spec.EgressNetwork != "" {
+		args = append(args, "--network", spec.EgressNetwork)
 	}
 	if spec.Memory != "" {
 		args = append(args, "--memory", spec.Memory)

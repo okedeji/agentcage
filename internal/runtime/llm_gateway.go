@@ -107,16 +107,20 @@ func buildLLMConfig(agents map[string]string, budgetMicroUSD int64) (llmgateway.
 // pushes its teardown. It is a separate cage from the MCP gateway: it is the
 // one component holding provider keys and reaching out to a provider, kept off
 // the gateway that brokers hostile inter-agent traffic.
-func startLLMGateway(ctx context.Context, sess *bootSession, runID, network string, llmCfg llmgateway.Config, in bootInput, td *teardown) error {
+func startLLMGateway(ctx context.Context, sess *bootSession, runID, network, egressNetwork string, llmCfg llmgateway.Config, in bootInput, td *teardown) error {
 	cfgJSON, err := json.Marshal(llmCfg)
 	if err != nil {
 		return fmt.Errorf("encoding LLM gateway config: %w", err)
 	}
+	// Dual-homed: the run network (where reasoning agents reach it) plus the
+	// egress network (where it reaches the provider). The run network is
+	// internal, so this door is the agents' only path to a model.
 	spec := ContainerSpec{
-		RunID:    llmGatewayName(runID),
-		ImageRef: GatewayImageRef(),
-		Args:     []string{"llm-gateway"},
-		Network:  network,
+		RunID:         llmGatewayName(runID),
+		ImageRef:      GatewayImageRef(),
+		Args:          []string{"llm-gateway"},
+		Network:       network,
+		EgressNetwork: egressNetwork,
 		Env: map[string]string{
 			env.LLMConfig: string(cfgJSON),
 			env.LLMAddr:   ":" + env.DefaultLLMGatewayPort,

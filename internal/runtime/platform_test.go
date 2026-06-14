@@ -100,6 +100,30 @@ func TestNerdctlRunArgs_ModeArgsFollowImage(t *testing.T) {
 	}
 }
 
+func TestNerdctlRunArgs_DualHomedDoor(t *testing.T) {
+	got := strings.Join(nerdctlRunArgs(ContainerSpec{
+		RunID:         "run-llm",
+		ImageRef:      "agentcage/gateway:0.1.0",
+		Args:          []string{"llm-gateway"},
+		Network:       "run-net",
+		EgressNetwork: "run-egress",
+		Detached:      true,
+	}), " ")
+	want := "run --name run-llm -d --network run-net --network run-egress agentcage/gateway:0.1.0 llm-gateway"
+	if got != want {
+		t.Errorf("nerdctlRunArgs = %q, want %q", got, want)
+	}
+}
+
+func TestNetworkCreateArgs_InternalFlag(t *testing.T) {
+	if got := strings.Join(networkCreateArgs("run-net", true), " "); got != "network create run-net --internal" {
+		t.Errorf("internal network args = %q", got)
+	}
+	if got := strings.Join(networkCreateArgs("run-egress", false), " "); got != "network create run-egress" {
+		t.Errorf("egress network args = %q", got)
+	}
+}
+
 func TestLimaProvisioner_AddressesUseConfiguredSocketDir(t *testing.T) {
 	l := &LimaProvisioner{
 		VM: &LimaVM{HostSocketDir: "/x/y/sock"},

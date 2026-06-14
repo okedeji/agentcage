@@ -201,16 +201,22 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, func() error, er
 	// a tree. Without a MODEL it stays on the default network, unchanged.
 	if model := manifestModel(in.Manifest); model != "" {
 		network := in.RunID + "-net"
-		if err := createNetwork(ctx, sess.provisioner, network); err != nil {
+		if err := createNetwork(ctx, sess.provisioner, network, true); err != nil {
 			return nil, nil, err
 		}
 		td.push(func() error { return removeNetwork(sess.provisioner, network) })
+
+		egressNet := in.RunID + "-egress"
+		if err := createNetwork(ctx, sess.provisioner, egressNet, false); err != nil {
+			return nil, nil, err
+		}
+		td.push(func() error { return removeNetwork(sess.provisioner, egressNet) })
 
 		llmCfg, err := buildLLMConfig(map[string]string{rootAgentKey: model}, manifestBudget(in.Manifest))
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := startLLMGateway(ctx, sess, in.RunID, network, llmCfg, in, td); err != nil {
+		if err := startLLMGateway(ctx, sess, in.RunID, network, egressNet, llmCfg, in, td); err != nil {
 			return nil, nil, err
 		}
 		in.Network = network

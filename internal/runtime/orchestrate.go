@@ -85,7 +85,7 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*
 		return nil, nil, err
 	}
 
-	if err := createNetwork(ctx, sess.provisioner, plan.Network); err != nil {
+	if err := createNetwork(ctx, sess.provisioner, plan.Network, true); err != nil {
 		return nil, nil, err
 	}
 	td.push(func() error { return removeNetwork(sess.provisioner, plan.Network) })
@@ -118,11 +118,17 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*
 	// reasoning root finds its AGENTCAGE_LLM_URL already listening. It is
 	// skipped entirely when nothing in the tree reasons.
 	if len(plan.LLMAgents) > 0 {
+		egressNet := runID + "-egress"
+		if err := createNetwork(ctx, sess.provisioner, egressNet, false); err != nil {
+			return nil, nil, err
+		}
+		td.push(func() error { return removeNetwork(sess.provisioner, egressNet) })
+
 		llmCfg, err := buildLLMConfig(plan.LLMAgents, plan.Budget)
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := startLLMGateway(ctx, sess, runID, plan.Network, llmCfg, in, td); err != nil {
+		if err := startLLMGateway(ctx, sess, runID, plan.Network, egressNet, llmCfg, in, td); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -170,8 +176,20 @@ func buildAgentImage(ctx context.Context, sess *bootSession, node *agentNode, im
 	}, noCache, stderr)
 }
 
-func createNetwork(ctx context.Context, p Provisioner, name string) error {
-	return runNerdctl(p.Nerdctl(ctx, "network", "create", name), "creating network "+name)
+// createNetwork creates a per-run nerdctl network. An internal network has no
+// route off the host, so a cage on it cannot egress: that is what makes
+// EGRESS deny-default hold. The gateway doors that need the outside join a
+// second, non-internal network too.
+func createNetwork(ctx context.Context, p Provisioner, name string, internal bool) error {
+	return runNerdctl(p.Nerdctl(ctx, networkCreateArgs(name, internal)...), "creating network "+name)
+}
+
+func networkCreateArgs(name string, internal bool) []string {
+	args := []string{"network", "create", name}
+	if internal {
+		args = append(args, "--internal")
+	}
+	return args
 }
 
 // imageExists reports whether a local image with exactly ref is present.
