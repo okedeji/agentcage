@@ -4,8 +4,38 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/okedeji/agentcage/internal/bundle"
 	"github.com/okedeji/agentcage/internal/reference"
 )
+
+func TestNodeGlance_SummarizesOperationalAttributes(t *testing.T) {
+	m := &bundle.Manifest{
+		Agentfile: bundle.AgentfileSpec{
+			Model:     "anthropic/claude-3.5",
+			Budget:    5_000_000,
+			Egress:    "deny-default",
+			Resources: &bundle.ResourcesSpec{CPUs: "2", Mem: "2g"},
+			Env:       map[string]string{"LOG_LEVEL": "info"},
+			Secrets:   []string{"notion_token"},
+		},
+		Tools: []bundle.Tool{
+			{Name: "respond", Visibility: bundle.VisibilityMain},
+			{Name: "hidden", Visibility: bundle.VisibilityPrivate},
+		},
+	}
+	g := nodeGlance(m)
+	for _, want := range []string{
+		"model=anthropic/claude-3.5", "budget=$5.00", "resources=cpu=2,mem=2g",
+		"egress=deny-default", "env=[LOG_LEVEL]", "secrets=[notion_token]", "tools=1",
+	} {
+		if !strings.Contains(g, want) {
+			t.Errorf("glance %q missing %q", g, want)
+		}
+	}
+	if nodeGlance(nil) != "" {
+		t.Error("nil manifest should glance to empty")
+	}
+}
 
 func TestRenderTreeChildren_NestedWithDeny(t *testing.T) {
 	tree := &runTree{
