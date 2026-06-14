@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/gateway"
+	"github.com/okedeji/agentcage/internal/mcpgateway"
 	"github.com/okedeji/agentcage/internal/reference"
 )
 
@@ -31,7 +31,7 @@ const (
 // reaches which sub) is unit tested without starting a container.
 type runPlan struct {
 	Network    string
-	GatewayCfg gateway.Config
+	GatewayCfg mcpgateway.Config
 	Gateway    ContainerSpec
 	Agents     []plannedAgent
 	RootEnv    map[string]string
@@ -63,7 +63,7 @@ func buildRunPlan(tree *runTree, runID string) (*runPlan, error) {
 
 	plan := &runPlan{
 		Network:    network,
-		GatewayCfg: gateway.Config{Edges: map[string]gateway.Edge{}},
+		GatewayCfg: mcpgateway.Config{Edges: map[string]mcpgateway.Edge{}},
 		RootEnv:    map[string]string{},
 	}
 
@@ -77,7 +77,7 @@ func buildRunPlan(tree *runTree, runID string) (*runPlan, error) {
 	callerEnv := map[string]map[string]string{}
 	for i, e := range tree.Edges {
 		edgeKey := fmt.Sprintf("%s-%d", sanitizeRef(e.Alias), i)
-		edge := gateway.Edge{
+		edge := mcpgateway.Edge{
 			Target: "http://" + containerName(e.Sub) + ":" + agentServePort + mcpServePath,
 		}
 		if wholeBanned[e.Sub] {

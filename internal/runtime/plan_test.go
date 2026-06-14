@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/gateway"
+	"github.com/okedeji/agentcage/internal/mcpgateway"
 	"github.com/okedeji/agentcage/internal/reference"
 )
 
@@ -92,7 +92,7 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	}
 	// The routing table the gateway serves round-trips back to what we
 	// planned, so the container and the plan cannot disagree.
-	var served gateway.Config
+	var served mcpgateway.Config
 	if err := json.Unmarshal([]byte(plan.Gateway.Env["AGENTCAGE_MCP_CONFIG"]), &served); err != nil {
 		t.Fatalf("gateway config not valid json: %v", err)
 	}

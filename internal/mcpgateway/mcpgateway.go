@@ -1,4 +1,4 @@
-// Package gateway is the in-run MCP gateway: it routes a parent agent's
+// Package mcpgateway is the in-run MCP gateway: it routes a parent agent's
 // calls to each USES sub-agent and rejects calls to denied tools. It runs
 // as a container on the per-run network; the parent's
 // AGENTCAGE_USES_<NAME>_URL values point at it, one path per USES edge.
@@ -9,7 +9,7 @@
 // tools/list, and streaming all pass through untouched. It does route and
 // deny, nothing more: no auth, rate limits, or TLS, because it sits on a
 // private per-run network whose only caller is the trusted parent.
-package gateway
+package mcpgateway
 
 import (
 	"bytes"

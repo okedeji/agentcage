@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/gateway"
+	"github.com/okedeji/agentcage/internal/mcpgateway"
 )
 
 // newGatewayCmd runs the in-run MCP gateway. It is hidden: the runtime
@@ -30,7 +30,7 @@ func newGatewayCmd() *cobra.Command {
 			if addr == "" {
 				addr = ":" + env.DefaultMCPGatewayPort
 			}
-			srv := &http.Server{Addr: addr, Handler: gateway.Handler(cfg)}
+			srv := &http.Server{Addr: addr, Handler: mcpgateway.Handler(cfg)}
 			return srv.ListenAndServe()
 		},
 	}
@@ -38,14 +38,14 @@ func newGatewayCmd() *cobra.Command {
 }
 
 // gatewayConfigFromEnv reads the routing table the runtime injected.
-func gatewayConfigFromEnv() (gateway.Config, error) {
+func gatewayConfigFromEnv() (mcpgateway.Config, error) {
 	raw := os.Getenv(env.MCPConfig)
 	if raw == "" {
-		return gateway.Config{}, fmt.Errorf("%s is required", env.MCPConfig)
+		return mcpgateway.Config{}, fmt.Errorf("%s is required", env.MCPConfig)
 	}
-	var cfg gateway.Config
+	var cfg mcpgateway.Config
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return gateway.Config{}, fmt.Errorf("parsing AGENTCAGE_GATEWAY_CONFIG: %w", err)
+		return mcpgateway.Config{}, fmt.Errorf("parsing AGENTCAGE_GATEWAY_CONFIG: %w", err)
 	}
 	return cfg, nil
 }
