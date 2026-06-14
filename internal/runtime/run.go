@@ -219,35 +219,48 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, func() error, er
 		return nil, nil, err
 	}
 
-	// A lone agent with no USES still reasons if it declares a MODEL, so it
-	// needs its own per-run network and LLM gateway, the same as the root of
-	// a tree. Without a MODEL it stays on the default network, unchanged.
-	if model := manifestModel(in.Manifest); model != "" {
+	// A lone agent with no USES still needs a per-run network when it reasons
+	// (a MODEL, so an LLM gateway to reach) or declares allow: egress (an
+	// egress proxy to route through). Either way the run network is internal
+	// and the gateways are its only doors out. Without either it stays on the
+	// default network, unchanged.
+	model := manifestModel(in.Manifest)
+	allowHosts := egressHosts(manifestEgress(in.Manifest))
+	egressNet := in.RunID + "-egress"
+	if model != "" || len(allowHosts) > 0 {
 		network := in.RunID + "-net"
 		if err := createNetwork(ctx, sess.provisioner, network, true); err != nil {
 			return nil, nil, err
 		}
 		td.push(func() error { return removeNetwork(sess.provisioner, network) })
 
-		egressNet := in.RunID + "-egress"
 		if err := createNetwork(ctx, sess.provisioner, egressNet, false); err != nil {
 			return nil, nil, err
 		}
 		td.push(func() error { return removeNetwork(sess.provisioner, egressNet) })
 
-		budget := resolveBudget(in.Budget, manifestBudget(in.Manifest), in.Stderr)
-		llmCfg, err := buildLLMConfig(map[string]string{rootAgentKey: model}, budget)
-		if err != nil {
-			return nil, nil, err
-		}
-		if err := startLLMGateway(ctx, sess, in.RunID, network, egressNet, llmCfg, in, td); err != nil {
-			return nil, nil, err
-		}
 		in.Network = network
 		if in.Env == nil {
 			in.Env = map[string]string{}
 		}
-		in.Env[env.LLMURL] = llmURL(in.RunID, rootAgentKey)
+
+		if model != "" {
+			budget := resolveBudget(in.Budget, manifestBudget(in.Manifest), in.Stderr)
+			llmCfg, err := buildLLMConfig(map[string]string{rootAgentKey: model}, budget)
+			if err != nil {
+				return nil, nil, err
+			}
+			if err := startLLMGateway(ctx, sess, in.RunID, network, egressNet, llmCfg, in, td); err != nil {
+				return nil, nil, err
+			}
+			in.Env[env.LLMURL] = llmURL(in.RunID, rootAgentKey)
+		}
+
+		if len(allowHosts) > 0 {
+			for k, v := range egressProxyEnv(in.RunID) {
+				in.Env[k] = v
+			}
+		}
 	}
 
 	// Operator env overrides and declared secrets, scoped to this agent's own
@@ -263,6 +276,14 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, func() error, er
 	client, err := startAttachedAgent(ctx, sess, in, td)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// The egress proxy keys its allow-list by the agent's address, available
+	// only once the container is running, so it starts after the agent.
+	if len(allowHosts) > 0 {
+		if err := startEgressProxy(ctx, sess, in.RunID, in.Network, egressNet, map[string][]string{in.RunID: allowHosts}, in, td); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	booted = true

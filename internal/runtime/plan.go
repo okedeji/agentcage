@@ -43,6 +43,11 @@ type runPlan struct {
 	// operator overrides it.
 	LLMAgents map[string]string
 	Budget    int64
+
+	// EgressAgents maps each allow: agent's container name to the hosts it may
+	// reach. Empty when nothing in the tree declares allow:, which tells the
+	// orchestrator no egress proxy is needed.
+	EgressAgents map[string][]string
 }
 
 // plannedAgent pairs a non-root tree node with the detached container spec
@@ -70,11 +75,12 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	}
 
 	plan := &runPlan{
-		Network:    network,
-		GatewayCfg: mcpgateway.Config{Edges: map[string]mcpgateway.Edge{}},
-		RootEnv:    map[string]string{},
-		LLMAgents:  map[string]string{},
-		Budget:     nodeBudget(tree.Nodes[tree.Root]),
+		Network:      network,
+		GatewayCfg:   mcpgateway.Config{Edges: map[string]mcpgateway.Edge{}},
+		RootEnv:      map[string]string{},
+		LLMAgents:    map[string]string{},
+		EgressAgents: map[string][]string{},
+		Budget:       nodeBudget(tree.Nodes[tree.Root]),
 	}
 
 	wholeBanned, toolBanned, err := classifyBans(tree)
@@ -124,6 +130,12 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 			agentEnv[env.LLMURL] = llmURL(runID, key)
 			plan.LLMAgents[key] = effectiveModel(model, node, ops.models)
 		}
+		if hosts := egressHosts(nodeEgress(node)); len(hosts) > 0 {
+			plan.EgressAgents[containerName(key)] = hosts
+			for k, v := range egressProxyEnv(runID) {
+				agentEnv[k] = v
+			}
+		}
 		if err := injectOperatorValues(agentEnv, node.Manifest, ops.env, ops.secrets); err != nil {
 			return nil, fmt.Errorf("agent %s: %w", key, err)
 		}
@@ -144,6 +156,12 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	if model := nodeModel(tree.Nodes[tree.Root]); model != "" {
 		plan.RootEnv[env.LLMURL] = llmURL(runID, tree.Root)
 		plan.LLMAgents[tree.Root] = model
+	}
+	if hosts := egressHosts(nodeEgress(tree.Nodes[tree.Root])); len(hosts) > 0 {
+		plan.EgressAgents[containerName(tree.Root)] = hosts
+		for k, v := range egressProxyEnv(runID) {
+			plan.RootEnv[k] = v
+		}
 	}
 	if err := injectOperatorValues(plan.RootEnv, tree.Nodes[tree.Root].Manifest, ops.env, ops.secrets); err != nil {
 		return nil, fmt.Errorf("agent %s: %w", tree.Root, err)

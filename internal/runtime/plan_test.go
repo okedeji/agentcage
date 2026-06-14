@@ -137,6 +137,64 @@ func TestBuildRunPlan_InjectsLLMURLForReasoningAgents(t *testing.T) {
 	}
 }
 
+func TestBuildRunPlan_EgressAllowAgentsGetProxyEnv(t *testing.T) {
+	withEgress := func(policy string) *bundle.Manifest {
+		return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Egress: policy}}
+	}
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root":   {Key: "root", Manifest: withEgress("allow:api.openai.com")},
+			"sub-ab": {Key: "sub-ab", Manifest: withEgress("allow:example.com, foo.test")},
+			"sub-cd": {Key: "sub-cd", Manifest: withEgress("deny-default")},
+		},
+		Edges: []usesEdge{
+			{Caller: "root", Sub: "sub-ab", Alias: "a"},
+			{Caller: "root", Sub: "sub-cd", Alias: "c"},
+		},
+	}
+
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+
+	// Only the allow: agents are recorded, keyed by container name, and a
+	// deny-default agent never appears, so the orchestrator never opens it a
+	// route out.
+	if got := plan.EgressAgents["run1"]; len(got) != 1 || got[0] != "api.openai.com" {
+		t.Errorf("root egress hosts = %v, want [api.openai.com]", got)
+	}
+	if got := plan.EgressAgents["run1-sub-ab"]; len(got) != 2 || got[0] != "example.com" || got[1] != "foo.test" {
+		t.Errorf("sub-ab egress hosts = %v, want [example.com foo.test]", got)
+	}
+	if _, ok := plan.EgressAgents["run1-sub-cd"]; ok {
+		t.Errorf("deny-default agent must not be in EgressAgents: %v", plan.EgressAgents)
+	}
+
+	// The allow: agents are pointed at the proxy; intra-run gateways stay
+	// direct so their plain-HTTP calls do not hit the CONNECT-only proxy.
+	wantProxy := "http://run1-egress-proxy:9002"
+	if got := plan.RootEnv["HTTPS_PROXY"]; got != wantProxy {
+		t.Errorf("root HTTPS_PROXY = %q, want %q", got, wantProxy)
+	}
+	if got := plan.RootEnv["NO_PROXY"]; got != "run1-gw,run1-llm,localhost,127.0.0.1" {
+		t.Errorf("root NO_PROXY = %q", got)
+	}
+	for _, a := range plan.Agents {
+		switch a.Spec.RunID {
+		case "run1-sub-ab":
+			if a.Spec.Env["HTTP_PROXY"] != wantProxy {
+				t.Errorf("sub-ab HTTP_PROXY = %q, want %q", a.Spec.Env["HTTP_PROXY"], wantProxy)
+			}
+		case "run1-sub-cd":
+			if _, ok := a.Spec.Env["HTTP_PROXY"]; ok {
+				t.Errorf("deny-default agent must get no proxy env: %v", a.Spec.Env)
+			}
+		}
+	}
+}
+
 func TestBuildRunPlan_WholeAgentBan(t *testing.T) {
 	// root BANs @org/weird; it appears as a sub-agent and must not run, and
 	// its edge must be rejected at the gateway.

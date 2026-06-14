@@ -120,16 +120,23 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*
 	}
 	td.push(func() error { return removeContainer(sess.provisioner, plan.Gateway.RunID) })
 
-	// The LLM gateway boots after the MCP gateway and before the root, so a
-	// reasoning root finds its AGENTCAGE_LLM_URL already listening. It is
-	// skipped entirely when nothing in the tree reasons.
-	if len(plan.LLMAgents) > 0 {
-		egressNet := runID + "-egress"
+	// One non-internal network is the door to the outside for both the LLM
+	// gateway and the egress proxy. It exists whenever the run reasons or any
+	// agent declares allow:, and only then, so a tree that needs neither stays
+	// fully internal.
+	var egressNet string
+	if len(plan.LLMAgents) > 0 || len(plan.EgressAgents) > 0 {
+		egressNet = runID + "-egress"
 		if err := createNetwork(ctx, sess.provisioner, egressNet, false); err != nil {
 			return nil, nil, err
 		}
 		td.push(func() error { return removeNetwork(sess.provisioner, egressNet) })
+	}
 
+	// The LLM gateway boots after the MCP gateway and before the root, so a
+	// reasoning root finds its AGENTCAGE_LLM_URL already listening. It is
+	// skipped entirely when nothing in the tree reasons.
+	if len(plan.LLMAgents) > 0 {
 		budget := resolveBudget(in.Budget, plan.Budget, in.Stderr)
 		llmCfg, err := buildLLMConfig(plan.LLMAgents, budget)
 		if err != nil {
@@ -145,6 +152,15 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*
 	client, err := startAttachedAgent(ctx, sess, in, td)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// The egress proxy starts after the root because the root runs attached and
+	// last, so this is the first point every allow: agent in the tree, the root
+	// included, has an address to key its allow-list by.
+	if len(plan.EgressAgents) > 0 {
+		if err := startEgressProxy(ctx, sess, runID, plan.Network, egressNet, plan.EgressAgents, in, td); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	booted = true
