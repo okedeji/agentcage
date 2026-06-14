@@ -55,6 +55,12 @@ func TestHandler_RefusesDisallowedHost(t *testing.T) {
 }
 
 func TestHandler_TunnelsAllowedHost(t *testing.T) {
+	// The backend is on loopback, which the SSRF guard rightly refuses, so this
+	// test points the tunnel at a permissive dialer to exercise the data path.
+	old := dialTarget
+	dialTarget = func(target string) (net.Conn, error) { return net.Dial("tcp", target) }
+	defer func() { dialTarget = old }()
+
 	// A TCP backend that echoes one line, standing in for an allowed host.
 	backend, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -94,6 +100,49 @@ func TestHandler_TunnelsAllowedHost(t *testing.T) {
 	}
 	if reply != "echo:ping\n" {
 		t.Errorf("tunneled reply = %q, want echo:ping", reply)
+	}
+}
+
+func TestHandler_RefusesPrivateTarget(t *testing.T) {
+	// Even when the source is allowed to reach the host string, the proxy must
+	// refuse to dial it if it resolves to a private address: a hostname-filter
+	// that tunnels to internal IPs is an SSRF pivot. The host is explicitly
+	// allowed, so a 403 here can only come from the dial guard, not host-deny.
+	tmp := httptest.NewServer(Handler(Config{}))
+	_, srcIP, c0 := connect(t, tmp.Listener.Addr().String(), "x:1")
+	_ = c0.Close()
+	tmp.Close()
+
+	srv := httptest.NewServer(Handler(Config{Sources: map[string][]string{srcIP: {"10.0.0.1"}}}))
+	defer srv.Close()
+	status, _, c := connect(t, srv.Listener.Addr().String(), "10.0.0.1:8080")
+	_ = c.Close()
+	if !contains(status, "403") {
+		t.Errorf("private target status = %q, want 403 (SSRF guard)", status)
+	}
+}
+
+func TestIsPublic(t *testing.T) {
+	cases := []struct {
+		ip   string
+		want bool
+	}{
+		{"8.8.8.8", true},
+		{"1.1.1.1", true},
+		{"10.0.0.1", false},            // RFC1918
+		{"192.168.5.2", false},         // RFC1918 (the Lima host)
+		{"172.16.0.1", false},          // RFC1918
+		{"127.0.0.1", false},           // loopback
+		{"169.254.169.254", false},     // link-local (cloud metadata)
+		{"0.0.0.0", false},             // unspecified
+		{"::1", false},                 // IPv6 loopback
+		{"fd00::1", false},             // IPv6 ULA
+		{"2606:4700:4700::1111", true}, // public IPv6
+	}
+	for _, c := range cases {
+		if got := isPublic(net.ParseIP(c.ip)); got != c.want {
+			t.Errorf("isPublic(%s) = %v, want %v", c.ip, got, c.want)
+		}
 	}
 }
 
