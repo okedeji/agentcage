@@ -104,6 +104,19 @@ func TestValidate_AcceptsValidCaps(t *testing.T) {
 	}
 }
 
+func TestRemoveCap(t *testing.T) {
+	c := &Config{Resources: Resources{Agents: map[string]Cap{"@o/a": {Mem: "256m"}}}}
+	if !c.RemoveCap("@o/a") {
+		t.Error("RemoveCap(@o/a) = false, want true")
+	}
+	if _, ok := c.Resources.Agents["@o/a"]; ok {
+		t.Error("cap still present after RemoveCap")
+	}
+	if c.RemoveCap("@o/missing") {
+		t.Error("RemoveCap(missing) = true, want false")
+	}
+}
+
 func TestRemoveProvider(t *testing.T) {
 	c := &Config{Providers: []Endpoint{{Name: "a"}, {Name: "b"}}}
 	if !c.RemoveProvider("a") {

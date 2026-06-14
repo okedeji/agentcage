@@ -210,6 +210,16 @@ func (c *Config) SetCap(ref string, cap Cap) {
 	c.Resources.Agents[ref] = cap
 }
 
+// RemoveCap drops a per-agent resource cap, reporting whether it was present.
+// The default cap is cleared by setting an empty one, not removed here.
+func (c *Config) RemoveCap(ref string) bool {
+	if _, ok := c.Resources.Agents[ref]; !ok {
+		return false
+	}
+	delete(c.Resources.Agents, ref)
+	return true
+}
+
 // Path resolves ~/.agentcage/config.json, honoring AGENTCAGE_HOME the
 // same way the registry cache does so all of agentcage's state moves together.
 func Path() (string, error) {

@@ -196,8 +196,30 @@ func newConfigResourcesCmd() *cobra.Command {
 		Use:   "resources",
 		Short: "Set per-agent or default resource caps",
 	}
-	cmd.AddCommand(newConfigResourcesSetCmd(), newConfigResourcesDefaultCmd(), newConfigResourcesLsCmd())
+	cmd.AddCommand(newConfigResourcesSetCmd(), newConfigResourcesDefaultCmd(), newConfigResourcesLsCmd(), newConfigResourcesRmCmd())
 	return cmd
+}
+
+func newConfigResourcesRmCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rm REF",
+		Short: "Remove an agent's resource cap",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := config.Load()
+			if err != nil {
+				return err
+			}
+			if !c.RemoveCap(args[0]) {
+				return fmt.Errorf("no resource cap for %q", args[0])
+			}
+			if err := c.Save(); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed resource cap for %s\n", args[0])
+			return nil
+		},
+	}
 }
 
 // capFlags binds the cpu/mem/pids flags shared by 'resources set' and
