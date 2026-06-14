@@ -370,8 +370,14 @@ func parseResources(af *Agentfile, rest string, lineNo int) error {
 		}
 		switch key {
 		case "cpu":
+			if n, err := strconv.ParseFloat(val, 64); err != nil || n <= 0 {
+				return fmt.Errorf("line %d: RESOURCES cpu must be a positive number (got %q)", lineNo, val)
+			}
 			res.CPUs = val
 		case "mem":
+			if n, err := strconv.ParseFloat(strings.TrimRight(val, "bBkKmMgG"), 64); err != nil || n <= 0 {
+				return fmt.Errorf("line %d: RESOURCES mem must be a positive size like 512m or 2g (got %q)", lineNo, val)
+			}
 			res.Mem = val
 		case "pids":
 			n, err := strconv.Atoi(val)

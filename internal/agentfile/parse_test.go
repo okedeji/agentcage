@@ -387,6 +387,16 @@ func TestParse_Errors(t *testing.T) {
 			"pids must be a positive integer",
 		},
 		{
+			"resources negative cpu",
+			"FROM x\nENTRYPOINT y\nRESOURCES cpu=-1",
+			"cpu must be a positive number",
+		},
+		{
+			"resources garbage mem",
+			"FROM x\nENTRYPOINT y\nRESOURCES mem=lots",
+			"mem must be a positive size",
+		},
+		{
 			"reserved env prefix",
 			"FROM x\nENTRYPOINT y\nENV AGENTCAGE_FOO=bar",
 			"reserved AGENTCAGE_ prefix",
