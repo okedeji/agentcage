@@ -55,7 +55,7 @@ type Cap struct {
 // an error: an operator who has configured nothing yet is valid. A malformed
 // file is an error, fail-closed, so a typo does not silently drop providers.
 func Load() (*Config, error) {
-	path, err := configPath()
+	path, err := Path()
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func (c *Config) Save() error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
-	path, err := configPath()
+	path, err := Path()
 	if err != nil {
 		return err
 	}
@@ -164,9 +164,9 @@ func (c *Config) SetCap(ref string, cap Cap) {
 	c.Resources.Agents[ref] = cap
 }
 
-// configPath resolves ~/.agentcage/config.json, honoring AGENTCAGE_HOME the
+// Path resolves ~/.agentcage/config.json, honoring AGENTCAGE_HOME the
 // same way the registry cache does so all of agentcage's state moves together.
-func configPath() (string, error) {
+func Path() (string, error) {
 	if home := strings.TrimSpace(os.Getenv(env.Home)); home != "" {
 		return filepath.Join(home, "config.json"), nil
 	}
