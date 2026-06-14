@@ -136,6 +136,12 @@ There is no `PROMPT` directive. If you want the operator to tune your system
 prompt, read it from an `ENV` input (run-scoped) or take it as a tool argument
 (per call), the same as any other application config.
 
+`ENV KEY=VALUE` declares a default the operator may override with `--env`.
+`ENV KEY` with no value declares an input you have no default for: the operator
+must supply it at run time (`--env KEY=...`) or the run fails closed before your
+container starts. Use the value-less form for a deployment system prompt or a
+base URL you cannot ship a sensible default for.
+
 ## Own your logging
 
 agentcage forwards your container's stderr verbatim. It does not filter or

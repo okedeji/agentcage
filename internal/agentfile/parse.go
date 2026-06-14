@@ -387,15 +387,21 @@ func parseResources(af *Agentfile, rest string, lineNo int) error {
 	return nil
 }
 
+// parseEnv records an ENV directive in two forms. ENV KEY=VALUE is an author
+// default the operator may override. ENV KEY (no value) is an operator-required
+// input with no default: nothing is baked into the image and the run fails
+// closed unless the operator supplies it, which is how an author asks for a
+// deployment system-prompt or base URL it cannot ship a value for. An empty
+// value is the marker for the required form, so the two share one map.
 func parseEnv(af *Agentfile, rest string, lineNo int) error {
-	parts := strings.SplitN(rest, "=", 2)
-	if len(parts) != 2 || parts[0] == "" {
-		return fmt.Errorf("line %d: ENV must be KEY=VALUE", lineNo)
+	key, value, _ := strings.Cut(rest, "=")
+	if key == "" {
+		return fmt.Errorf("line %d: ENV requires a key", lineNo)
 	}
-	if strings.HasPrefix(parts[0], env.Prefix) {
-		return fmt.Errorf("line %d: ENV key %q uses reserved %s prefix", lineNo, parts[0], env.Prefix)
+	if strings.HasPrefix(key, env.Prefix) {
+		return fmt.Errorf("line %d: ENV key %q uses reserved %s prefix", lineNo, key, env.Prefix)
 	}
-	af.Env[parts[0]] = parts[1]
+	af.Env[key] = value
 	return nil
 }
 

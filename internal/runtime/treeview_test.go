@@ -15,7 +15,7 @@ func TestNodeGlance_SummarizesOperationalAttributes(t *testing.T) {
 			Budget:    5_000_000,
 			Egress:    "deny-default",
 			Resources: &bundle.ResourcesSpec{CPUs: "2", Mem: "2g"},
-			Env:       map[string]string{"LOG_LEVEL": "info"},
+			Env:       map[string]string{"LOG_LEVEL": "info", "SYSTEM_PROMPT": ""},
 			Secrets:   []string{"notion_token"},
 		},
 		Tools: []bundle.Tool{
@@ -26,7 +26,7 @@ func TestNodeGlance_SummarizesOperationalAttributes(t *testing.T) {
 	g := nodeGlance(m)
 	for _, want := range []string{
 		"model=anthropic/claude-3.5", "budget=$5.00", "resources=cpu=2,mem=2g",
-		"egress=deny-default", "env=[LOG_LEVEL]", "secrets=[notion_token]", "tools=1",
+		"egress=deny-default", "env=[LOG_LEVEL,SYSTEM_PROMPT*]", "secrets=[notion_token]", "tools=1",
 	} {
 		if !strings.Contains(g, want) {
 			t.Errorf("glance %q missing %q", g, want)

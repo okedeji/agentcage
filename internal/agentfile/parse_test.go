@@ -34,6 +34,7 @@ USES PUBLIC @user/web-tool:0.5.0
 BUDGET 5.00
 RESOURCES cpu=2 mem=2g pids=1024
 ENV LOG_LEVEL=info
+ENV SYSTEM_PROMPT
 SECRETS anthropic_api_key
 EGRESS allow:api.example.com,docs.example.com
 META description "A research agent"
@@ -74,6 +75,10 @@ ENTRYPOINT python3 -m researcher
 	}
 	if got.Env["LOG_LEVEL"] != "info" {
 		t.Errorf("Env[LOG_LEVEL] = %q", got.Env["LOG_LEVEL"])
+	}
+	// A value-less ENV is a required operator input: declared, but no default.
+	if v, ok := got.Env["SYSTEM_PROMPT"]; !ok || v != "" {
+		t.Errorf("Env[SYSTEM_PROMPT] = %q, ok=%v; want declared with empty default", v, ok)
 	}
 	if !reflect.DeepEqual(got.Secrets, []string{"anthropic_api_key"}) {
 		t.Errorf("Secrets = %v", got.Secrets)
@@ -387,9 +392,9 @@ func TestParse_Errors(t *testing.T) {
 			"reserved AGENTCAGE_ prefix",
 		},
 		{
-			"env bad form",
-			"FROM x\nENTRYPOINT y\nENV NO_EQUALS_SIGN",
-			"ENV must be KEY=VALUE",
+			"env empty key",
+			"FROM x\nENTRYPOINT y\nENV =bar",
+			"ENV requires a key",
 		},
 		{
 			"egress bad format",

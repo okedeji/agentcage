@@ -99,7 +99,7 @@ func nodeGlance(m *bundle.Manifest) string {
 	if af.Egress != "" {
 		parts = append(parts, "egress="+af.Egress)
 	}
-	if names := sortedStringKeys(af.Env); len(names) > 0 {
+	if names := envGlanceNames(af.Env); len(names) > 0 {
 		parts = append(parts, "env=["+strings.Join(names, ",")+"]")
 	}
 	if len(af.Secrets) > 0 {
@@ -138,6 +138,18 @@ func resourcesGlance(r *bundle.ResourcesSpec) string {
 		parts = append(parts, fmt.Sprintf("pids=%d", r.Pids))
 	}
 	return strings.Join(parts, ",")
+}
+
+// envGlanceNames lists declared ENV keys, marking a value-less required input
+// (empty default) with a trailing * so the operator sees what it has to supply.
+func envGlanceNames(envs map[string]string) []string {
+	keys := sortedStringKeys(envs)
+	for i, k := range keys {
+		if envs[k] == "" {
+			keys[i] = k + "*"
+		}
+	}
+	return keys
 }
 
 func sortedStringKeys(m map[string]string) []string {

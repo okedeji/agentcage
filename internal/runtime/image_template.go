@@ -73,6 +73,12 @@ func generateDockerfile(in dockerfileInput) string {
 	// order makes the cache stable across rebuilds with the same input.
 	keys := sortedKeys(af.Env)
 	for _, k := range keys {
+		// An empty value is an operator-required input with no default, not a
+		// default of empty. Baking it would mask the fail-closed check, so the
+		// runtime injects it from the operator pool instead.
+		if af.Env[k] == "" {
+			continue
+		}
 		fmt.Fprintf(&b, "ENV %s=%s\n", k, dockerfileEscapeEnv(af.Env[k]))
 	}
 

@@ -42,3 +42,26 @@ func TestInjectOperatorValues_MissingDeclaredSecretFailsClosed(t *testing.T) {
 		t.Fatal("expected a fail-closed error for a declared secret with no value")
 	}
 }
+
+func TestInjectOperatorValues_RequiredEnvInput(t *testing.T) {
+	// An empty default is a required input: it injects when supplied and fails
+	// closed when not, while a key with a real default is left to the image.
+	m := manifestWith(map[string]string{"SYSTEM_PROMPT": "", "LOG_LEVEL": "info"}, nil)
+
+	agentEnv := map[string]string{}
+	if err := injectOperatorValues(agentEnv, m, map[string]string{"SYSTEM_PROMPT": "be terse"}, nil); err != nil {
+		t.Fatalf("inject with required value supplied: %v", err)
+	}
+	if agentEnv["SYSTEM_PROMPT"] != "be terse" {
+		t.Errorf("required input not injected: %q", agentEnv["SYSTEM_PROMPT"])
+	}
+	// LOG_LEVEL has a baked default, so a missing operator value is not injected
+	// here and is not an error.
+	if _, ok := agentEnv["LOG_LEVEL"]; ok {
+		t.Error("a defaulted ENV should be left to the image, not injected")
+	}
+
+	if err := injectOperatorValues(map[string]string{}, m, nil, nil); err == nil {
+		t.Fatal("expected a fail-closed error for a required input with no value")
+	}
+}
