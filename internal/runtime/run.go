@@ -22,16 +22,6 @@ type RunInput struct {
 	// BundlePath is the .agent file the operator wants to run.
 	BundlePath string
 
-	// Tool is the MCP tool name to call. The CLI is responsible for
-	// resolving it: `agentcage run` passes the bundle's main tool,
-	// `agentcage call` passes the explicit name the operator gave.
-	// Required.
-	Tool string
-
-	// Args is the MCP tools/call argument map. Marshaled to JSON by
-	// the MCP client and validated against the agent's input schema.
-	Args map[string]any
-
 	// Budget is the operator's concrete cap on the run's LLM spend, in
 	// micro-USD. It overrides the agent's advisory BUDGET; 0 means the
 	// operator set none and the advisory (or unbounded) applies.
@@ -78,41 +68,6 @@ type RunInput struct {
 	// NoCache forces every image to rebuild from scratch, ignoring both an
 	// already-built content-addressed image and BuildKit's layer cache.
 	NoCache bool
-}
-
-// Run is the one-shot flow behind `agentcage run` and `agentcage call`: acquire
-// a booted run, dispatch the single tool call, print the result, release the
-// run. acquire, call, and release are split out so the daemon and warm pool can
-// later hold a run open across many calls; the one-shot path releases after one.
-// A non-zero container exit surfaces through release.
-func Run(ctx context.Context, in RunInput) error {
-	if err := validateRunInput(&in); err != nil {
-		return err
-	}
-
-	s, err := Acquire(ctx, in)
-	if err != nil {
-		return err
-	}
-
-	// The CLI already resolved which tool to call (run -> manifest.Main;
-	// call -> the operator's explicit name).
-	result, err := s.Call(ctx, in.Tool, in.Args)
-	if err != nil {
-		_ = s.Release()
-		return err
-	}
-
-	// Trailing newline only if the tool did not supply one.
-	if !strings.HasSuffix(result, "\n") {
-		result += "\n"
-	}
-	if _, err := io.WriteString(in.Stdout, result); err != nil {
-		_ = s.Release()
-		return fmt.Errorf("writing result: %w", err)
-	}
-
-	return s.Release()
 }
 
 // Session is one booted run the caller holds: the root agent's open MCP session,
@@ -477,30 +432,6 @@ func startAttachedAgent(ctx context.Context, sess *bootSession, in bootInput, td
 	td.push(client.Close)
 
 	return client, nil
-}
-
-// validateRunInput rejects calls that cannot reach the start of the
-// flow. Fills defaults that the caller did not provide.
-func validateRunInput(in *RunInput) error {
-	if in.BundlePath == "" {
-		return fmt.Errorf("RunInput.BundlePath is required")
-	}
-	if in.Tool == "" {
-		return fmt.Errorf("RunInput.Tool is required (CLI must resolve main or pass an explicit tool name)")
-	}
-	if _, err := os.Stat(in.BundlePath); err != nil {
-		return fmt.Errorf("bundle %s: %w", in.BundlePath, err)
-	}
-	if in.Stdout == nil {
-		in.Stdout = os.Stdout
-	}
-	if in.Stderr == nil {
-		in.Stderr = os.Stderr
-	}
-	if in.Args == nil {
-		in.Args = map[string]any{}
-	}
-	return nil
 }
 
 // deriveImageRef is the local containerd image ref for an agent: its name

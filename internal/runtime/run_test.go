@@ -1,10 +1,6 @@
 package runtime
 
 import (
-	"bytes"
-	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -85,72 +81,5 @@ func TestSanitizeRef(t *testing.T) {
 		if got := sanitizeRef(tc.in); got != tc.want {
 			t.Errorf("sanitizeRef(%q) = %q, want %q", tc.in, got, tc.want)
 		}
-	}
-}
-
-func TestValidateRunInput_RequiresBundle(t *testing.T) {
-	in := RunInput{}
-	err := validateRunInput(&in)
-	if err == nil || !strings.Contains(err.Error(), "BundlePath") {
-		t.Errorf("expected BundlePath error, got: %v", err)
-	}
-}
-
-func TestValidateRunInput_RequiresTool(t *testing.T) {
-	dir := t.TempDir()
-	bundlePath := filepath.Join(dir, "ok.agent")
-	if err := os.WriteFile(bundlePath, []byte("fake"), 0o644); err != nil {
-		t.Fatalf("write fake bundle: %v", err)
-	}
-	in := RunInput{BundlePath: bundlePath} // Tool intentionally empty
-	err := validateRunInput(&in)
-	if err == nil || !strings.Contains(err.Error(), "Tool") {
-		t.Errorf("expected Tool error, got: %v", err)
-	}
-}
-
-func TestValidateRunInput_BundleMustExist(t *testing.T) {
-	in := RunInput{BundlePath: filepath.Join(t.TempDir(), "nope.agent"), Tool: "respond"}
-	err := validateRunInput(&in)
-	if err == nil {
-		t.Errorf("expected missing-bundle error")
-	}
-}
-
-func TestValidateRunInput_FillsDefaults(t *testing.T) {
-	dir := t.TempDir()
-	bundlePath := filepath.Join(dir, "ok.agent")
-	if err := os.WriteFile(bundlePath, []byte("fake"), 0o644); err != nil {
-		t.Fatalf("write fake bundle: %v", err)
-	}
-
-	in := RunInput{BundlePath: bundlePath, Tool: "respond"}
-	if err := validateRunInput(&in); err != nil {
-		t.Fatalf("validateRunInput: %v", err)
-	}
-	if in.Stdout == nil {
-		t.Errorf("Stdout default not applied")
-	}
-	if in.Stderr == nil {
-		t.Errorf("Stderr default not applied")
-	}
-	if in.Args == nil {
-		t.Errorf("Args default not applied (should be empty map, not nil)")
-	}
-}
-
-func TestRun_RejectsMissingBundle(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	err := Run(context.Background(), RunInput{
-		BundlePath: filepath.Join(t.TempDir(), "nope.agent"),
-		Tool:       "respond",
-		Stdout:     &stdout,
-		Stderr:     &stderr,
-	})
-	if err == nil {
-		t.Fatalf("expected missing-bundle error, got nil")
-	}
-	if !strings.Contains(err.Error(), "nope.agent") {
-		t.Errorf("error %q should name the missing bundle", err.Error())
 	}
 }
