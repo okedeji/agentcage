@@ -5,11 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/okedeji/agentcage/internal/identity"
 )
+
+// connectRetryInterval paces ConnectHTTP's reconnect attempts while a freshly
+// started agent is still binding its port. It is short because the failure mode
+// is a fast connection-refused, not a slow timeout; the caller's context
+// deadline, not this interval, bounds the total wait.
+const connectRetryInterval = 100 * time.Millisecond
 
 // Client is an open MCP session against a single agent process.
 //
@@ -42,6 +49,33 @@ func Connect(ctx context.Context, reader io.Reader, writer io.Writer) (*Client, 
 		return nil, fmt.Errorf("mcp connect: %w", err)
 	}
 	return &Client{session: session}, nil
+}
+
+// ConnectHTTP establishes an MCP session against an agent serving streamable
+// HTTP, the transport a detached cage uses (AGENTCAGE_SERVE_HTTP) and the way
+// the daemon reaches a root it does not hold over stdio. endpoint is the full
+// MCP URL, e.g. http://127.0.0.1:9123/mcp.
+//
+// A freshly started cage may not have bound its port yet, so the initial
+// connect is retried until it succeeds or ctx is done. The retry is on the
+// handshake, not on a hung server: connection-refused fails fast, so the wait
+// is paced by connectRetryInterval and bounded by the caller's ctx deadline.
+func ConnectHTTP(ctx context.Context, endpoint string) (*Client, error) {
+	c := mcpsdk.NewClient(&mcpsdk.Implementation{
+		Name:    identity.Name,
+		Version: identity.Version,
+	}, nil)
+	for {
+		session, err := c.Connect(ctx, &mcpsdk.StreamableClientTransport{Endpoint: endpoint}, nil)
+		if err == nil {
+			return &Client{session: session}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("mcp http connect to %s: %w", endpoint, err)
+		case <-time.After(connectRetryInterval):
+		}
+	}
 }
 
 // nopWriteCloser adapts an io.Writer into an io.WriteCloser whose

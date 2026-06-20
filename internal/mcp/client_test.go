@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -56,6 +58,50 @@ func testServer(t *testing.T, addTools func(s *mcpsdk.Server)) (*Client, *mcpsdk
 func TestConnect_HandshakeSucceeds(t *testing.T) {
 	_, _ = testServer(t, nil)
 	// Reaching here means the MCP initialize round-trip completed.
+}
+
+// TestConnectHTTP_CallsToolOverHTTP exercises the transport a detached cage
+// serves and the daemon dials: a real streamable-HTTP MCP server at /mcp,
+// reached by ConnectHTTP rather than a stdio pipe.
+func TestConnectHTTP_CallsToolOverHTTP(t *testing.T) {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{
+		Name:    "agentcage-test-server",
+		Version: "0.0.0",
+	}, nil)
+	registerEchoTool(server)
+
+	handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, nil)
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", handler)
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := ConnectHTTP(ctx, ts.URL+"/mcp")
+	if err != nil {
+		t.Fatalf("ConnectHTTP: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	got, err := client.CallTool(ctx, "echo", map[string]any{"message": "over-http"})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if got != "over-http" {
+		t.Errorf("CallTool echo = %q, want %q", got, "over-http")
+	}
+}
+
+// TestConnectHTTP_RetriesThenDeadline pins the cold-start contract: with nothing
+// listening, ConnectHTTP keeps retrying and returns an error when the context
+// deadline passes rather than hanging or failing on the first refusal.
+func TestConnectHTTP_RetriesThenDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if _, err := ConnectHTTP(ctx, "http://127.0.0.1:1/mcp"); err == nil {
+		t.Fatal("expected an error connecting to a closed port")
+	}
 }
 
 func TestListTools_EmptyServer(t *testing.T) {
