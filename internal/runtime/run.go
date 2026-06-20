@@ -80,16 +80,16 @@ func Run(ctx context.Context, in RunInput) error {
 		return err
 	}
 
-	r, err := acquireRun(ctx, in)
+	s, err := Acquire(ctx, in)
 	if err != nil {
 		return err
 	}
 
 	// The CLI already resolved which tool to call (run -> manifest.Main;
 	// call -> the operator's explicit name).
-	result, err := r.call(ctx, in.Tool, in.Args)
+	result, err := s.Call(ctx, in.Tool, in.Args)
 	if err != nil {
-		_ = r.release()
+		_ = s.Release()
 		return err
 	}
 
@@ -98,41 +98,47 @@ func Run(ctx context.Context, in RunInput) error {
 		result += "\n"
 	}
 	if _, err := io.WriteString(in.Stdout, result); err != nil {
-		_ = r.release()
+		_ = s.Release()
 		return fmt.Errorf("writing result: %w", err)
 	}
 
-	return r.release()
+	return s.Release()
 }
 
-// liveRun is one booted run: the root agent's open MCP session and the teardown
-// that releases the whole graph (containers, networks, gateways). Holding boot,
-// call, and teardown behind a handle is what lets the daemon and warm pool keep
-// a run alive across many calls instead of tearing it down after one.
-type liveRun struct {
+// Session is one booted run the caller holds: the root agent's open MCP session,
+// the teardown that releases the whole graph (containers, networks, gateways),
+// and the run id that names it. The one-shot Run acquires one, calls once, and
+// releases; the daemon holds many across their lifetime, dispatching a call per
+// request and releasing on stop.
+type Session struct {
+	runID    string
 	root     *mcp.Client
 	teardown func() error
 }
 
-// call dispatches one tool call on the root agent's session. The one-shot Run
-// makes exactly one; a pooled run serves many across its lifetime.
-func (r *liveRun) call(ctx context.Context, tool string, args map[string]any) (string, error) {
-	return r.root.CallTool(ctx, tool, args)
+// RunID is the run's id: the daemon's registry key and what `agentcage stop`
+// names.
+func (s *Session) RunID() string { return s.runID }
+
+// Call dispatches one tool call on the root agent's session. The one-shot Run
+// makes exactly one; a held run serves many across its lifetime.
+func (s *Session) Call(ctx context.Context, tool string, args map[string]any) (string, error) {
+	return s.root.CallTool(ctx, tool, args)
 }
 
-// release tears the run down. The teardown joins every cleanup step's error, so
+// Release tears the run down. The teardown joins every cleanup step's error, so
 // a non-zero container exit or a failed network removal surfaces here.
-func (r *liveRun) release() error {
-	return r.teardown()
+func (s *Session) Release() error {
+	return s.teardown()
 }
 
-// acquireRun extracts the bundle, boots the run (provision, build the image,
-// start the container graph, open the root's MCP session), and returns a handle.
-// The extracted source is only read while the image builds, so it is removed
-// before returning rather than held for the run's lifetime. A boot that fails
-// partway releases what it acquired inside bootRun, so acquireRun leaks nothing
-// on error.
-func acquireRun(ctx context.Context, in RunInput) (*liveRun, error) {
+// Acquire extracts the bundle, boots the run (provision, build the image, start
+// the container graph, open the root's MCP session over stdio), and returns a
+// held Session. The extracted source is only read while the image builds, so it
+// is removed before returning rather than held for the run's lifetime. A boot
+// that fails partway releases what it acquired inside bootRun, so Acquire leaks
+// nothing on error.
+func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 	srcDir, err := os.MkdirTemp("", "agentcage-run-*")
 	if err != nil {
 		return nil, fmt.Errorf("temp dir: %w", err)
@@ -176,7 +182,7 @@ func acquireRun(ctx context.Context, in RunInput) (*liveRun, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &liveRun{root: client, teardown: teardown}, nil
+	return &Session{runID: runID, root: client, teardown: teardown}, nil
 }
 
 // bootInput carries everything bootAgent needs to build an agent's image
