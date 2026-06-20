@@ -1,19 +1,20 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/agentcage/internal/daemon"
 	"github.com/okedeji/agentcage/internal/locate"
-	"github.com/okedeji/agentcage/internal/runtime"
 )
 
 func newCallCmd() *cobra.Command {
 	var argPairs []string
-	var verbose bool
 	cmd := &cobra.Command{
 		Use:   "call BUNDLE TOOL",
 		Short: "Call a specific tool on an agent by name",
@@ -65,19 +66,30 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return runtime.Run(cmd.Context(), runtime.RunInput{
-				BundlePath: b.Path,
-				Name:       b.Name,
-				Tool:       toolName,
-				Args:       toolArgs,
-				Stdout:     cmd.OutOrStdout(),
-				Stderr:     cmd.ErrOrStderr(),
-				Verbose:    verbose,
-			})
+			socket, err := daemon.SocketPath()
+			if err != nil {
+				return err
+			}
+			result, err := daemon.Dial(socket).RunOnce(cmd.Context(), daemon.RunRequest{
+				Ref:  args[0],
+				Tool: toolName,
+				Args: toolArgs,
+			}, cmd.ErrOrStderr())
+			if err != nil {
+				var unreachable *daemon.Unreachable
+				if errors.As(err, &unreachable) {
+					return fmt.Errorf("cannot reach the agentcage daemon, run 'agentcage init' to start it: %w", err)
+				}
+				return err
+			}
+			if !strings.HasSuffix(result, "\n") {
+				result += "\n"
+			}
+			_, err = io.WriteString(cmd.OutOrStdout(), result)
+			return err
 		},
 	}
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "tool argument as KEY=VALUE (repeatable)")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "stream the underlying provisioner output during first-time setup")
 	return cmd
 }
 

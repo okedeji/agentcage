@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -9,13 +11,12 @@ import (
 
 	"github.com/okedeji/agentcage/internal/bundle"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/daemon"
 	"github.com/okedeji/agentcage/internal/locate"
-	"github.com/okedeji/agentcage/internal/runtime"
 	"github.com/okedeji/agentcage/internal/secrets"
 )
 
 func newRunCmd() *cobra.Command {
-	var verbose bool
 	var noCache bool
 	var budget, envFile, secretFile, memory, cpus string
 	var pids int
@@ -28,10 +29,11 @@ func newRunCmd() *cobra.Command {
 BUNDLE is a reference ('agentcage build -t' put it in the store), the content
 hash an untagged build printed, or a path to a .agent file. A reference resolves
 store-first and is pulled from the registry only when the store does not hold
-it. agentcage extracts the bundle,
-makes sure the runtime is ready (provisioning a Linux VM on macOS the first
-time), builds the agent's image, starts a container, and routes the prompt
-to the tool the Agentfile declared as MAIN.
+it. agentcage builds the agent's image on first use, starts a container, and
+routes the prompt to the tool the Agentfile declared as MAIN.
+
+run talks to the daemon, so one must be running; 'agentcage init' starts it (and
+provisions the Linux VM on macOS the first time).
 
 What MAIN does inside its function body is the author's call: typically
 its LLM reasons about the prompt, calls sub-agents, calls its own
@@ -102,23 +104,34 @@ Examples:
 			if err != nil {
 				return err
 			}
-			return runtime.Run(cmd.Context(), runtime.RunInput{
-				BundlePath: b.Path,
-				Name:       b.Name,
-				Tool:       manifest.Agentfile.Main,
-				Args:       toolArgs,
-				Budget:     budgetMicros,
-				Env:        envPool,
-				Secrets:    secretPool,
-				Resources:  runCap,
-				Stdout:     cmd.OutOrStdout(),
-				Stderr:     cmd.ErrOrStderr(),
-				Verbose:    verbose,
-				NoCache:    noCache,
-			})
+			socket, err := daemon.SocketPath()
+			if err != nil {
+				return err
+			}
+			result, err := daemon.Dial(socket).RunOnce(cmd.Context(), daemon.RunRequest{
+				Ref:       args[0],
+				Tool:      manifest.Agentfile.Main,
+				Args:      toolArgs,
+				Budget:    budgetMicros,
+				Env:       envPool,
+				Secrets:   secretPool,
+				Resources: runCap,
+				NoCache:   noCache,
+			}, cmd.ErrOrStderr())
+			if err != nil {
+				var unreachable *daemon.Unreachable
+				if errors.As(err, &unreachable) {
+					return fmt.Errorf("cannot reach the agentcage daemon, run 'agentcage init' to start it: %w", err)
+				}
+				return err
+			}
+			if !strings.HasSuffix(result, "\n") {
+				result += "\n"
+			}
+			_, err = io.WriteString(cmd.OutOrStdout(), result)
+			return err
 		},
 	}
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "stream the underlying provisioner output during first-time setup")
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "rebuild every image from scratch, ignoring cached and already-built images")
 	cmd.Flags().StringVar(&budget, "budget", "", "cap the run's LLM spend in USD, e.g. 5.00 (overrides the agent's advisory BUDGET)")
 	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "supply an env value: KEY=VALUE, or KEY to pass it through from your environment (repeatable)")
