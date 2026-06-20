@@ -1,4 +1,4 @@
-.PHONY: all build build-gateway clean test vet lint fmt-check ci tidy lima-deps
+.PHONY: all build build-linux clean test vet lint fmt-check ci tidy lima-deps
 
 GO := go
 VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo dev)
@@ -19,14 +19,13 @@ all: vet build
 build:
 	$(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage ./cmd/agentcage/
 
-# build-gateway cross-compiles the agentcage binary that runs inside the
-# in-VM gateway container. The Lima VM matches the host CPU, so the target
-# arch is the host's GOARCH under linux; CGO is off so the binary is static
-# and drops into a scratch image. The runtime looks for it at
-# bin/agentcage-gateway-linux-<arch>, the same bin/ companion layout limactl
-# uses. Re-run after changing anything the gateway command compiles in.
-build-gateway:
-	CGO_ENABLED=0 GOOS=linux GOARCH=$$($(GO) env GOARCH) $(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage-gateway-linux-$$($(GO) env GOARCH) ./cmd/agentcage/
+# build-linux cross-compiles the agentcage binary that runs inside the VM:
+# baked into the gateway image and run by the in-VM daemon. The Lima VM matches
+# the host CPU, so the target arch is the host's GOARCH under linux; CGO is off
+# so the binary is static and drops into a scratch image. The runtime looks for
+# it at bin/agentcage-linux-<arch>, the same bin/ companion layout limactl uses.
+build-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=$$($(GO) env GOARCH) $(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage-linux-$$($(GO) env GOARCH) ./cmd/agentcage/
 
 clean:
 	rm -rf $(BINDIR)

@@ -21,15 +21,16 @@ func GatewayImageRef() string {
 	return "agentcage/gateway:" + identity.Version
 }
 
-// FindGatewayBinary returns the path to the linux agentcage binary baked
-// into the gateway image. It is the same agentcage compiled for the VM's
-// linux arch (the VM matches the host CPU), running `agentcage gateway`.
+// FindLinuxBinary returns the path to the linux agentcage binary that runs
+// inside the VM: baked into the gateway image and run by the in-VM daemon. It
+// is the same agentcage compiled for the VM's linux arch (the VM matches the
+// host CPU).
 //
-// Lookup mirrors FindLimactl: next to the running executable first, where
-// an installed agentcage ships it, then ./bin in a dev tree. The error
-// names every path tried so an operator knows what to build.
-func FindGatewayBinary() (string, error) {
-	name := "agentcage-gateway-linux-" + runtime.GOARCH
+// Lookup mirrors FindLimactl: next to the running executable first, where an
+// installed agentcage ships it, then ./bin in a dev tree. The error names every
+// path tried so an operator knows what to build.
+func FindLinuxBinary() (string, error) {
+	name := "agentcage-linux-" + runtime.GOARCH
 	var tried []string
 
 	if exe, err := os.Executable(); err == nil {
@@ -47,7 +48,7 @@ func FindGatewayBinary() (string, error) {
 		tried = append(tried, abs)
 	}
 
-	return "", fmt.Errorf("gateway binary %s not found (tried: %v); run 'make build-gateway'", name, tried)
+	return "", fmt.Errorf("linux agentcage binary %s not found (tried: %v); run 'make build-linux'", name, tried)
 }
 
 // BuildGatewayImage bakes the linux agentcage binary into a scratch image
@@ -55,7 +56,7 @@ func FindGatewayBinary() (string, error) {
 // binary as its only layer, with `agentcage gateway` as the entrypoint;
 // BuildKit caches the COPY so an unchanged binary rebuilds instantly.
 func BuildGatewayImage(ctx context.Context, bk *BuildKit, noCache bool, w io.Writer) error {
-	binaryPath, err := FindGatewayBinary()
+	binaryPath, err := FindLinuxBinary()
 	if err != nil {
 		return err
 	}

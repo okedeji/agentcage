@@ -28,18 +28,18 @@ func TestGatewayDockerfile_ScratchEntersBareBinary(t *testing.T) {
 	}
 }
 
-func TestFindGatewayBinary_MissingNamesArchAndBuildTarget(t *testing.T) {
-	// In the test binary's tree there is no companion gateway binary, so
-	// the lookup fails. The error has to name the arch-qualified file and
-	// point at the make target, or an operator cannot tell what to build.
-	_, err := FindGatewayBinary()
+func TestFindLinuxBinary_MissingNamesArchAndBuildTarget(t *testing.T) {
+	// In the test binary's tree there is no companion linux binary, so the
+	// lookup fails. The error has to name the arch-qualified file and point at
+	// the make target, or an operator cannot tell what to build.
+	_, err := FindLinuxBinary()
 	if err == nil {
-		t.Fatal("FindGatewayBinary succeeded with no companion binary present")
+		t.Fatal("FindLinuxBinary succeeded with no companion binary present")
 	}
-	if !strings.Contains(err.Error(), "agentcage-gateway-linux-"+runtime.GOARCH) {
+	if !strings.Contains(err.Error(), "agentcage-linux-"+runtime.GOARCH) {
 		t.Errorf("error does not name the arch-qualified binary: %v", err)
 	}
-	if !strings.Contains(err.Error(), "make build-gateway") {
+	if !strings.Contains(err.Error(), "make build-linux") {
 		t.Errorf("error does not point at the build target: %v", err)
 	}
 }
