@@ -51,6 +51,10 @@ func (d *Daemon) handleStartRun(w http.ResponseWriter, r *http.Request) {
 	session, err := runtime.Acquire(context.Background(), runtime.RunInput{
 		BundlePath: b.Path,
 		Name:       b.Name,
+		// A held run's detached sub-agents and networks do not self-reap when the
+		// daemon dies the way the root does over stdio EOF, so they are labeled
+		// managed for the startup sweep to find as a crashed daemon's orphans.
+		Managed: true,
 		// The tool result returns over Call, not stdout; the agent's stderr is
 		// the daemon's own until per-run log capture lands.
 		Stdout: io.Discard,
