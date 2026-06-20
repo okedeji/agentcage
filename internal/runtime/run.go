@@ -70,25 +70,78 @@ type RunInput struct {
 	NoCache bool
 }
 
-// Run is the end-to-end flow behind `agentcage run`. It extracts the
-// bundle, boots the agent (provision, build image, start container, open
-// an MCP session via bootAgent), calls the requested tool, prints the
-// result, and tears the agent down. A non-zero container exit surfaces
-// through teardown.
+// Run is the one-shot flow behind `agentcage run` and `agentcage call`: acquire
+// a booted run, dispatch the single tool call, print the result, release the
+// run. acquire, call, and release are split out so the daemon and warm pool can
+// later hold a run open across many calls; the one-shot path releases after one.
+// A non-zero container exit surfaces through release.
 func Run(ctx context.Context, in RunInput) error {
 	if err := validateRunInput(&in); err != nil {
 		return err
 	}
 
+	r, err := acquireRun(ctx, in)
+	if err != nil {
+		return err
+	}
+
+	// The CLI already resolved which tool to call (run -> manifest.Main;
+	// call -> the operator's explicit name).
+	result, err := r.call(ctx, in.Tool, in.Args)
+	if err != nil {
+		_ = r.release()
+		return err
+	}
+
+	// Trailing newline only if the tool did not supply one.
+	if !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
+	if _, err := io.WriteString(in.Stdout, result); err != nil {
+		_ = r.release()
+		return fmt.Errorf("writing result: %w", err)
+	}
+
+	return r.release()
+}
+
+// liveRun is one booted run: the root agent's open MCP session and the teardown
+// that releases the whole graph (containers, networks, gateways). Holding boot,
+// call, and teardown behind a handle is what lets the daemon and warm pool keep
+// a run alive across many calls instead of tearing it down after one.
+type liveRun struct {
+	root     *mcp.Client
+	teardown func() error
+}
+
+// call dispatches one tool call on the root agent's session. The one-shot Run
+// makes exactly one; a pooled run serves many across its lifetime.
+func (r *liveRun) call(ctx context.Context, tool string, args map[string]any) (string, error) {
+	return r.root.CallTool(ctx, tool, args)
+}
+
+// release tears the run down. The teardown joins every cleanup step's error, so
+// a non-zero container exit or a failed network removal surfaces here.
+func (r *liveRun) release() error {
+	return r.teardown()
+}
+
+// acquireRun extracts the bundle, boots the run (provision, build the image,
+// start the container graph, open the root's MCP session), and returns a handle.
+// The extracted source is only read while the image builds, so it is removed
+// before returning rather than held for the run's lifetime. A boot that fails
+// partway releases what it acquired inside bootRun, so acquireRun leaks nothing
+// on error.
+func acquireRun(ctx context.Context, in RunInput) (*liveRun, error) {
 	srcDir, err := os.MkdirTemp("", "agentcage-run-*")
 	if err != nil {
-		return fmt.Errorf("temp dir: %w", err)
+		return nil, fmt.Errorf("temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(srcDir) }()
 
 	manifest, err := bundle.Extract(in.BundlePath, srcDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Reparse the Agentfile from the materialized source so we get the
@@ -97,7 +150,7 @@ func Run(ctx context.Context, in RunInput) error {
 	// mean carrying the conversion in two places.
 	af, err := agentfile.ParseFile(filepath.Join(srcDir, "Agentfile"))
 	if err != nil {
-		return fmt.Errorf("re-parsing bundled Agentfile: %w", err)
+		return nil, fmt.Errorf("re-parsing bundled Agentfile: %w", err)
 	}
 
 	runID := in.RunID
@@ -121,27 +174,9 @@ func Run(ctx context.Context, in RunInput) error {
 	}
 	client, teardown, err := bootRun(ctx, in, boot, runID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	// The CLI already resolved which tool to call (run -> manifest.Main;
-	// call -> the operator's explicit name).
-	result, err := client.CallTool(ctx, in.Tool, in.Args)
-	if err != nil {
-		_ = teardown()
-		return err
-	}
-
-	// Trailing newline only if the tool did not supply one.
-	if !strings.HasSuffix(result, "\n") {
-		result += "\n"
-	}
-	if _, err := io.WriteString(in.Stdout, result); err != nil {
-		_ = teardown()
-		return fmt.Errorf("writing result: %w", err)
-	}
-
-	return teardown()
+	return &liveRun{root: client, teardown: teardown}, nil
 }
 
 // bootInput carries everything bootAgent needs to build an agent's image
