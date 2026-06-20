@@ -12,17 +12,17 @@ import (
 	"github.com/okedeji/agentcage/internal/mcpgateway"
 )
 
-// newGatewayCmd runs the in-run MCP gateway. It is hidden: the runtime
+// newMCPGatewayCmd runs the in-run MCP gateway. It is hidden: the runtime
 // starts it inside the gateway container, not operators. Its routing table
 // and listen address arrive as environment the runtime injects.
-func newGatewayCmd() *cobra.Command {
+func newMCPGatewayCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "mcp-gateway",
 		Short:  "Run the in-run MCP gateway (internal)",
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := gatewayConfigFromEnv()
+			cfg, err := mcpGatewayConfigFromEnv()
 			if err != nil {
 				return err
 			}
@@ -37,15 +37,15 @@ func newGatewayCmd() *cobra.Command {
 	return cmd
 }
 
-// gatewayConfigFromEnv reads the routing table the runtime injected.
-func gatewayConfigFromEnv() (mcpgateway.Config, error) {
+// mcpGatewayConfigFromEnv reads the routing table the runtime injected.
+func mcpGatewayConfigFromEnv() (mcpgateway.Config, error) {
 	raw := os.Getenv(env.MCPConfig)
 	if raw == "" {
 		return mcpgateway.Config{}, fmt.Errorf("%s is required", env.MCPConfig)
 	}
 	var cfg mcpgateway.Config
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return mcpgateway.Config{}, fmt.Errorf("parsing AGENTCAGE_GATEWAY_CONFIG: %w", err)
+		return mcpgateway.Config{}, fmt.Errorf("parsing %s: %w", env.MCPConfig, err)
 	}
 	return cfg, nil
 }

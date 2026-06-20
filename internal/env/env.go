@@ -93,12 +93,12 @@ const DefaultEgressPort = "9002"
 const (
 	// ServeHTTP, when set to a bind address, tells an agent to serve MCP
 	// over streamable-HTTP instead of stdio. The runtime sets it on every
-	// sub-agent so the gateway can reach it; the root parent leaves it
+	// sub-agent so the MCP gateway can reach it; the root parent leaves it
 	// unset and speaks stdio to the host.
 	ServeHTTP = Prefix + "SERVE_HTTP"
 )
 
-// UsesURL is the variable name carrying a sub-agent's gateway URL for the
+// UsesURL is the variable name carrying a sub-agent's MCP gateway URL for the
 // caller that USES it. NAME is the USES local name uppercased with dashes
 // turned to underscores. The agent side (the SDK or a raw MCP client)
 // derives the same name from the same ref, so this is the Go anchor of a

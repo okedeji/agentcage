@@ -104,8 +104,8 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	if got := plan.Agents[0].Spec.Networks; len(got) != 1 || got[0] != plan.AgentNets["sub-abc"] {
 		t.Errorf("sub networks = %v, want [%q]", got, plan.AgentNets["sub-abc"])
 	}
-	if !slices.Contains(plan.Gateway.Networks, plan.RootNet) || !slices.Contains(plan.Gateway.Networks, plan.AgentNets["sub-abc"]) {
-		t.Errorf("gateway networks = %v, must include both the root and sub nets", plan.Gateway.Networks)
+	if !slices.Contains(plan.MCPGateway.Networks, plan.RootNet) || !slices.Contains(plan.MCPGateway.Networks, plan.AgentNets["sub-abc"]) {
+		t.Errorf("gateway networks = %v, must include both the root and sub nets", plan.MCPGateway.Networks)
 	}
 
 	// The root calls the gateway by an unguessable capability key, never the
@@ -140,9 +140,9 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 
 	// The gateway routes the edge to the sub-agent's own container and
 	// carries the deny list, so the referee is in the path.
-	edge, ok := plan.GatewayCfg.Edges[edgeKey]
+	edge, ok := plan.MCPGatewayCfg.Edges[edgeKey]
 	if !ok {
-		t.Fatalf("no gateway edge %s in %+v", edgeKey, plan.GatewayCfg.Edges)
+		t.Fatalf("no gateway edge %s in %+v", edgeKey, plan.MCPGatewayCfg.Edges)
 	}
 	if edge.Target != "http://run1-sub-abc:8000/mcp" {
 		t.Errorf("edge target = %q, want http://run1-sub-abc:8000/mcp", edge.Target)
@@ -151,19 +151,19 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 		t.Errorf("edge deny = %v, want [danger]", edge.Deny)
 	}
 
-	if got := plan.Gateway.Env["AGENTCAGE_MCP_ADDR"]; got != ":9000" {
+	if got := plan.MCPGateway.Env["AGENTCAGE_MCP_ADDR"]; got != ":9000" {
 		t.Errorf("gateway addr = %q, want :9000", got)
 	}
-	if len(plan.Gateway.Args) != 1 || plan.Gateway.Args[0] != "mcp-gateway" {
-		t.Errorf("gateway args = %v, want [mcp-gateway]", plan.Gateway.Args)
+	if len(plan.MCPGateway.Args) != 1 || plan.MCPGateway.Args[0] != "mcp-gateway" {
+		t.Errorf("gateway args = %v, want [mcp-gateway]", plan.MCPGateway.Args)
 	}
-	if plan.Gateway.Memory != defaultGatewayCap.Mem || plan.Gateway.Pids != defaultGatewayCap.Pids {
-		t.Errorf("gateway cap = %q/%d, want %q/%d", plan.Gateway.Memory, plan.Gateway.Pids, defaultGatewayCap.Mem, defaultGatewayCap.Pids)
+	if plan.MCPGateway.Memory != defaultGatewayCap.Mem || plan.MCPGateway.Pids != defaultGatewayCap.Pids {
+		t.Errorf("gateway cap = %q/%d, want %q/%d", plan.MCPGateway.Memory, plan.MCPGateway.Pids, defaultGatewayCap.Mem, defaultGatewayCap.Pids)
 	}
 	// The routing table the gateway serves round-trips back to what we
 	// planned, so the container and the plan cannot disagree.
 	var served mcpgateway.Config
-	if err := json.Unmarshal([]byte(plan.Gateway.Env["AGENTCAGE_MCP_CONFIG"]), &served); err != nil {
+	if err := json.Unmarshal([]byte(plan.MCPGateway.Env["AGENTCAGE_MCP_CONFIG"]), &served); err != nil {
 		t.Fatalf("gateway config not valid json: %v", err)
 	}
 	if served.Edges[edgeKey].Target != edge.Target {
@@ -296,10 +296,10 @@ func TestBuildRunPlan_EdgeKeysAreUnguessableCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRunPlan: %v", err)
 	}
-	if len(p1.GatewayCfg.Edges) != 2 {
-		t.Fatalf("edges = %d, want 2", len(p1.GatewayCfg.Edges))
+	if len(p1.MCPGatewayCfg.Edges) != 2 {
+		t.Fatalf("edges = %d, want 2", len(p1.MCPGatewayCfg.Edges))
 	}
-	for k := range p1.GatewayCfg.Edges {
+	for k := range p1.MCPGatewayCfg.Edges {
 		// 32 hex chars, and never the old guessable alias-index form a caller
 		// could enumerate to reach an edge it was not granted.
 		if len(k) != 32 {
@@ -315,8 +315,8 @@ func TestBuildRunPlan_EdgeKeysAreUnguessableCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRunPlan: %v", err)
 	}
-	for k := range p2.GatewayCfg.Edges {
-		if _, reused := p1.GatewayCfg.Edges[k]; reused {
+	for k := range p2.MCPGatewayCfg.Edges {
+		if _, reused := p1.MCPGatewayCfg.Edges[k]; reused {
 			t.Errorf("edge key %q reused across plans; tokens must be unpredictable", k)
 		}
 	}
@@ -356,11 +356,11 @@ func TestBuildRunPlan_PerAgentNetworkIsolation(t *testing.T) {
 	}
 	// The gateway is on every started agent's network and only those, so it is
 	// the sole host that can reach all of them.
-	if len(plan.Gateway.Networks) != len(plan.AgentNets) {
-		t.Errorf("gateway nets = %v, want one per started agent %v", plan.Gateway.Networks, plan.AgentNets)
+	if len(plan.MCPGateway.Networks) != len(plan.AgentNets) {
+		t.Errorf("gateway nets = %v, want one per started agent %v", plan.MCPGateway.Networks, plan.AgentNets)
 	}
 	for key, net := range plan.AgentNets {
-		if !slices.Contains(plan.Gateway.Networks, net) {
+		if !slices.Contains(plan.MCPGateway.Networks, net) {
 			t.Errorf("gateway missing net %s for agent %s", net, key)
 		}
 	}
@@ -391,7 +391,7 @@ func TestBuildRunPlan_WholeAgentBan(t *testing.T) {
 		t.Fatal("banned edge should still inject the caller's URL")
 	}
 	edgeKey := edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_WEIRD_URL"])
-	edge, ok := plan.GatewayCfg.Edges[edgeKey]
+	edge, ok := plan.MCPGatewayCfg.Edges[edgeKey]
 	if !ok || !edge.Banned {
 		t.Errorf("edge %s should be banned, got %+v", edgeKey, edge)
 	}
@@ -417,7 +417,7 @@ func TestBuildRunPlan_ToolBanMergesIntoEdgeDeny(t *testing.T) {
 	if len(plan.Agents) != 1 {
 		t.Fatalf("a tool-banned agent should still run, agents = %d", len(plan.Agents))
 	}
-	edge := plan.GatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_WEB_URL"])]
+	edge := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_WEB_URL"])]
 	if edge.Banned {
 		t.Error("a tool ban must not mark the whole edge banned")
 	}
@@ -469,7 +469,7 @@ func TestBuildRunPlan_NestedCallerServesAndCalls(t *testing.T) {
 	if !strings.HasPrefix(gotURL, "http://run9-gw:9000/") {
 		t.Errorf("a USES b url = %q, want the gateway prefix", gotURL)
 	}
-	if _, ok := plan.GatewayCfg.Edges[edgeKeyFromURL(t, gotURL)]; !ok {
+	if _, ok := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, gotURL)]; !ok {
 		t.Errorf("a USES b url %q does not resolve to a gateway edge", gotURL)
 	}
 	// The nested edge is the gateway's, not the root's.

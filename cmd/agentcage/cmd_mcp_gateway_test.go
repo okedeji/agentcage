@@ -5,18 +5,18 @@ import (
 	"testing"
 )
 
-func TestGatewayConfigFromEnv_RequiresConfig(t *testing.T) {
+func TestMCPGatewayConfigFromEnv_RequiresConfig(t *testing.T) {
 	t.Setenv("AGENTCAGE_MCP_CONFIG", "")
-	if _, err := gatewayConfigFromEnv(); err == nil {
+	if _, err := mcpGatewayConfigFromEnv(); err == nil {
 		t.Fatal("expected an error when AGENTCAGE_MCP_CONFIG is unset")
 	}
 }
 
-func TestGatewayConfigFromEnv_ParsesEdges(t *testing.T) {
+func TestMCPGatewayConfigFromEnv_ParsesEdges(t *testing.T) {
 	t.Setenv("AGENTCAGE_MCP_CONFIG", `{"edges":{"web":{"target":"http://web:8000/mcp","deny":["delete_all"]}}}`)
-	cfg, err := gatewayConfigFromEnv()
+	cfg, err := mcpGatewayConfigFromEnv()
 	if err != nil {
-		t.Fatalf("gatewayConfigFromEnv: %v", err)
+		t.Fatalf("mcpGatewayConfigFromEnv: %v", err)
 	}
 	edge, ok := cfg.Edges["web"]
 	if !ok {
@@ -27,9 +27,9 @@ func TestGatewayConfigFromEnv_ParsesEdges(t *testing.T) {
 	}
 }
 
-func TestGatewayConfigFromEnv_RejectsGarbage(t *testing.T) {
+func TestMCPGatewayConfigFromEnv_RejectsGarbage(t *testing.T) {
 	t.Setenv("AGENTCAGE_MCP_CONFIG", "not json")
-	if _, err := gatewayConfigFromEnv(); err == nil || !strings.Contains(err.Error(), "parsing") {
+	if _, err := mcpGatewayConfigFromEnv(); err == nil || !strings.Contains(err.Error(), "parsing") {
 		t.Fatalf("expected a parse error, got %v", err)
 	}
 }

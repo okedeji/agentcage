@@ -1,5 +1,5 @@
 // Package config reads and writes the operator's ~/.agentcage/config.json:
-// the LLM provider endpoints the gateway routes to and the per-cage resource
+// the LLM provider endpoints the LLM gateway routes to and the per-cage resource
 // caps the runtime enforces. Secret values never live here; an endpoint
 // names a key by reference into the ~/.agentcage secret store.
 package config

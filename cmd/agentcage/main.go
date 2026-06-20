@@ -33,7 +33,7 @@ func main() {
 	root.AddCommand(newSecretsCmd())
 	root.AddCommand(newDaemonCmd())
 	root.AddCommand(newPsCmd())
-	root.AddCommand(newGatewayCmd())
+	root.AddCommand(newMCPGatewayCmd())
 	root.AddCommand(newLLMGatewayCmd())
 	root.AddCommand(newEgressCmd())
 

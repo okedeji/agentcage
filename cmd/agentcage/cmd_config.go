@@ -14,7 +14,7 @@ func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Configure LLM provider endpoints and per-cage resource caps",
-		Long: `Manage ~/.agentcage/config.json: the LLM endpoints the gateway routes to and
+		Long: `Manage ~/.agentcage/config.json: the LLM endpoints the LLM gateway routes to and
 the resource caps the runtime enforces.
 
 Provider keys are stored by reference: set the value with 'agentcage secrets set'

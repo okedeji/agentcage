@@ -22,7 +22,7 @@ type agentNode struct {
 
 // usesEdge is one USES relationship: Caller calls Sub, knowing it by Alias
 // (the USES local name the caller's AGENTCAGE_USES_<ALIAS>_URL carries),
-// with Deny tools the gateway blocks on this edge.
+// with Deny tools the MCP gateway blocks on this edge.
 type usesEdge struct {
 	Caller string
 	Sub    string

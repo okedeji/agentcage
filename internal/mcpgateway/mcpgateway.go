@@ -169,7 +169,7 @@ func writeDenied(w http.ResponseWriter, body []byte, tool string) {
 		} `json:"error"`
 	}{JSONRPC: "2.0", ID: id}
 	resp.Error.Code = -32003
-	resp.Error.Message = "tool " + tool + " denied by the gateway"
+	resp.Error.Message = "tool " + tool + " denied by the MCP gateway"
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

@@ -20,38 +20,38 @@ const (
 	// share one port without colliding.
 	agentServePort = "8000"
 
-	// mcpServePath is where a sub-agent serves MCP and where the gateway
+	// mcpServePath is where a sub-agent serves MCP and where the MCP gateway
 	// forwards an edge to. Both sides have to agree: the agent binds it,
-	// the gateway targets it.
+	// the MCP gateway targets it.
 	mcpServePath = "/mcp"
 )
 
 // runPlan is everything the orchestrator needs to start a USES tree: a network
 // per agent, a detached container spec for each non-root agent and for the
-// gateway, the gateway's routing table, and the sub-agent URLs the root parent
+// MCP gateway, the MCP gateway's routing table, and the sub-agent URLs the root parent
 // gets injected. It is derived purely from the resolved tree, so the
 // security-load-bearing wiring (which agent sits on which network, which edge
 // denies what) is unit tested without starting a container.
 type runPlan struct {
-	GatewayCfg mcpgateway.Config
-	Gateway    ContainerSpec
-	Agents     []plannedAgent
-	RootEnv    map[string]string
+	MCPGatewayCfg mcpgateway.Config
+	MCPGateway    ContainerSpec
+	Agents        []plannedAgent
+	RootEnv       map[string]string
 
 	// AgentNets maps each started agent's key (the root included) to its own
 	// internal network, shared only with the gateways. A banned agent never
 	// starts, so it has no entry and no network. RootNet is the attached root's,
 	// carried out because the root starts outside the sub-agent loop. Each agent
 	// alone on its own network is what stops a cage from reaching a sibling
-	// directly and bypassing the gateway's deny.
+	// directly and bypassing the MCP gateway's deny.
 	AgentNets map[string]string
 	RootNet   string
 
 	// LLMAgents maps each reasoning agent's key to its advisory model. Empty
 	// when nothing in the tree reasons, which tells the orchestrator no LLM
 	// gateway is needed. LLMTokens maps each reasoning agent's key to the
-	// unguessable token its AGENTCAGE_LLM_URL carries, so the gateway routes by
-	// the token, not the guessable agent key. Budget is the root's advisory cap
+	// unguessable token its AGENTCAGE_LLM_URL carries, so the LLM gateway routes
+	// by the token, not the guessable agent key. Budget is the root's advisory cap
 	// in micro-USD, the run's shared pool unless the operator overrides it.
 	LLMAgents map[string]string
 	LLMTokens map[string]string
@@ -85,12 +85,12 @@ type plannedAgent struct {
 }
 
 // buildRunPlan turns a resolved tree into the containers, network, and
-// gateway routing for a run. runID scopes every name so concurrent runs do
-// not collide. Each USES edge becomes one gateway route (target plus deny)
+// MCP gateway routing for a run. runID scopes every name so concurrent runs do
+// not collide. Each USES edge becomes one MCP gateway route (target plus deny)
 // and one injected AGENTCAGE_USES_<ALIAS>_URL on the caller pointing at the
-// gateway, so every call in the tree passes the referee that enforces deny.
+// MCP gateway, so every call in the tree passes the referee that enforces deny.
 func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, error) {
-	gatewayName := runID + "-gw"
+	mcpGatewayName := runID + "-gw"
 
 	containerName := func(key string) string {
 		if key == tree.Root {
@@ -103,13 +103,13 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	}
 
 	plan := &runPlan{
-		GatewayCfg:   mcpgateway.Config{Edges: map[string]mcpgateway.Edge{}},
-		RootEnv:      map[string]string{},
-		AgentNets:    map[string]string{},
-		LLMAgents:    map[string]string{},
-		LLMTokens:    map[string]string{},
-		EgressAgents: map[string]egressAgent{},
-		Budget:       nodeBudget(tree.Nodes[tree.Root]),
+		MCPGatewayCfg: mcpgateway.Config{Edges: map[string]mcpgateway.Edge{}},
+		RootEnv:       map[string]string{},
+		AgentNets:     map[string]string{},
+		LLMAgents:     map[string]string{},
+		LLMTokens:     map[string]string{},
+		EgressAgents:  map[string]egressAgent{},
+		Budget:        nodeBudget(tree.Nodes[tree.Root]),
 	}
 
 	wholeBanned, toolBanned, err := classifyBans(tree)
@@ -133,11 +133,11 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		} else {
 			edge.Deny = mergeDeny(e.Deny, toolBanned[e.Sub])
 		}
-		plan.GatewayCfg.Edges[edgeKey] = edge
+		plan.MCPGatewayCfg.Edges[edgeKey] = edge
 
 		// A banned edge still gets its URL injected, so the caller reaches the
-		// gateway and gets a clean banned error rather than a missing variable.
-		url := "http://" + gatewayName + ":" + env.DefaultMCPGatewayPort + "/" + edgeKey + mcpServePath
+		// MCP gateway and gets a clean banned error rather than a missing variable.
+		url := "http://" + mcpGatewayName + ":" + env.DefaultMCPGatewayPort + "/" + edgeKey + mcpServePath
 		if e.Caller == tree.Root {
 			plan.RootEnv[env.UsesURL(e.Alias)] = url
 			continue
@@ -150,7 +150,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 
 	for _, key := range sortedNodeKeys(tree.Nodes) {
 		if key == tree.Root || wholeBanned[key] {
-			// A banned agent never starts; its edges are rejected at the gateway.
+			// A banned agent never starts; its edges are rejected at the MCP gateway.
 			continue
 		}
 		agentEnv := map[string]string{env.ServeHTTP: ":" + agentServePort}
@@ -213,22 +213,22 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		return nil, fmt.Errorf("agent %s: %w", tree.Root, err)
 	}
 
-	cfgJSON, err := json.Marshal(plan.GatewayCfg)
+	cfgJSON, err := json.Marshal(plan.MCPGatewayCfg)
 	if err != nil {
-		return nil, fmt.Errorf("encoding gateway routing table: %w", err)
+		return nil, fmt.Errorf("encoding MCP gateway routing table: %w", err)
 	}
-	// The gateway joins every started agent's network, so it is the only host
+	// The MCP gateway joins every started agent's network, so it is the only host
 	// that can reach all of them and the only one a caller resolves its USES
 	// URLs to. Ordered by agent key for a deterministic, testable arg list.
-	gatewayNets := make([]string, 0, len(plan.AgentNets))
+	mcpGatewayNets := make([]string, 0, len(plan.AgentNets))
 	for _, key := range sortedStringKeys(plan.AgentNets) {
-		gatewayNets = append(gatewayNets, plan.AgentNets[key])
+		mcpGatewayNets = append(mcpGatewayNets, plan.AgentNets[key])
 	}
-	plan.Gateway = ContainerSpec{
-		RunID:    gatewayName,
+	plan.MCPGateway = ContainerSpec{
+		RunID:    mcpGatewayName,
 		ImageRef: GatewayImageRef(),
 		Args:     []string{"mcp-gateway"},
-		Networks: gatewayNets,
+		Networks: mcpGatewayNets,
 		Env: map[string]string{
 			env.MCPConfig: string(cfgJSON),
 			env.MCPAddr:   ":" + env.DefaultMCPGatewayPort,

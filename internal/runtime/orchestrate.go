@@ -28,7 +28,7 @@ const containerStopTimeout = 30 * time.Second
 
 // bootRun picks the boot path by whether the agent declares any USES: no
 // dependencies takes today's single-container path unchanged; one or more
-// takes the tree path that starts every sub-agent behind the gateway.
+// takes the tree path that starts every sub-agent behind the MCP gateway.
 func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*mcp.Client, func() error, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -82,10 +82,10 @@ func resolveRunTree(ctx context.Context, runID, rootBundle string, root *bundle.
 }
 
 // bootTree starts a parent whose bundle has USES dependencies: a per-run
-// network, every sub-agent detached and serving HTTP on it, the gateway
+// network, every sub-agent detached and serving HTTP on it, the MCP gateway
 // carrying the routing table, and finally the root parent attached over
 // stdio with its sub-agent URLs. The order matters: the network exists
-// before anything joins it, and the root boots last so the gateway and
+// before anything joins it, and the root boots last so the MCP gateway and
 // sub-agents it calls are already listening. Teardown reverses all of it.
 func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*mcp.Client, func() error, error) {
 	td := &teardown{}
@@ -101,10 +101,10 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*
 		return nil, nil, err
 	}
 
-	// One internal network per agent, created up front because the gateway
+	// One internal network per agent, created up front because the MCP gateway
 	// joins all of them and starts after this loop. Each agent is alone on its
 	// own network, so no cage can reach a sibling directly and bypass the
-	// gateway's deny. Pushed before the containers that join them, so teardown
+	// MCP gateway's deny. Pushed before the containers that join them, so teardown
 	// (reverse order) removes the containers first.
 	for _, key := range sortedStringKeys(plan.AgentNets) {
 		net := plan.AgentNets[key]
@@ -125,18 +125,18 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*
 		td.push(func() error { return removeContainer(sess.provisioner, name) })
 	}
 
-	// The gateway is the only host the parent's USES URLs resolve to, so it
+	// The MCP gateway is the only host the parent's USES URLs resolve to, so it
 	// sees every call in the tree and enforces every edge's deny. Its image
 	// is keyed by version, so an existing one is current; skip rebuilding it.
-	if in.NoCache || !imageExists(ctx, sess.provisioner, plan.Gateway.ImageRef) {
+	if in.NoCache || !imageExists(ctx, sess.provisioner, plan.MCPGateway.ImageRef) {
 		if err := BuildGatewayImage(ctx, sess.bk, in.NoCache, in.Stderr); err != nil {
 			return nil, nil, err
 		}
 	}
-	if err := startDetached(ctx, sess.provisioner, plan.Gateway); err != nil {
+	if err := startDetached(ctx, sess.provisioner, plan.MCPGateway); err != nil {
 		return nil, nil, err
 	}
-	td.push(func() error { return removeContainer(sess.provisioner, plan.Gateway.RunID) })
+	td.push(func() error { return removeContainer(sess.provisioner, plan.MCPGateway.RunID) })
 
 	// One non-internal network is the door to the outside for both the LLM
 	// gateway and the egress proxy. It exists whenever the run reasons or any

@@ -17,10 +17,10 @@ The runtime injects these. Your agent reads them; it never sets them.
 |---|---|---|
 | `AGENTCAGE_SERVE_HTTP` | every sub-agent | A bind address (`:8000`). When set, serve MCP over streamable-HTTP on it instead of stdio. |
 | `AGENTCAGE_USES_<NAME>_URL` | a parent, one per `USES` | The URL to reach that sub-agent. `<NAME>` is the dependency name uppercased with dashes turned to underscores: `USES @org/web-search` gives `AGENTCAGE_USES_WEB_SEARCH_URL`. |
-| `AGENTCAGE_LLM_URL` | every reasoning agent | An OpenAI-compatible endpoint. Call it instead of a provider directly; agentcage holds the keys and meters the cost. One URL per agent, so the gateway knows whose call it is. |
+| `AGENTCAGE_LLM_URL` | every reasoning agent | An OpenAI-compatible endpoint. Call it instead of a provider directly; agentcage holds the keys and meters the cost. One URL per agent, so the LLM gateway knows whose call it is. |
 
-A `USES_<NAME>_URL` points at the gateway, not at the sub-agent directly. The
-gateway routes to the real sub-agent and enforces any `DENY`/`BAN` policy on
+A `USES_<NAME>_URL` points at the MCP gateway, not at the sub-agent directly. The
+MCP gateway routes to the real sub-agent and enforces any `DENY`/`BAN` policy on
 that edge. From your code it is just a URL you open an MCP client to.
 
 ## Serving (a sub-agent)
@@ -37,8 +37,8 @@ sandboxed agent behind a gateway:
    run network; loopback would only answer yourself.
 3. **Turn off DNS-rebinding host checks.** The MCP SDK validates the `Host`
    header by default and rejects anything not on an allowlist with `421
-   Misdirected Request`. The gateway forwards with your container's hostname,
-   which is not on that list. On a private per-run network the gateway is the
+   Misdirected Request`. The MCP gateway forwards with your container's hostname,
+   which is not on that list. On a private per-run network the MCP gateway is the
    host boundary, so the check is redundant. Disable it.
 
 A minimal Python sub-agent (raw `mcp`, no agentcage code):
@@ -78,7 +78,7 @@ call a tool. Two details:
    Calling `asyncio.run()` from inside a running loop raises. Declare the tool
    `async` and `await` the call.
 2. **Unwrap nested exception groups.** A gateway `DENY`/`BAN` comes back as a
-   clean `McpError` (for example `tool whisper denied by the gateway`). The
+   clean `McpError` (for example `tool whisper denied by the MCP gateway`). The
    Python streamable-HTTP client nests two anyio task groups, so that error
    arrives wrapped in two `ExceptionGroup`s. Unwrap to the innermost exception
    or your error message reads `unhandled errors in a TaskGroup` instead of the
@@ -110,9 +110,9 @@ async def call_sub(env_var: str, tool: str, args: dict) -> str:
 
 A reasoning agent calls the model through `AGENTCAGE_LLM_URL` with any
 OpenAI-compatible client. agentcage holds the provider key, so your code never
-sees one; the gateway routes the call to the operator's configured endpoint,
+sees one; the LLM gateway routes the call to the operator's configured endpoint,
 meters the cost, and debits the run's budget. You send a model name, but the
-gateway decides which model actually runs (the operator can pin one, or fall
+LLM gateway decides which model actually runs (the operator can pin one, or fall
 back when your provider is not configured), so treat your `MODEL` as advisory.
 
 ```python
@@ -121,13 +121,13 @@ from openai import OpenAI
 
 client = OpenAI(base_url=os.environ["AGENTCAGE_LLM_URL"], api_key="unused")
 resp = client.chat.completions.create(
-    model="gpt-4o",  # advisory; the gateway routes by the operator's config
+    model="gpt-4o",  # advisory; the LLM gateway routes by the operator's config
     messages=[{"role": "user", "content": "..."}],
 )
 ```
 
-The `api_key` is ignored: the gateway attaches the real one. Speaking the
-OpenAI completions surface is the requirement for using the gateway. An agent
+The `api_key` is ignored: the LLM gateway attaches the real one. Speaking the
+OpenAI completions surface is the requirement for using the LLM gateway. An agent
 that needs a provider or protocol agentcage does not proxy opts out with
 bring-your-own: declare `SECRETS my_key` and `EGRESS allow:host`, and call that
 provider directly. Its spend is outside the run's budget.
@@ -164,7 +164,7 @@ routes the prompt to. By convention it takes `messages: list[dict]`, the same
 prompt as one user turn. A tool reached with `agentcage call BUNDLE TOOL --arg
 key=value` instead receives the arguments you pass. Either way the platform
 routes the call and prints whatever the tool returns. A tool may return a
-single value or stream its response; the gateway preserves streaming end to
+single value or stream its response; the MCP gateway preserves streaming end to
 end.
 
 ## Summary: the sharp edges
