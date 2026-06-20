@@ -1,11 +1,9 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,8 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/reference"
-	"github.com/okedeji/agentcage/internal/registry"
+	"github.com/okedeji/agentcage/internal/locate"
 )
 
 func newInspectCmd() *cobra.Command {
@@ -38,7 +35,7 @@ itself can call them.`,
   agentcage inspect researcher.agent --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bundlePath, display, err := resolveInspectTarget(cmd.Context(), args[0])
+			bundlePath, display, err := locate.Bundle(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
@@ -58,35 +55,6 @@ itself can call them.`,
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit the manifest as JSON")
 	return cmd
-}
-
-// resolveInspectTarget turns the inspect argument into a local bundle path.
-// An existing file is inspected directly; anything else is treated as a
-// registry reference and pulled (cache-first), so inspecting a published
-// agent never touches the network twice. The display string is what the
-// human view labels the bundle with: the file path, or the resolved ref.
-func resolveInspectTarget(ctx context.Context, arg string) (bundlePath, display string, err error) {
-	if info, statErr := os.Stat(arg); statErr == nil && !info.IsDir() {
-		return arg, arg, nil
-	}
-
-	ref, err := reference.Parse(arg)
-	if err != nil {
-		return "", "", fmt.Errorf("%q is neither a local bundle nor a registry reference: %w", arg, err)
-	}
-	if ref.Tag == "" && ref.Digest == "" {
-		return "", "", fmt.Errorf("inspect %s: a version tag or digest is required", arg)
-	}
-
-	client, err := registry.New()
-	if err != nil {
-		return "", "", err
-	}
-	path, _, err := client.Pull(ctx, ref)
-	if err != nil {
-		return "", "", err
-	}
-	return path, ref.OCIRef(), nil
 }
 
 // printManifest renders the human-readable inspect view: build metadata,

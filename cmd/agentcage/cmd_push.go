@@ -3,13 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"path"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/okedeji/agentcage/internal/reference"
 	"github.com/okedeji/agentcage/internal/registry"
+	"github.com/okedeji/agentcage/internal/store"
 )
 
 func newPushCmd() *cobra.Command {
@@ -25,8 +24,9 @@ default registry; a fully-qualified ref (ghcr.io/org/name:version) is taken
 as written. Authentication reuses your Docker credentials, so a prior
 'docker login' (or 'agentcage login') against the host is enough.
 
-BUNDLE defaults to <name>.agent in the current directory, matching what
-'agentcage build' writes.`,
+The bundle comes from the local store: 'agentcage build -t REF' put it there,
+and push reads it back by REF with no file to line up. Pass an explicit bundle
+path (positional or -b) to push a file built elsewhere or with -o.`,
 		Example: `  agentcage push @okedeji/researcher:0.1
   agentcage push @okedeji/researcher:0.1 ./researcher.agent
   agentcage push ghcr.io/okedeji/researcher:0.1 -b out/researcher.agent`,
@@ -45,7 +45,10 @@ BUNDLE defaults to <name>.agent in the current directory, matching what
 				path = args[1]
 			}
 			if path == "" {
-				path = defaultBundleForRef(ref)
+				path, err = bundleFromStore(ref, args[0])
+				if err != nil {
+					return err
+				}
 			}
 
 			client, err := registry.New()
@@ -72,18 +75,25 @@ BUNDLE defaults to <name>.agent in the current directory, matching what
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&bundlePath, "bundle", "b", "", "path to the .agent file (default <name>.agent)")
+	cmd.Flags().StringVarP(&bundlePath, "bundle", "b", "", "path to a .agent file (default: read from the store by ref)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return cmd
 }
 
-// defaultBundleForRef derives the .agent filename 'agentcage build' would
-// have written for this reference: the last path component of the
-// repository plus .agent. ghcr.io/okedeji/researcher -> researcher.agent.
-func defaultBundleForRef(ref reference.Reference) string {
-	name := path.Base(ref.Repository)
-	if name == "" || name == "." || name == "/" {
-		name = "agent"
+// bundleFromStore locates the bundle the build stored for ref. arg is the
+// operator's original reference string, used in the error so it reads back the
+// way they typed it.
+func bundleFromStore(ref reference.Reference, arg string) (string, error) {
+	st, err := store.New()
+	if err != nil {
+		return "", err
 	}
-	return strings.TrimSuffix(name, ".agent") + ".agent"
+	path, ok, err := st.Get(ref)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("push %s: no bundle in the store for this ref; run 'agentcage build -t %s' first, or pass a bundle path", arg, arg)
+	}
+	return path, nil
 }

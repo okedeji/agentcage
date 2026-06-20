@@ -9,6 +9,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/bundle"
 	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/agentcage/internal/locate"
 	"github.com/okedeji/agentcage/internal/runtime"
 	"github.com/okedeji/agentcage/internal/secrets"
 )
@@ -24,10 +25,13 @@ func newRunCmd() *cobra.Command {
 		Short: "Run an agent (routes the prompt to its MAIN tool)",
 		Long: `Run an agent and print its response.
 
-The bundle is the .agent file produced by 'agentcage build'. agentcage
-extracts it, makes sure the runtime is ready (provisioning a Linux VM
-on macOS the first time), builds the agent's image, starts a container,
-and routes the prompt to the tool the Agentfile declared as MAIN.
+BUNDLE is a reference ('agentcage build -t' put it in the store), the content
+hash an untagged build printed, or a path to a .agent file. A reference resolves
+store-first and is pulled from the registry only when the store does not hold
+it. agentcage extracts the bundle,
+makes sure the runtime is ready (provisioning a Linux VM on macOS the first
+time), builds the agent's image, starts a container, and routes the prompt
+to the tool the Agentfile declared as MAIN.
 
 What MAIN does inside its function body is the author's call: typically
 its LLM reasons about the prompt, calls sub-agents, calls its own
@@ -41,13 +45,16 @@ without designating one as the bundle's "talk to me" entry), use
 
 Examples:
 
-  agentcage run hello.agent
+  agentcage run @okedeji/hello:0.1
   agentcage run researcher.agent "summarize Q3 earnings"`,
-		Example: `  agentcage run hello.agent
+		Example: `  agentcage run @okedeji/hello:0.1
   agentcage run researcher.agent "summarize Q3 earnings"`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bundlePath := args[0]
+			bundlePath, display, err := locate.Bundle(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
 			prompt := ""
 			if len(args) > 1 {
 				prompt = args[1]
@@ -58,7 +65,7 @@ Examples:
 				return err
 			}
 			if manifest.Agentfile.Main == "" {
-				return fmt.Errorf("bundle %s has no MAIN; it is a tool collection. Use 'agentcage call %s TOOL --arg KEY=VALUE' to call one of its tools directly", bundlePath, bundlePath)
+				return fmt.Errorf("bundle %s has no MAIN; it is a tool collection. Use 'agentcage call %s TOOL --arg KEY=VALUE' to call one of its tools directly", display, args[0])
 			}
 
 			// The positional prompt gets wrapped as a single-user-turn

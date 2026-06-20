@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/okedeji/agentcage/internal/registry"
 	"github.com/okedeji/agentcage/internal/resolve"
 	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/agentcage/internal/store"
 )
 
 func newBuildCmd() *cobra.Command {
@@ -33,13 +33,12 @@ func newBuildCmd() *cobra.Command {
 		Short: "Build an agent bundle from an Agentfile",
 		Long: `Build an agent bundle from a directory containing an Agentfile and source.
 
-The directory defaults to the current directory. The output is a .agent file
-named after the source directory, or after the -t reference when given, or
-after -o when given.
-
-Naming the output from -t means push finds it without an explicit path:
-'build -t @okedeji/researcher:0.1' writes researcher.agent, and
-'push @okedeji/researcher:0.1' looks for researcher.agent.
+The directory defaults to the current directory. The bundle goes into the
+local store under ~/.agentcage, addressed by its content. With -t the store also 
+indexes the bundle by reference, so 'build -t @okedeji/researcher:0.1' lets 
+'push @okedeji/researcher:0.1' and 'run @okedeji/researcher:0.1' find it by name 
+with no file to line up. Without -t the bundle is stored by content hash alone. 
+Pass -o to also write a portable copy you can move by hand.
 
 By default build introspects the agent: it builds the image, boots the agent
 briefly, and asks its MCP server for its tools, writing their descriptions,
@@ -55,6 +54,7 @@ caught; --skip-cycle-check skips the walk on a graph you trust.`,
 		Example: `  agentcage build .
   agentcage build ./my-agent
   agentcage build . -t @okedeji/researcher:0.1
+  agentcage build . -t @okedeji/researcher:0.1 -o researcher.agent
   agentcage build . --no-introspect`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -62,16 +62,9 @@ caught; --skip-cycle-check skips the walk on a graph you trust.`,
 			if len(args) > 0 {
 				srcDir = args[0]
 			}
-			if outPath == "" {
-				var err error
-				outPath, err = defaultOutput(srcDir, tag)
-				if err != nil {
-					return err
-				}
-			}
-			return runBuild(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), buildConfig{
+			return buildToStore(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), buildConfig{
 				srcDir:         srcDir,
-				outPath:        outPath,
+				filePath:       outPath,
 				mode:           progress.ParseMode(progressFlag),
 				tag:            tag,
 				skipCycleCheck: skipCycleCheck,
@@ -80,7 +73,7 @@ caught; --skip-cycle-check skips the walk on a graph you trust.`,
 			})
 		},
 	}
-	cmd.Flags().StringVarP(&outPath, "output", "o", "", "output path for the .agent file")
+	cmd.Flags().StringVarP(&outPath, "output", "o", "", "also write a portable copy of the bundle to this path")
 	cmd.Flags().StringVar(&progressFlag, "progress", "auto", "set progress output (auto, plain, tty)")
 	cmd.Flags().StringVarP(&tag, "tag", "t", "", "reference for the agent being built (names the output and anchors USES cycle detection)")
 	cmd.Flags().BoolVar(&skipCycleCheck, "skip-cycle-check", false, "skip the transitive USES cycle walk (digests are still locked)")
@@ -90,8 +83,13 @@ caught; --skip-cycle-check skips the walk on a graph you trust.`,
 }
 
 type buildConfig struct {
-	srcDir         string
-	outPath        string
+	srcDir string
+	// outPath is the store path build writes the bundle to. buildToStore
+	// derives it from the content hash and sets it before calling runBuild.
+	outPath string
+	// filePath is the -o value: an optional portable copy written after the
+	// bundle lands in the store. Empty leaves the store as the only output.
+	filePath       string
 	mode           progress.Mode
 	tag            string
 	skipCycleCheck bool
@@ -108,8 +106,6 @@ type buildConfig struct {
 // docker build. With --no-introspect there is no image build, so the
 // 3-step packaging renderer is the primary output, the same as before.
 func runBuild(ctx context.Context, stdout, stderr io.Writer, cfg buildConfig) error {
-	start := time.Now()
-
 	var buildOpts []bundle.Option
 
 	resolverOpt, err := usesResolverOption(ctx, stdout, cfg)
@@ -145,17 +141,76 @@ func runBuild(ctx context.Context, stdout, stderr io.Writer, cfg buildConfig) er
 		err = bundle.Build(cfg.srcDir, cfg.outPath, opts...)
 		renderer.Done()
 	}
+	return err
+}
+
+// buildToStore hashes the source, builds the bundle into the content-addressed
+// store, indexes it by ref when -t is given, writes the -o copy when asked, and
+// reports the result. The store is the build's output; push, run, and call read
+// it back by ref.
+func buildToStore(ctx context.Context, stdout, stderr io.Writer, cfg buildConfig) error {
+	start := time.Now()
+
+	st, err := store.New()
 	if err != nil {
 		return err
 	}
 
+	// Anchor the hash on the store dir, which sits outside the source tree:
+	// it excludes nothing from the walk, so this value matches the files_hash
+	// bundle.Build recomputes when it writes into the store, and the store
+	// path lands where a later run resolves the same source to.
+	hash, err := bundle.HashSource(cfg.srcDir, st.Dir())
+	if err != nil {
+		return err
+	}
+	cfg.outPath = st.PathFor(hash)
+
+	var ref reference.Reference
+	if cfg.tag != "" {
+		ref, err = reference.Parse(cfg.tag)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := runBuild(ctx, stdout, stderr, cfg); err != nil {
+		return err
+	}
+
+	if ref.Tag != "" {
+		if err := st.Tag(ref, hash); err != nil {
+			return err
+		}
+	}
+	if cfg.filePath != "" {
+		if err := store.CopyTo(cfg.outPath, cfg.filePath); err != nil {
+			return err
+		}
+	}
+
+	reportBuild(stdout, cfg, ref, hash, time.Since(start))
+	return nil
+}
+
+// reportBuild prints the one-line build result: the ref when the bundle was
+// named with -t, otherwise its content hash plus a hint at how to name it. The
+// -o copy, when written, gets its own line.
+func reportBuild(stdout io.Writer, cfg buildConfig, ref reference.Reference, hash string, elapsed time.Duration) {
 	size := "?"
-	if info, statErr := os.Stat(cfg.outPath); statErr == nil {
+	if info, err := os.Stat(cfg.outPath); err == nil {
 		size = humanSize(info.Size())
 	}
-	_, _ = fmt.Fprintf(stdout, "Successfully built %s (%s) in %s\n",
-		cfg.outPath, size, time.Since(start).Round(time.Millisecond))
-	return nil
+	dur := elapsed.Round(time.Millisecond)
+	if ref.Tag != "" {
+		_, _ = fmt.Fprintf(stdout, "Successfully built %s (%s) in %s\n", ref.OCIRef(), size, dur)
+	} else {
+		_, _ = fmt.Fprintf(stdout, "Successfully built %s (%s) in %s\n", hash, size, dur)
+		_, _ = fmt.Fprintln(stdout, "Tip: run it by this hash; -t @org/name:version names it for push; -o file.agent writes a portable copy")
+	}
+	if cfg.filePath != "" {
+		_, _ = fmt.Fprintf(stdout, "Wrote %s\n", cfg.filePath)
+	}
 }
 
 // introspectionOption boots the agent, reads its tools, and returns a Build
@@ -254,33 +309,6 @@ func usesResolverOption(ctx context.Context, w io.Writer, cfg buildConfig) (bund
 		}
 		return digest, nil
 	}), nil
-}
-
-// defaultOutput picks the .agent filename when -o was not given. With a
-// -t reference, the name comes from the agent's name so push finds it by
-// convention; otherwise it comes from the source directory's basename.
-func defaultOutput(srcDir, tag string) (string, error) {
-	if tag != "" {
-		ref, err := reference.Parse(tag)
-		if err != nil {
-			return "", err
-		}
-		return path.Base(ref.Repository) + ".agent", nil
-	}
-	return defaultOutputPath(srcDir), nil
-}
-
-// defaultOutputPath derives a .agent filename from the source directory's
-// basename. "." resolves to the cwd's basename so `agentcage build .` in
-// /Users/x/researcher writes ./researcher.agent.
-func defaultOutputPath(srcDir string) string {
-	abs, err := filepath.Abs(srcDir)
-	if err != nil {
-		// Fall back to a generic name; the build itself will surface the
-		// real error if there is one.
-		return "agent.agent"
-	}
-	return filepath.Base(abs) + ".agent"
 }
 
 // humanSize formats n bytes in the smallest binary unit that keeps the

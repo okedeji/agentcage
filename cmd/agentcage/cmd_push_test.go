@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/okedeji/agentcage/internal/reference"
 )
 
 // TestPushCmd_RequiresTag locks push's pre-network rejection: a bare
@@ -25,21 +23,5 @@ func TestPushCmd_RequiresTag(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "version tag is required") {
 		t.Errorf("error %q should explain a tag is required", err.Error())
-	}
-}
-
-func TestDefaultBundleForRef(t *testing.T) {
-	cases := []struct {
-		repo string
-		want string
-	}{
-		{"okedeji/researcher", "researcher.agent"},
-		{"team/sub/web-search", "web-search.agent"},
-	}
-	for _, tc := range cases {
-		ref := reference.Reference{Registry: "ghcr.io", Repository: tc.repo, Tag: "0.1"}
-		if got := defaultBundleForRef(ref); got != tc.want {
-			t.Errorf("defaultBundleForRef(%q) = %q, want %q", tc.repo, got, tc.want)
-		}
 	}
 }

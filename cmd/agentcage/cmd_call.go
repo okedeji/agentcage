@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/agentcage/internal/locate"
 	"github.com/okedeji/agentcage/internal/runtime"
 )
 
@@ -24,6 +25,9 @@ that tool does (reason with an LLM, call sub-agents, just fetch
 data, or anything else) is whatever its author wrote. The platform
 just routes the call.
 
+BUNDLE is a reference (resolved store-first, then pulled), a content hash from
+an untagged build, or a path to a .agent file, the same as 'agentcage run'.
+
 Use 'call' when:
 
   - The bundle is a tool collection (no MAIN declared).
@@ -39,11 +43,14 @@ Examples:
   agentcage call web-search.agent search --arg query="agentic memory"
   agentcage call researcher.agent fetch_paper --arg doi=10.1234/x.2026
   agentcage call github-mcp.agent create_pr --arg title="..." --arg body="..."`,
-		Example: `  agentcage call web-search.agent search --arg query="agentic memory"
+		Example: `  agentcage call @okedeji/web-search:0.1 search --arg query="agentic memory"
   agentcage call researcher.agent fetch_paper --arg doi=10.1234/x.2026`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bundlePath := args[0]
+			bundlePath, _, err := locate.Bundle(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
 			toolName := args[1]
 
 			manifest, err := bundle.ReadManifest(bundlePath)

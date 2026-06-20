@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/okedeji/agentcage/internal/progress"
+	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/agentcage/internal/store"
 )
 
 func TestHumanSize(t *testing.T) {
@@ -31,46 +33,6 @@ func TestHumanSize(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("humanSize(%d) = %q, want %q", tc.in, got, tc.want)
 		}
-	}
-}
-
-func TestDefaultOutputPath(t *testing.T) {
-	// Compare against the cwd's basename when given ".".
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	wantCWD := filepath.Base(wd) + ".agent"
-	if got := defaultOutputPath("."); got != wantCWD {
-		t.Errorf("defaultOutputPath(\".\") = %q, want %q", got, wantCWD)
-	}
-
-	// Absolute paths take their final segment.
-	if got := defaultOutputPath("/Users/foo/researcher"); got != "researcher.agent" {
-		t.Errorf("defaultOutputPath(abs) = %q, want researcher.agent", got)
-	}
-
-	// Trailing slashes are handled by filepath.Base/Abs.
-	if got := defaultOutputPath("./my-agent/"); !strings.HasSuffix(got, "my-agent.agent") {
-		t.Errorf("defaultOutputPath trailing-slash = %q, want ...my-agent.agent", got)
-	}
-}
-
-func TestDefaultOutput_FromTag(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
-	// With -t, the name comes from the ref so push finds it, regardless of
-	// the source directory's name.
-	got, err := defaultOutput("/some/unrelated/dir", "@okedeji/researcher:0.1")
-	if err != nil {
-		t.Fatalf("defaultOutput: %v", err)
-	}
-	if got != "researcher.agent" {
-		t.Errorf("defaultOutput with -t = %q, want researcher.agent", got)
-	}
-
-	// A malformed -t reference is surfaced, not silently ignored.
-	if _, err := defaultOutput(".", "not a ref"); err == nil {
-		t.Error("expected an error for a malformed -t reference")
 	}
 }
 
@@ -101,12 +63,60 @@ func TestRunBuild_HappyPath(t *testing.T) {
 		"Step 1/3 : Parsing Agentfile",
 		"Step 2/3 : Hashing source tree",
 		"Step 3/3 : Sealing bundle",
-		"Successfully built",
-		"researcher.agent",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in output:\n%s", want, stdout)
 		}
+	}
+}
+
+// TestBuildToStore_TagIndexed builds into a store rooted at a temp
+// AGENTCAGE_HOME and asserts the bundle lands content-addressed, the -t ref
+// resolves back to it, and the result line names the ref. --no-introspect
+// keeps it runtime-free.
+func TestBuildToStore_TagIndexed(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("AGENTCAGE_HOME", home)
+	t.Setenv("AGENTCAGE_REGISTRY", "")
+
+	srcDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(srcDir, "Agentfile"), []byte(
+		"FROM python:3.12-slim\nENTRYPOINT python3 agent.py\n",
+	), 0o644); err != nil {
+		t.Fatalf("WriteFile Agentfile: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "agent.py"), []byte("print('hi')\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile agent.py: %v", err)
+	}
+
+	var buf, errBuf bytes.Buffer
+	if err := buildToStore(context.Background(), &buf, &errBuf, buildConfig{
+		srcDir: srcDir, mode: progress.ModePlain, tag: "@okedeji/researcher:0.1", noIntrospect: true,
+	}); err != nil {
+		t.Fatalf("buildToStore: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "okedeji/researcher:0.1") {
+		t.Errorf("result line should name the ref:\n%s", buf.String())
+	}
+
+	st, err := store.New()
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	ref, err := reference.Parse("@okedeji/researcher:0.1")
+	if err != nil {
+		t.Fatalf("reference.Parse: %v", err)
+	}
+	path, ok, err := st.Get(ref)
+	if err != nil {
+		t.Fatalf("store.Get: %v", err)
+	}
+	if !ok {
+		t.Fatal("built ref does not resolve in the store")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("resolved store path is not a file: %v", err)
 	}
 }
 

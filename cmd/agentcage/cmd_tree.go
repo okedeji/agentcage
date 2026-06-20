@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/okedeji/agentcage/internal/locate"
 	"github.com/okedeji/agentcage/internal/runtime"
 )
 
@@ -24,7 +25,7 @@ the subtree.`,
   agentcage tree @okedeji/researcher:0.1`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bundlePath, display, err := resolveInspectTarget(cmd.Context(), args[0])
+			bundlePath, display, err := locate.Bundle(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
