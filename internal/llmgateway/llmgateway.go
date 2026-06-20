@@ -294,6 +294,12 @@ func newProxy(ep Endpoint, m *meter, agentKey string) *httputil.ReverseProxy {
 			pr.Out.URL.Path = singleJoin(target.Path, stripFirstSegment(pr.In.URL.Path))
 			pr.Out.Host = target.Host
 			pr.Out.Header.Set("Authorization", "Bearer "+string(ep.Key))
+			// Ask the upstream for an uncompressed body. The meter reads the
+			// response's usage block to debit the budget, and a gzip/br/zstd body
+			// never parses as JSON, so a compressed response would silently leave
+			// the call unmetered and the budget unenforced. Completions are small,
+			// so the lost compression costs nothing.
+			pr.Out.Header.Set("Accept-Encoding", "identity")
 		},
 		FlushInterval:  -1,
 		ModifyResponse: meterResponse(ep, m, agentKey),
