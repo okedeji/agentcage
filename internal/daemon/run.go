@@ -17,28 +17,29 @@ type startRequest struct {
 	Ref string `json:"ref"`
 }
 
-// bootHeld boots a run from a bundle and records it in the registry, returning
-// its Session. Both the control plane (POST /runs) and the front door (serve)
-// boot through it, so they hold runs identically.
+// boot acquires a run and records it in the registry, returning its Session.
+// Every daemon entry point boots through it: the control plane (POST /runs), the
+// front door (serve), and the one-shot stream (POST /run), so they hold runs
+// identically and every running cage is one the registry knows.
 //
-// Two deliberate choices. Acquire runs before d.hold takes the registry lock,
-// because booting a container is slow and must not serialize every other
-// control call. And it boots against a background context: a held run's stdio
-// subprocess has to outlive the request that started it, released on stop or on
-// daemon shutdown, never when the response is written.
-func (d *Daemon) bootHeld(bundlePath, name, display string) (*runtime.Session, error) {
-	session, err := runtime.Acquire(context.Background(), runtime.RunInput{
-		BundlePath: bundlePath,
-		Name:       name,
-		// A held run's detached sub-agents and networks do not self-reap when the
-		// daemon dies the way the root does over stdio EOF, so they are labeled
-		// managed for the startup sweep to find as a crashed daemon's orphans.
-		Managed: true,
-		// The tool result returns over Call, not stdout; the agent's stderr is
-		// the daemon's own until per-run log capture lands.
-		Stdout: io.Discard,
-		Stderr: os.Stderr,
-	})
+// The caller chooses ctx. A held run (start, serve) boots against a background
+// context so its stdio subprocess outlives the request that created it, released
+// on stop or daemon shutdown. A one-shot run binds to the request, so a client
+// that disconnects cancels its boot and call. Acquire runs before d.hold takes
+// the registry lock, because booting a container is slow and must not serialize
+// every other control call.
+func (d *Daemon) boot(ctx context.Context, in runtime.RunInput, display string) (*runtime.Session, error) {
+	// A held run's detached sub-agents and networks do not self-reap when the
+	// daemon dies the way the root does over stdio EOF, so they are labeled
+	// managed for the startup sweep to find as a crashed daemon's orphans.
+	in.Managed = true
+	if in.Stdout == nil {
+		in.Stdout = io.Discard
+	}
+	if in.Stderr == nil {
+		in.Stderr = os.Stderr
+	}
+	session, err := runtime.Acquire(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +72,7 @@ func (d *Daemon) handleStartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := d.bootHeld(b.Path, b.Name, b.Display)
+	session, err := d.boot(context.Background(), runtime.RunInput{BundlePath: b.Path, Name: b.Name}, b.Display)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

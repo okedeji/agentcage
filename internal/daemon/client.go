@@ -16,6 +16,14 @@ type Client struct {
 	http *http.Client
 }
 
+// Unreachable wraps the error from failing to reach the daemon at all, so a
+// caller can tell "no daemon is running" apart from an error the daemon itself
+// returned and hint accordingly.
+type Unreachable struct{ Err error }
+
+func (u *Unreachable) Error() string { return u.Err.Error() }
+func (u *Unreachable) Unwrap() error { return u.Err }
+
 // Dial returns a client for the daemon at socketPath. It does not connect yet;
 // the first request does, and a connection-refused there means no daemon is
 // running.
@@ -53,6 +61,52 @@ func (c *Client) ListRuns(ctx context.Context) ([]RunInfo, error) {
 		return nil, err
 	}
 	return body.Runs, nil
+}
+
+// RunOnce runs an agent to completion through the daemon: it streams the run's
+// logs to logs as they arrive and returns the final tool result. It is the
+// daemon-client behind `agentcage run` and `agentcage call`.
+//
+// A failure to reach the daemon is reported distinctly from a failure the run
+// itself returned, so the CLI hints "is the daemon running?" only for the former.
+func (c *Client) RunOnce(ctx context.Context, req RunRequest, logs io.Writer) (string, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://unix/run", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return "", &Unreachable{err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("daemon /run: %s", errorBody(resp))
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	var result string
+	for {
+		var f runFrame
+		if err := dec.Decode(&f); err != nil {
+			if err == io.EOF {
+				return result, nil
+			}
+			return "", fmt.Errorf("reading run stream: %w", err)
+		}
+		switch f.Type {
+		case "log":
+			_, _ = io.WriteString(logs, f.Data)
+		case "result":
+			result = f.Data
+		case "error":
+			return "", fmt.Errorf("%s", f.Data)
+		}
+	}
 }
 
 // StartRun asks the daemon to boot and hold an agent, returning the run id the

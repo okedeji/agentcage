@@ -159,6 +159,7 @@ func (d *Daemon) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /version", d.handleVersion)
 	mux.HandleFunc("GET /runs", d.handleListRuns)
+	mux.HandleFunc("POST /run", d.handleRun)
 	mux.HandleFunc("POST /runs", d.handleStartRun)
 	mux.HandleFunc("POST /runs/{id}/call", d.handleCallRun)
 	mux.HandleFunc("POST /runs/{id}/budget", d.handleSetBudget)
