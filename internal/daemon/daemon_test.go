@@ -9,14 +9,14 @@ import (
 	"github.com/okedeji/agentcage/internal/identity"
 )
 
-func TestRegistry_RegisterRemove(t *testing.T) {
+func TestRegistry_HoldTake(t *testing.T) {
 	d := New()
-	d.Register(RunInfo{ID: "researcher-abc"})
-	if !d.Remove("researcher-abc") {
-		t.Error("Remove of a tracked run should report true")
+	d.hold(RunInfo{ID: "researcher-abc"}, nil)
+	if _, ok := d.take("researcher-abc"); !ok {
+		t.Error("take of a held run should report true")
 	}
-	if d.Remove("researcher-abc") {
-		t.Error("Remove of an already-removed run should report false")
+	if _, ok := d.take("researcher-abc"); ok {
+		t.Error("take of an already-taken run should report false")
 	}
 }
 
@@ -26,12 +26,12 @@ func TestRegistry_RegisterRemove(t *testing.T) {
 func TestServe_SocketRoundTrip(t *testing.T) {
 	socket := filepath.Join(t.TempDir(), "agentcage.sock")
 	d := New()
-	d.Register(RunInfo{
+	d.hold(RunInfo{
 		ID:        "researcher-abc",
 		Ref:       "@me/researcher:0.1",
 		Status:    "running",
 		StartedAt: time.Now(),
-	})
+	}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errc := make(chan error, 1)

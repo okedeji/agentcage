@@ -50,10 +50,14 @@ func Serve(ctx context.Context, d *Daemon, socketPath string) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("serving control plane: %w", err)
+	// On the way down, release every run still held so its detached sub-agents
+	// and networks come down with the daemon rather than leaking to the next
+	// startup sweep.
+	serveErr := srv.Serve(ln)
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		return errors.Join(fmt.Errorf("serving control plane: %w", serveErr), d.releaseAll())
 	}
-	return nil
+	return d.releaseAll()
 }
 
 // alreadyListening reports whether a live daemon answers on socketPath. A

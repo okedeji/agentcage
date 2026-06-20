@@ -10,6 +10,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/env"
 	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/agentcage/internal/runtime"
 )
 
 // socketName is the daemon's control socket under the agentcage home dir. Lima
@@ -49,29 +51,79 @@ type RunInfo struct {
 // than from saved state.
 type Daemon struct {
 	mu   sync.Mutex
-	runs map[string]*RunInfo
+	runs map[string]*heldRun
+}
+
+// heldRun is one run the daemon holds: its reportable info and the live Session
+// whose stdio the daemon keeps open. The Session stays held across calls until
+// stop releases it; the daemon dying drops the Session's subprocess and with it
+// the run, the same coupling a one-shot run has to the CLI process.
+type heldRun struct {
+	info    RunInfo
+	session *runtime.Session
 }
 
 // New returns a daemon with an empty registry.
 func New() *Daemon {
-	return &Daemon{runs: map[string]*RunInfo{}}
+	return &Daemon{runs: map[string]*heldRun{}}
 }
 
-// Register records a run as live. The runtime wiring calls it once a run boots;
-// Remove drops it on teardown.
-func (d *Daemon) Register(info RunInfo) {
+// hold records a booted run and its Session under the run id.
+func (d *Daemon) hold(info RunInfo, session *runtime.Session) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.runs[info.ID] = &info
+	d.runs[info.ID] = &heldRun{info: info, session: session}
 }
 
-// Remove drops a run from the registry, reporting whether it was tracked.
-func (d *Daemon) Remove(id string) bool {
+// session returns the live Session for a run, or false when no run by that id
+// is held.
+func (d *Daemon) session(id string) (*runtime.Session, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	_, ok := d.runs[id]
+	r, ok := d.runs[id]
+	if !ok {
+		return nil, false
+	}
+	return r.session, true
+}
+
+// take removes a run from the registry and returns its Session, so a stop
+// releases exactly once even if two arrive at the same time.
+func (d *Daemon) take(id string) (*runtime.Session, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	r, ok := d.runs[id]
+	if !ok {
+		return nil, false
+	}
 	delete(d.runs, id)
-	return ok
+	return r.session, true
+}
+
+// nowFunc is overridable so StartedAt stays testable without a real clock.
+var nowFunc = time.Now
+
+// releaseAll tears down every held run, joining errors. Serve calls it on
+// shutdown so a graceful stop releases runs properly instead of leaking their
+// detached sub-agents and networks to the next reconciliation sweep.
+func (d *Daemon) releaseAll() error {
+	d.mu.Lock()
+	sessions := make([]*runtime.Session, 0, len(d.runs))
+	for _, r := range d.runs {
+		if r.session != nil {
+			sessions = append(sessions, r.session)
+		}
+	}
+	d.runs = map[string]*heldRun{}
+	d.mu.Unlock()
+
+	var errs []error
+	for _, s := range sessions {
+		if err := s.Release(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Handler returns the control-plane routes. Split from Serve so tests drive the
@@ -80,6 +132,9 @@ func (d *Daemon) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /version", d.handleVersion)
 	mux.HandleFunc("GET /runs", d.handleListRuns)
+	mux.HandleFunc("POST /runs", d.handleStartRun)
+	mux.HandleFunc("POST /runs/{id}/call", d.handleCallRun)
+	mux.HandleFunc("POST /runs/{id}/stop", d.handleStopRun)
 	return mux
 }
 
@@ -90,8 +145,8 @@ func (d *Daemon) handleVersion(w http.ResponseWriter, _ *http.Request) {
 func (d *Daemon) handleListRuns(w http.ResponseWriter, _ *http.Request) {
 	d.mu.Lock()
 	out := make([]RunInfo, 0, len(d.runs))
-	for _, info := range d.runs {
-		out = append(out, *info)
+	for _, r := range d.runs {
+		out = append(out, r.info)
 	}
 	d.mu.Unlock()
 
@@ -103,4 +158,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
 }
