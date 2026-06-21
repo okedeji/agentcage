@@ -40,7 +40,7 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 	// choice, so this overlays onto Defaults only.
 	res := cfg.Resources
 	res.Defaults = overlayCap(in.Resources, res.Defaults)
-	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm()}
+	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), alwaysWarm: cfg.Cages.AlwaysWarm}
 
 	if len(boot.Manifest.Agentfile.Uses) == 0 {
 		// A directly-run agent has no registry ref, so per-agent overrides do
@@ -215,8 +215,12 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 
 	booted = true
 	specByNode := make(map[string]plannedAgent, len(plan.Agents))
+	alwaysWarm := map[string]bool{}
 	for _, a := range plan.Agents {
 		specByNode[a.Node.Key] = a
+		if a.AlwaysWarm {
+			alwaysWarm[a.Node.Key] = true
+		}
 	}
 	ws := &workingSet{
 		sess:       sess,
@@ -224,6 +228,7 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		tree:       tree,
 		td:         td,
 		specByNode: specByNode,
+		alwaysWarm: alwaysWarm,
 		state:      state,
 		pins:       map[string]int{},
 		lastUse:    lastUse,

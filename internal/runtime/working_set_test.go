@@ -9,14 +9,15 @@ import (
 // no provisioner or stream.
 func newTestWS(maxLive, hostMax int) *workingSet {
 	return &workingSet{
-		plan:     &runPlan{EdgeNodes: map[string]string{}},
-		state:    map[string]cageState{},
-		pins:     map[string]int{},
-		lastUse:  map[string]time.Time{},
-		inflight: map[string]*activation{},
-		maxLive:  maxLive,
-		hostMax:  hostMax,
-		idleTTL:  time.Minute,
+		plan:       &runPlan{EdgeNodes: map[string]string{}},
+		state:      map[string]cageState{},
+		pins:       map[string]int{},
+		lastUse:    map[string]time.Time{},
+		inflight:   map[string]*activation{},
+		alwaysWarm: map[string]bool{},
+		maxLive:    maxLive,
+		hostMax:    hostMax,
+		idleTTL:    time.Minute,
 	}
 }
 
@@ -50,6 +51,24 @@ func TestLRUVictimNoneWhenAllPinned(t *testing.T) {
 	w.state["b"], w.pins["b"] = cageLive, 2
 	if _, ok := w.lruVictimLocked(); ok {
 		t.Error("expected no victim when every live cage is pinned")
+	}
+}
+
+func TestAlwaysWarmExemptFromEvictionAndReaping(t *testing.T) {
+	w := newTestWS(8, 32)
+	w.idleTTL = time.Minute
+	now := time.Unix(50_000, 0)
+	// The oldest, most idle cage, but pinned warm: never an eviction or reap victim.
+	w.state["warm"], w.lastUse["warm"] = cageLive, now.Add(-time.Hour)
+	w.alwaysWarm["warm"] = true
+	w.state["cold"], w.lastUse["cold"] = cageLive, now.Add(-2*time.Minute)
+
+	if v, ok := w.lruVictimLocked(); !ok || v != "cold" {
+		t.Errorf("LRU victim = %q (ok=%v), want cold; the warm cage must be exempt", v, ok)
+	}
+	got := w.reapableLocked(now)
+	if len(got) != 1 || got[0] != "cold" {
+		t.Errorf("reapable = %v, want only [cold]; the warm cage must never be reaped", got)
 	}
 }
 

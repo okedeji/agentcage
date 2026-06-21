@@ -488,6 +488,48 @@ func TestBuildRunPlan_PrewarmsDirectChildrenDefersDeeper(t *testing.T) {
 	}
 }
 
+func TestBuildRunPlan_PinsEgressAndConfiguredAgentsWarm(t *testing.T) {
+	// root -> a -> deep. deep declares EGRESS allow: (so its proxy keying needs
+	// it warm), and the operator pins @o/a always_warm. Both must prewarm and be
+	// flagged AlwaysWarm even though deep is not a direct child.
+	withEgress := func(ref reference.Reference, policy string) *agentNode {
+		return &agentNode{Key: "deep-1", Ref: ref, Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Egress: policy}}}
+	}
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root":   {Key: "root"},
+			"a-1":    {Key: "a-1", Ref: mustParseRef(t, "@o/a:1.0")},
+			"deep-1": withEgress(mustParseRef(t, "@o/deep:1.0"), "allow:example.com"),
+		},
+		Edges: []usesEdge{
+			{Caller: "root", Sub: "a-1", Alias: "a"},
+			{Caller: "a-1", Sub: "deep-1", Alias: "deep"},
+		},
+	}
+
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{prewarm: 8, alwaysWarm: []string{"@o/a"}})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+
+	flags := map[string]plannedAgent{}
+	for _, a := range plan.Agents {
+		flags[a.Node.Key] = a
+	}
+	if !flags["deep-1"].Prewarm || !flags["deep-1"].AlwaysWarm {
+		t.Errorf("egress agent deep-1 must be prewarmed and always-warm, got %+v", flags["deep-1"])
+	}
+	if !flags["a-1"].Prewarm || !flags["a-1"].AlwaysWarm {
+		t.Errorf("config-pinned a-1 must be prewarmed and always-warm, got %+v", flags["a-1"])
+	}
+	// The deep agent is warm, so the edge to it is active, not held for activation.
+	deepEdge := edgeKeyFromURL(t, flags["a-1"].Spec.Env["AGENTCAGE_USES_DEEP_URL"])
+	if plan.MCPGatewayCfg.Edges[deepEdge].Inactive {
+		t.Error("edge to a pinned-warm agent must be active")
+	}
+}
+
 func TestBuildRunPlan_NestedCallerServesAndCalls(t *testing.T) {
 	// root -> a -> b. Agent a is both a server (root reaches it) and a
 	// caller (it reaches b), so its env carries SERVE_HTTP and a USES url.

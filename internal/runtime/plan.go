@@ -81,14 +81,16 @@ type egressAgent struct {
 	Hosts   []string
 }
 
-// plannedAgent pairs a non-root tree node with the detached container spec
-// that runs it. The node carries the bundle and manifest the orchestrator
-// builds the image from. Prewarm marks an agent the skeleton boots up front (the
-// root's direct children, the hot path); the rest activate on first call.
+// plannedAgent pairs a non-root tree node with the detached container spec that
+// runs it. The node carries the bundle and manifest the orchestrator builds the
+// image from. Prewarm marks an agent the skeleton boots up front (the root's
+// direct children plus the pinned-warm ones); the rest activate on first call.
+// AlwaysWarm marks an agent that, once warm, is never reaped or evicted.
 type plannedAgent struct {
-	Node    *agentNode
-	Spec    ContainerSpec
-	Prewarm bool
+	Node       *agentNode
+	Spec       ContainerSpec
+	Prewarm    bool
+	AlwaysWarm bool
 }
 
 // buildRunPlan turns a resolved tree into the containers, network, and
@@ -125,13 +127,35 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		return nil, err
 	}
 
+	// pinnedWarm names the nodes kept warm for the run's life: those declaring
+	// EGRESS allow: (the egress proxy keys them by an IP that must exist at boot
+	// and stay put, so they cannot be lazy or reaped) and those the operator
+	// listed in always_warm. They are booted with the skeleton and never reaped or
+	// evicted.
+	alwaysWarm := map[string]bool{}
+	for _, ref := range ops.alwaysWarm {
+		alwaysWarm[ref] = true
+	}
+	pinnedWarm := map[string]bool{}
+	for key, node := range tree.Nodes {
+		if key == tree.Root || wholeBanned[key] {
+			continue
+		}
+		if len(egressHosts(nodeEgress(node))) > 0 || alwaysWarm[refKey(node)] {
+			pinnedWarm[key] = true
+		}
+	}
+
 	// The skeleton boots the root's direct children up front (the hot path), up
-	// to the operator's prewarm count; every other node activates on first call.
-	// An edge to a non-prewarmed node is marked inactive, so the gateway holds the
-	// first call to it while the daemon boots its sub-agent. Direct children are
-	// taken in sorted key order so the prewarmed set is deterministic when the
-	// count is below the fan-out.
+	// to the operator's prewarm count, plus every pinned-warm node; the rest
+	// activate on first call. An edge to a non-prewarmed node is marked inactive,
+	// so the gateway holds the first call to it while the daemon boots its
+	// sub-agent. Direct children are taken in sorted key order so the prewarmed
+	// set is deterministic when the count is below the fan-out.
 	prewarmed := map[string]bool{}
+	for key := range pinnedWarm {
+		prewarmed[key] = true
+	}
 	seenChild := map[string]bool{}
 	var directChildren []string
 	for _, e := range tree.Edges {
@@ -220,7 +244,8 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 				Detached: true,
 				Managed:  ops.managed,
 			}.withCap(agentCap(node, ops.resources)),
-			Prewarm: prewarmed[key],
+			Prewarm:    prewarmed[key],
+			AlwaysWarm: pinnedWarm[key],
 		})
 	}
 

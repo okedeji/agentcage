@@ -50,6 +50,11 @@ type workingSet struct {
 	// so an on-demand activation boots exactly the cage the plan already shaped.
 	specByNode map[string]plannedAgent
 
+	// alwaysWarm names nodes that, once warm, are never reaped or evicted: the
+	// egress-declaring agents (whose proxy keying must not go stale) and the
+	// operator's always_warm list. They hold their slots for the run's life.
+	alwaysWarm map[string]bool
+
 	// state, pins, and lastUse are the live cage bookkeeping. pins counts a
 	// node's in-flight forwards, reported by the gateway; a node with pins > 0 is
 	// mid-call and never evicted. lastUse is when a node last went idle, the key
@@ -101,7 +106,7 @@ func (w *workingSet) lruVictimLocked() (string, bool) {
 	var victim string
 	var oldest time.Time
 	for node, s := range w.state {
-		if s != cageLive || w.pins[node] > 0 {
+		if s != cageLive || w.pins[node] > 0 || w.alwaysWarm[node] {
 			continue
 		}
 		if victim == "" || w.lastUse[node].Before(oldest) {
@@ -118,7 +123,7 @@ func (w *workingSet) lruVictimLocked() (string, bool) {
 func (w *workingSet) reapableLocked(now time.Time) []string {
 	var victims []string
 	for node, s := range w.state {
-		if s != cageLive || w.pins[node] > 0 {
+		if s != cageLive || w.pins[node] > 0 || w.alwaysWarm[node] {
 			continue
 		}
 		if now.Sub(w.lastUse[node]) > w.idleTTL {

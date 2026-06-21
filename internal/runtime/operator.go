@@ -18,6 +18,9 @@ type operatorInputs struct {
 	// default, so a plan built with zero prewarms nothing (tests aside, the
 	// daemon never passes zero).
 	prewarm int
+	// alwaysWarm is the operator's list of agent refs (@org/name) to keep pinned
+	// warm: booted with the skeleton and never reaped or evicted.
+	alwaysWarm []string
 }
 
 // refKey is the config key for an agent: @org/name, version-independent, so an
