@@ -3,8 +3,59 @@ package runtime
 import (
 	"fmt"
 
+	"github.com/okedeji/agentcage/internal/bundle"
 	"github.com/okedeji/agentcage/internal/config"
 )
+
+// CageMemoryBytes is the memory one cage gets: its manifest's RESOURCES hint, or
+// the runtime default when it states none. inspect shows it per agent; the tree
+// view sums it across the compulsory set for a run's baseline.
+func CageMemoryBytes(m *bundle.Manifest) int64 {
+	if m != nil && m.Agentfile.Resources != nil {
+		if b := (config.Cap{Mem: m.Agentfile.Resources.Mem}).MemBytes(); b > 0 {
+			return b
+		}
+	}
+	return defaultAgentCap.MemBytes()
+}
+
+// treeBaselineMemory is the always-on memory a run of this tree needs: the root
+// cage, the gateway singletons the tree requires, and the egress sub-agent cages
+// (compulsory, since the egress proxy keys them by a stable IP). Elastic
+// sub-agents are not counted: they activate on demand, bounded by the live-cage
+// cap. It uses the authors' RESOURCES hints (or the default), an advisory
+// estimate the operator's config may adjust at run time.
+func treeBaselineMemory(tree *runTree) int64 {
+	total := CageMemoryBytes(tree.Nodes[tree.Root].Manifest)
+	gw := defaultGatewayCap.MemBytes()
+	if len(tree.Edges) > 0 {
+		total += gw // the MCP gateway is present in any USES tree
+	}
+	reasons, egress := false, false
+	for _, n := range tree.Nodes {
+		if nodeModel(n) != "" {
+			reasons = true
+		}
+		if len(egressHosts(nodeEgress(n))) > 0 {
+			egress = true
+		}
+	}
+	if reasons {
+		total += gw
+	}
+	if egress {
+		total += gw
+	}
+	for key, n := range tree.Nodes {
+		if key == tree.Root {
+			continue
+		}
+		if len(egressHosts(nodeEgress(n))) > 0 {
+			total += CageMemoryBytes(n.Manifest)
+		}
+	}
+	return total
+}
 
 // hostMemoryReserve is held back from the machine's total when deciding whether a
 // run fits: the VM's own kernel, containerd, and buildkitd are not cages but they

@@ -5,8 +5,43 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/okedeji/agentcage/internal/bundle"
 	"github.com/okedeji/agentcage/internal/config"
 )
+
+func TestTreeBaselineMemory(t *testing.T) {
+	node := func(model, egress, mem string) *agentNode {
+		return &agentNode{Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{
+			Model: model, Egress: egress, Resources: &bundle.ResourcesSpec{Mem: mem},
+		}}}
+	}
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root":  node("openai/gpt-4o", "", "1g"), // reasons
+			"out":   node("", "allow:example.com", "512m"),
+			"plain": node("", "", "2g"), // elastic, not counted
+		},
+		Edges: []usesEdge{
+			{Caller: "root", Sub: "out", Alias: "o"},
+			{Caller: "root", Sub: "plain", Alias: "p"},
+		},
+	}
+	gw := defaultGatewayCap.MemBytes()
+	// root (1g) + MCP gateway + LLM gateway (root reasons) + egress proxy + the
+	// egress cage (512m); the plain elastic cage is excluded.
+	want := int64(1<<30) + gw + gw + gw + int64(512<<20)
+	if got := treeBaselineMemory(tree); got != want {
+		t.Errorf("treeBaselineMemory = %d, want %d", got, want)
+	}
+
+	if got := CageMemoryBytes(tree.Nodes["plain"].Manifest); got != 2<<30 {
+		t.Errorf("CageMemoryBytes(declared) = %d, want 2GiB", got)
+	}
+	if got := CageMemoryBytes(&bundle.Manifest{}); got != defaultAgentCap.MemBytes() {
+		t.Errorf("CageMemoryBytes(no resources) = %d, want the default", got)
+	}
+}
 
 func TestCompulsoryMemorySumsBaselineOnly(t *testing.T) {
 	gw := defaultGatewayCap.MemBytes()

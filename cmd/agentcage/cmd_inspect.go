@@ -13,6 +13,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/bundle"
 	"github.com/okedeji/agentcage/internal/locate"
+	"github.com/okedeji/agentcage/internal/runtime"
 )
 
 func newInspectCmd() *cobra.Command {
@@ -70,6 +71,7 @@ func printManifest(w io.Writer, path string, m *bundle.Manifest) {
 		_, _ = fmt.Fprintf(w, "Built:        %s with %s\n", m.BuiltAt.Format(time.RFC3339), m.BuiltWith)
 	}
 	_, _ = fmt.Fprintf(w, "Files hash:   %s\n", m.FilesHash)
+	_, _ = fmt.Fprintf(w, "Cage memory:  ~%s\n", humanSize(runtime.CageMemoryBytes(m)))
 
 	_, _ = fmt.Fprintln(w, "\nAgentfile:")
 	_, _ = fmt.Fprintf(w, "  FROM        %s\n", af.From)

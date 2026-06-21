@@ -30,6 +30,9 @@ func PrintTree(ctx context.Context, rootBundlePath, rootDisplay string, w io.Wri
 	}
 	renderTreeChildren(tree, tree.Root, "", map[string]bool{tree.Root: true}, w)
 
+	_, _ = fmt.Fprintf(w, "\nBaseline memory (always-on): ~%s\n", humanBytes(treeBaselineMemory(tree)))
+	_, _ = fmt.Fprintln(w, "  Elastic sub-agents activate on demand, bounded by cages.max_live.")
+
 	if len(root.Agentfile.Ban) > 0 {
 		_, _ = fmt.Fprintln(w, "\nBans (declared here, applied across the whole subtree):")
 		for _, b := range root.Agentfile.Ban {
