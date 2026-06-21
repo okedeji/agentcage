@@ -29,7 +29,7 @@ const containerStopTimeout = 30 * time.Second
 // bootRun picks the boot path by whether the agent declares any USES: no
 // dependencies takes today's single-container path unchanged; one or more
 // takes the tree path that starts every sub-agent behind the MCP gateway.
-func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*mcp.Client, func() error, error) {
+func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*mcp.Client, *workingSet, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, nil, err
@@ -57,7 +57,7 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 		return nil, nil, err
 	}
 	boot.Cap = plan.RootCap
-	return bootTree(ctx, boot, plan, runID)
+	return bootTree(ctx, boot, tree, plan, runID)
 }
 
 // resolveRunTree walks the root's transitive USES graph, pulling each
@@ -87,7 +87,7 @@ func resolveRunTree(ctx context.Context, runID, rootBundle string, root *bundle.
 // stdio with its sub-agent URLs. The order matters: the network exists
 // before anything joins it, and the root boots last so the MCP gateway and
 // sub-agents it calls are already listening. Teardown reverses all of it.
-func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*mcp.Client, func() error, error) {
+func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, runID string) (*mcp.Client, *workingSet, error) {
 	td := &teardown{}
 	booted := false
 	defer func() {
@@ -186,7 +186,7 @@ func bootTree(ctx context.Context, in bootInput, plan *runPlan, runID string) (*
 	}
 
 	booted = true
-	return client, td.run, nil
+	return client, &workingSet{sess: sess, plan: plan, tree: tree, td: td}, nil
 }
 
 // buildAgentImage extracts a sub-agent's bundle to a temp dir, reparses its

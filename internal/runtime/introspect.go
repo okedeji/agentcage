@@ -38,7 +38,7 @@ type IntrospectInput struct {
 // calls one, so no tool body runs and the agent's LLM is never invoked.
 // The only thing that executes is the agent's own server startup.
 func Introspect(ctx context.Context, in IntrospectInput) ([]mcp.Tool, error) {
-	client, teardown, err := bootAgent(ctx, bootInput{
+	client, ws, err := bootAgent(ctx, bootInput{
 		Agentfile: in.Agentfile,
 		// Labels are provenance only and the authoritative manifest is
 		// sealed later by the bundle build, so a nil manifest is fine here.
@@ -59,10 +59,10 @@ func Introspect(ctx context.Context, in IntrospectInput) ([]mcp.Tool, error) {
 	defer cancel()
 	tools, err := client.ListTools(listCtx)
 	if err != nil {
-		_ = teardown()
+		_ = ws.releaseAll()
 		return nil, err
 	}
-	if err := teardown(); err != nil {
+	if err := ws.releaseAll(); err != nil {
 		return nil, err
 	}
 	return tools, nil

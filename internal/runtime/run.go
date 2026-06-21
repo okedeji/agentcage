@@ -76,14 +76,14 @@ type RunInput struct {
 }
 
 // Session is one booted run the caller holds: the root agent's open MCP session,
-// the teardown that releases the whole graph (containers, networks, gateways),
-// and the run id that names it. A one-shot run/call acquires one, calls once,
-// and releases; a held or served run keeps it across many calls, releasing on
-// stop or daemon shutdown.
+// the working set that owns the run's cages and releases the whole graph
+// (containers, networks, gateways), and the run id that names it. A one-shot
+// run/call acquires one, calls once, and releases; a held or served run keeps it
+// across many calls, releasing on stop or daemon shutdown.
 type Session struct {
-	runID    string
-	root     *mcp.Client
-	teardown func() error
+	runID string
+	root  *mcp.Client
+	ws    *workingSet
 }
 
 // RunID is the run's id: the daemon's registry key and what `agentcage stop`
@@ -103,10 +103,10 @@ func (s *Session) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 	return s.root.ListTools(ctx)
 }
 
-// Release tears the run down. The teardown joins every cleanup step's error, so
-// a non-zero container exit or a failed network removal surfaces here.
+// Release tears the run down. The working set joins every cleanup step's error,
+// so a non-zero container exit or a failed network removal surfaces here.
 func (s *Session) Release() error {
-	return s.teardown()
+	return s.ws.releaseAll()
 }
 
 // Acquire extracts the bundle, boots the run (provision, build the image, start
@@ -161,11 +161,11 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 		Managed:     in.Managed,
 		Interaction: in.Interaction,
 	}
-	client, teardown, err := bootRun(ctx, in, boot, runID)
+	client, ws, err := bootRun(ctx, in, boot, runID)
 	if err != nil {
 		return nil, err
 	}
-	return &Session{runID: runID, root: client, teardown: teardown}, nil
+	return &Session{runID: runID, root: client, ws: ws}, nil
 }
 
 // bootInput carries everything bootAgent needs to build an agent's image
@@ -250,7 +250,7 @@ type bootSession struct {
 // client and a teardown the caller runs when finished. A boot that fails
 // partway runs the teardown it accumulated before returning, so a failed
 // boot leaks nothing.
-func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, func() error, error) {
+func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, error) {
 	td := &teardown{}
 	booted := false
 	defer func() {
@@ -336,7 +336,7 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, func() error, er
 	}
 
 	booted = true
-	return client, td.run, nil
+	return client, &workingSet{sess: sess, td: td}, nil
 }
 
 // newBootSession brings up the provisioner and a BuildKit client, pushing
