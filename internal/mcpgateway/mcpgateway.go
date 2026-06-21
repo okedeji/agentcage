@@ -14,12 +14,15 @@ package mcpgateway
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -117,11 +120,12 @@ func New(cfg Config) *Gateway {
 			},
 			// Stream streamable-HTTP SSE events back immediately.
 			FlushInterval: -1,
-			// A forward that cannot reach its target means the cage is gone (the
-			// daemon reaped it). Flip the edge inactive so the next call
-			// re-activates rather than dialing a dead container, and fail this
-			// call closed. This races a reap against a fresh call; the loser is
-			// one failed call, self-healed on retry, not a wedged edge.
+			// retryTransport reactivates and retries a forward whose cage is gone,
+			// so a reaped or crashed cage recovers invisibly. This ErrorHandler is
+			// the last resort: a forward that still cannot reach its target after a
+			// retry fails closed, with the edge flipped inactive so the next call
+			// re-activates rather than dialing a corpse.
+			Transport: &retryTransport{gw: g, edge: edgeID, base: http.DefaultTransport},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) {
 				g.deactivate(edgeID)
 				writeActivationFailed(w, nil)
@@ -132,6 +136,48 @@ func New(cfg Config) *Gateway {
 		g.active[id] = !edge.Inactive
 	}
 	return g
+}
+
+// retryTransport recovers a forward whose cage is gone: if the dial fails (the
+// daemon reaped the cage, or it crashed), it reactivates the edge and retries the
+// forward once, so the caller never sees the gap. Only a pre-connection failure
+// is retried, where the sub-agent never received the call, so the retry cannot
+// double-execute it; a failure after the cage answered is returned untouched.
+type retryTransport struct {
+	gw   *Gateway
+	edge string
+	base http.RoundTripper
+}
+
+func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err == nil || !isUnreachable(err) {
+		return resp, err
+	}
+	t.gw.deactivate(t.edge)
+	if !t.gw.ensureActive(req.Context(), t.edge) {
+		return resp, err
+	}
+	if req.GetBody != nil {
+		body, gerr := req.GetBody()
+		if gerr != nil {
+			return resp, err
+		}
+		req.Body = body
+	}
+	return t.base.RoundTrip(req)
+}
+
+// isUnreachable reports whether the error means the cage was not there to receive
+// the call: a refused connection (a stale name resolving to a dead container) or
+// a name that no longer resolves (the container is gone). Both are
+// pre-connection, so retrying after a reactivation is safe.
+func isUnreachable(err error) bool {
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	var dns *net.DNSError
+	return errors.As(err, &dns)
 }
 
 // Handler routes /<edge>/... to the edge's target, rejecting a tools/call to a
@@ -171,6 +217,11 @@ func (g *Gateway) Handler() http.Handler {
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			r.ContentLength = int64(len(body))
+			// GetBody lets the retrying transport rewind the body for a second
+			// attempt after it reactivates a gone cage.
+			r.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(body)), nil
+			}
 		} else if !g.ensureActive(r.Context(), id) {
 			writeActivationFailed(w, nil)
 			return

@@ -2,14 +2,96 @@ package mcpgateway
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
+
+// flakyRoundTripper fails its first call with failFirst (if set) and succeeds
+// after, so a test can drive the retry transport's reactivate-and-retry path.
+type flakyRoundTripper struct {
+	mu        sync.Mutex
+	calls     int
+	failFirst error
+}
+
+func (f *flakyRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
+	f.mu.Lock()
+	f.calls++
+	n := f.calls
+	f.mu.Unlock()
+	if n == 1 && f.failFirst != nil {
+		return nil, f.failFirst
+	}
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true}`)), Header: make(http.Header)}, nil
+}
+
+func (f *flakyRoundTripper) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+// ackActivations answers every activate request with an OK verdict, the daemon's
+// side of the control stream for tests that need reactivation to succeed.
+func ackActivations(conn net.Conn) {
+	dec := json.NewDecoder(conn)
+	enc := json.NewEncoder(conn)
+	for {
+		var m ControlMessage
+		if dec.Decode(&m) != nil {
+			return
+		}
+		if m.Type == MsgActivate {
+			_ = enc.Encode(ControlMessage{Type: MsgActivated, Edge: m.Edge, OK: true})
+		}
+	}
+}
+
+func TestRetryTransport_ReactivatesAndRetriesOnUnreachable(t *testing.T) {
+	gw := New(Config{Edges: map[string]Edge{"e": {Target: "http://nope:8000/mcp", Inactive: true}}})
+	gwEnd, daemon := net.Pipe()
+	go func() { _ = gw.ServeControl(gwEnd) }()
+	go ackActivations(daemon)
+	defer func() { _ = daemon.Close() }()
+
+	flaky := &flakyRoundTripper{failFirst: syscall.ECONNREFUSED}
+	rt := &retryTransport{gw: gw, edge: "e", base: flaky}
+	req, _ := http.NewRequest(http.MethodPost, "http://nope:8000/mcp", strings.NewReader("body"))
+	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(strings.NewReader("body")), nil }
+
+	resp, err := rt.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip after reactivation: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200 after retry", resp.StatusCode)
+	}
+	if flaky.count() != 2 {
+		t.Errorf("base called %d times, want 2 (one retry)", flaky.count())
+	}
+}
+
+func TestRetryTransport_DoesNotRetryOtherErrors(t *testing.T) {
+	gw := New(Config{Edges: map[string]Edge{"e": {Target: "http://nope:8000/mcp"}}})
+	flaky := &flakyRoundTripper{failFirst: errors.New("upstream rejected the request")}
+	rt := &retryTransport{gw: gw, edge: "e", base: flaky}
+	req, _ := http.NewRequest(http.MethodPost, "http://nope:8000/mcp", strings.NewReader("body"))
+
+	if _, err := rt.RoundTrip(req); err == nil {
+		t.Error("a non-connection error should be returned, not retried")
+	}
+	if flaky.count() != 1 {
+		t.Errorf("base called %d times, want 1 (no retry)", flaky.count())
+	}
+}
 
 // readActivate reads the control stream until an activate request arrives,
 // skipping the opening resync and any pin/unpin events the gateway emits around
