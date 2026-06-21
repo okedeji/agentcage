@@ -59,16 +59,17 @@ type Cap struct {
 // Cages is the operator's policy for how a run's USES tree is kept warm: how
 // many cages may be live at once (per run and host-wide), how many of the root's
 // direct children to prewarm with the skeleton, and how long an idle cage lives
-// before it is reaped. AlwaysWarm names agent refs to keep pinned warm. Each
-// numeric field follows the Cap convention: zero means "no operator value here,"
-// so the runtime default applies; a negative is rejected, never read as
-// unlimited.
+// before it is reaped. KeepWarm names agent refs the operator wants booted even
+// when idle, so they never pay cold-start; it is distinct from the automatic
+// pinning of a mid-call cage. Each numeric field follows the Cap convention: zero
+// means "no operator value here," so the runtime default applies; a negative is
+// rejected, never read as unlimited.
 type Cages struct {
-	MaxLive        int      `json:"max_live,omitempty"`         // max elastic cages per run; always-warm cages do not count
+	MaxLive        int      `json:"max_live,omitempty"`         // max elastic cages per run; kept-warm cages do not count
 	HostMaxLive    int      `json:"host_max_live,omitempty"`    // machine cage capacity across all runs; every cage counts
 	Prewarm        int      `json:"prewarm,omitempty"`          // root's direct children booted up front
 	IdleTTLSeconds int      `json:"idle_ttl_seconds,omitempty"` // reap a cage idle past this
-	AlwaysWarm     []string `json:"always_warm,omitempty"`      // agent refs pinned warm
+	KeepWarm       []string `json:"keep_warm,omitempty"`        // agent refs kept booted even when idle
 }
 
 // Cage policy defaults. The per-run elastic cap is well above a normal sequential

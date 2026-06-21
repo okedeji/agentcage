@@ -551,7 +551,7 @@ func TestBuildRunPlan_TwoNetworkPoolsKeepKeyHolderOffPlainCages(t *testing.T) {
 
 func TestBuildRunPlan_PinsEgressAndConfiguredAgentsWarm(t *testing.T) {
 	// root -> a -> deep. deep declares EGRESS allow: (so its proxy keying needs
-	// it warm), and the operator pins @o/a always_warm. Both must prewarm and be
+	// it warm), and the operator pins @o/a keep_warm. Both must prewarm and be
 	// flagged AlwaysWarm even though deep is not a direct child.
 	withEgress := func(ref reference.Reference, policy string) *agentNode {
 		return &agentNode{Key: "deep-1", Ref: ref, Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Egress: policy}}}
@@ -569,7 +569,7 @@ func TestBuildRunPlan_PinsEgressAndConfiguredAgentsWarm(t *testing.T) {
 		},
 	}
 
-	plan, err := buildRunPlan(tree, "run1", operatorInputs{prewarm: 8, alwaysWarm: []string{"@o/a"}})
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{prewarm: 8, keepWarm: []string{"@o/a"}})
 	if err != nil {
 		t.Fatalf("buildRunPlan: %v", err)
 	}

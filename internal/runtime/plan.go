@@ -144,18 +144,18 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	// pinnedWarm names the nodes kept warm for the run's life: those declaring
 	// EGRESS allow: (the egress proxy keys them by an IP that must exist at boot
 	// and stay put, so they cannot be lazy or reaped) and those the operator
-	// listed in always_warm. They are booted with the skeleton and never reaped or
+	// listed in keep_warm. They are booted with the skeleton and never reaped or
 	// evicted.
-	alwaysWarm := map[string]bool{}
-	for _, ref := range ops.alwaysWarm {
-		alwaysWarm[ref] = true
+	keepWarm := map[string]bool{}
+	for _, ref := range ops.keepWarm {
+		keepWarm[ref] = true
 	}
 	pinnedWarm := map[string]bool{}
 	for key, node := range tree.Nodes {
 		if key == tree.Root || wholeBanned[key] {
 			continue
 		}
-		if len(egressHosts(nodeEgress(node))) > 0 || alwaysWarm[refKey(node)] {
+		if len(egressHosts(nodeEgress(node))) > 0 || keepWarm[refKey(node)] {
 			pinnedWarm[key] = true
 		}
 	}

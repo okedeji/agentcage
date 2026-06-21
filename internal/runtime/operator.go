@@ -18,9 +18,9 @@ type operatorInputs struct {
 	// default, so a plan built with zero prewarms nothing (tests aside, the
 	// daemon never passes zero).
 	prewarm int
-	// alwaysWarm is the operator's list of agent refs (@org/name) to keep pinned
-	// warm: booted with the skeleton and never reaped or evicted.
-	alwaysWarm []string
+	// keepWarm is the operator's list of agent refs (@org/name) to keep booted
+	// even when idle: booted with the skeleton and never reaped or evicted.
+	keepWarm []string
 	// maxLive caps the live cages per run, which is also the most networks of one
 	// pool a run can need at once, so the planner sizes each network pool by it.
 	maxLive int

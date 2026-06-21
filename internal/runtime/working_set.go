@@ -53,7 +53,7 @@ type workingSet struct {
 
 	// alwaysWarm names nodes that, once warm, are never reaped or evicted: the
 	// egress-declaring agents (whose proxy keying must not go stale) and the
-	// operator's always_warm list. They hold their slots for the run's life.
+	// operator's keep_warm list. They hold their slots for the run's life.
 	alwaysWarm map[string]bool
 
 	// reasonFree and plainFree are the unassigned networks in each pool, the
