@@ -103,8 +103,18 @@ func (s *Session) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 	return s.root.ListTools(ctx)
 }
 
-// Release tears the run down. The working set joins every cleanup step's error,
-// so a non-zero container exit or a failed network removal surfaces here.
+// StartWorkingSet starts the run's on-demand activation, the supervisor that
+// boots inactive sub-agents as the tree calls them. The caller owns ctx: a held
+// run passes a background context so activation outlives the request that booted
+// it, a one-shot the request context so it ends with the call. A single-container
+// run has no tree and starts nothing. Release cancels whatever this starts.
+func (s *Session) StartWorkingSet(ctx context.Context) {
+	s.ws.start(ctx)
+}
+
+// Release tears the run down. The working set stops activation, then joins every
+// cleanup step's error, so a non-zero container exit or a failed network removal
+// surfaces here.
 func (s *Session) Release() error {
 	return s.ws.releaseAll()
 }

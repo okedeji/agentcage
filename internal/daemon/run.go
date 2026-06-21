@@ -44,6 +44,10 @@ func (d *Daemon) boot(ctx context.Context, in runtime.RunInput, display string) 
 	if err != nil {
 		return nil, err
 	}
+	// Activation runs on the same context the run boots against: a held run's
+	// background context so it outlives the request, a one-shot's request context
+	// so it ends with the call. Release cancels it.
+	session.StartWorkingSet(ctx)
 	d.hold(RunInfo{ID: session.RunID(), Ref: display, Status: "running", StartedAt: nowFunc()}, session)
 	return session, nil
 }

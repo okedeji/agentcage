@@ -63,6 +63,11 @@ type runPlan struct {
 	// the tree declares allow:, which tells the orchestrator no proxy is needed.
 	EgressAgents map[string]egressAgent
 
+	// EdgeNodes maps a gateway edge's capability token to the sub-agent node key
+	// it routes to. The activation manager folds an activate request (which names
+	// an edge, all the gateway knows) back to the node it must boot.
+	EdgeNodes map[string]string
+
 	// RootCap is the attached root's resolved resource cap. The root runs
 	// outside the sub-agent loop, so its cap is resolved here too rather than
 	// left to the runtime default, which would silently ignore the operator.
@@ -78,10 +83,12 @@ type egressAgent struct {
 
 // plannedAgent pairs a non-root tree node with the detached container spec
 // that runs it. The node carries the bundle and manifest the orchestrator
-// builds the image from.
+// builds the image from. Prewarm marks an agent the skeleton boots up front (the
+// root's direct children, the hot path); the rest activate on first call.
 type plannedAgent struct {
-	Node *agentNode
-	Spec ContainerSpec
+	Node    *agentNode
+	Spec    ContainerSpec
+	Prewarm bool
 }
 
 // buildRunPlan turns a resolved tree into the containers, network, and
@@ -109,12 +116,24 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		LLMAgents:     map[string]string{},
 		LLMTokens:     map[string]string{},
 		EgressAgents:  map[string]egressAgent{},
+		EdgeNodes:     map[string]string{},
 		Budget:        nodeBudget(tree.Nodes[tree.Root]),
 	}
 
 	wholeBanned, toolBanned, err := classifyBans(tree)
 	if err != nil {
 		return nil, err
+	}
+
+	// The skeleton boots the root's direct children up front (the hot path);
+	// every other node activates on first call. An edge to a non-prewarmed node
+	// is marked inactive, so the gateway holds the first call to it while the
+	// daemon boots its sub-agent.
+	prewarmed := map[string]bool{}
+	for _, e := range tree.Edges {
+		if e.Caller == tree.Root {
+			prewarmed[e.Sub] = true
+		}
 	}
 
 	// callerEnv collects the sub-agent URLs each non-root caller is injected
@@ -132,8 +151,10 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 			edge.Banned = true
 		} else {
 			edge.Deny = mergeDeny(e.Deny, toolBanned[e.Sub])
+			edge.Inactive = !prewarmed[e.Sub]
 		}
 		plan.MCPGatewayCfg.Edges[edgeKey] = edge
+		plan.EdgeNodes[edgeKey] = e.Sub
 
 		// A banned edge still gets its URL injected, so the caller reaches the
 		// MCP gateway and gets a clean banned error rather than a missing variable.
@@ -187,6 +208,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 				Detached: true,
 				Managed:  ops.managed,
 			}.withCap(agentCap(node, ops.resources)),
+			Prewarm: prewarmed[key],
 		})
 	}
 

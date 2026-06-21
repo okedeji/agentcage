@@ -114,7 +114,15 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		td.push(func() error { return removeNetwork(sess.provisioner, net) })
 	}
 
+	// The skeleton boots only the prewarmed agents (the root's direct children);
+	// the rest stay down and activate on first call. Their networks are still
+	// created above, so the gateway, already joined to all of them, can reach a
+	// sub-agent the moment it starts. live tracks which nodes are up.
+	live := map[string]bool{}
 	for _, a := range plan.Agents {
+		if !a.Prewarm {
+			continue
+		}
 		if err := buildAgentImage(ctx, sess, a.Node, a.Spec.ImageRef, in.NoCache, in.Stderr); err != nil {
 			return nil, nil, err
 		}
@@ -123,6 +131,7 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		}
 		name := a.Spec.RunID
 		td.push(func() error { return removeContainer(sess.provisioner, name) })
+		live[a.Node.Key] = true
 	}
 
 	// The MCP gateway is the only host the parent's USES URLs resolve to, so it
@@ -186,7 +195,22 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 	}
 
 	booted = true
-	return client, &workingSet{sess: sess, plan: plan, tree: tree, td: td}, nil
+	specByNode := make(map[string]plannedAgent, len(plan.Agents))
+	for _, a := range plan.Agents {
+		specByNode[a.Node.Key] = a
+	}
+	ws := &workingSet{
+		sess:       sess,
+		plan:       plan,
+		tree:       tree,
+		td:         td,
+		specByNode: specByNode,
+		live:       live,
+		inflight:   map[string]*activation{},
+		noCache:    in.NoCache,
+		stderr:     in.Stderr,
+	}
+	return client, ws, nil
 }
 
 // buildAgentImage extracts a sub-agent's bundle to a temp dir, reparses its

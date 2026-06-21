@@ -16,14 +16,14 @@ import (
 // it saw so a test can assert the gateway asked for the right one.
 func daemonEnd(t *testing.T, conn net.Conn, ok bool) string {
 	t.Helper()
-	var req controlMsg
+	var req ControlMessage
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
 		t.Fatalf("reading activate: %v", err)
 	}
 	if req.Type != "activate" {
 		t.Fatalf("got %q, want an activate message", req.Type)
 	}
-	if err := json.NewEncoder(conn).Encode(controlMsg{Type: "activated", Edge: req.Edge, OK: ok}); err != nil {
+	if err := json.NewEncoder(conn).Encode(ControlMessage{Type: "activated", Edge: req.Edge, OK: ok}); err != nil {
 		t.Fatalf("writing activated: %v", err)
 	}
 	return req.Edge
@@ -137,7 +137,7 @@ func TestGateway_DisconnectFailsBlockedCallClosed(t *testing.T) {
 
 	// Read the activate so the call is genuinely blocked, then drop the stream
 	// without answering: the blocked call must fail closed, not hang.
-	var req controlMsg
+	var req ControlMessage
 	if err := json.NewDecoder(daemon).Decode(&req); err != nil {
 		t.Fatalf("reading activate: %v", err)
 	}

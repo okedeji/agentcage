@@ -430,6 +430,64 @@ func TestBuildRunPlan_ToolBanMergesIntoEdgeDeny(t *testing.T) {
 	}
 }
 
+func TestBuildRunPlan_PrewarmsDirectChildrenDefersDeeper(t *testing.T) {
+	// root -> a -> b. The skeleton boots a (a direct child); b activates on
+	// first call, so the root's edge to a is active and a's edge to b is inactive.
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root":  {Key: "root"},
+			"a-111": {Key: "a-111"},
+			"b-222": {Key: "b-222"},
+		},
+		Edges: []usesEdge{
+			{Caller: "root", Sub: "a-111", Alias: "a"},
+			{Caller: "a-111", Sub: "b-222", Alias: "b"},
+		},
+	}
+
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+
+	// The direct child prewarms; the grandchild does not.
+	for _, a := range plan.Agents {
+		switch a.Node.Key {
+		case "a-111":
+			if !a.Prewarm {
+				t.Error("direct child a-111 should prewarm")
+			}
+		case "b-222":
+			if a.Prewarm {
+				t.Error("grandchild b-222 should not prewarm")
+			}
+		}
+	}
+
+	// The root's edge to its direct child is live from boot; the deeper edge is
+	// inactive so the gateway holds the first call to it.
+	rootEdge := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_A_URL"])]
+	if rootEdge.Inactive {
+		t.Error("edge to a prewarmed direct child must be active")
+	}
+	var aAgent plannedAgent
+	for _, ag := range plan.Agents {
+		if ag.Node.Key == "a-111" {
+			aAgent = ag
+		}
+	}
+	deepEdgeKey := edgeKeyFromURL(t, aAgent.Spec.Env["AGENTCAGE_USES_B_URL"])
+	if !plan.MCPGatewayCfg.Edges[deepEdgeKey].Inactive {
+		t.Error("edge to the deferred grandchild b must be inactive")
+	}
+
+	// EdgeNodes folds an edge key back to the node the activation manager boots.
+	if plan.EdgeNodes[deepEdgeKey] != "b-222" {
+		t.Errorf("EdgeNodes[%s] = %q, want b-222", deepEdgeKey, plan.EdgeNodes[deepEdgeKey])
+	}
+}
+
 func TestBuildRunPlan_NestedCallerServesAndCalls(t *testing.T) {
 	// root -> a -> b. Agent a is both a server (root reaches it) and a
 	// caller (it reaches b), so its env carries SERVE_HTTP and a USES url.

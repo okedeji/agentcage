@@ -7,16 +7,24 @@ import (
 	"net/http"
 )
 
-// controlMsg is one line of the gateway's activation stream. The gateway sends
-// "activate" when a call hits an inactive edge; the daemon answers "activated"
-// once it has booted that edge's sub-agent (ok) or could not (ok false). It is
-// newline-delimited JSON so the stream stays a flat sequence the daemon can read
-// without framing of its own.
-type controlMsg struct {
-	Type string `json:"type"` // "activate" gateway->daemon, "activated" daemon->gateway
+// ControlMessage is one line of the gateway's activation stream. The gateway
+// sends MsgActivate when a call hits an inactive edge; the daemon answers
+// MsgActivated once it has booted that edge's sub-agent (OK) or could not (OK
+// false). It is newline-delimited JSON so the stream stays a flat sequence the
+// daemon can read without framing of its own. Exported so the daemon side speaks
+// the same shape from one definition.
+type ControlMessage struct {
+	Type string `json:"type"`
 	Edge string `json:"edge"`
 	OK   bool   `json:"ok,omitempty"`
 }
+
+// Control message types: a gateway-to-daemon activation request and the daemon's
+// verdict back.
+const (
+	MsgActivate  = "activate"
+	MsgActivated = "activated"
+)
 
 // ServeControl runs the activation stream over one connection from the daemon's
 // exec'd bridge: it writes activation requests as they arise and reads the
@@ -40,7 +48,7 @@ func (g *Gateway) ServeControl(conn io.ReadWriteCloser) error {
 			case <-done:
 				return
 			case edge := <-g.requests:
-				if err := enc.Encode(controlMsg{Type: "activate", Edge: edge}); err != nil {
+				if err := enc.Encode(ControlMessage{Type: MsgActivate, Edge: edge}); err != nil {
 					errc <- err
 					return
 				}
@@ -50,12 +58,12 @@ func (g *Gateway) ServeControl(conn io.ReadWriteCloser) error {
 
 	go func() {
 		for {
-			var m controlMsg
+			var m ControlMessage
 			if err := dec.Decode(&m); err != nil {
 				errc <- err
 				return
 			}
-			if m.Type == "activated" {
+			if m.Type == MsgActivated {
 				g.resolve(m.Edge, m.OK)
 			}
 		}
