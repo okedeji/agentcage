@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/okedeji/agentcage/internal/config"
@@ -38,14 +39,27 @@ type runPlan struct {
 	Agents        []plannedAgent
 	RootEnv       map[string]string
 
-	// AgentNets maps each started agent's key (the root included) to its own
-	// internal network, shared only with the gateways. A banned agent never
-	// starts, so it has no entry and no network. RootNet is the attached root's,
-	// carried out because the root starts outside the sub-agent loop. Each agent
-	// alone on its own network is what stops a cage from reaching a sibling
-	// directly and bypassing the MCP gateway's deny.
+	// AgentNets maps each agent with a dedicated network to it: the root and the
+	// always-warm cages (whose networks live for the whole run). Pooled cages are
+	// not here; they draw a network from a pool at activation. RootNet is the
+	// attached root's, carried out because the root starts outside the sub-agent
+	// loop. Each cage alone on its own network, dedicated or pooled, is what stops
+	// it from reaching a sibling directly and bypassing the MCP gateway's deny.
 	AgentNets map[string]string
 	RootNet   string
+
+	// ReasonPool and PlainPool are the reusable networks pooled cages draw from:
+	// the reasoning pool the LLM gateway joins (so reasoning cages reach it) and
+	// the plain pool it does not (so a non-reasoning cage never shares a network
+	// with the key holder). Each is sized to the per-run live cap, capped by how
+	// many cages of that kind the tree even has. One cage occupies a pool network
+	// at a time, returned on eviction, so sibling isolation holds across reuse.
+	ReasonPool []string
+	PlainPool  []string
+
+	// LLMNets are the networks the LLM gateway joins: the dedicated networks of
+	// reasoning always-warm cages and the root, plus the whole reasoning pool.
+	LLMNets []string
 
 	// LLMAgents maps each reasoning agent's key to its advisory model. Empty
 	// when nothing in the tree reasons, which tells the orchestrator no LLM
@@ -146,6 +160,33 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		}
 	}
 
+	// Pooled cages (everything not pinned-warm, the root, or banned) draw a
+	// network from one of two pools instead of holding a dedicated one. Each pool
+	// is sized to the live cap, capped by how many cages of that kind the tree has,
+	// so a small tree pre-creates few networks and a huge one stays bounded well
+	// under the CNI wall. Reasoning cages (those with a MODEL) use the reasoning
+	// pool the LLM gateway joins; the rest use the plain pool it does not.
+	poolNet := func(kind string, i int) string {
+		return runID + "-" + kind + "pool-" + strconv.Itoa(i)
+	}
+	var reasonCount, plainCount int
+	for key, node := range tree.Nodes {
+		if key == tree.Root || wholeBanned[key] || pinnedWarm[key] {
+			continue
+		}
+		if nodeModel(node) != "" {
+			reasonCount++
+		} else {
+			plainCount++
+		}
+	}
+	for i := 0; i < min(ops.maxLive, reasonCount); i++ {
+		plan.ReasonPool = append(plan.ReasonPool, poolNet("r", i))
+	}
+	for i := 0; i < min(ops.maxLive, plainCount); i++ {
+		plan.PlainPool = append(plan.PlainPool, poolNet("p", i))
+	}
+
 	// The skeleton boots the root's direct children up front (the hot path), up
 	// to the operator's prewarm count, plus every pinned-warm node; the rest
 	// activate on first call. An edge to a non-prewarmed node is marked inactive,
@@ -215,7 +256,13 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 			agentEnv[k] = v
 		}
 		node := tree.Nodes[key]
-		plan.AgentNets[key] = nodeNet(key)
+		// A pinned-warm cage holds a dedicated network for the run's life; a pooled
+		// cage gets none here and draws one from a pool when it activates.
+		var nets []string
+		if pinnedWarm[key] {
+			plan.AgentNets[key] = nodeNet(key)
+			nets = []string{nodeNet(key)}
+		}
 		if model := nodeModel(node); model != "" {
 			token, err := capabilityToken()
 			if err != nil {
@@ -239,7 +286,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 			Spec: ContainerSpec{
 				RunID:    containerName(key),
 				ImageRef: agentImageRef(node),
-				Networks: []string{nodeNet(key)},
+				Networks: nets,
 				Env:      agentEnv,
 				Detached: true,
 				Managed:  ops.managed,
@@ -273,17 +320,29 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		return nil, fmt.Errorf("agent %s: %w", tree.Root, err)
 	}
 
+	// The LLM gateway joins the dedicated networks of reasoning cages (the root
+	// and any reasoning always-warm cage) plus the whole reasoning pool, so every
+	// reasoning cage can reach it wherever it lands and no plain cage can.
+	for _, key := range sortedStringKeys(plan.LLMAgents) {
+		if net, ok := plan.AgentNets[key]; ok {
+			plan.LLMNets = append(plan.LLMNets, net)
+		}
+	}
+	plan.LLMNets = append(plan.LLMNets, plan.ReasonPool...)
+
 	cfgJSON, err := json.Marshal(plan.MCPGatewayCfg)
 	if err != nil {
 		return nil, fmt.Errorf("encoding MCP gateway routing table: %w", err)
 	}
-	// The MCP gateway joins every started agent's network, so it is the only host
-	// that can reach all of them and the only one a caller resolves its USES
-	// URLs to. Ordered by agent key for a deterministic, testable arg list.
-	mcpGatewayNets := make([]string, 0, len(plan.AgentNets))
+	// The MCP gateway joins every dedicated network plus both pools, so it is the
+	// only host that can reach every cage and the only one a caller resolves its
+	// USES URLs to. Ordered for a deterministic, testable arg list.
+	mcpGatewayNets := make([]string, 0, len(plan.AgentNets)+len(plan.ReasonPool)+len(plan.PlainPool))
 	for _, key := range sortedStringKeys(plan.AgentNets) {
 		mcpGatewayNets = append(mcpGatewayNets, plan.AgentNets[key])
 	}
+	mcpGatewayNets = append(mcpGatewayNets, plan.ReasonPool...)
+	mcpGatewayNets = append(mcpGatewayNets, plan.PlainPool...)
 	plan.MCPGateway = ContainerSpec{
 		RunID:    mcpGatewayName,
 		ImageRef: GatewayImageRef(),

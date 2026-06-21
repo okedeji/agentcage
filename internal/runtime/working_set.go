@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -54,6 +55,13 @@ type workingSet struct {
 	// egress-declaring agents (whose proxy keying must not go stale) and the
 	// operator's always_warm list. They hold their slots for the run's life.
 	alwaysWarm map[string]bool
+
+	// reasonFree and plainFree are the unassigned networks in each pool, the
+	// drawers a pooled cage borrows from on activation and returns to on eviction.
+	// netOf records which network a live pooled cage currently holds.
+	reasonFree []string
+	plainFree  []string
+	netOf      map[string]string
 
 	// state, pins, and lastUse are the live cage bookkeeping. pins counts a
 	// node's in-flight forwards, reported by the gateway; a node with pins > 0 is
@@ -115,6 +123,51 @@ func (w *workingSet) lruVictimLocked() (string, bool) {
 		}
 	}
 	return victim, victim != ""
+}
+
+// popPoolNet takes a network off the matching free list, the reuse drawer a
+// pooled cage draws from: the reasoning pool for a reasoning cage, the plain pool
+// otherwise. It errors when the list is empty, which the pool's sizing makes
+// unreachable once a slot is free, so a failure is a real bug, not a saturated
+// run.
+func popPoolNet(reasonFree, plainFree *[]string, reasoning bool) (string, error) {
+	free := plainFree
+	if reasoning {
+		free = reasonFree
+	}
+	if len(*free) == 0 {
+		return "", fmt.Errorf("network pool exhausted")
+	}
+	n := (*free)[len(*free)-1]
+	*free = (*free)[:len(*free)-1]
+	return n, nil
+}
+
+// reasoningNode reports whether a node reasons (has a MODEL), which decides the
+// pool it draws from and whether the LLM gateway can reach it.
+func (w *workingSet) reasoningNode(node string) bool {
+	return w.plan.LLMAgents[node] != ""
+}
+
+// returnNetLocked hands a freed network back to its pool's drawer for reuse.
+func (w *workingSet) returnNetLocked(node, net string) {
+	if w.reasoningNode(node) {
+		w.reasonFree = append(w.reasonFree, net)
+	} else {
+		w.plainFree = append(w.plainFree, net)
+	}
+}
+
+// beginEvictLocked marks a live cage on its way out, freeing its slot, host slot,
+// and network for reuse at once. The container is removed afterward, outside the
+// lock; dropEvicting clears the rest once it is gone.
+func (w *workingSet) beginEvictLocked(node string) {
+	w.state[node] = cageEvicting
+	hostCages.release()
+	if net, ok := w.netOf[node]; ok {
+		w.returnNetLocked(node, net)
+		delete(w.netOf, node)
+	}
 }
 
 // reapableLocked collects the live, unpinned cages idle longer than the TTL, the

@@ -21,6 +21,9 @@ type operatorInputs struct {
 	// alwaysWarm is the operator's list of agent refs (@org/name) to keep pinned
 	// warm: booted with the skeleton and never reaped or evicted.
 	alwaysWarm []string
+	// maxLive caps the live cages per run, which is also the most networks of one
+	// pool a run can need at once, so the planner sizes each network pool by it.
+	maxLive int
 }
 
 // refKey is the config key for an agent: @org/name, version-independent, so an

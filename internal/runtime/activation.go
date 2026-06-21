@@ -266,17 +266,31 @@ func (w *workingSet) activate(ctx context.Context, node string) error {
 		return a.err
 	}
 	victims, ok := w.reserveLocked()
-	var a *activation
+	var (
+		a   *activation
+		net string
+	)
+	if ok {
+		var perr error
+		net, perr = popPoolNet(&w.reasonFree, &w.plainFree, w.reasoningNode(node))
+		if perr != nil {
+			// Sizing makes this unreachable once a slot is free; release the host
+			// slot reserveLocked took so it is not leaked.
+			hostCages.release()
+			ok = false
+		}
+	}
 	if ok {
 		a = &activation{done: make(chan struct{})}
 		w.inflight[node] = a
 		w.state[node] = cageBooting
+		w.netOf[node] = net
 	}
 	pa, planned := w.specByNode[node]
 	w.mu.Unlock()
 
-	// Remove evicted victims' containers outside the lock; their slots are
-	// already accounted free.
+	// Remove evicted victims' containers outside the lock; their slots, host
+	// slots, and networks were already freed when they were marked evicting.
 	for _, v := range victims {
 		_ = removeContainer(w.sess.provisioner, w.specByNode[v].Spec.RunID)
 		w.dropEvicting(v)
@@ -286,6 +300,7 @@ func (w *workingSet) activate(ctx context.Context, node string) error {
 		return fmt.Errorf("activate %s: at the live-cage cap and every cage is in use", node)
 	}
 
+	pa.Spec.Networks = []string{net}
 	var bootErr error
 	if !planned {
 		bootErr = fmt.Errorf("activate %s: no planned agent", node)
@@ -299,6 +314,8 @@ func (w *workingSet) activate(ctx context.Context, node string) error {
 	closingNow := w.closing
 	if bootErr != nil || closingNow {
 		delete(w.state, node)
+		w.returnNetLocked(node, net)
+		delete(w.netOf, node)
 		w.mu.Unlock()
 		hostCages.release()
 		// On a clean boot into a closing run, the container started but is not
@@ -333,8 +350,7 @@ func (w *workingSet) reserveLocked() (victims []string, ok bool) {
 		if !found {
 			return victims, false
 		}
-		w.state[v] = cageEvicting
-		hostCages.release()
+		w.beginEvictLocked(v)
 		victims = append(victims, v)
 	}
 }
@@ -390,8 +406,7 @@ func (w *workingSet) reapIdle() {
 	}
 	victims := w.reapableLocked(nowFunc())
 	for _, v := range victims {
-		w.state[v] = cageEvicting
-		hostCages.release()
+		w.beginEvictLocked(v)
 	}
 	w.mu.Unlock()
 

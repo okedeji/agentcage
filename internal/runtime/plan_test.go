@@ -87,25 +87,33 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 		},
 	}
 
-	plan, err := buildRunPlan(tree, "run1", operatorInputs{})
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{maxLive: 32})
 	if err != nil {
 		t.Fatalf("buildRunPlan: %v", err)
 	}
 
 	// The security property: the sub sits on its own network, distinct from the
-	// root's, so the root cannot reach it directly. The gateway is the only host
-	// on both, so it is the sole path between them.
-	if plan.RootNet == "" || plan.AgentNets["sub-abc"] == "" {
-		t.Fatalf("missing nets: root %q sub %q", plan.RootNet, plan.AgentNets["sub-abc"])
+	// root's, so the root cannot reach it directly. The sub is a pooled cage (no
+	// MODEL), so it holds no dedicated network in the plan; it draws one from the
+	// plain pool at activation. The gateway joins the root net and the pool, so it
+	// is the sole path between them.
+	if plan.RootNet == "" {
+		t.Fatal("missing root net")
 	}
-	if plan.RootNet == plan.AgentNets["sub-abc"] {
-		t.Errorf("root and sub share a network %q; they must be isolated", plan.RootNet)
+	if _, dedicated := plan.AgentNets["sub-abc"]; dedicated {
+		t.Error("a pooled sub-agent must not hold a dedicated network")
 	}
-	if got := plan.Agents[0].Spec.Networks; len(got) != 1 || got[0] != plan.AgentNets["sub-abc"] {
-		t.Errorf("sub networks = %v, want [%q]", got, plan.AgentNets["sub-abc"])
+	if got := plan.Agents[0].Spec.Networks; len(got) != 0 {
+		t.Errorf("pooled sub networks = %v, want none in the plan (assigned at activation)", got)
 	}
-	if !slices.Contains(plan.MCPGateway.Networks, plan.RootNet) || !slices.Contains(plan.MCPGateway.Networks, plan.AgentNets["sub-abc"]) {
-		t.Errorf("gateway networks = %v, must include both the root and sub nets", plan.MCPGateway.Networks)
+	if len(plan.PlainPool) != 1 {
+		t.Fatalf("plain pool = %v, want one network for the single plain sub", plan.PlainPool)
+	}
+	if plan.PlainPool[0] == plan.RootNet {
+		t.Error("pool network must be distinct from the root's")
+	}
+	if !slices.Contains(plan.MCPGateway.Networks, plan.RootNet) || !slices.Contains(plan.MCPGateway.Networks, plan.PlainPool[0]) {
+		t.Errorf("gateway networks = %v, must include the root net and the plain pool", plan.MCPGateway.Networks)
 	}
 
 	// The root calls the gateway by an unguessable capability key, never the
@@ -336,32 +344,39 @@ func TestBuildRunPlan_PerAgentNetworkIsolation(t *testing.T) {
 		},
 	}
 
-	plan, err := buildRunPlan(tree, "run1", operatorInputs{})
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{maxLive: 32})
 	if err != nil {
 		t.Fatalf("buildRunPlan: %v", err)
 	}
 
-	// Every started agent sits on its own distinct network; no two share one.
-	// This is the property that stops a hostile cage reaching a sibling.
-	seen := map[string]string{}
-	for key, net := range plan.AgentNets {
-		if prev, ok := seen[net]; ok {
-			t.Errorf("agents %s and %s share network %s", prev, key, net)
+	// Every network in the run is distinct, dedicated and pooled alike, so no two
+	// cages ever share one (the pool is reused only sequentially, one cage at a
+	// time). This is the property that stops a hostile cage reaching a sibling.
+	seen := map[string]bool{}
+	allNets := append([]string{}, plan.ReasonPool...)
+	allNets = append(allNets, plan.PlainPool...)
+	for _, net := range plan.AgentNets {
+		allNets = append(allNets, net)
+	}
+	for _, net := range allNets {
+		if seen[net] {
+			t.Errorf("network %s appears twice; every network must be distinct", net)
 		}
-		seen[net] = key
+		seen[net] = true
 	}
-	// The banned agent never starts, so it gets no network at all.
-	if _, ok := plan.AgentNets["bad-2"]; ok {
-		t.Error("banned agent bad-2 must have no network")
+	// web-1 is a pooled cage: no dedicated network, but a plain pool network exists
+	// for it to draw. The banned bad-2 never starts, so it gets no network anywhere.
+	if _, ok := plan.AgentNets["web-1"]; ok {
+		t.Error("pooled agent web-1 must hold no dedicated network")
 	}
-	// The gateway is on every started agent's network and only those, so it is
-	// the sole host that can reach all of them.
-	if len(plan.MCPGateway.Networks) != len(plan.AgentNets) {
-		t.Errorf("gateway nets = %v, want one per started agent %v", plan.MCPGateway.Networks, plan.AgentNets)
+	if len(plan.PlainPool) != 1 {
+		t.Errorf("plain pool = %v, want one network for the single pooled cage", plan.PlainPool)
 	}
-	for key, net := range plan.AgentNets {
+	// The gateway joins every network, dedicated and both pools, so it is the sole
+	// host that can reach every cage.
+	for _, net := range allNets {
 		if !slices.Contains(plan.MCPGateway.Networks, net) {
-			t.Errorf("gateway missing net %s for agent %s", net, key)
+			t.Errorf("gateway missing net %s", net)
 		}
 	}
 }
@@ -485,6 +500,52 @@ func TestBuildRunPlan_PrewarmsDirectChildrenDefersDeeper(t *testing.T) {
 	// EdgeNodes folds an edge key back to the node the activation manager boots.
 	if plan.EdgeNodes[deepEdgeKey] != "b-222" {
 		t.Errorf("EdgeNodes[%s] = %q, want b-222", deepEdgeKey, plan.EdgeNodes[deepEdgeKey])
+	}
+}
+
+func TestBuildRunPlan_TwoNetworkPoolsKeepKeyHolderOffPlainCages(t *testing.T) {
+	withModel := func(key, m string) *agentNode {
+		return &agentNode{Key: key, Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Model: m}}}
+	}
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root":      {Key: "root"},
+			"reasoner":  withModel("reasoner", "openai/gpt-4o"),
+			"collector": {Key: "collector"}, // no MODEL: a plain tool collection
+		},
+		Edges: []usesEdge{
+			{Caller: "root", Sub: "reasoner", Alias: "r"},
+			{Caller: "root", Sub: "collector", Alias: "c"},
+		},
+	}
+
+	// prewarm 0 so both subs are pooled and lazy, exercising the pools directly.
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{maxLive: 32})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+
+	if len(plan.ReasonPool) != 1 || len(plan.PlainPool) != 1 {
+		t.Fatalf("pools = reason %v / plain %v, want one each", plan.ReasonPool, plan.PlainPool)
+	}
+	// Pooled cages hold no network in the plan; they draw one at activation.
+	for _, a := range plan.Agents {
+		if len(a.Spec.Networks) != 0 {
+			t.Errorf("pooled cage %s has a baked network %v", a.Node.Key, a.Spec.Networks)
+		}
+	}
+	// The LLM gateway joins the reasoning pool but never the plain pool, so a
+	// non-reasoning cage can never share a network with the key holder.
+	if !slices.Contains(plan.LLMNets, plan.ReasonPool[0]) {
+		t.Errorf("LLM gateway must join the reasoning pool, got %v", plan.LLMNets)
+	}
+	if slices.Contains(plan.LLMNets, plan.PlainPool[0]) {
+		t.Errorf("LLM gateway must NOT join the plain pool, got %v", plan.LLMNets)
+	}
+	// The MCP gateway joins both pools, so it reaches every cage.
+	if !slices.Contains(plan.MCPGateway.Networks, plan.ReasonPool[0]) || !slices.Contains(plan.MCPGateway.Networks, plan.PlainPool[0]) {
+		t.Errorf("MCP gateway must join both pools, got %v", plan.MCPGateway.Networks)
 	}
 }
 

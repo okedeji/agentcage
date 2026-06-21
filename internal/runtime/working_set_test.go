@@ -9,12 +9,13 @@ import (
 // no provisioner or stream.
 func newTestWS(maxLive, hostMax int) *workingSet {
 	return &workingSet{
-		plan:       &runPlan{EdgeNodes: map[string]string{}},
+		plan:       &runPlan{EdgeNodes: map[string]string{}, LLMAgents: map[string]string{}},
 		state:      map[string]cageState{},
 		pins:       map[string]int{},
 		lastUse:    map[string]time.Time{},
 		inflight:   map[string]*activation{},
 		alwaysWarm: map[string]bool{},
+		netOf:      map[string]string{},
 		maxLive:    maxLive,
 		hostMax:    hostMax,
 		idleTTL:    time.Minute,
@@ -126,6 +127,41 @@ func TestOnResyncReplacesPinsFromSnapshot(t *testing.T) {
 	}
 	if w.pins["other"] != 1 {
 		t.Errorf("pins[other] = %d, want 1", w.pins["other"])
+	}
+}
+
+func TestPopPoolNetByKind(t *testing.T) {
+	reason := []string{"r0"}
+	plain := []string{"p0"}
+	n, err := popPoolNet(&reason, &plain, true)
+	if err != nil || n != "r0" || len(reason) != 0 {
+		t.Errorf("reasoning pop = %q err %v (reason left %v), want r0", n, err, reason)
+	}
+	n, err = popPoolNet(&reason, &plain, false)
+	if err != nil || n != "p0" || len(plain) != 0 {
+		t.Errorf("plain pop = %q err %v (plain left %v), want p0", n, err, plain)
+	}
+	if _, err := popPoolNet(&reason, &plain, true); err == nil {
+		t.Error("popping an empty pool should error")
+	}
+}
+
+func TestBeginEvictReturnsNetToItsPool(t *testing.T) {
+	w := newTestWS(8, 32)
+	// A live reasoning cage holding a reasoning-pool network.
+	w.plan.LLMAgents["r"] = "openai/gpt-4o"
+	w.state["r"] = cageLive
+	w.netOf["r"] = "r3"
+
+	w.beginEvictLocked("r")
+	if w.state["r"] != cageEvicting {
+		t.Errorf("state = %v, want evicting", w.state["r"])
+	}
+	if len(w.reasonFree) != 1 || w.reasonFree[0] != "r3" {
+		t.Errorf("reasonFree = %v, want [r3] returned for reuse", w.reasonFree)
+	}
+	if _, ok := w.netOf["r"]; ok {
+		t.Error("netOf should be cleared once the network is returned")
 	}
 }
 

@@ -40,7 +40,7 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 	// choice, so this overlays onto Defaults only.
 	res := cfg.Resources
 	res.Defaults = overlayCap(in.Resources, res.Defaults)
-	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), alwaysWarm: cfg.Cages.AlwaysWarm}
+	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), alwaysWarm: cfg.Cages.AlwaysWarm, maxLive: cfg.Cages.EffectiveMaxLive()}
 
 	if len(boot.Manifest.Agentfile.Uses) == 0 {
 		// A directly-run agent has no registry ref, so per-agent overrides do
@@ -115,25 +115,35 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		return nil, nil, err
 	}
 
-	// One internal network per agent, created up front because the MCP gateway
-	// joins all of them and starts after this loop. Each agent is alone on its
-	// own network, so no cage can reach a sibling directly and bypass the
-	// MCP gateway's deny. Pushed before the containers that join them, so teardown
-	// (reverse order) removes the containers first.
+	// Every network is internal and created up front, before the MCP gateway joins
+	// all of them: the dedicated networks for the root and always-warm cages, and
+	// the two pools pooled cages draw from. Each cage is alone on its network, so
+	// no cage can reach a sibling directly and bypass the MCP gateway's deny. Each
+	// remove is pushed before the containers that join it, so teardown (reverse
+	// order) removes the containers first.
+	allNets := make([]string, 0, len(plan.AgentNets)+len(plan.ReasonPool)+len(plan.PlainPool))
 	for _, key := range sortedStringKeys(plan.AgentNets) {
-		net := plan.AgentNets[key]
+		allNets = append(allNets, plan.AgentNets[key])
+	}
+	allNets = append(allNets, plan.ReasonPool...)
+	allNets = append(allNets, plan.PlainPool...)
+	for _, net := range allNets {
+		net := net
 		if err := createNetwork(ctx, sess.provisioner, net, true, in.Managed); err != nil {
 			return nil, nil, err
 		}
 		td.push(func() error { return removeNetwork(sess.provisioner, net) })
 	}
 
-	// The skeleton boots only the prewarmed agents (the root's direct children);
-	// the rest stay down and activate on first call. Their networks are still
-	// created above, so the gateway, already joined to all of them, can reach a
-	// sub-agent the moment it starts. Prewarmed cages enter the working set live
-	// and count against the host total unconditionally: the skeleton is the run's
+	// The skeleton boots only the prewarmed agents (the root's direct children
+	// plus the pinned-warm ones); the rest activate on first call. A pooled
+	// prewarmed cage draws a network from its pool here; an always-warm one already
+	// carries its dedicated network. Prewarmed cages enter the working set live and
+	// count against the host total unconditionally: the skeleton is the run's
 	// committed baseline, and the host cap bounds the elastic growth on top of it.
+	reasonFree := append([]string{}, plan.ReasonPool...)
+	plainFree := append([]string{}, plan.PlainPool...)
+	netOf := map[string]string{}
 	state := map[string]cageState{}
 	lastUse := map[string]time.Time{}
 	now := nowFunc()
@@ -141,13 +151,22 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		if !a.Prewarm {
 			continue
 		}
+		spec := a.Spec
+		if !a.AlwaysWarm {
+			net, err := popPoolNet(&reasonFree, &plainFree, plan.LLMAgents[a.Node.Key] != "")
+			if err != nil {
+				return nil, nil, err
+			}
+			spec.Networks = []string{net}
+			netOf[a.Node.Key] = net
+		}
 		if err := buildAgentImage(ctx, sess, a.Node, a.Spec.ImageRef, in.NoCache, in.Stderr); err != nil {
 			return nil, nil, err
 		}
-		if err := startDetached(ctx, sess.provisioner, a.Spec); err != nil {
+		if err := startDetached(ctx, sess.provisioner, spec); err != nil {
 			return nil, nil, err
 		}
-		started = append(started, a.Spec.RunID)
+		started = append(started, spec.RunID)
 		hostCages.add()
 		state[a.Node.Key] = cageLive
 		lastUse[a.Node.Key] = now
@@ -188,11 +207,7 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		if err != nil {
 			return nil, nil, err
 		}
-		reasoningNets := make([]string, 0, len(plan.LLMAgents))
-		for _, key := range sortedStringKeys(plan.LLMAgents) {
-			reasoningNets = append(reasoningNets, plan.AgentNets[key])
-		}
-		if err := startLLMGateway(ctx, sess, runID, reasoningNets, egressNet, llmCfg, in, td); err != nil {
+		if err := startLLMGateway(ctx, sess, runID, plan.LLMNets, egressNet, llmCfg, in, td); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -229,6 +244,9 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		td:         td,
 		specByNode: specByNode,
 		alwaysWarm: alwaysWarm,
+		reasonFree: reasonFree,
+		plainFree:  plainFree,
+		netOf:      netOf,
 		state:      state,
 		pins:       map[string]int{},
 		lastUse:    lastUse,
