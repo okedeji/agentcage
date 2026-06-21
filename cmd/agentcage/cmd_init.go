@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -11,6 +12,7 @@ import (
 
 func newInitCmd() *cobra.Command {
 	var verbose bool
+	var recreate bool
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Prepare the agentcage runtime (one-time setup)",
@@ -36,10 +38,17 @@ Pass --verbose to see the underlying Lima output instead of the
 phase-by-phase UI. Useful when something is going wrong and the
 clean view does not have enough detail.
 
+Pass --recreate after changing machine settings (for example
+raising machine.memory_gib in config.json) to rebuild the VM with
+the new size. It stops the daemon, deletes the VM, and provisions a
+fresh one, so every cached image is lost and rebuilt on next use.
+On Linux there is no VM, so --recreate just restarts the daemon.
+
 Examples:
 
   agentcage init
-  agentcage init --verbose`,
+  agentcage init --verbose
+  agentcage init --recreate`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -48,6 +57,22 @@ Examples:
 				return err
 			}
 			defer func() { _ = provisioner.Close() }()
+
+			// --recreate tears the VM down so the bootstrap below rebuilds it with
+			// the current machine config (the way a memory change is applied). The
+			// daemon is stopped first: recreating the VM under it would orphan every
+			// container it holds. On Linux there is no VM, so this is just a daemon
+			// restart.
+			if recreate {
+				stderr := cmd.ErrOrStderr()
+				_, _ = fmt.Fprintln(stderr, "Recreating the runtime...")
+				if err := daemon.Stop(ctx); err != nil {
+					return fmt.Errorf("stopping the daemon before recreate: %w", err)
+				}
+				if err := provisioner.DestroyVM(ctx, io.Discard, stderr); err != nil {
+					return fmt.Errorf("destroying the VM: %w", err)
+				}
+			}
 
 			// Bring the runtime (the Lima VM on macOS) up first, behind the
 			// phase UI, so the daemon we start next finds it ready instead of
@@ -73,5 +98,6 @@ Examples:
 		},
 	}
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "stream the underlying provisioner output instead of the phase UI")
+	cmd.Flags().BoolVar(&recreate, "recreate", false, "stop the daemon and rebuild the VM, applying a changed machine.memory_gib (macOS); deletes cached images")
 	return cmd
 }

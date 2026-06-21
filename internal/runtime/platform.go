@@ -51,6 +51,11 @@ type Provisioner interface {
 	// bytes: the host's RAM on Linux, the VM's configured RAM on macOS. The
 	// runtime checks a run's compulsory footprint against it before booting.
 	AvailableMemory() (int64, error)
+	// DestroyVM tears down the backing VM so the next EnsureReady rebuilds it with
+	// the current machine config (the way `init --recreate` applies a memory
+	// change). It is a no-op on Linux, where there is no VM, and tolerates an
+	// already-absent VM.
+	DestroyVM(ctx context.Context, stdout, stderr io.Writer) error
 	Close() error
 }
 
@@ -175,6 +180,12 @@ func (n *NativeProvisioner) EnsureReady(ctx context.Context, stdout, stderr io.W
 func (n *NativeProvisioner) ContainerdAddress() string { return DefaultContainerdAddress }
 func (n *NativeProvisioner) BuildKitAddress() string   { return DefaultBuildKitAddress }
 func (n *NativeProvisioner) Close() error              { return nil }
+
+// DestroyVM is a no-op on Linux: there is no VM to tear down, the host's
+// containerd and buildkitd are used directly.
+func (n *NativeProvisioner) DestroyVM(ctx context.Context, stdout, stderr io.Writer) error {
+	return nil
+}
 
 // AvailableMemory reads the host's total RAM from /proc/meminfo. On Linux the
 // cages run on this host directly, so its memory is the machine capacity.
@@ -301,6 +312,21 @@ func (l *LimaProvisioner) AvailableMemory() (int64, error) {
 		return 0, fmt.Errorf("reading VM memory: %w", err)
 	}
 	return parseMemTotal(out)
+}
+
+// DestroyVM deletes the Lima VM so the next EnsureReady recreates it with the
+// current machine config. An already-absent VM is fine. The caller is expected
+// to have stopped the daemon first, since this orphans every container the VM
+// held.
+func (l *LimaProvisioner) DestroyVM(ctx context.Context, stdout, stderr io.Writer) error {
+	status, err := l.VM.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if status == LimaNonexistent {
+		return nil
+	}
+	return l.VM.Delete(ctx, stdout, stderr)
 }
 
 // Nerdctl constructs `limactl shell <instance> nerdctl <args>`. The limactl
