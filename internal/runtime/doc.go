@@ -1,4 +1,4 @@
-// Package runtime builds and runs agent containers.
+// Package runtime builds and runs agent cages (each cage is one OCI container).
 //
 // Build path: an Agentfile is converted into a Dockerfile, BuildKit
 // solves it via the dockerfile.v0 frontend, and the resulting image is

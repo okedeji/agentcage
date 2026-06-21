@@ -10,7 +10,7 @@ import (
 
 // usableMemory applies the operator's machine.memory_gib to the machine's real
 // memory and warns when the setting asks for more than the machine has. Both the
-// tree and single-container boot paths read it before admitting a run.
+// tree and single-cage boot paths read it before admitting a run.
 func usableMemory(p Provisioner, machineMemCap int64, stderr io.Writer) (int64, error) {
 	avail, err := p.AvailableMemory()
 	if err != nil {
@@ -24,7 +24,7 @@ func usableMemory(p Provisioner, machineMemCap int64, stderr io.Writer) (int64, 
 	return usable, nil
 }
 
-// soloBaselineMemory is the always-on memory a single-container run needs: the
+// soloBaselineMemory is the always-on memory a single-cage run needs: the
 // agent's cage, plus the LLM gateway if it reasons and the egress proxy if it
 // declares allow:. There is no MCP gateway, since a lone agent has no USES tree.
 func soloBaselineMemory(rootMem int64, reasons, egress bool) int64 {

@@ -107,7 +107,7 @@ func (s *Session) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 // StartWorkingSet starts the run's on-demand activation, the supervisor that
 // boots inactive sub-agents as the tree calls them. The caller owns ctx: a held
 // run passes a background context so activation outlives the request that booted
-// it, a one-shot the request context so it ends with the call. A single-container
+// it, a one-shot the request context so it ends with the call. A single-cage
 // run has no tree and starts nothing. Release cancels whatever this starts.
 func (s *Session) StartWorkingSet(ctx context.Context) {
 	s.ws.start(ctx)
@@ -191,7 +191,7 @@ type bootInput struct {
 
 	// Network and Env place the parent on a per-run container network and
 	// inject its sub-agent URLs when the orchestrator wires a USES tree.
-	// Both are empty for a single-container run, which keeps the parent on
+	// Both are empty for a single-cage run, which keeps the parent on
 	// the default network with no injected environment.
 	Network string
 	Env     map[string]string
@@ -262,7 +262,7 @@ func (t *teardown) run() error {
 
 // bootSession is the provisioned runtime a boot builds and starts
 // containers against: the platform provisioner and a BuildKit client. Both
-// the single-container and the tree boot share it.
+// the single-cage and the tree boot share it.
 type bootSession struct {
 	provisioner Provisioner
 	bk          *BuildKit

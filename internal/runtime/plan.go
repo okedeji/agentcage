@@ -17,7 +17,7 @@ import (
 
 const (
 	// agentServePort is the port every sub-agent serves streamable-HTTP on
-	// inside the run network. Each agent is its own container, so they all
+	// inside the run network. Each agent is its own cage, so they all
 	// share one port without colliding.
 	agentServePort = "8000"
 

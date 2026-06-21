@@ -17,7 +17,7 @@ var nowFunc = time.Now
 // cageState is where a sub-agent cage is in its lifecycle. A node with no entry
 // is absent (down). booting and live both occupy a working-set slot; evicting is
 // on its way out and frees its slot the moment it enters this state, so a new
-// activation can take the slot while the old container is still being removed.
+// activation can take the slot while the old cage is still being removed.
 type cageState int
 
 const (
@@ -34,7 +34,7 @@ const (
 // the closure bootTree used to return.
 //
 // sess is the provisioner plus BuildKit client containers boot against. plan and
-// tree are the resolved run, both nil for a single-container run with no USES. td
+// tree are the resolved run, both nil for a single-cage run with no USES. td
 // holds the run's shared infrastructure (networks, gateways, the root); sub-agent
 // cages are tracked in state and torn down through it, not pushed onto td, so a
 // reaped cage's removal is not also queued for release.
@@ -46,8 +46,8 @@ type workingSet struct {
 	tree *runTree
 	td   *teardown
 
-	// specByNode maps a sub-agent node key to the planned container that runs it,
-	// so an on-demand activation boots exactly the cage the plan already shaped.
+	// specByNode maps a sub-agent node key to the planned cage that runs it, so an
+	// on-demand activation boots exactly the cage the plan already shaped.
 	specByNode map[string]plannedAgent
 
 	// alwaysWarm names nodes that, once warm, are never reaped or evicted: the

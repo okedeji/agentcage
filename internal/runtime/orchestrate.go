@@ -28,7 +28,7 @@ import (
 const containerStopTimeout = 30 * time.Second
 
 // bootRun picks the boot path by whether the agent declares any USES: no
-// dependencies takes today's single-container path unchanged; one or more
+// dependencies takes today's single-cage path unchanged; one or more
 // takes the tree path that starts every sub-agent behind the MCP gateway.
 func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*mcp.Client, *workingSet, error) {
 	cfg, err := config.Load()

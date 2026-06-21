@@ -69,7 +69,7 @@ type activation struct {
 }
 
 // start launches the activation supervisor and the idle reaper for a USES tree.
-// A single-container run has no gateway and nothing to activate, so it starts
+// A single-cage run has no gateway and nothing to activate, so it starts
 // nothing. The caller owns ctx; releaseAll cancels it before teardown.
 func (w *workingSet) start(ctx context.Context) {
 	if w.plan == nil {
