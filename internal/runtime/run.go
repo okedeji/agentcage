@@ -309,7 +309,7 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, err
 	}
 	if need := soloBaselineMemory(rootMem, model != "", len(allowHosts) > 0); need > usable {
 		return nil, nil, fmt.Errorf("this agent needs %s but the machine has %s usable: lower its RESOURCES cap or use a machine with more memory",
-			humanBytes(need), humanBytes(usable))
+			HumanBytes(need), HumanBytes(usable))
 	}
 
 	egressNet := in.RunID + "-egress"

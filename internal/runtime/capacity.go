@@ -19,7 +19,7 @@ func usableMemory(p Provisioner, machineMemCap int64, stderr io.Writer) (int64, 
 	usable, overRequest := effectiveAvailable(avail, machineMemCap)
 	if overRequest {
 		_, _ = fmt.Fprintf(stderr, "note: machine.memory_gib requests %s but the machine has %s; recreate the VM to apply on macOS, or lower it below host RAM on Linux. Using %s\n",
-			humanBytes(machineMemCap), humanBytes(avail), humanBytes(avail))
+			HumanBytes(machineMemCap), HumanBytes(avail), HumanBytes(avail))
 	}
 	return usable, nil
 }
@@ -163,7 +163,7 @@ func fitElastic(available int64, plan *runPlan, configuredMaxLive int) (int, err
 	need := compulsoryMemory(plan)
 	if need > usable {
 		return 0, fmt.Errorf("this agent needs %s for its always-on cages but the machine has %s usable (%s total): lower its RESOURCES caps, BAN or drop USES sub-agents (if it is yours), or use a machine with more memory",
-			humanBytes(need), humanBytes(usable), humanBytes(available))
+			HumanBytes(need), HumanBytes(usable), HumanBytes(available))
 	}
 	rep := maxElasticMem(plan)
 	if rep <= 0 {
@@ -175,7 +175,7 @@ func fitElastic(available int64, plan *runPlan, configuredMaxLive int) (int, err
 	return configuredMaxLive, nil
 }
 
-func humanBytes(b int64) string {
+func HumanBytes(b int64) string {
 	switch {
 	case b >= 1<<30:
 		return fmt.Sprintf("%.1fGiB", float64(b)/(1<<30))
