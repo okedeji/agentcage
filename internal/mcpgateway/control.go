@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 // ControlMessage is one line of the gateway's control stream. The gateway sends
@@ -20,17 +21,21 @@ type ControlMessage struct {
 	Type string         `json:"type"`
 	Edge string         `json:"edge,omitempty"`
 	OK   bool           `json:"ok,omitempty"`
+	Addr string         `json:"addr,omitempty"`
 	Pins map[string]int `json:"pins,omitempty"`
 }
 
 // Control message types. Activate/Pin/Unpin/Resync flow gateway to daemon;
-// Activated flows back.
+// Activated/Deactivate flow back. Activated carries the address the daemon
+// resolved for the booted cage; Deactivate tells the gateway a cage is gone so
+// it stops routing to a stale address before that address can be recycled.
 const (
-	MsgActivate  = "activate"
-	MsgActivated = "activated"
-	MsgPin       = "pin"
-	MsgUnpin     = "unpin"
-	MsgResync    = "resync"
+	MsgActivate   = "activate"
+	MsgActivated  = "activated"
+	MsgDeactivate = "deactivate"
+	MsgPin        = "pin"
+	MsgUnpin      = "unpin"
+	MsgResync     = "resync"
 )
 
 // ServeControl runs the control stream over one connection from the daemon's
@@ -75,8 +80,11 @@ func (g *Gateway) ServeControl(conn io.ReadWriteCloser) error {
 				errc <- err
 				return
 			}
-			if m.Type == MsgActivated {
-				g.resolve(m.Edge, m.OK)
+			switch m.Type {
+			case MsgActivated:
+				g.activated(m.Edge, m.OK, m.Addr)
+			case MsgDeactivate:
+				g.deactivate(m.Edge)
 			}
 		}
 	}()
@@ -165,6 +173,21 @@ func (g *Gateway) ensureActive(ctx context.Context, id string) bool {
 	case <-wctx.Done():
 		return false
 	}
+}
+
+// activated applies the daemon's verdict for an edge. On success it first points
+// the edge at the address the daemon resolved for the cage (its container IP):
+// the gateway's /etc/hosts is frozen at its own start, so it cannot name a cage
+// that booted later, and the daemon is the only party that knows where the cage
+// actually landed. The target is set before resolve wakes the waiters, so the
+// forward that unblocks already routes to a live address.
+func (g *Gateway) activated(id string, ok bool, addr string) {
+	if ok && addr != "" {
+		if u, err := url.Parse(addr); err == nil {
+			g.setTarget(id, u)
+		}
+	}
+	g.resolve(id, ok)
 }
 
 // resolve records the daemon's verdict for an edge and wakes every call waiting

@@ -68,14 +68,21 @@ type Gateway struct {
 	banned  map[string]bool
 
 	// mu guards the live state below: active, the waiters blocked on an
-	// activation, pending (edges already asked of the daemon), and pinCount (the
-	// in-flight forwards per edge, the resync payload). The routing maps above are
+	// activation, pending (edges already asked of the daemon), pinCount (the
+	// in-flight forwards per edge, the resync payload), and target (each edge's
+	// current sub-agent address). The proxies/deny/banned maps above are
 	// write-once at New and read without the lock.
 	mu       sync.Mutex
 	active   map[string]bool
 	waiters  map[string][]chan bool
 	pending  map[string]bool
 	pinCount map[string]int
+
+	// target is the address each edge forwards to. It starts at the cage's
+	// container name (resolvable for a prewarmed cage, which boots before the
+	// gateway) and the daemon overwrites it with the cage's IP on every
+	// activation, since a cage booted after the gateway is not in its /etc/hosts.
+	target map[string]*url.URL
 
 	// outbound carries control messages (activation requests, pin/unpin events)
 	// to whichever stream is connected. Generously buffered so a forward never
@@ -95,6 +102,7 @@ func New(cfg Config) *Gateway {
 		waiters:  make(map[string][]chan bool),
 		pending:  make(map[string]bool),
 		pinCount: make(map[string]int),
+		target:   make(map[string]*url.URL, len(cfg.Edges)),
 		outbound: make(chan ControlMessage, 4*len(cfg.Edges)+64),
 	}
 	for id, edge := range cfg.Edges {
@@ -109,14 +117,17 @@ func New(cfg Config) *Gateway {
 			continue
 		}
 		edgeID := id
+		g.target[id] = target
 		g.proxies[id] = &httputil.ReverseProxy{
 			Rewrite: func(r *httputil.ProxyRequest) {
-				// Forward to the sub-agent's exact endpoint, dropping the
-				// /<edge> prefix the parent addressed us by.
-				r.Out.URL.Scheme = target.Scheme
-				r.Out.URL.Host = target.Host
-				r.Out.URL.Path = target.Path
-				r.Out.Host = target.Host
+				// Forward to the sub-agent's current address, dropping the
+				// /<edge> prefix the parent addressed us by. The address moves
+				// as the cage activates, so it is read per request, not captured.
+				t := g.currentTarget(edgeID)
+				r.Out.URL.Scheme = t.Scheme
+				r.Out.URL.Host = t.Host
+				r.Out.URL.Path = t.Path
+				r.Out.Host = t.Host
 			},
 			// Stream streamable-HTTP SSE events back immediately.
 			FlushInterval: -1,
@@ -128,7 +139,7 @@ func New(cfg Config) *Gateway {
 			Transport: &retryTransport{gw: g, edge: edgeID, base: http.DefaultTransport},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) {
 				g.deactivate(edgeID)
-				writeActivationFailed(w, nil)
+				writeActivationFailed(w, replayBody(r))
 			},
 		}
 		g.deny[id] = denySet(edge.Deny)
@@ -138,11 +149,47 @@ func New(cfg Config) *Gateway {
 	return g
 }
 
-// retryTransport recovers a forward whose cage is gone: if the dial fails (the
-// daemon reaped the cage, or it crashed), it reactivates the edge and retries the
-// forward once, so the caller never sees the gap. Only a pre-connection failure
-// is retried, where the sub-agent never received the call, so the retry cannot
-// double-execute it; a failure after the cage answered is returned untouched.
+// currentTarget is the address an edge forwards to right now. Read on every
+// forward, so it tracks a cage that moved to a new IP across an activation.
+func (g *Gateway) currentTarget(id string) *url.URL {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.target[id]
+}
+
+// setTarget points an edge at a new address, the one the daemon resolved for the
+// cage it just booted. Only edges the gateway already routes have a target slot,
+// so an address for an unknown edge is ignored rather than added.
+func (g *Gateway) setTarget(id string, u *url.URL) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, ok := g.target[id]; ok {
+		g.target[id] = u
+	}
+}
+
+// coldStartBudget bounds how long a forward retries while a freshly activated
+// cage's MCP server finishes binding its port. A lazily booted cage is live (the
+// container started) before it is listening, so the first forward races the
+// server's startup and sees a refused connection; the floor is a 2-4s cold start
+// (DESIGN §4), and the budget leaves margin for a slow image or a busy host. It
+// is a var so a test can shrink it. coldStartBackoff grows to coldStartBackoffMax
+// so a quick startup is caught early without hammering a slow one.
+var coldStartBudget = 12 * time.Second
+
+const (
+	coldStartBackoff    = 100 * time.Millisecond
+	coldStartBackoffMax = time.Second
+)
+
+// retryTransport recovers a forward that cannot reach its target: a cage the
+// daemon reaped (gone, needs rebooting) or one just activated whose MCP server is
+// still coming up. On the first pre-connection failure it reactivates the edge,
+// which reboots a gone cage and refreshes the address, then retries with backoff
+// over the cold-start budget while a fresh cage starts listening. Only a
+// pre-connection failure is retried, where the sub-agent never received the call,
+// so a retry cannot double-execute it; a failure after the cage answered is
+// returned untouched.
 type retryTransport struct {
 	gw   *Gateway
 	edge string
@@ -158,14 +205,29 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if !t.gw.ensureActive(req.Context(), t.edge) {
 		return resp, err
 	}
-	if req.GetBody != nil {
-		body, gerr := req.GetBody()
-		if gerr != nil {
+
+	deadline := time.Now().Add(coldStartBudget)
+	for backoff := coldStartBackoff; ; {
+		if req.GetBody != nil {
+			body, gerr := req.GetBody()
+			if gerr != nil {
+				return resp, err
+			}
+			req.Body = body
+		}
+		resp, err = t.base.RoundTrip(req)
+		if err == nil || !isUnreachable(err) || time.Now().After(deadline) {
 			return resp, err
 		}
-		req.Body = body
+		select {
+		case <-time.After(backoff):
+		case <-req.Context().Done():
+			return resp, err
+		}
+		if backoff < coldStartBackoffMax {
+			backoff *= 2
+		}
 	}
-	return t.base.RoundTrip(req)
 }
 
 // isUnreachable reports whether the error means the cage was not there to receive
@@ -340,6 +402,26 @@ func writeBanned(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// replayBody re-reads a forwarded request's body so a failed forward can answer
+// with the request's own id. Handler sets GetBody for POSTs; a GET or DELETE has
+// none, so this returns nil and the error carries a null id, which is correct
+// for a request that had no id to echo.
+func replayBody(r *http.Request) []byte {
+	if r.GetBody == nil {
+		return nil
+	}
+	rc, err := r.GetBody()
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rc.Close() }()
+	body, err := io.ReadAll(rc)
+	if err != nil {
+		return nil
+	}
+	return body
 }
 
 func firstSegment(path string) string {
