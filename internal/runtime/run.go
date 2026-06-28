@@ -85,6 +85,12 @@ type Session struct {
 	runID string
 	root  *mcp.Client
 	ws    *workingSet
+
+	// elicit carries the root agent's mid-call questions out to the operator
+	// driving the current call. It is set only for an interactive boot, the one
+	// the serve front door makes; a one-shot run/call leaves it nil and never
+	// advertises a question channel.
+	elicit *elicitRouter
 }
 
 // RunID is the run's id: the daemon's registry key and what `agentcage stop`
@@ -105,6 +111,18 @@ func (s *Session) Warnings() []string {
 // makes exactly one; a held run serves many across its lifetime.
 func (s *Session) Call(ctx context.Context, tool string, args map[string]any) (string, error) {
 	return s.root.CallTool(ctx, tool, args)
+}
+
+// BindElicit installs target as the operator's answer channel for one call's
+// duration and returns a release the caller defers. The serve front door wraps
+// every call to an interactive agent in it so the agent can ask the caller a
+// question mid-call. A run with no router (one-shot, or a non-serve path with no
+// live operator) binds nothing and returns a no-op release.
+func (s *Session) BindElicit(target mcp.ElicitHandler) func() {
+	if s.elicit == nil {
+		return func() {}
+	}
+	return s.elicit.bind(target)
 }
 
 // ListTools returns the tools the held agent advertises, descriptions and input
@@ -166,6 +184,15 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 		runID = deriveRunID(name, manifest.FilesHash)
 	}
 
+	// An interactive boot gets a question channel: the serve front door binds the
+	// operator's answer side per call, and the root client routes the agent's
+	// questions through the router below. A one-shot boot leaves both nil, so the
+	// root never advertises elicitation and an agent that tries to ask fails closed.
+	var router *elicitRouter
+	if in.Interaction == env.InteractionInteractive {
+		router = newElicitRouter()
+	}
+
 	boot := bootInput{
 		Agentfile:   af,
 		Manifest:    manifest,
@@ -182,11 +209,14 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 		Managed:     in.Managed,
 		Interaction: in.Interaction,
 	}
+	if router != nil {
+		boot.ElicitHandler = router.route
+	}
 	client, ws, err := bootRun(ctx, in, boot, runID)
 	if err != nil {
 		return nil, err
 	}
-	return &Session{runID: runID, root: client, ws: ws}, nil
+	return &Session{runID: runID, root: client, ws: ws, elicit: router}, nil
 }
 
 // bootInput carries everything bootAgent needs to build an agent's image
@@ -244,6 +274,12 @@ type bootInput struct {
 	// Interaction injects AGENTCAGE_INTERACTION into the root agent so its LLM
 	// knows whether a follow-up turn is possible. Empty injects nothing.
 	Interaction string
+
+	// ElicitHandler, when set, lets the root agent ask the operator a question
+	// mid-call: the root's MCP client advertises the elicitation capability and
+	// routes each question here. Set only for an interactive boot, so a one-shot
+	// run never advertises a channel it cannot answer.
+	ElicitHandler mcp.ElicitHandler
 
 	Stdout  io.Writer
 	Stderr  io.Writer
@@ -493,7 +529,7 @@ func startAttachedAgent(ctx context.Context, sess *bootSession, in bootInput, td
 		return nil
 	})
 
-	client, err := mcp.Connect(ctx, stdoutPipe, stdinPipe)
+	client, err := mcp.Connect(ctx, stdoutPipe, stdinPipe, mcp.WithElicitation(in.ElicitHandler))
 	if err != nil {
 		// The container is live but will not get its stdin EOF through the
 		// normal path; kill it so the deferred teardown's Wait reaps it.

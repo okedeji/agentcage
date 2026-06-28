@@ -118,8 +118,9 @@ const (
 // channel to ask a follow-up; a held or served run can be continued. An author
 // keys a complete, best-effort answer off oneshot instead of hedging for a
 // reply that will never come. It is advisory: the runtime sets it, the author
-// reads it. The hard gate on mid-call elicitation is the MCP client capability,
-// which a one-shot boot does not advertise.
+// reads it. The hard gate on mid-call elicitation is the MCP client capability:
+// the runtime advertises it only on an interactive boot, so a one-shot run/call
+// offers no question channel and an agent that tries to ask fails closed.
 const Interaction = Prefix + "INTERACTION"
 
 // Interaction values. OneShot is a single run/call turn; Interactive is a held

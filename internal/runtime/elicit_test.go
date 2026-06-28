@@ -1,0 +1,87 @@
+package runtime
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/okedeji/agentcage/internal/mcp"
+)
+
+func okTarget(_ context.Context, q *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+	return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"q": q.Message}}, nil
+}
+
+func TestElicitRouter_RoutesToBoundTarget(t *testing.T) {
+	r := newElicitRouter()
+	release := r.bind(okTarget)
+	defer release()
+
+	res, err := r.route(context.Background(), &mcp.ElicitRequest{Message: "hi"})
+	if err != nil {
+		t.Fatalf("route: %v", err)
+	}
+	if res.Content["q"] != "hi" {
+		t.Errorf("answer = %v, want the question echoed", res.Content["q"])
+	}
+}
+
+func TestElicitRouter_NoTargetErrors(t *testing.T) {
+	r := newElicitRouter()
+	if _, err := r.route(context.Background(), &mcp.ElicitRequest{Message: "x"}); err == nil {
+		t.Fatal("want an error with nothing bound")
+	}
+
+	// A released bind leaves nothing live, so it errors again.
+	r.bind(okTarget)()
+	if _, err := r.route(context.Background(), &mcp.ElicitRequest{Message: "x"}); err == nil {
+		t.Fatal("want an error after the bind released")
+	}
+}
+
+// TestElicitRouter_SerializesCalls proves a second bind blocks until the first
+// releases, so only one call's answer channel is ever live.
+func TestElicitRouter_SerializesCalls(t *testing.T) {
+	r := newElicitRouter()
+	release := r.bind(okTarget)
+
+	done := make(chan struct{})
+	go func() {
+		r.bind(okTarget)()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("second bind returned while the first still held")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	release()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("second bind never returned after release")
+	}
+}
+
+// TestElicitRouter_RespectsContextCancel proves the call fails closed when the
+// wait is abandoned: a cancelled caller context unblocks route rather than
+// hanging until the deadline.
+func TestElicitRouter_RespectsContextCancel(t *testing.T) {
+	r := newElicitRouter()
+	release := r.bind(func(ctx context.Context, _ *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	defer release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+	if _, err := r.route(ctx, &mcp.ElicitRequest{Message: "x"}); err == nil {
+		t.Fatal("want an error when the caller context is cancelled")
+	}
+}
