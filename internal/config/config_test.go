@@ -132,6 +132,35 @@ func TestCages_ValidateRejectsNegative(t *testing.T) {
 	}
 }
 
+func TestServe_EffectiveResolvesZeroToDefault(t *testing.T) {
+	var s Serve
+	if s.EffectiveMaxClients() != DefaultMaxClients {
+		t.Errorf("EffectiveMaxClients = %d, want default %d", s.EffectiveMaxClients(), DefaultMaxClients)
+	}
+	if s.EffectiveClientIdleTTL() != DefaultClientIdleTTLSeconds*time.Second {
+		t.Errorf("EffectiveClientIdleTTL = %v, want default", s.EffectiveClientIdleTTL())
+	}
+	set := Serve{MaxClients: 4, ClientIdleTTLSeconds: 60}
+	if set.EffectiveMaxClients() != 4 || set.EffectiveClientIdleTTL() != 60*time.Second {
+		t.Errorf("set values not honored: %+v", set)
+	}
+}
+
+func TestServe_ValidateRejectsNegative(t *testing.T) {
+	cases := []*Config{
+		{Serve: Serve{MaxClients: -1}},
+		{Serve: Serve{ClientIdleTTLSeconds: -1}},
+	}
+	for _, c := range cases {
+		if err := c.Validate(); err == nil {
+			t.Errorf("expected a serve policy error for %+v", c.Serve)
+		}
+	}
+	if err := (&Config{Serve: Serve{}}).Validate(); err != nil {
+		t.Errorf("zero serve policy rejected: %v", err)
+	}
+}
+
 func TestCapMemBytes(t *testing.T) {
 	cases := []struct {
 		in   string

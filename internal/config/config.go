@@ -24,6 +24,7 @@ type Config struct {
 	Models    map[string]string `json:"models,omitempty"` // agent ref (@org/name) -> provider/model override
 	Cages     Cages             `json:"cages,omitempty"`
 	Machine   Machine           `json:"machine,omitempty"`
+	Serve     Serve             `json:"serve,omitempty"`
 }
 
 // Machine is how much of the host agentcage may use for cages. On macOS it sizes
@@ -165,6 +166,60 @@ func (cg Cages) Validate() error {
 	return nil
 }
 
+// Serve is the operator's policy for an agent exposed through `agentcage serve`.
+// Each connected client gets its own agent instance (its own cage tree and
+// conversation state); these knobs bound how many such instances a served agent
+// runs at once and when an idle one is reclaimed. This is a second level above
+// the Cages policy, which governs cages within one instance: MaxClients counts
+// whole instances, not cages. Each numeric field follows the Cap convention:
+// zero means "no operator value here," so the runtime default applies; a
+// negative is rejected, never read as unlimited.
+type Serve struct {
+	MaxClients           int `json:"max_clients,omitempty"`             // concurrent client instances per served agent
+	ClientIdleTTLSeconds int `json:"client_idle_ttl_seconds,omitempty"` // reap an instance whose client has gone quiet this long
+}
+
+// Serve policy defaults. The client cap is well above a handful of concurrent
+// callers but bounded so a popular agent cannot spawn instances without limit;
+// the host floor (cages.host_max_live plus live memory) is the harder ceiling
+// underneath it. The idle TTL is long enough that a client on a human-interactive
+// cadence stays warm between turns, short enough that an abandoned session frees
+// its instance within a quarter hour.
+const (
+	DefaultMaxClients           = 16
+	DefaultClientIdleTTLSeconds = 900
+)
+
+// EffectiveMaxClients and EffectiveClientIdleTTL resolve each knob to the
+// operator's value when set, else the runtime default, the same zero-means-default
+// rule the cage policy and resource caps use.
+func (s Serve) EffectiveMaxClients() int {
+	if s.MaxClients > 0 {
+		return s.MaxClients
+	}
+	return DefaultMaxClients
+}
+
+func (s Serve) EffectiveClientIdleTTL() time.Duration {
+	if s.ClientIdleTTLSeconds > 0 {
+		return time.Duration(s.ClientIdleTTLSeconds) * time.Second
+	}
+	return DefaultClientIdleTTLSeconds * time.Second
+}
+
+// Validate rejects a serve policy a host must never honor: a negative client cap
+// or idle TTL. Zero means "no operator value here," so the default applies; a
+// negative is fail-closed, never read as unlimited.
+func (s Serve) Validate() error {
+	if s.MaxClients < 0 {
+		return fmt.Errorf("max_clients must not be negative, got %d", s.MaxClients)
+	}
+	if s.ClientIdleTTLSeconds < 0 {
+		return fmt.Errorf("client idle TTL must not be negative, got %d", s.ClientIdleTTLSeconds)
+	}
+	return nil
+}
+
 // Load reads ~/.agentcage/config.json. A missing file is an empty config, not
 // an error: an operator who has configured nothing yet is valid. A malformed
 // file is an error, fail-closed, so a typo does not silently drop providers.
@@ -247,6 +302,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Machine.Validate(); err != nil {
 		return fmt.Errorf("machine sizing: %w", err)
+	}
+	if err := c.Serve.Validate(); err != nil {
+		return fmt.Errorf("serve policy: %w", err)
 	}
 	return nil
 }
