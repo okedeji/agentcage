@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -13,18 +15,298 @@ import (
 func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Configure LLM provider endpoints and per-cage resource caps",
-		Long: `Manage ~/.agentcage/config.json: the LLM endpoints the LLM gateway routes to and
-the resource caps the runtime enforces.
+		Short: "Configure LLM endpoints, resource caps, and the metrics endpoint",
+		Long: `Manage ~/.agentcage/config.json: the LLM endpoints the LLM gateway routes to, the
+resource caps the runtime enforces, and where the daemon serves Prometheus metrics.
 
 Provider keys are stored by reference: set the value with 'agentcage secrets set'
 and point an endpoint at it with --key-ref. The config file never holds a secret.`,
 		Example: `  agentcage config provider set openai --base-url https://api.openai.com/v1 --key-ref openai_key --default
   agentcage config resources set @okedeji/researcher:0.1 --memory 2g --cpus 2
-  agentcage config path`,
+  agentcage config cages set --max-live 64 --prewarm 16
+  agentcage config metrics set 0.0.0.0:9323
+  agentcage config show`,
 	}
-	cmd.AddCommand(newConfigProviderCmd(), newConfigResourcesCmd(), newConfigModelsCmd(), newConfigPathCmd())
+	cmd.AddCommand(
+		newConfigProviderCmd(), newConfigResourcesCmd(), newConfigModelsCmd(),
+		newConfigCagesCmd(), newConfigMachineCmd(), newConfigServeCmd(),
+		newConfigMetricsCmd(), newConfigShowCmd(), newConfigPathCmd(),
+	)
 	return cmd
+}
+
+// anyChanged reports whether the operator passed any of the named flags, so a
+// 'set' command updates only the fields given and rejects an empty invocation.
+func anyChanged(cmd *cobra.Command, names ...string) bool {
+	for _, n := range names {
+		if cmd.Flags().Changed(n) {
+			return true
+		}
+	}
+	return false
+}
+
+func newConfigCagesCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "cages",
+		Short: "Set the cage policy: live caps, prewarm, and idle reaping",
+		Long: `Set how a run's USES tree is kept warm: how many cages may be live at once (per
+run and host-wide), how many of the root's direct children to prewarm, and how
+long an idle cage lives before it is reaped. A change takes effect on the next
+run; a zero in any field means "use the built-in default".`,
+	}
+	var maxLive, hostMax, prewarm, idleTTL int
+	var keepWarm []string
+	set := &cobra.Command{
+		Use:   "set",
+		Short: "Set cage policy fields",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !anyChanged(cmd, "max-live", "host-max-live", "prewarm", "idle-ttl", "keep-warm") {
+				return fmt.Errorf("set at least one of --max-live, --host-max-live, --prewarm, --idle-ttl, --keep-warm")
+			}
+			c, err := config.Load()
+			if err != nil {
+				return err
+			}
+			if cmd.Flags().Changed("max-live") {
+				c.Cages.MaxLive = maxLive
+			}
+			if cmd.Flags().Changed("host-max-live") {
+				c.Cages.HostMaxLive = hostMax
+			}
+			if cmd.Flags().Changed("prewarm") {
+				c.Cages.Prewarm = prewarm
+			}
+			if cmd.Flags().Changed("idle-ttl") {
+				c.Cages.IdleTTLSeconds = idleTTL
+			}
+			if cmd.Flags().Changed("keep-warm") {
+				c.Cages.KeepWarm = keepWarm
+			}
+			if err := c.Save(); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Updated cage policy")
+			return nil
+		},
+	}
+	set.Flags().IntVar(&maxLive, "max-live", 0, "max elastic cages per run (0 = default)")
+	set.Flags().IntVar(&hostMax, "host-max-live", 0, "max cages across every run on the host (0 = default)")
+	set.Flags().IntVar(&prewarm, "prewarm", 0, "root's direct children booted up front (0 = default)")
+	set.Flags().IntVar(&idleTTL, "idle-ttl", 0, "reap a cage idle past this many seconds (0 = default)")
+	set.Flags().StringArrayVar(&keepWarm, "keep-warm", nil, "agent ref to keep booted even when idle (repeatable; replaces the list)")
+	cmd.AddCommand(set)
+	return cmd
+}
+
+func newConfigMachineCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "machine",
+		Short: "Set how much of the host agentcage may use for cages",
+		Long: `Set the VM sizing on macOS, or the host memory cap on Linux. cpus and disk-gib
+size the Lima VM on macOS and are ignored on Linux. A change takes effect when the
+machine is next provisioned ('agentcage init --recreate'). A zero means the
+built-in default.`,
+	}
+	var memGiB, cpus, diskGiB int
+	set := &cobra.Command{
+		Use:   "set",
+		Short: "Set machine sizing fields",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !anyChanged(cmd, "memory-gib", "cpus", "disk-gib") {
+				return fmt.Errorf("set at least one of --memory-gib, --cpus, --disk-gib")
+			}
+			c, err := config.Load()
+			if err != nil {
+				return err
+			}
+			if cmd.Flags().Changed("memory-gib") {
+				c.Machine.MemoryGiB = memGiB
+			}
+			if cmd.Flags().Changed("cpus") {
+				c.Machine.CPUs = cpus
+			}
+			if cmd.Flags().Changed("disk-gib") {
+				c.Machine.DiskGiB = diskGiB
+			}
+			if err := c.Save(); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Updated machine sizing (recreate the machine for it to apply: agentcage init --recreate)")
+			return nil
+		},
+	}
+	set.Flags().IntVar(&memGiB, "memory-gib", 0, "memory in GiB (0 = default)")
+	set.Flags().IntVar(&cpus, "cpus", 0, "vCPUs for the macOS VM (0 = default; ignored on Linux)")
+	set.Flags().IntVar(&diskGiB, "disk-gib", 0, "disk in GiB for the macOS VM (0 = default; ignored on Linux)")
+	cmd.AddCommand(set)
+	return cmd
+}
+
+func newConfigServeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Set the serve policy: per-agent client cap and idle reaping",
+		Long: `Set how many concurrent client instances a served agent runs and how long an
+idle one lives before it is reclaimed. A change takes effect on the next serve. A
+zero means the built-in default.`,
+	}
+	var maxClients, idleTTL int
+	set := &cobra.Command{
+		Use:   "set",
+		Short: "Set serve policy fields",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !anyChanged(cmd, "max-clients", "client-idle-ttl") {
+				return fmt.Errorf("set at least one of --max-clients, --client-idle-ttl")
+			}
+			c, err := config.Load()
+			if err != nil {
+				return err
+			}
+			if cmd.Flags().Changed("max-clients") {
+				c.Serve.MaxClients = maxClients
+			}
+			if cmd.Flags().Changed("client-idle-ttl") {
+				c.Serve.ClientIdleTTLSeconds = idleTTL
+			}
+			if err := c.Save(); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Updated serve policy")
+			return nil
+		},
+	}
+	set.Flags().IntVar(&maxClients, "max-clients", 0, "concurrent client instances per served agent (0 = default)")
+	set.Flags().IntVar(&idleTTL, "client-idle-ttl", 0, "reap a client instance idle past this many seconds (0 = default)")
+	cmd.AddCommand(set)
+	return cmd
+}
+
+func newConfigShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show",
+		Short: "Print the full config as JSON",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c, err := config.Load()
+			if err != nil {
+				return err
+			}
+			b, err := json.MarshalIndent(c, "", "  ")
+			if err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(b))
+			return nil
+		},
+	}
+}
+
+func newConfigMetricsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "metrics",
+		Short: "Configure the Prometheus metrics endpoint",
+		Long: `Configure where the daemon serves Prometheus metrics.
+
+The endpoint is on by default at 127.0.0.1:9323, loopback: reachable only from
+the same host. To let a Prometheus on another machine scrape it, bind a reachable
+address (e.g. 0.0.0.0:9323) and restrict who can reach the port at the network
+layer, with a security group, a private subnet, or a VPN: the endpoint has no
+auth of its own, so that network boundary is the access control.
+
+A change takes effect when the daemon next starts.`,
+		Example: `  agentcage config metrics show
+  agentcage config metrics set 0.0.0.0:9323
+  agentcage config metrics off`,
+	}
+	cmd.AddCommand(newConfigMetricsSetCmd(), newConfigMetricsOffCmd(), newConfigMetricsShowCmd())
+	return cmd
+}
+
+func newConfigMetricsSetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "set ADDR",
+		Short: "Serve metrics on ADDR (host:port)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			addr := args[0]
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				return fmt.Errorf("ADDR must be host:port, e.g. 0.0.0.0:9323: %w", err)
+			}
+			c, err := config.Load()
+			if err != nil {
+				return err
+			}
+			c.Telemetry.MetricsAddr = addr
+			if err := c.Save(); err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "Metrics endpoint set to %s\n", addr)
+			if !isLoopbackHost(host) {
+				_, _ = fmt.Fprintln(out, "This binds off-loopback and the endpoint has no auth: restrict access to the port at the network layer.")
+			}
+			_, _ = fmt.Fprintln(out, "Restart the daemon for the change to take effect.")
+			return nil
+		},
+	}
+}
+
+func newConfigMetricsOffCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "off",
+		Short: "Disable the metrics endpoint",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c, err := config.Load()
+			if err != nil {
+				return err
+			}
+			c.Telemetry.MetricsAddr = "off"
+			if err := c.Save(); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Metrics endpoint disabled. Restart the daemon for the change to take effect.")
+			return nil
+		},
+	}
+}
+
+func newConfigMetricsShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show",
+		Short: "Show where metrics are served",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c, err := config.Load()
+			if err != nil {
+				return err
+			}
+			addr := c.Telemetry.EffectiveMetricsAddr()
+			if addr == "" {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Metrics endpoint: disabled")
+				return nil
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Metrics endpoint: http://%s/metrics\n", addr)
+			return nil
+		},
+	}
+}
+
+// isLoopbackHost reports whether a metrics bind host stays on the local machine,
+// so the set command can warn only when it does not.
+func isLoopbackHost(host string) bool {
+	if host == "" || host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 func newConfigModelsCmd() *cobra.Command {
