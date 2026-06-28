@@ -14,13 +14,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/agentcage/internal/history"
 	"github.com/okedeji/agentcage/internal/identity"
 	"github.com/okedeji/agentcage/internal/runtime"
 )
@@ -40,21 +43,26 @@ func SocketPath() (string, error) {
 }
 
 // RunInfo is one tracked run as the control plane reports it: enough for ps and
-// stop, not the live handle the runtime holds.
+// stop, not the live handle the runtime holds. EndedAt and CostMicroUSD are set
+// only for a finished run read back from history; a live run leaves them zero.
 type RunInfo struct {
-	ID        string    `json:"id"`
-	Ref       string    `json:"ref"`
-	Status    string    `json:"status"`
-	StartedAt time.Time `json:"started_at"`
+	ID           string    `json:"id"`
+	Ref          string    `json:"ref"`
+	Status       string    `json:"status"`
+	StartedAt    time.Time `json:"started_at"`
+	EndedAt      time.Time `json:"ended_at,omitempty"`
+	CostMicroUSD int64     `json:"cost_micro_usd,omitempty"`
 }
 
 // Daemon holds the run registry and serves the control-plane HTTP API. The
-// registry is in-memory: run history that survives a restart is a later
-// (SQLite) concern, and a restart reconciles live containers by label rather
-// than from saved state.
+// registry is the live set, in memory; hist is the durable run log that outlives
+// it, so ps shows finished runs and a restart can reconcile crashed ones. hist
+// is best-effort: it may be nil (tests, or an open that failed), and every write
+// through it tolerates that, because a wedged history must never wedge a run.
 type Daemon struct {
 	mu   sync.Mutex
 	runs map[string]*heldRun
+	hist *history.Store
 	// fronts are the serve front doors the daemon has opened, each tied to the
 	// runs it exposes. Stopping the last run behind a front closes its listener so
 	// the port frees; shutdown closes whatever remains.
@@ -164,11 +172,81 @@ func (d *Daemon) releaseAll() error {
 
 	var errs []error
 	for _, r := range held {
+		// A clean shutdown is a stop, not a crash: record it so the next startup's
+		// reconcile leaves it alone. Read before release, while the gateway is up.
+		if r.session != nil {
+			d.recordFinish(r.info.ID, history.StatusStopped, nil)
+		}
 		if err := r.release(); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// recordStart writes a run's opening history entry as running, so a daemon that
+// dies before the run finishes leaves a record the next startup reconciles to
+// crashed. Best-effort: a history write never blocks a boot.
+func (d *Daemon) recordStart(info RunInfo) {
+	if d.hist == nil {
+		return
+	}
+	if err := d.hist.Put(history.Record{
+		RunID:     info.ID,
+		Ref:       info.Ref,
+		Status:    history.StatusRunning,
+		StartedAt: info.StartedAt,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: recording run start for %s: %v\n", info.ID, err)
+	}
+}
+
+// recordFinish writes a run's terminal history entry. It reads the run's final
+// spend off the gateway first, while the gateway is still up, then escalates a
+// failed call to over_budget when that spend shows the budget was exhausted. The
+// caller invokes it before the run's teardown removes the gateway. Best-effort.
+func (d *Daemon) recordFinish(runID, status string, callErr error) {
+	if d.hist == nil {
+		return
+	}
+	rec, found, err := d.hist.Get(runID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: reading run record %s: %v\n", runID, err)
+	}
+	// Only runs opened with recordStart are finalized here; a serve front door,
+	// never recorded as a run, has no entry to close.
+	if !found {
+		return
+	}
+	report, ok := runtime.RunSpend(context.Background(), runID)
+	if status == history.StatusFailed && ok && report.BudgetMicroUSD > 0 && report.TotalMicroUSD >= report.BudgetMicroUSD {
+		status = history.StatusOverBudget
+	}
+	rec.RunID = runID
+	rec.Status = status
+	rec.EndedAt = nowFunc()
+	if callErr != nil {
+		rec.Error = callErr.Error()
+	}
+	if ok {
+		rec.CostMicroUSD = report.TotalMicroUSD
+		rec.BudgetMicroUSD = report.BudgetMicroUSD
+	}
+	if err := d.hist.Put(rec); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: recording run finish for %s: %v\n", runID, err)
+	}
+}
+
+// runInfoFromRecord projects a stored record onto the ps wire shape.
+func runInfoFromRecord(r history.Record) RunInfo {
+	return RunInfo{
+		ID:           r.RunID,
+		Ref:          r.Ref,
+		Status:       r.Status,
+		StartedAt:    r.StartedAt,
+		EndedAt:      r.EndedAt,
+		CostMicroUSD: r.CostMicroUSD,
+	}
 }
 
 // addFront records a serve front door and the runs it exposes, so shutdown can
@@ -249,13 +327,39 @@ func (d *Daemon) handleVersion(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"version": identity.Version})
 }
 
+// handleListRuns reports the durable history overlaid by the live set: a record
+// for every run that ever ran, with a live run's in-flight info winning over its
+// stored running entry. With no history (nil store) it falls back to the live
+// set, the pre-M7 behavior.
 func (d *Daemon) handleListRuns(w http.ResponseWriter, _ *http.Request) {
 	d.mu.Lock()
-	out := make([]RunInfo, 0, len(d.runs))
+	live := make(map[string]RunInfo, len(d.runs))
 	for _, r := range d.runs {
-		out = append(out, r.info)
+		live[r.info.ID] = r.info
 	}
 	d.mu.Unlock()
+
+	out := make([]RunInfo, 0, len(live))
+	seen := make(map[string]bool, len(live))
+	if d.hist != nil {
+		recs, err := d.hist.List()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: listing run history: %v\n", err)
+		}
+		for _, rec := range recs {
+			if lv, ok := live[rec.RunID]; ok {
+				out = append(out, lv)
+			} else {
+				out = append(out, runInfoFromRecord(rec))
+			}
+			seen[rec.RunID] = true
+		}
+	}
+	for id, lv := range live {
+		if !seen[id] {
+			out = append(out, lv)
+		}
+	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.Before(out[j].StartedAt) })
 	writeJSON(w, http.StatusOK, map[string]any{"runs": out})

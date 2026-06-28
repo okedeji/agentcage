@@ -2,12 +2,15 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/okedeji/agentcage/internal/history"
 	"github.com/okedeji/agentcage/internal/identity"
 )
 
@@ -53,10 +56,56 @@ func TestRegistry_HoldTake(t *testing.T) {
 	}
 }
 
+// TestListRuns_MergesHistoryAndLive locks the ps read path: a finished run comes
+// from history, a live run's in-flight info wins over its stored running record,
+// and both appear once.
+func TestListRuns_MergesHistoryAndLive(t *testing.T) {
+	d := New()
+	store, err := history.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	d.hist = store
+
+	now := time.Now()
+	if err := store.Put(history.Record{RunID: "done-1", Ref: "@me/echo:1", Status: history.StatusSucceeded, StartedAt: now.Add(-time.Minute), EndedAt: now, CostMicroUSD: 12_000}); err != nil {
+		t.Fatal(err)
+	}
+	d.hold(RunInfo{ID: "live-1", Ref: "@me/researcher:1", Status: "running", StartedAt: now}, nil)
+	if err := store.Put(history.Record{RunID: "live-1", Ref: "@me/researcher:1", Status: history.StatusRunning, StartedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	d.handleListRuns(rec, httptest.NewRequest(http.MethodGet, "/runs", nil))
+
+	var body struct {
+		Runs []RunInfo `json:"runs"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Runs) != 2 {
+		t.Fatalf("want 2 runs, got %d: %+v", len(body.Runs), body.Runs)
+	}
+	byID := map[string]RunInfo{}
+	for _, r := range body.Runs {
+		byID[r.ID] = r
+	}
+	if got := byID["done-1"]; got.Status != history.StatusSucceeded || got.CostMicroUSD != 12_000 {
+		t.Errorf("finished run not surfaced from history: %+v", got)
+	}
+	if got := byID["live-1"]; got.Status != "running" || !got.EndedAt.IsZero() {
+		t.Errorf("live run should win over its stored running record: %+v", got)
+	}
+}
+
 // TestServe_SocketRoundTrip starts the daemon on a real Unix socket, dials it
 // with the client, and checks version + ps over the wire, then a clean shutdown
 // when the context is cancelled.
 func TestServe_SocketRoundTrip(t *testing.T) {
+	t.Setenv("AGENTCAGE_HOME", t.TempDir())
 	socket := filepath.Join(t.TempDir(), "agentcage.sock")
 	d := New()
 	d.hold(RunInfo{
@@ -99,6 +148,7 @@ func TestServe_SocketRoundTrip(t *testing.T) {
 // the daemon down on its own, with no operator signal: Serve runs against a
 // background context, so only the shutdown request can stop it.
 func TestShutdown_StopsServe(t *testing.T) {
+	t.Setenv("AGENTCAGE_HOME", t.TempDir())
 	socket := filepath.Join(t.TempDir(), "agentcage.sock")
 	d := New()
 	errc := make(chan error, 1)
@@ -123,6 +173,7 @@ func TestShutdown_StopsServe(t *testing.T) {
 // TestServe_RefusesSecondListener locks the fail-fast behavior: a second daemon
 // against a socket a live one already owns errors rather than stomping it.
 func TestServe_RefusesSecondListener(t *testing.T) {
+	t.Setenv("AGENTCAGE_HOME", t.TempDir())
 	socket := filepath.Join(t.TempDir(), "agentcage.sock")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

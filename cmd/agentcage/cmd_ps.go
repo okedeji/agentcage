@@ -39,13 +39,33 @@ the agent reference, its status, and how long it has been up.`,
 
 // printRuns renders the ps table. The header prints even when there are no
 // runs, so an empty list reads as "nothing running" rather than blank output.
+// UP is how long a live run has been up or, for a finished run, the dash; COST
+// is the run's metered LLM spend, blank when nothing was metered.
 func printRuns(w io.Writer, runs []daemon.RunInfo) {
 	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "RUN ID\tREF\tSTATUS\tUP")
+	_, _ = fmt.Fprintln(tw, "RUN ID\tREF\tSTATUS\tUP\tCOST")
 	for _, r := range runs {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.ID, r.Ref, r.Status, since(r.StartedAt))
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.ID, r.Ref, r.Status, uptime(r), cost(r.CostMicroUSD))
 	}
 	_ = tw.Flush()
+}
+
+// uptime is the age of a live run and a dash for a finished one: a run with an
+// end time is no longer "up", so reporting its age would mislead.
+func uptime(r daemon.RunInfo) string {
+	if !r.EndedAt.IsZero() {
+		return "-"
+	}
+	return since(r.StartedAt)
+}
+
+// cost formats a run's metered spend, blank when nothing was metered so a tool
+// collection or an unstarted run does not show a misleading $0.0000.
+func cost(microUSD int64) string {
+	if microUSD == 0 {
+		return ""
+	}
+	return fmt.Sprintf("$%.4f", float64(microUSD)/1e6)
 }
 
 // since formats how long a run has been up as a single coarse unit ("3s", "5m",

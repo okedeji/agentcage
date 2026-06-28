@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/agentcage/internal/history"
 	"github.com/okedeji/agentcage/internal/locate"
 	"github.com/okedeji/agentcage/internal/runtime"
 )
@@ -48,7 +49,9 @@ func (d *Daemon) boot(ctx context.Context, in runtime.RunInput, display string) 
 	// background context so it outlives the request, a one-shot's request context
 	// so it ends with the call. Release cancels it.
 	session.StartWorkingSet(ctx)
-	d.hold(RunInfo{ID: session.RunID(), Ref: display, Status: "running", StartedAt: nowFunc()}, session)
+	info := RunInfo{ID: session.RunID(), Ref: display, Status: "running", StartedAt: nowFunc()}
+	d.hold(info, session)
+	d.recordStart(info)
 	return session, nil
 }
 
@@ -148,6 +151,9 @@ func (d *Daemon) handleStopRun(w http.ResponseWriter, r *http.Request) {
 	// uses: external traffic stops before the agents behind it go away. For a
 	// serve entry this releases its whole client-instance pool.
 	d.releaseFrontFor(id)
+	// Record the stop before release tears the gateway down, so the run's final
+	// spend is still readable. A serve entry has no history record and is skipped.
+	d.recordFinish(id, history.StatusStopped, nil)
 	if err := held.release(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

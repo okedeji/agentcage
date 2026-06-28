@@ -9,6 +9,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/config"
 	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/agentcage/internal/history"
 	"github.com/okedeji/agentcage/internal/locate"
 	"github.com/okedeji/agentcage/internal/runtime"
 )
@@ -94,10 +95,17 @@ func (d *Daemon) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := session.Call(r.Context(), req.Tool, req.Args)
+	result, callErr := session.Call(r.Context(), req.Tool, req.Args)
+	status := history.StatusSucceeded
+	if callErr != nil {
+		status = history.StatusFailed
+	}
+	// Record before dropRuns tears the gateway down, so the run's final spend is
+	// still readable; recordFinish escalates a failure to over_budget from it.
+	d.recordFinish(session.RunID(), status, callErr)
 	d.dropRuns([]*runtime.Session{session})
-	if err != nil {
-		stream.frame("error", err.Error())
+	if callErr != nil {
+		stream.frame("error", callErr.Error())
 		return
 	}
 	stream.frame("result", result)

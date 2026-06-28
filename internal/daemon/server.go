@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/okedeji/agentcage/internal/history"
 	"github.com/okedeji/agentcage/internal/runtime"
 )
 
@@ -48,6 +49,24 @@ func Serve(ctx context.Context, d *Daemon, socketPath string) error {
 	// is logged, not fatal.
 	if err := runtime.SweepDaemonOrphans(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: reconciliation sweep: %v\n", err)
+	}
+
+	// Open the durable run history and reconcile any run still marked running: at
+	// startup that is a run whose daemon died under it, so it is crashed. Best
+	// effort, like the sweep above. History that will not open leaves d.hist nil
+	// and the daemon serves without it rather than refusing to start.
+	if path, err := history.DefaultPath(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: run history path: %v\n", err)
+	} else if store, err := history.Open(path); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: opening run history: %v\n", err)
+	} else {
+		d.hist = store
+		defer func() { _ = store.Close() }()
+		if n, err := store.ReconcileRunning(nowFunc()); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: reconciling run history: %v\n", err)
+		} else if n > 0 {
+			fmt.Fprintf(os.Stderr, "reconciled %d crashed run(s) from a previous daemon\n", n)
+		}
 	}
 
 	srv := &http.Server{Handler: d.Handler()}

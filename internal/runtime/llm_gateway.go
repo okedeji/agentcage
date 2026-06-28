@@ -191,22 +191,41 @@ func startLLMGateway(ctx context.Context, sess *bootSession, runID string, agent
 	return nil
 }
 
-// printSpendSummary reads the run's final spend off the LLM gateway's logs and
-// prints the operator's end-of-run summary. The gateway is reaped with rm -f,
-// so its last logged snapshot is the source of truth. It is best-effort: a run
-// that did no metered call, or a log read that fails, prints nothing and never
-// fails teardown, which still has a container to remove.
-func printSpendSummary(p Provisioner, name string, w io.Writer) error {
-	ctx, cancel := context.WithTimeout(context.Background(), containerStopTimeout)
+// RunSpend reads a run's current LLM spend off its gateway, the structured
+// counterpart to printSpendSummary's operator text: the daemon records it into
+// the run history at finish. Best-effort, like the summary. A run that does not
+// reason, or whose gateway is already gone, reports !ok rather than erroring, so
+// it must be read before teardown removes the gateway.
+func RunSpend(ctx context.Context, runID string) (llmgateway.SpendReport, bool) {
+	p, err := DefaultProvisioner()
+	if err != nil {
+		return llmgateway.SpendReport{}, false
+	}
+	defer func() { _ = p.Close() }()
+	return readSpend(ctx, p, llmGatewayName(runID))
+}
+
+// readSpend reads the gateway's last logged spend snapshot. The gateway is
+// reaped with rm -f, so its logs are the source of truth while it is still up.
+func readSpend(ctx context.Context, p Provisioner, name string) (llmgateway.SpendReport, bool) {
+	ctx, cancel := context.WithTimeout(ctx, containerStopTimeout)
 	defer cancel()
 	cmd := p.Nerdctl(ctx, "logs", name)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	if cmd.Run() != nil {
-		return nil
+		return llmgateway.SpendReport{}, false
 	}
-	report, ok := llmgateway.ParseSpendLine(out.String())
+	return llmgateway.ParseSpendLine(out.String())
+}
+
+// printSpendSummary reads the run's final spend off the LLM gateway's logs and
+// prints the operator's end-of-run summary. It is best-effort: a run that did no
+// metered call, or a log read that fails, prints nothing and never fails
+// teardown, which still has a container to remove.
+func printSpendSummary(p Provisioner, name string, w io.Writer) error {
+	report, ok := readSpend(context.Background(), p, name)
 	if !ok {
 		return nil
 	}

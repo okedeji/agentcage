@@ -9,6 +9,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/tonistiigi/fsutil v0.0.0-20251211185533-a2aa163d723f
+	go.etcd.io/bbolt v1.4.3
 	golang.org/x/term v0.43.0
 	oras.land/oras-go/v2 v2.6.1
 )
