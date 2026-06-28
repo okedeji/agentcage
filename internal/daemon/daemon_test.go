@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,6 +14,20 @@ import (
 	"github.com/okedeji/agentcage/internal/history"
 	"github.com/okedeji/agentcage/internal/identity"
 )
+
+// shortSocket returns a Unix socket path under a short temp dir, not t.TempDir(),
+// whose name carries the test name. macOS caps a socket path at 104 bytes, and a
+// long test name under /var/folders pushes t.TempDir()'s path over it; a short
+// /tmp dir keeps every test's socket bindable.
+func shortSocket(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "ac")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "agentcage.sock")
+}
 
 func TestFront_ClosesWhenLastRunStops(t *testing.T) {
 	d := New()
@@ -106,7 +121,7 @@ func TestListRuns_MergesHistoryAndLive(t *testing.T) {
 // when the context is cancelled.
 func TestServe_SocketRoundTrip(t *testing.T) {
 	t.Setenv("AGENTCAGE_HOME", t.TempDir())
-	socket := filepath.Join(t.TempDir(), "agentcage.sock")
+	socket := shortSocket(t)
 	d := New()
 	d.hold(RunInfo{
 		ID:        "researcher-abc",
@@ -149,7 +164,7 @@ func TestServe_SocketRoundTrip(t *testing.T) {
 // background context, so only the shutdown request can stop it.
 func TestShutdown_StopsServe(t *testing.T) {
 	t.Setenv("AGENTCAGE_HOME", t.TempDir())
-	socket := filepath.Join(t.TempDir(), "agentcage.sock")
+	socket := shortSocket(t)
 	d := New()
 	errc := make(chan error, 1)
 	go func() { errc <- Serve(context.Background(), d, socket) }()
@@ -174,7 +189,7 @@ func TestShutdown_StopsServe(t *testing.T) {
 // against a socket a live one already owns errors rather than stomping it.
 func TestServe_RefusesSecondListener(t *testing.T) {
 	t.Setenv("AGENTCAGE_HOME", t.TempDir())
-	socket := filepath.Join(t.TempDir(), "agentcage.sock")
+	socket := shortSocket(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = Serve(ctx, New(), socket) }()
