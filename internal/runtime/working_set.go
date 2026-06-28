@@ -116,6 +116,12 @@ type workingSet struct {
 	// a boot that the run answered closed.
 	stderr io.Writer
 
+	// onEvent and runID feed the daemon's live event feed: each activation and
+	// eviction reports through onEvent, stamped with runID. Nil for every caller
+	// but the daemon, so the activation path pays nothing off that path.
+	onEvent func(Event)
+	runID   string
+
 	// warnings are boot-time notes the operator should see, like a live-cage cap
 	// clamped to fit memory. A one-shot run streams them on stderr; a served run's
 	// stderr is the daemon log, so serve reports these in its response instead.

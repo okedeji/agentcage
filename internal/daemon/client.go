@@ -135,6 +135,35 @@ func (c *Client) Logs(ctx context.Context, id string, follow bool, w io.Writer) 
 	return err
 }
 
+// Events streams the daemon's lifecycle feed, calling onEvent for each event
+// until the caller's context is cancelled or the daemon closes the stream. It is
+// the client behind `agentcage events`.
+func (c *Client) Events(ctx context.Context, onEvent func(Event)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/events", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return &Unreachable{err}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("daemon /events: %s", errorBody(resp))
+	}
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var e Event
+		if err := dec.Decode(&e); err != nil {
+			if err == io.EOF || ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("reading event stream: %w", err)
+		}
+		onEvent(e)
+	}
+}
+
 // Spend returns a live run's current LLM spend, the data behind `agentcage
 // spend`. It errors when the run is not reasoning or no longer running.
 func (c *Client) Spend(ctx context.Context, id string) (llmgateway.SpendReport, error) {

@@ -395,6 +395,7 @@ func (w *workingSet) reserveAndBoot(ctx context.Context, node string) error {
 	w.lastUse[node] = nowFunc()
 	w.addr[node] = addr
 	w.mu.Unlock()
+	w.event(EventCageActivated, node, "")
 	return nil
 }
 
@@ -484,6 +485,7 @@ func (w *workingSet) dropEvicting(ctx context.Context, node string) {
 	delete(w.addr, node)
 	edges := w.edgesByNode[node]
 	w.mu.Unlock()
+	w.event(EventCageEvicted, node, "")
 	// A slot freed; wake an activation that was waiting for one.
 	w.signalSlotFree()
 	for _, edge := range edges {

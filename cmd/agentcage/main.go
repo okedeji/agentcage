@@ -36,6 +36,7 @@ func main() {
 	root.AddCommand(newPsCmd())
 	root.AddCommand(newLogsCmd())
 	root.AddCommand(newSpendCmd())
+	root.AddCommand(newEventsCmd())
 	root.AddCommand(newStopCmd())
 	root.AddCommand(newBudgetCmd())
 	root.AddCommand(newMCPGatewayCmd())

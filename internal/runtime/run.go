@@ -60,6 +60,11 @@ type RunInput struct {
 	// for a held or served run. Empty injects nothing.
 	Interaction string
 
+	// OnEvent observes the run's in-process lifecycle: a sub-agent activating or
+	// being reaped, a question asked of the operator. The daemon sets it to feed
+	// its live event feed; every other caller leaves it nil and pays nothing.
+	OnEvent func(Event)
+
 	// Stdout / Stderr receive provisioning progress, the agent's
 	// stderr stream, and the final tool result. Callers typically
 	// pass os.Stdout and os.Stderr; tests can capture into a buffer.
@@ -192,6 +197,8 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 	var router *elicitRouter
 	if in.Interaction == env.InteractionInteractive {
 		router = newElicitRouter()
+		router.onEvent = in.OnEvent
+		router.runID = runID
 	}
 
 	boot := bootInput{
@@ -209,6 +216,7 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 		NoCache:     in.NoCache,
 		Managed:     in.Managed,
 		Interaction: in.Interaction,
+		OnEvent:     in.OnEvent,
 	}
 	if router != nil {
 		boot.ElicitHandler = router.route
@@ -275,6 +283,10 @@ type bootInput struct {
 	// Interaction injects AGENTCAGE_INTERACTION into the root agent so its LLM
 	// knows whether a follow-up turn is possible. Empty injects nothing.
 	Interaction string
+
+	// OnEvent observes the working set's activations and evictions for the daemon's
+	// live event feed. Nil off the daemon path.
+	OnEvent func(Event)
 
 	// ElicitHandler, when set, lets the root agent ask the operator a question
 	// mid-call: the root's MCP client advertises the elicitation capability and

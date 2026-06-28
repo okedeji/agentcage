@@ -26,6 +26,39 @@ func TestElicitRouter_RoutesToBoundTarget(t *testing.T) {
 	}
 }
 
+func TestElicitRouter_EmitsAskedThenAnswered(t *testing.T) {
+	r := newElicitRouter()
+	r.runID = "run-1"
+	var got []Event
+	r.onEvent = func(e Event) { got = append(got, e) }
+
+	release := r.bind(okTarget)
+	defer release()
+	if _, err := r.route(context.Background(), &mcp.ElicitRequest{Message: "hi"}); err != nil {
+		t.Fatalf("route: %v", err)
+	}
+
+	if len(got) != 2 || got[0].Type != EventElicitationAsked || got[1].Type != EventElicitationAnswered {
+		t.Fatalf("events = %+v, want asked then answered", got)
+	}
+	if got[0].RunID != "run-1" {
+		t.Errorf("asked not stamped with run id: %+v", got[0])
+	}
+	if got[1].Detail != "accept" {
+		t.Errorf("answered detail = %q, want the action", got[1].Detail)
+	}
+}
+
+func TestElicitRouter_NoTargetEmitsNothing(t *testing.T) {
+	r := newElicitRouter()
+	fired := false
+	r.onEvent = func(Event) { fired = true }
+	_, _ = r.route(context.Background(), &mcp.ElicitRequest{Message: "x"})
+	if fired {
+		t.Error("a question with no caller must not emit an asked/answered event")
+	}
+}
+
 func TestElicitRouter_NoTargetErrors(t *testing.T) {
 	r := newElicitRouter()
 	if _, err := r.route(context.Background(), &mcp.ElicitRequest{Message: "x"}); err == nil {

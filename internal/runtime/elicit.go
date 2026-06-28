@@ -30,6 +30,13 @@ type elicitRouter struct {
 	call   sync.Mutex // held for a call's duration; serializes eliciting calls
 	mu     sync.Mutex // guards target
 	target mcp.ElicitHandler
+
+	// onEvent and runID feed the daemon's live event feed. route is the single
+	// choke point for every question, root or sub-agent, so the asked/answered
+	// pair reports here once per elicitation regardless of depth. Nil off the
+	// daemon path.
+	onEvent func(Event)
+	runID   string
 }
 
 func newElicitRouter() *elicitRouter { return &elicitRouter{} }
@@ -61,7 +68,12 @@ func (r *elicitRouter) route(ctx context.Context, q *mcp.ElicitRequest) (*mcp.El
 	if target == nil {
 		return nil, fmt.Errorf("no caller is available to answer this question")
 	}
+	emitEvent(r.onEvent, Event{RunID: r.runID, Type: EventElicitationAsked})
 	ctx, cancel := context.WithTimeout(ctx, elicitDeadline)
 	defer cancel()
-	return target(ctx, q)
+	res, err := target(ctx, q)
+	if err == nil && res != nil {
+		emitEvent(r.onEvent, Event{RunID: r.runID, Type: EventElicitationAnswered, Detail: res.Action})
+	}
+	return res, err
 }

@@ -73,6 +73,9 @@ type Daemon struct {
 	// an already-closed channel.
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
+	// events is the live lifecycle feed behind `agentcage events`. It is the one
+	// sink the run lifecycle publishes through, independent of history.
+	events *eventBus
 }
 
 // front is one serve front door: its HTTP server and the runs it exposes. The
@@ -102,7 +105,7 @@ type heldRun struct {
 
 // New returns a daemon with an empty registry.
 func New() *Daemon {
-	return &Daemon{runs: map[string]*heldRun{}, shutdown: make(chan struct{})}
+	return &Daemon{runs: map[string]*heldRun{}, shutdown: make(chan struct{}), events: newEventBus()}
 }
 
 // hold records a booted run, its Session, and its durable log under the run id.
@@ -196,7 +199,7 @@ func (d *Daemon) releaseAll() error {
 		// A clean shutdown is a stop, not a crash: record it so the next startup's
 		// reconcile leaves it alone. Read before release, while the gateway is up.
 		if r.session != nil {
-			d.recordFinish(r.info.ID, history.StatusStopped, nil)
+			d.finish(r.info.ID, r.info.Ref, history.StatusStopped, nil)
 		}
 		if err := r.release(); err != nil {
 			errs = append(errs, err)
@@ -222,40 +225,43 @@ func (d *Daemon) recordStart(info RunInfo) {
 	}
 }
 
-// recordFinish writes a run's terminal history entry. It reads the run's final
-// spend off the gateway first, while the gateway is still up, then escalates a
-// failed call to over_budget when that spend shows the budget was exhausted. The
-// caller invokes it before the run's teardown removes the gateway. Best-effort.
-func (d *Daemon) recordFinish(runID, status string, callErr error) {
-	if d.hist == nil {
-		return
-	}
-	rec, found, err := d.hist.Get(runID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: reading run record %s: %v\n", runID, err)
-	}
-	// Only runs opened with recordStart are finalized here; a serve front door,
-	// never recorded as a run, has no entry to close.
-	if !found {
-		return
-	}
+// finish closes out a run: it reads the run's final spend off the gateway (while
+// the gateway is still up, so the caller invokes it before teardown), escalates
+// a failed call to over_budget when that spend shows the budget was exhausted,
+// writes the terminal history record, and publishes the run.ended event. The
+// event fires even with history off; the history write is best-effort. Callers
+// pass it only for session runs, so a serve front door, which has no run
+// lifecycle, never appears on the feed.
+func (d *Daemon) finish(runID, ref, status string, callErr error) {
 	report, ok := runtime.RunSpend(context.Background(), runID)
 	if status == history.StatusFailed && ok && report.BudgetMicroUSD > 0 && report.TotalMicroUSD >= report.BudgetMicroUSD {
 		status = history.StatusOverBudget
 	}
-	rec.RunID = runID
-	rec.Status = status
-	rec.EndedAt = nowFunc()
+	if d.hist != nil {
+		rec, found, err := d.hist.Get(runID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: reading run record %s: %v\n", runID, err)
+		}
+		if found {
+			rec.Status = status
+			rec.EndedAt = nowFunc()
+			if callErr != nil {
+				rec.Error = callErr.Error()
+			}
+			if ok {
+				rec.CostMicroUSD = report.TotalMicroUSD
+				rec.BudgetMicroUSD = report.BudgetMicroUSD
+			}
+			if err := d.hist.Put(rec); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: recording run finish for %s: %v\n", runID, err)
+			}
+		}
+	}
+	e := Event{Time: nowFunc(), Type: EventRunEnded, RunID: runID, Ref: ref, Status: status}
 	if callErr != nil {
-		rec.Error = callErr.Error()
+		e.Detail = callErr.Error()
 	}
-	if ok {
-		rec.CostMicroUSD = report.TotalMicroUSD
-		rec.BudgetMicroUSD = report.BudgetMicroUSD
-	}
-	if err := d.hist.Put(rec); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: recording run finish for %s: %v\n", runID, err)
-	}
+	d.events.publish(e)
 }
 
 // runInfoFromRecord projects a stored record onto the ps wire shape.
@@ -330,6 +336,7 @@ func (d *Daemon) Handler() http.Handler {
 	mux.HandleFunc("POST /runs", d.handleStartRun)
 	mux.HandleFunc("POST /runs/{id}/call", d.handleCallRun)
 	mux.HandleFunc("POST /runs/{id}/budget", d.handleSetBudget)
+	mux.HandleFunc("GET /events", d.handleEvents)
 	mux.HandleFunc("GET /runs/{id}/logs", d.handleRunLogs)
 	mux.HandleFunc("GET /runs/{id}/spend", d.handleRunSpend)
 	mux.HandleFunc("POST /runs/{id}/stop", d.handleStopRun)

@@ -22,6 +22,21 @@ func newTestWS(maxLive, hostMax int) *workingSet {
 	}
 }
 
+func TestWorkingSetEvent_StampsRunIDAndNoopsWithoutObserver(t *testing.T) {
+	w := newTestWS(8, 32)
+	// No observer set: the event helper is a no-op, never a nil-call panic.
+	w.event(EventCageActivated, "child", "")
+
+	w.runID = "run-2"
+	var got []Event
+	w.onEvent = func(e Event) { got = append(got, e) }
+	w.event(EventCageEvicted, "child", "")
+
+	if len(got) != 1 || got[0].Type != EventCageEvicted || got[0].RunID != "run-2" || got[0].Target != "child" {
+		t.Fatalf("event = %+v, want one cage.evicted stamped run-2/child", got)
+	}
+}
+
 func TestOccupiedCountsElasticBootingAndLive(t *testing.T) {
 	w := newTestWS(8, 32)
 	w.state["a"] = cageLive

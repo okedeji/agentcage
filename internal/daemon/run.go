@@ -45,6 +45,19 @@ func (d *Daemon) boot(ctx context.Context, in runtime.RunInput, display string) 
 	// once the run id exists, so `agentcage logs` can read the run after it ends.
 	rl := &runLog{inner: in.Stderr}
 	in.Stderr = rl
+	// Forward the run's in-process lifecycle (sub-agent activation, eviction,
+	// elicitation) onto the event feed. The runtime stamps the run id; display is
+	// stable for the run's life, so the closure carries it as the ref.
+	in.OnEvent = func(e runtime.Event) {
+		d.events.publish(Event{
+			Time:   nowFunc(),
+			Type:   e.Type,
+			RunID:  e.RunID,
+			Ref:    display,
+			Target: e.Target,
+			Detail: e.Detail,
+		})
+	}
 	session, err := runtime.Acquire(ctx, in)
 	if err != nil {
 		return nil, err
@@ -57,6 +70,7 @@ func (d *Daemon) boot(ctx context.Context, in runtime.RunInput, display string) 
 	info := RunInfo{ID: session.RunID(), Ref: display, Status: "running", StartedAt: nowFunc()}
 	d.hold(info, session, logFile)
 	d.recordStart(info)
+	d.events.publish(Event{Time: info.StartedAt, Type: EventRunStarted, RunID: info.ID, Ref: info.Ref})
 	return session, nil
 }
 
@@ -156,9 +170,12 @@ func (d *Daemon) handleStopRun(w http.ResponseWriter, r *http.Request) {
 	// uses: external traffic stops before the agents behind it go away. For a
 	// serve entry this releases its whole client-instance pool.
 	d.releaseFrontFor(id)
-	// Record the stop before release tears the gateway down, so the run's final
-	// spend is still readable. A serve entry has no history record and is skipped.
-	d.recordFinish(id, history.StatusStopped, nil)
+	// Finish before release tears the gateway down, so the run's final spend is
+	// still readable. Only a session run has a lifecycle to close; a serve front
+	// door is skipped.
+	if held.session != nil {
+		d.finish(id, held.info.Ref, history.StatusStopped, nil)
+	}
 	if err := held.release(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

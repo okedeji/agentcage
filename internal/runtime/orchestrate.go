@@ -337,6 +337,8 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		stopCage:       func(name string) error { return removeContainer(sess.provisioner, name) },
 		stderr:         in.Stderr,
 		warnings:       warnings,
+		onEvent:        in.OnEvent,
+		runID:          in.RunID,
 	}
 	return client, ws, nil
 }

@@ -99,9 +99,9 @@ func (d *Daemon) handleRun(w http.ResponseWriter, r *http.Request) {
 	if callErr != nil {
 		status = history.StatusFailed
 	}
-	// Record before dropRuns tears the gateway down, so the run's final spend is
-	// still readable; recordFinish escalates a failure to over_budget from it.
-	d.recordFinish(session.RunID(), status, callErr)
+	// Finish before dropRuns tears the gateway down, so the run's final spend is
+	// still readable; finish escalates a failure to over_budget from it.
+	d.finish(session.RunID(), b.Display, status, callErr)
 	d.dropRuns([]*runtime.Session{session})
 	if callErr != nil {
 		stream.frame("error", callErr.Error())
