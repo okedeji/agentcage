@@ -313,6 +313,7 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		slotFreed:      make(chan struct{}, 1),
 		saturationWait: saturationWaitDefault,
 		outbound:       make(chan mcpgateway.ControlMessage, 256),
+		elicit:         in.ElicitHandler,
 		startCage:      startCage,
 		stopCage:       func(name string) error { return removeContainer(sess.provisioner, name) },
 		stderr:         in.Stderr,

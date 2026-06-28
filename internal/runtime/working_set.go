@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/okedeji/agentcage/internal/mcp"
 	"github.com/okedeji/agentcage/internal/mcpgateway"
 )
 
@@ -95,6 +96,13 @@ type workingSet struct {
 	// over whichever control stream is connected. Buffered so a boot completing
 	// never blocks on the writer.
 	outbound chan mcpgateway.ControlMessage
+
+	// elicit routes a sub-agent's mid-call question to the operator driving the
+	// run's current call. It is the same router the serve front door binds the
+	// operator's answer side onto, so a question from any depth reaches the caller
+	// directly over the control stream rather than bubbling agent by agent. Nil
+	// for a one-shot tree, which has no operator to ask, so its questions fail closed.
+	elicit mcp.ElicitHandler
 
 	// startCage builds and starts one cage's container and returns the address the
 	// gateway should forward to (the cage's container IP); stopCage removes it.

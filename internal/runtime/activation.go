@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/okedeji/agentcage/internal/mcp"
 	"github.com/okedeji/agentcage/internal/mcpgateway"
 )
 
@@ -177,7 +178,34 @@ func (w *workingSet) dispatch(ctx context.Context, m mcpgateway.ControlMessage) 
 		w.onUnpin(m.Edge)
 	case mcpgateway.MsgResync:
 		w.onResync(m.Pins)
+	case mcpgateway.MsgElicit:
+		go w.handleElicit(ctx, m)
 	}
+}
+
+// handleElicit routes a sub-agent's question to the operator and reports the
+// answer back. It runs in its own goroutine because the operator wait is long
+// (a human is answering) and must not stall pin tracking or other activations.
+// A run with no operator to ask (a one-shot tree) or a routing failure answers
+// not-reached, so the gateway fails the asking call closed rather than handing
+// the agent a non-answer.
+func (w *workingSet) handleElicit(ctx context.Context, m mcpgateway.ControlMessage) {
+	reply := mcpgateway.ControlMessage{Type: mcpgateway.MsgElicitResult, ID: m.ID}
+	if w.elicit == nil || m.Question == nil {
+		w.emit(ctx, reply)
+		return
+	}
+	res, err := w.elicit(ctx, &mcp.ElicitRequest{Message: m.Question.Message, Schema: m.Question.Schema})
+	if err != nil {
+		if w.stderr != nil {
+			_, _ = fmt.Fprintf(w.stderr, "elicitation failed for edge %s: %v\n", m.Edge, err)
+		}
+		w.emit(ctx, reply)
+		return
+	}
+	reply.OK = true
+	reply.Answer = &mcpgateway.ElicitAnswer{Action: res.Action, Content: res.Content}
+	w.emit(ctx, reply)
 }
 
 // handleActivate boots the sub-agent an edge routes to and reports the verdict
