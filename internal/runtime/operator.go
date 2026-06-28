@@ -24,6 +24,8 @@ type operatorInputs struct {
 	// maxLive caps the live cages per run, which is also the most networks of one
 	// pool a run can need at once, so the planner sizes each network pool by it.
 	maxLive int
+	// record turns on the MCP gateway's full-payload capture for replay.
+	record bool
 }
 
 // refKey is the config key for an agent: @org/name, version-independent, so an

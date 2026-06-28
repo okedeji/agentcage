@@ -40,7 +40,7 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 	// choice, so this overlays onto Defaults only.
 	res := cfg.Resources
 	res.Defaults = overlayCap(in.Resources, res.Defaults)
-	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), keepWarm: cfg.Cages.KeepWarm, maxLive: cfg.Cages.EffectiveMaxLive()}
+	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), keepWarm: cfg.Cages.KeepWarm, maxLive: cfg.Cages.EffectiveMaxLive(), record: in.Record}
 
 	// The machine memory cap applies to both boot paths, so set it before the
 	// branch; the live-cage caps and idle TTL only bound a USES tree's elastic set.

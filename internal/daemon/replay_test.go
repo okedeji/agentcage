@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/okedeji/agentcage/internal/llmgateway"
+	"github.com/okedeji/agentcage/internal/mcpgateway"
 	"github.com/okedeji/agentcage/internal/replay"
 )
 
@@ -17,7 +18,7 @@ func TestReplayEvents_MapsRecordsInOrder(t *testing.T) {
 		{Agent: "root", Request: []byte(`{"q":1}`), Response: []byte(`{"a":2}`), PromptTokens: 10, CompletionTokens: 5, CostMicroUSD: 100},
 		{Agent: "root", Response: []byte("data: chunk\n\n"), Streamed: true},
 	}
-	events := replayEvents(records)
+	events := replayEvents(records, nil)
 	if len(events) != 2 {
 		t.Fatalf("events = %d, want 2", len(events))
 	}
@@ -34,6 +35,23 @@ func TestReplayEvents_MapsRecordsInOrder(t *testing.T) {
 	var s string
 	if err := json.Unmarshal(events[1].Response, &s); err != nil || s != "data: chunk\n\n" {
 		t.Errorf("streamed response = %s, want a JSON string", events[1].Response)
+	}
+}
+
+func TestReplayEvents_MergesLLMAndSubagentByStart(t *testing.T) {
+	records := []llmgateway.CallRecord{{StartUnixNano: 200, Response: []byte(`{}`)}}
+	subRecords := []mcpgateway.SubCallRecord{{Edge: "web", Tool: "search", StartUnixNano: 100, Args: []byte(`{"q":1}`), Response: []byte(`{}`)}}
+
+	events := replayEvents(records, subRecords)
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	// The earlier sub-agent call comes first and seqs start at 0.
+	if events[0].Type != "subagent.web.search" || events[0].Seq != 0 {
+		t.Errorf("first event = %+v, want the t=100 sub-agent call at seq 0", events[0])
+	}
+	if events[1].Type != replay.EventLLMComplete || events[1].Seq != 1 {
+		t.Errorf("second event = %+v, want the t=200 llm call at seq 1", events[1])
 	}
 }
 

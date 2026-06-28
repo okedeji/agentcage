@@ -337,6 +337,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	}
 	plan.LLMNets = append(plan.LLMNets, plan.ReasonPool...)
 
+	plan.MCPGatewayCfg.Record = ops.record
 	cfgJSON, err := json.Marshal(plan.MCPGatewayCfg)
 	if err != nil {
 		return nil, fmt.Errorf("encoding MCP gateway routing table: %w", err)

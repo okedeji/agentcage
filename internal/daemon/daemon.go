@@ -252,9 +252,10 @@ func (d *Daemon) finish(runID, ref, status string, callErr error) {
 				rec.CostMicroUSD = report.TotalMicroUSD
 				rec.BudgetMicroUSD = report.BudgetMicroUSD
 			}
-			if len(calls) > 0 {
+			subCalls, _ := runtime.RunSubagentCalls(context.Background(), runID)
+			if len(calls) > 0 || len(subCalls) > 0 {
 				rec.TotalTokens = totalTokens(calls)
-				if b, err := json.Marshal(buildTrace(runID, rec.StartedAt, rec.EndedAt, calls)); err == nil {
+				if b, err := json.Marshal(buildTrace(runID, rec.StartedAt, rec.EndedAt, calls, subCalls)); err == nil {
 					rec.TraceJSON = string(b)
 				}
 			}

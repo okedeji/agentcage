@@ -6,11 +6,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/okedeji/agentcage/internal/bundle"
 	"github.com/okedeji/agentcage/internal/llmgateway"
 	"github.com/okedeji/agentcage/internal/locate"
+	"github.com/okedeji/agentcage/internal/mcpgateway"
 	"github.com/okedeji/agentcage/internal/replay"
 	"github.com/okedeji/agentcage/internal/runtime"
 )
@@ -22,12 +24,13 @@ import (
 // Best-effort: a recording that cannot be written warns and never fails the run.
 func (d *Daemon) writeReplay(runID string, b locate.Result, req RunRequest, result string, callErr error, started time.Time) {
 	records, _ := runtime.RunReplay(context.Background(), runID)
+	subRecords, _ := runtime.RunSubagentReplay(context.Background(), runID)
 	rec := &replay.Recording{
 		Version:   replay.Version,
 		AgentRef:  b.Display,
 		RunID:     runID,
 		Input:     replay.Input{Tool: req.Tool, Args: req.Args},
-		Events:    replayEvents(records),
+		Events:    replayEvents(records, subRecords),
 		StartedAt: started,
 		EndedAt:   nowFunc(),
 		Result:    replayResult(result, callErr),
@@ -40,18 +43,24 @@ func (d *Daemon) writeReplay(runID string, b locate.Result, req RunRequest, resu
 	}
 }
 
-// replayEvents maps the gateway's call records to ordered replay events,
-// embedding each captured body as JSON when it is JSON and a JSON string
+// replayEvents merges the LLM gateway's call records and the MCP gateway's
+// sub-agent records into one event list, ordered by occurrence and numbered by
+// seq. Each captured body is embedded as JSON when it is JSON and a JSON string
 // otherwise (a streamed response).
-func replayEvents(records []llmgateway.CallRecord) []replay.Event {
-	out := make([]replay.Event, 0, len(records))
-	for i, r := range records {
+func replayEvents(records []llmgateway.CallRecord, subRecords []mcpgateway.SubCallRecord) []replay.Event {
+	timed := make([]struct {
+		start int64
+		ev    replay.Event
+	}, 0, len(records)+len(subRecords))
+	for _, r := range records {
 		typ := replay.EventLLMComplete
 		if r.Streamed {
 			typ = replay.EventLLMStream
 		}
-		out = append(out, replay.Event{
-			Seq:          i,
+		timed = append(timed, struct {
+			start int64
+			ev    replay.Event
+		}{r.StartUnixNano, replay.Event{
 			Type:         typ,
 			Request:      replay.RawOrString(r.Request),
 			Response:     replay.RawOrString(r.Response),
@@ -59,7 +68,26 @@ func replayEvents(records []llmgateway.CallRecord) []replay.Event {
 			TokensOut:    r.CompletionTokens,
 			CostMicroUSD: r.CostMicroUSD,
 			TUnixNano:    r.StartUnixNano,
-		})
+		}})
+	}
+	for _, r := range subRecords {
+		timed = append(timed, struct {
+			start int64
+			ev    replay.Event
+		}{r.StartUnixNano, replay.Event{
+			Type:      "subagent." + r.Edge + "." + r.Tool,
+			Request:   replay.RawOrString(r.Args),
+			Response:  replay.RawOrString(r.Response),
+			TUnixNano: r.StartUnixNano,
+		}})
+	}
+	sort.SliceStable(timed, func(i, j int) bool { return timed[i].start < timed[j].start })
+
+	out := make([]replay.Event, 0, len(timed))
+	for i, t := range timed {
+		ev := t.ev
+		ev.Seq = i
+		out = append(out, ev)
 	}
 	return out
 }

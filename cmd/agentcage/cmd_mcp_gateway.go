@@ -32,6 +32,10 @@ func newMCPGatewayCmd() *cobra.Command {
 				addr = ":" + env.DefaultMCPGatewayPort
 			}
 			gw := mcpgateway.New(cfg)
+			gw.SetHooks(mcpgateway.Hooks{
+				Call:    func(e mcpgateway.SubCallEvent) { mcpgateway.WriteSubCallLine(os.Stdout, e) },
+				Payload: func(r mcpgateway.SubCallRecord) { mcpgateway.WriteSubReplayLine(os.Stdout, r) },
+			})
 
 			// The activation control stream listens on the container's loopback
 			// only, so agents on the run network cannot reach it; the daemon

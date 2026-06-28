@@ -55,6 +55,10 @@ type Edge struct {
 // edge across the whole dependency tree.
 type Config struct {
 	Edges map[string]Edge `json:"edges"`
+	// Record turns on full-payload capture for replay: the gateway logs each
+	// sub-agent call's arguments and response, not just its metadata. Off by
+	// default since it is heavy; `agentcage replay record` sets it.
+	Record bool `json:"record,omitempty"`
 }
 
 // Gateway routes a parent's USES calls to each sub-agent and enforces deny. It
@@ -96,10 +100,18 @@ type Gateway struct {
 	// and resetOnDisconnect fails it closed. elicitSeq numbers ids per gateway.
 	elicits   map[string]chan elicitReply
 	elicitSeq uint64
+
+	// recordCall and recordPayload report each sub-agent tools/call to the daemon's
+	// trace and replay; record gates the heavier payload capture. All off the
+	// daemon path are nil/false, so a plain forward pays only the tool-name parse.
+	recordCall    func(SubCallEvent)
+	recordPayload func(SubCallRecord)
+	record        bool
 }
 
 // New builds the gateway from its routing table. It starts no goroutines: the
-// control stream runs only once the daemon connects one (ServeControl).
+// control stream runs only once the daemon connects one (ServeControl). The
+// per-call observation hooks are wired separately with SetHooks.
 func New(cfg Config) *Gateway {
 	g := &Gateway{
 		proxies:  make(map[string]*httputil.ReverseProxy, len(cfg.Edges)),
@@ -112,6 +124,7 @@ func New(cfg Config) *Gateway {
 		target:   make(map[string]*url.URL, len(cfg.Edges)),
 		outbound: make(chan ControlMessage, 4*len(cfg.Edges)+64),
 		elicits:  make(map[string]chan elicitReply),
+		record:   cfg.Record,
 	}
 	for id, edge := range cfg.Edges {
 		if edge.Banned {
@@ -271,6 +284,11 @@ func (g *Gateway) Handler() http.Handler {
 			http.Error(w, "unknown gateway edge: "+id, http.StatusNotFound)
 			return
 		}
+		// tool/args are set for a tools/call forward, the one the run records as a
+		// sub-agent call; the handshake, tools/list, and notifications are not.
+		var tool string
+		var args []byte
+		recordThis := false
 		// Only POST carries a JSON-RPC request body to inspect; GET (SSE)
 		// and DELETE (session close) forward untouched.
 		if r.Method == http.MethodPost {
@@ -299,6 +317,7 @@ func (g *Gateway) Handler() http.Handler {
 			r.GetBody = func() (io.ReadCloser, error) {
 				return io.NopCloser(bytes.NewReader(body)), nil
 			}
+			tool, args, recordThis = parseToolsCall(body)
 		} else if !g.ensureActive(r.Context(), id) {
 			writeActivationFailed(w, nil)
 			return
@@ -308,7 +327,21 @@ func (g *Gateway) Handler() http.Handler {
 		// deeper calls, since this forward stays open until they return.
 		g.pin(id)
 		defer g.unpin(id)
-		proxy.ServeHTTP(w, r)
+		if !recordThis {
+			proxy.ServeHTTP(w, r)
+			return
+		}
+		// Time the forward for the trace span, and capture the response for replay
+		// when recording. Only the recorded path pays the capture.
+		start := time.Now()
+		fw := w
+		var captured *bytes.Buffer
+		if g.record {
+			captured = &bytes.Buffer{}
+			fw = &captureWriter{ResponseWriter: w, buf: captured}
+		}
+		proxy.ServeHTTP(fw, r)
+		g.recordSubCall(id, tool, args, start, time.Now(), captured)
 	})
 }
 

@@ -3,19 +3,22 @@ package daemon
 import (
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/okedeji/agentcage/internal/llmgateway"
+	"github.com/okedeji/agentcage/internal/mcpgateway"
 	"github.com/okedeji/agentcage/internal/telemetry"
 )
 
-// buildTrace assembles a run's trace from its run window and the gateway's
-// per-call events. The run span is the root; each agent that made a call gets a
-// span under it, widened to cover its calls, and every call nests under its
-// agent. Grouping by agent gives the tree its parent-to-child shape (the root and
-// each sub-agent appear as their own node) without the gateway reporting the call
-// graph.
-func buildTrace(runID string, start, end time.Time, calls []llmgateway.CallEvent) *telemetry.Trace {
+// buildTrace assembles a run's trace from its run window, the LLM gateway's
+// per-call events, and the MCP gateway's sub-agent calls. The run span is the
+// root; each agent that made an LLM call gets a span under it (widened to cover
+// its calls), and each parent-to-sub-agent call gets a sub_agent span. Grouping
+// LLM calls by agent gives the tree its shape without the gateway reporting the
+// full call graph; the root's children are ordered by start so the tree reads in
+// time order.
+func buildTrace(runID string, start, end time.Time, calls []llmgateway.CallEvent, subCalls []mcpgateway.SubCallEvent) *telemetry.Trace {
 	root := &telemetry.Span{
 		Name:       "agentcage.run",
 		Start:      start,
@@ -49,6 +52,15 @@ func buildTrace(runID string, start, end time.Time, calls []llmgateway.CallEvent
 			ag.End = ce
 		}
 	}
+	for _, s := range subCalls {
+		root.Children = append(root.Children, &telemetry.Span{
+			Name:       "agentcage.sub_agent.run",
+			Start:      time.Unix(0, s.StartUnixNano),
+			End:        time.Unix(0, s.EndUnixNano),
+			Attributes: map[string]any{"edge": s.Edge, "tool": s.Tool},
+		})
+	}
+	sort.SliceStable(root.Children, func(i, j int) bool { return root.Children[i].Start.Before(root.Children[j].Start) })
 	return &telemetry.Trace{RunID: runID, Root: root}
 }
 

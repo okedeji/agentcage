@@ -9,6 +9,7 @@ import (
 
 	"github.com/okedeji/agentcage/internal/history"
 	"github.com/okedeji/agentcage/internal/llmgateway"
+	"github.com/okedeji/agentcage/internal/mcpgateway"
 	"github.com/okedeji/agentcage/internal/telemetry"
 )
 
@@ -19,20 +20,29 @@ func TestBuildTrace_GroupsCallsByAgentAndWidensSpans(t *testing.T) {
 		{Agent: "root", Model: "m", CostMicroUSD: 50, StartUnixNano: at(103), EndUnixNano: at(104)},
 		{Agent: "web", Model: "m", CostMicroUSD: 25, StartUnixNano: at(105), EndUnixNano: at(106)},
 	}
-	tr := buildTrace("run-1", time.Unix(100, 0), time.Unix(110, 0), calls)
+	subCalls := []mcpgateway.SubCallEvent{
+		{Edge: "web", Tool: "search", StartUnixNano: at(107), EndUnixNano: at(108)},
+	}
+	tr := buildTrace("run-1", time.Unix(100, 0), time.Unix(110, 0), calls, subCalls)
 
 	if tr.Root.Name != "agentcage.run" || tr.Root.Attributes["run_id"] != "run-1" {
 		t.Fatalf("root span wrong: %+v", tr.Root)
 	}
-	if len(tr.Root.Children) != 2 {
-		t.Fatalf("agent spans = %d, want 2", len(tr.Root.Children))
+	// Two agent spans plus one sub-agent span, ordered by start.
+	if len(tr.Root.Children) != 3 {
+		t.Fatalf("root children = %d, want 2 agents + 1 sub-agent", len(tr.Root.Children))
 	}
-
-	var rootAgent *telemetry.Span
-	for _, a := range tr.Root.Children {
-		if a.Attributes["agent"] == "root" {
-			rootAgent = a
+	var subSpan, rootAgent *telemetry.Span
+	for _, c := range tr.Root.Children {
+		if c.Name == "agentcage.sub_agent.run" {
+			subSpan = c
 		}
+		if c.Attributes["agent"] == "root" {
+			rootAgent = c
+		}
+	}
+	if subSpan == nil || subSpan.Attributes["edge"] != "web" || subSpan.Attributes["tool"] != "search" {
+		t.Errorf("sub-agent span missing or wrong: %+v", subSpan)
 	}
 	if rootAgent == nil {
 		t.Fatal("no span for agent root")
