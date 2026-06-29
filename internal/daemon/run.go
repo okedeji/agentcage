@@ -41,10 +41,10 @@ func (d *Daemon) boot(ctx context.Context, in runtime.RunInput, display string) 
 	if in.Stderr == nil {
 		in.Stderr = os.Stderr
 	}
-	// Tee the run's stderr to its durable log. The file attaches after Acquire,
-	// once the run id exists, so `agentcage logs` can read the run after it ends.
-	rl := &runLog{inner: in.Stderr}
-	in.Stderr = rl
+	// The runtime opens this once it knows the run id and tees the agent's stderr
+	// to it, so `agentcage logs` reads the run after it ends. The build progress
+	// before the agent starts stays out of the file.
+	in.LogFile = openRunLogSink
 	// Forward the run's in-process lifecycle (sub-agent activation, eviction,
 	// elicitation) onto the event feed. The runtime stamps the run id; display is
 	// stable for the run's life, so the closure carries it as the ref.
@@ -62,13 +62,12 @@ func (d *Daemon) boot(ctx context.Context, in runtime.RunInput, display string) 
 	if err != nil {
 		return nil, err
 	}
-	logFile := attachRunLog(rl, session.RunID())
 	// Activation runs on the same context the run boots against: a held run's
 	// background context so it outlives the request, a one-shot's request context
 	// so it ends with the call. Release cancels it.
 	session.StartWorkingSet(ctx)
 	info := RunInfo{ID: session.RunID(), Ref: display, Status: "running", StartedAt: nowFunc()}
-	d.hold(info, session, logFile)
+	d.hold(info, session)
 	d.recordStart(info)
 	d.events.publish(Event{Time: info.StartedAt, Type: EventRunStarted, RunID: info.ID, Ref: info.Ref})
 	return session, nil

@@ -1,11 +1,11 @@
 package daemon
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/okedeji/agentcage/internal/env"
@@ -43,32 +43,24 @@ func openRunLog(runID string) (*os.File, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 }
 
-// runLog tees a run's stderr to its durable log file while still forwarding it
-// to the original sink (the one-shot's client stream, or the daemon's stderr for
-// a held run). The file attaches only once the run id is known, after boot, so
-// build-phase output before that goes to the stream alone; the agent's own run
-// output, which is what `agentcage logs` is for, is captured in full.
-type runLog struct {
-	inner io.Writer
-
-	mu   sync.Mutex
-	file *os.File
-}
-
-func (l *runLog) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	if l.file != nil {
-		_, _ = l.file.Write(p)
+// openRunLogSink opens a run's durable log for the runtime to tee the agent's
+// stderr into. The runtime calls it once the run id is known, just before the
+// agent container starts, so the agent's own output is captured and the earlier
+// build progress is not. Best-effort: a log that will not open returns a no-op
+// sink so the run still proceeds, logging to the stream alone.
+func openRunLogSink(runID string) io.WriteCloser {
+	f, err := openRunLog(runID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: opening run log for %s: %v\n", runID, err)
+		return nopWriteCloser{}
 	}
-	l.mu.Unlock()
-	return l.inner.Write(p)
+	return f
 }
 
-func (l *runLog) attach(f *os.File) {
-	l.mu.Lock()
-	l.file = f
-	l.mu.Unlock()
-}
+type nopWriteCloser struct{}
+
+func (nopWriteCloser) Write(p []byte) (int, error) { return len(p), nil }
+func (nopWriteCloser) Close() error                { return nil }
 
 // handleRunLogs streams a run's log file. With follow=true it tails a live run,
 // emitting new output until the run leaves the live set, then drains the final

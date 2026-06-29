@@ -1,39 +1,27 @@
 package daemon
 
 import (
-	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 )
 
-// TestRunLog_TeesAfterAttach locks the capture boundary: output before the file
-// attaches reaches the stream only, output after reaches both, so the durable
-// log holds the run's own output without the pre-run-id build noise.
-func TestRunLog_TeesAfterAttach(t *testing.T) {
+// TestOpenRunLogSink locks that the sink writes to the run's durable log file,
+// the file the runtime tees the agent's stderr into.
+func TestOpenRunLogSink(t *testing.T) {
 	t.Setenv("AGENTCAGE_HOME", t.TempDir())
-	var inner bytes.Buffer
-	rl := &runLog{inner: &inner}
+	sink := openRunLogSink("echo-1")
+	_, _ = sink.Write([]byte("agent line\n"))
+	_ = sink.Close()
 
-	_, _ = rl.Write([]byte("before-attach\n"))
-	f := attachRunLog(rl, "echo-1")
-	if f == nil {
-		t.Fatal("attachRunLog returned nil")
-	}
-	_, _ = rl.Write([]byte("after-attach\n"))
-	_ = f.Close()
-
-	if got := inner.String(); got != "before-attach\nafter-attach\n" {
-		t.Errorf("stream got %q, want both lines", got)
-	}
 	path, _ := runLogPath("echo-1")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading log file: %v", err)
 	}
-	if string(data) != "after-attach\n" {
-		t.Errorf("log file got %q, want only the post-attach line", string(data))
+	if string(data) != "agent line\n" {
+		t.Errorf("log file got %q, want the written line", string(data))
 	}
 }
 

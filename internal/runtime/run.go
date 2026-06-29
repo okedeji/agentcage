@@ -85,6 +85,12 @@ type RunInput struct {
 	// NoCache forces every image to rebuild from scratch, ignoring both an
 	// already-built content-addressed image and BuildKit's layer cache.
 	NoCache bool
+
+	// LogFile opens the run's durable log once the run id is known, so the agent's
+	// own stderr (its startup and its work) is teed there for `agentcage logs`.
+	// Build progress, emitted before the agent container starts, is not. The daemon
+	// sets it; every other caller leaves it nil and the run logs to Stderr alone.
+	LogFile func(runID string) io.WriteCloser
 }
 
 // Session is one booted run the caller holds: the root agent's open MCP session,
@@ -223,6 +229,7 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 		Interaction: in.Interaction,
 		OnEvent:     in.OnEvent,
 		Record:      in.Record,
+		LogFile:     in.LogFile,
 	}
 	if router != nil {
 		boot.ElicitHandler = router.route
@@ -296,6 +303,10 @@ type bootInput struct {
 
 	// Record turns on the LLM gateway's full-payload capture for replay.
 	Record bool
+
+	// LogFile opens the run's durable log once the run id is known; the agent
+	// container's stderr is teed there, excluding the earlier build progress.
+	LogFile func(runID string) io.WriteCloser
 
 	// ElicitHandler, when set, lets the root agent ask the operator a question
 	// mid-call: the root's MCP client advertises the elicitation capability and
@@ -556,7 +567,15 @@ func startAttachedAgent(ctx context.Context, sess *bootSession, in bootInput, td
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
+	// Tee the agent's own stderr to the run's durable log. This is the first byte
+	// the agent emits, so its startup and its work are captured; the build progress
+	// above went to in.Stderr alone and stays out of the log.
 	cmd.Stderr = in.Stderr
+	if in.LogFile != nil {
+		lf := in.LogFile(in.RunID)
+		cmd.Stderr = io.MultiWriter(in.Stderr, lf)
+		td.push(func() error { return lf.Close() })
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("starting container subprocess: %w", err)
 	}
