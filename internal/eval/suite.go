@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -42,9 +43,20 @@ type Input struct {
 
 // Expect is the set of checks a case's output must pass. Every field is
 // optional; an unset field is not checked.
+//
+// OutputEquals is a pointer so a case can require an exact empty output (set to
+// "") apart from not checking equality at all (nil). It compares with
+// surrounding whitespace trimmed, since a model told to "reply with only X"
+// routinely adds a trailing newline that is not a real mismatch.
+//
+// OutputMatches holds RE2 regular expressions (Go's regexp); the output must
+// match every one. Patterns are compiled at load time, so a broken pattern is a
+// load error, not a case that silently never matches.
 type Expect struct {
 	OutputContains     []string `yaml:"output_contains,omitempty"`
 	OutputNotContains  []string `yaml:"output_not_contains,omitempty"`
+	OutputEquals       *string  `yaml:"output_equals,omitempty"`
+	OutputMatches      []string `yaml:"output_matches,omitempty"`
 	MaxCostUSD         float64  `yaml:"max_cost_usd,omitempty"`
 	MaxDurationSeconds int      `yaml:"max_duration_seconds,omitempty"`
 }
@@ -117,6 +129,11 @@ func (s *Suite) validate() error {
 		}
 		if c.Expect.MaxDurationSeconds < 0 {
 			return fmt.Errorf("case %q max_duration_seconds is negative", c.Name)
+		}
+		for _, pat := range c.Expect.OutputMatches {
+			if _, err := regexp.Compile(pat); err != nil {
+				return fmt.Errorf("case %q output_matches %q is not a valid regexp: %w", c.Name, pat, err)
+			}
 		}
 		if c.Judge != nil && c.Judge.Enabled {
 			if c.Judge.Prompt == "" {

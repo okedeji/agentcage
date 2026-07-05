@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -170,6 +171,21 @@ func checkExpectations(e Expect, output string, usage daemon.RunUsage) []string 
 	for _, no := range e.OutputNotContains {
 		if strings.Contains(output, no) {
 			fails = append(fails, fmt.Sprintf("output contains forbidden %q", no))
+		}
+	}
+	if e.OutputEquals != nil && strings.TrimSpace(output) != strings.TrimSpace(*e.OutputEquals) {
+		fails = append(fails, fmt.Sprintf("output does not equal %q", *e.OutputEquals))
+	}
+	for _, pat := range e.OutputMatches {
+		// The pattern compiled at suite load, so a compile error here cannot
+		// happen; handle it as a failure rather than a panic all the same.
+		re, err := regexp.Compile(pat)
+		if err != nil {
+			fails = append(fails, fmt.Sprintf("output_matches %q is not a valid regexp: %v", pat, err))
+			continue
+		}
+		if !re.MatchString(output) {
+			fails = append(fails, fmt.Sprintf("output does not match /%s/", pat))
 		}
 	}
 	// The gateway budget is a soft cap: a call already in flight can push spend

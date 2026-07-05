@@ -45,6 +45,44 @@ cases:
 	}
 }
 
+func TestLoadSuite_OutputEqualsAndMatches(t *testing.T) {
+	suite := `version: 0.1
+cases:
+  - name: exact_and_regex
+    input:
+      tool: respond
+    expect:
+      output_equals: "4"
+      output_matches: ["^\\d+$", "(?i)four"]
+`
+	s, err := LoadSuite([]byte(suite))
+	if err != nil {
+		t.Fatalf("LoadSuite: %v", err)
+	}
+	e := s.Cases[0].Expect
+	if e.OutputEquals == nil || *e.OutputEquals != "4" {
+		t.Errorf("OutputEquals = %v, want \"4\"", e.OutputEquals)
+	}
+	if len(e.OutputMatches) != 2 {
+		t.Errorf("OutputMatches = %v, want two patterns", e.OutputMatches)
+	}
+}
+
+func TestLoadSuite_RejectsBadRegex(t *testing.T) {
+	suite := `version: 0.1
+cases:
+  - name: broken
+    input:
+      tool: respond
+    expect:
+      output_matches: ["([unclosed"]
+`
+	_, err := LoadSuite([]byte(suite))
+	if err == nil || !strings.Contains(err.Error(), "not a valid regexp") {
+		t.Fatalf("err = %v, want a regexp-compile error at load time", err)
+	}
+}
+
 func TestLoadSuite_RejectsUnknownField(t *testing.T) {
 	suite := `version: 0.1
 cases:

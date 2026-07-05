@@ -118,6 +118,44 @@ func TestRun_CostCeilingPostChecked(t *testing.T) {
 	}
 }
 
+func TestRun_OutputEquals(t *testing.T) {
+	eq := "4"
+	suite := suiteWith(Case{Name: "c1", Input: Input{Tool: "respond"}, Expect: Expect{OutputEquals: &eq}})
+
+	// Passes with surrounding whitespace trimmed.
+	pass := &fakeRunner{output: "  4\n"}
+	report, _ := Run(context.Background(), pass, nil, Options{Ref: "x", Manifest: manifestWith("respond"), Suite: suite})
+	if report.Passed != 1 {
+		t.Errorf("trimmed exact match should pass, got %+v", report.Cases[0])
+	}
+
+	// Fails on a different value, and the reason names the expected output.
+	fail := &fakeRunner{output: "four"}
+	report2, _ := Run(context.Background(), fail, nil, Options{Ref: "x", Manifest: manifestWith("respond"), Suite: suite})
+	if report2.Failed != 1 || !strings.Contains(report2.Cases[0].Failures[0], `does not equal "4"`) {
+		t.Errorf("expected an equals failure, got %+v", report2.Cases[0])
+	}
+}
+
+func TestRun_OutputMatches(t *testing.T) {
+	suite := suiteWith(Case{Name: "c1", Input: Input{Tool: "respond"}, Expect: Expect{OutputMatches: []string{`^\d+$`, `(?i)FORTY`}}})
+
+	pass := &fakeRunner{output: "42 forty"}
+	// The anchored ^\d+$ needs the whole string to be digits, so "42 forty"
+	// should actually fail the first pattern; use a case each way.
+	report, _ := Run(context.Background(), pass, nil, Options{Ref: "x", Manifest: manifestWith("respond"), Suite: suite})
+	if report.Failed != 1 || !strings.Contains(report.Cases[0].Failures[0], `does not match`) {
+		t.Errorf("expected a regex miss on the anchored pattern, got %+v", report.Cases[0])
+	}
+
+	single := suiteWith(Case{Name: "c1", Input: Input{Tool: "respond"}, Expect: Expect{OutputMatches: []string{`(?i)\bfour\b`}}})
+	ok := &fakeRunner{output: "The answer is Four."}
+	report2, _ := Run(context.Background(), ok, nil, Options{Ref: "x", Manifest: manifestWith("respond"), Suite: single})
+	if report2.Passed != 1 {
+		t.Errorf("case-insensitive word-boundary match should pass, got %+v", report2.Cases[0])
+	}
+}
+
 func TestRun_JudgeMeanOverJudgedCasesOnly(t *testing.T) {
 	d := &fakeRunner{output: "answer"}
 	j := fakeScorer{verdict: Verdict{Score: 0.8, Reason: "clear", CostMicroUSD: 200}}
