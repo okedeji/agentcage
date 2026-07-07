@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseArgPairs_Empty(t *testing.T) {
-	got, err := parseArgPairs(nil)
+	got, err := parseArgPairs(nil, nil)
 	if err != nil {
 		t.Fatalf("parseArgPairs(nil): %v", err)
 	}
@@ -19,7 +19,7 @@ func TestParseArgPairs_Empty(t *testing.T) {
 }
 
 func TestParseArgPairs_HappyPath(t *testing.T) {
-	got, err := parseArgPairs([]string{"name=World", "depth=deep"})
+	got, err := parseArgPairs([]string{"name=World", "depth=deep"}, nil)
 	if err != nil {
 		t.Fatalf("parseArgPairs: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestParseArgPairs_HappyPath(t *testing.T) {
 }
 
 func TestParseArgPairs_AllowsEqualsInValue(t *testing.T) {
-	got, err := parseArgPairs([]string{"expr=1+2=3"})
+	got, err := parseArgPairs([]string{"expr=1+2=3"}, nil)
 	if err != nil {
 		t.Fatalf("parseArgPairs: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestParseArgPairs_AllowsEqualsInValue(t *testing.T) {
 }
 
 func TestParseArgPairs_RejectsNoEquals(t *testing.T) {
-	_, err := parseArgPairs([]string{"justakey"})
+	_, err := parseArgPairs([]string{"justakey"}, nil)
 	if err == nil {
 		t.Fatalf("expected error for malformed arg")
 	}
@@ -53,9 +53,55 @@ func TestParseArgPairs_RejectsNoEquals(t *testing.T) {
 }
 
 func TestParseArgPairs_RejectsEmptyKey(t *testing.T) {
-	_, err := parseArgPairs([]string{"=value"})
+	_, err := parseArgPairs([]string{"=value"}, nil)
 	if err == nil {
 		t.Fatalf("expected error for empty key")
+	}
+}
+
+func TestParseArgPairs_CoercesBySchema(t *testing.T) {
+	schema := map[string]any{
+		"properties": map[string]any{
+			"timezone": map[string]any{"type": "string"},
+			"entities": map[string]any{"type": "array"},
+			"count":    map[string]any{"type": "integer"},
+			"dry_run":  map[string]any{"type": "boolean"},
+			"nick":     map[string]any{"type": []any{"string", "null"}},
+		},
+	}
+	got, err := parseArgPairs([]string{
+		"timezone=Asia/Tokyo",
+		`entities=[{"name":"Atlas"}]`,
+		"count=5",
+		"dry_run=true",
+		"nick=42",
+	}, schema)
+	if err != nil {
+		t.Fatalf("parseArgPairs: %v", err)
+	}
+	want := map[string]any{
+		"timezone": "Asia/Tokyo",                           // a string stays a string, not mangled
+		"entities": []any{map[string]any{"name": "Atlas"}}, // an array is parsed as JSON
+		"count":    int64(5),                               // integer converted
+		"dry_run":  true,                                   // boolean converted
+		"nick":     "42",                                   // union type resolves to string, kept verbatim
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("parseArgPairs = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseArgPairs_NoSchemaFallsBackToJSONThenString(t *testing.T) {
+	got, err := parseArgPairs([]string{"n=3", "s=hello", `obj={"a":1}`}, nil)
+	if err != nil {
+		t.Fatalf("parseArgPairs: %v", err)
+	}
+	// With no schema, valid JSON parses and a bare word stays a string.
+	if got["n"] != float64(3) || got["s"] != "hello" {
+		t.Errorf("blind coercion = %#v, want n=3(number) s=hello(string)", got)
+	}
+	if !reflect.DeepEqual(got["obj"], map[string]any{"a": float64(1)}) {
+		t.Errorf("blind object = %#v, want parsed", got["obj"])
 	}
 }
 

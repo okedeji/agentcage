@@ -156,6 +156,20 @@ func TestServerJSONFromManifest_MapsFields(t *testing.T) {
 	}
 }
 
+func TestServerJSONFromManifest_StampsImportedFrom(t *testing.T) {
+	m := bundle.Manifest{Agentfile: bundle.AgentfileSpec{Meta: map[string]string{"imported_from": "npm:@scope/server-time"}}}
+	s := ServerJSONFromManifest(m, "io.github.a/time", "ghcr.io/a/time", "0.1")
+	if got := s.ImportedFrom(); got != "npm:@scope/server-time" {
+		t.Errorf("ImportedFrom = %q, want the marker stamped into _meta and read back", got)
+	}
+
+	// A non-wrapper carries no marker, so reuse discovery never matches it.
+	plain := ServerJSONFromManifest(bundle.Manifest{}, "io.github.a/x", "ghcr.io/a/x", "0.1")
+	if got := plain.ImportedFrom(); got != "" {
+		t.Errorf("ImportedFrom = %q, want empty for a non-wrapper", got)
+	}
+}
+
 func TestServerJSONFromManifest_DescriptionFallbackAndClamp(t *testing.T) {
 	long := bundle.Manifest{Agentfile: bundle.AgentfileSpec{Meta: map[string]string{"description": strings.Repeat("x", 200)}}}
 	if got := ServerJSONFromManifest(long, "io.github.a/fs", "ghcr.io/a/fs", "0.1").Description; len(got) != maxDescription {

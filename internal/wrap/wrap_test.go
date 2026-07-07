@@ -14,7 +14,7 @@ func TestAgentfile_NPM(t *testing.T) {
 		"FROM node:22-slim",
 		"RUN npm install -g @modelcontextprotocol/server-filesystem@1.0",
 		"EXPOSE *",
-		"ENTRYPOINT npx -y @modelcontextprotocol/server-filesystem",
+		"ENTRYPOINT ./agentcage mcp-bridge -- sh npm-entry.sh @modelcontextprotocol/server-filesystem",
 	}
 	for _, w := range wantContains {
 		if !strings.Contains(got, w) {
@@ -42,11 +42,38 @@ func TestAgentfile_PyPIWithEnvAndSecret(t *testing.T) {
 		"SECRETS API_KEY",
 		"ENV USER_AGENT=agentcage",
 		"ENV BASE_URL\n",
-		"ENTRYPOINT mcp-server-fetch",
+		"ENTRYPOINT ./agentcage mcp-bridge -- mcp-server-fetch",
 	} {
 		if !strings.Contains(got, w) {
 			t.Errorf("Agentfile missing %q; got:\n%s", w, got)
 		}
+	}
+}
+
+func TestAgentfile_StampsOriginMarker(t *testing.T) {
+	got, err := Agentfile(Source{Registry: NPM, Identifier: "@scope/srv", Origin: "npm:@scope/srv"})
+	if err != nil {
+		t.Fatalf("Agentfile: %v", err)
+	}
+	if !strings.Contains(got, "META imported_from npm:@scope/srv") {
+		t.Errorf("Agentfile missing the imported_from marker; got:\n%s", got)
+	}
+
+	// No origin, no marker: the line is only there to make a wrapper recognizable.
+	bare, err := Agentfile(Source{Registry: NPM, Identifier: "@scope/srv"})
+	if err != nil {
+		t.Fatalf("Agentfile: %v", err)
+	}
+	if strings.Contains(bare, "imported_from") {
+		t.Errorf("Agentfile stamped a marker with no origin; got:\n%s", bare)
+	}
+}
+
+func TestCanonicalOrigin(t *testing.T) {
+	// Version-less, so every wrap of the same package shares one marker.
+	got := CanonicalOrigin(Source{Registry: PyPI, Identifier: "mcp-server-time", Version: "1.2"})
+	if got != "pypi:mcp-server-time" {
+		t.Errorf("CanonicalOrigin = %q, want the version-less coordinate", got)
 	}
 }
 
@@ -73,7 +100,7 @@ func TestAgentfile_OCINeedsLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Agentfile: %v", err)
 	}
-	if !strings.Contains(got, "FROM ghcr.io/acme/mcp:1.2") || !strings.Contains(got, "ENTRYPOINT mcp-slack --stdio") {
+	if !strings.Contains(got, "FROM ghcr.io/acme/mcp:1.2") || !strings.Contains(got, "ENTRYPOINT ./agentcage mcp-bridge -- mcp-slack --stdio") {
 		t.Errorf("oci Agentfile wrong; got:\n%s", got)
 	}
 }

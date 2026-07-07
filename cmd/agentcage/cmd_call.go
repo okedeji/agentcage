@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -62,7 +64,7 @@ Examples:
 				return err
 			}
 
-			toolArgs, err := parseArgPairs(argPairs)
+			toolArgs, err := parseArgPairs(argPairs, toolSchema(manifest, toolName))
 			if err != nil {
 				return err
 			}
@@ -93,11 +95,14 @@ Examples:
 	return cmd
 }
 
-// parseArgPairs turns the repeated --arg KEY=VALUE flag into the map
-// the MCP CallTool API expects. Returns an error naming the offending
-// pair when one is malformed; the operator must see exactly which
-// flag they got wrong.
-func parseArgPairs(pairs []string) (map[string]any, error) {
+// parseArgPairs turns the repeated --arg KEY=VALUE flag into the map the MCP
+// CallTool API expects, coercing each value to the type the tool's input schema
+// declares: a string stays a string (so a value that happens to look like JSON
+// is not mangled), an array or object is parsed as JSON (so a tool taking a list
+// can be called at all), a number or boolean is converted. Returns an error
+// naming the offending pair when one is malformed.
+func parseArgPairs(pairs []string, schema map[string]any) (map[string]any, error) {
+	props, _ := schema["properties"].(map[string]any)
 	out := make(map[string]any, len(pairs))
 	for _, p := range pairs {
 		idx := strings.Index(p, "=")
@@ -108,10 +113,76 @@ func parseArgPairs(pairs []string) (map[string]any, error) {
 		if key == "" {
 			return nil, fmt.Errorf("--arg %q has an empty key", p)
 		}
-		value := p[idx+1:]
-		out[key] = value
+		out[key] = coerceArg(p[idx+1:], props[key])
 	}
 	return out, nil
+}
+
+// coerceArg converts a raw --arg string to the JSON type the property declares.
+// A declared type that the value will not parse into falls back to the raw
+// string, leaving the server to validate and report. With no schema for the key,
+// it parses valid JSON and otherwise keeps the string, the best a caller can do
+// blind.
+func coerceArg(value string, prop any) any {
+	switch propType(prop) {
+	case "string":
+		return value
+	case "integer":
+		if n, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return n
+		}
+	case "number":
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
+		}
+	case "boolean":
+		if b, err := strconv.ParseBool(value); err == nil {
+			return b
+		}
+	case "array", "object":
+		var v any
+		if json.Unmarshal([]byte(value), &v) == nil {
+			return v
+		}
+	default:
+		var v any
+		if json.Unmarshal([]byte(value), &v) == nil {
+			return v
+		}
+	}
+	return value
+}
+
+// propType reads a JSON Schema property's declared type. A union type
+// (["string","null"]) reports the first non-null member, enough to coerce.
+func propType(prop any) string {
+	p, ok := prop.(map[string]any)
+	if !ok {
+		return ""
+	}
+	switch t := p["type"].(type) {
+	case string:
+		return t
+	case []any:
+		for _, m := range t {
+			if s, ok := m.(string); ok && s != "null" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// toolSchema returns the input schema the catalog recorded for toolName, or nil
+// when the bundle has no catalog (built --no-introspect) or the tool declares no
+// schema. A nil schema leaves parseArgPairs to coerce blind.
+func toolSchema(manifest *bundle.Manifest, toolName string) map[string]any {
+	for _, t := range manifest.Tools {
+		if t.Name == toolName {
+			return t.Schema
+		}
+	}
+	return nil
 }
 
 // assertToolIsPublic rejects external calls to private tools so the operator

@@ -110,6 +110,12 @@ const (
 	// with what tool.
 	publisherMetaKey = "io.modelcontextprotocol.registry/publisher-provided"
 
+	// importedFromMetaKey carries the wrapped server's canonical identity so a
+	// published wrapper is discoverable as "the wrapped X", the signal a later
+	// import filters on to offer cross-user reuse. Reverse-DNS namespaced like
+	// the eval key so it never collides with another publisher's fields.
+	importedFromMetaKey = "io.agentcage/imported_from"
+
 	// maxDescription is the registry's server.json description ceiling.
 	maxDescription = 100
 
@@ -128,6 +134,9 @@ func ServerJSONFromManifest(m bundle.Manifest, name, ociRef, version string) *Se
 	}
 	if m.Evals != nil {
 		meta[evalsMetaKey] = m.Evals
+	}
+	if from := m.Agentfile.Meta["imported_from"]; from != "" {
+		meta[importedFromMetaKey] = from
 	}
 	return &Server{
 		Schema:      schemaURI,
@@ -180,6 +189,15 @@ func (s *Server) EvalSummary() string {
 		out += fmt.Sprintf(" j%.2f", js)
 	}
 	return out
+}
+
+// ImportedFrom returns the canonical identity of the server this entry wraps, or
+// "" when the entry is not an agentcage wrapper. It reads the generic map the
+// wire decodes into, so it survives the registry round-trip, and is how import
+// filters search hits down to wrappers of the very server being imported.
+func (s *Server) ImportedFrom() string {
+	from, _ := s.Meta[importedFromMetaKey].(string)
+	return from
 }
 
 // description resolves the entry's required 1-100 char description from the

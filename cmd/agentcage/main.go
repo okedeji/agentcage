@@ -44,7 +44,7 @@ func main() {
 
 	// Internal commands the runtime execs inside the gateway and cage containers.
 	// Hidden from help, so they need no group.
-	root.AddCommand(newMCPGatewayCmd(), newMCPControlCmd(), newLLMGatewayCmd(), newLLMControlCmd(), newEgressCmd())
+	root.AddCommand(newMCPGatewayCmd(), newMCPControlCmd(), newLLMGatewayCmd(), newLLMControlCmd(), newEgressCmd(), newMCPBridgeCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

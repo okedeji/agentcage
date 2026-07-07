@@ -126,8 +126,15 @@ func (d *Daemon) handleRun(w http.ResponseWriter, r *http.Request) {
 		callCtx, cancel = context.WithTimeout(callCtx, time.Duration(req.TimeoutSeconds)*time.Second)
 		defer cancel()
 	}
+	// A no-argument call omits args over the wire, arriving as nil. Send an empty
+	// object, not null: a strict server rejects null for a tool whose schema is an
+	// (empty) object, which is exactly what a no-argument tool declares.
+	callArgs := req.Args
+	if callArgs == nil {
+		callArgs = map[string]any{}
+	}
 	callStart := nowFunc()
-	result, callErr := session.Call(callCtx, req.Tool, req.Args)
+	result, callErr := session.Call(callCtx, req.Tool, callArgs)
 	callMS := nowFunc().Sub(callStart).Milliseconds()
 	status := history.StatusSucceeded
 	if callErr != nil {
