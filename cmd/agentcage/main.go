@@ -38,7 +38,7 @@ func main() {
 	add("ship", newBuildCmd(), newImportCmd(), newPushCmd(), newPullCmd(), newRegisterCmd(), newSearchCmd(), newLoginCmd(), newInspectCmd(), newTreeCmd(), newStoreCmd())
 	add("run", newRunCmd(), newCallCmd(), newEvalCmd(), newServeCmd(), newStopCmd(), newBudgetCmd())
 	add("observe", newPsCmd(), newLogsCmd(), newSpendCmd(), newEventsCmd(), newTraceCmd(), newStatsCmd(), newReplayCmd())
-	add("configure", newConfigCmd(), newSecretsCmd())
+	add("configure", newConfigCmd(), newSecretsCmd(), newKeysCmd(), newTrustCmd())
 
 	// Hidden internal commands the runtime execs inside gateway and cage containers.
 	root.AddCommand(newMCPGatewayCmd(), newMCPControlCmd(), newLLMGatewayCmd(), newLLMControlCmd(), newEgressCmd(), newMCPBridgeCmd())

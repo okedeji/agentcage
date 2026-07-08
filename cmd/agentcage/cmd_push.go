@@ -13,6 +13,7 @@ import (
 	"github.com/okedeji/agentcage/internal/eval"
 	"github.com/okedeji/agentcage/internal/reference"
 	"github.com/okedeji/agentcage/internal/registry"
+	"github.com/okedeji/agentcage/internal/signing"
 	"github.com/okedeji/agentcage/internal/store"
 )
 
@@ -23,6 +24,7 @@ func newPushCmd() *cobra.Command {
 	var judgeModel string
 	var forcePublic, forcePrivate bool
 	var registryName string
+	var noSign bool
 	cmd := &cobra.Command{
 		Use:   "push REF [BUNDLE]",
 		Short: "Push an agent bundle to an OCI registry",
@@ -36,7 +38,11 @@ credential store) is enough.
 
 The bundle comes from the local store: 'agentcage build -t REF' put it there,
 and push reads it back by REF. Pass an explicit bundle path (positional or -b)
-to push a file built elsewhere or with -o.`,
+to push a file built elsewhere or with -o.
+
+push signs the digest with this host's key, generated on first use; pulls
+verify it and pin your key. Keep one key across machines ('agentcage keys
+export'). --no-sign skips signing.`,
 		Example: `  agentcage push @okedeji/researcher:0.1
   agentcage push @okedeji/researcher:0.1 ./researcher.agent
   agentcage push ghcr.io/okedeji/researcher:0.1 -b out/researcher.agent`,
@@ -95,6 +101,14 @@ to push a file built elsewhere or with -o.`,
 			if jsonOut {
 				noteW = cmd.ErrOrStderr()
 			}
+
+			var keyFingerprint string
+			if !noSign {
+				keyFingerprint, err = signAfterPush(cmd.Context(), noteW, client, ref, digest)
+				if err != nil {
+					return fmt.Errorf("%w (the bundle is pushed; --no-sign pushes without a signature)", err)
+				}
+			}
 			if doPublish {
 				if err := publishToRegistry(cmd.Context(), noteW, ref, path, registryName); err != nil {
 					if forcePublic {
@@ -105,11 +119,15 @@ to push a file built elsewhere or with -o.`,
 			}
 
 			if jsonOut {
-				return json.NewEncoder(w).Encode(map[string]string{
+				out := map[string]string{
 					"ref":    ref.OCIRef(),
 					"tag":    ref.Tag,
 					"digest": digest,
-				})
+				}
+				if keyFingerprint != "" {
+					out["signing_key"] = keyFingerprint
+				}
+				return json.NewEncoder(w).Encode(out)
 			}
 			_, _ = fmt.Fprintf(w, "%s: digest: %s\n", ref.Tag, digest)
 			return nil
@@ -122,7 +140,32 @@ to push a file built elsewhere or with -o.`,
 	cmd.Flags().BoolVar(&forcePublic, "public", false, "publish to the MCP Registry even when the host is not auto-detected as public")
 	cmd.Flags().BoolVar(&forcePrivate, "private", false, "skip MCP Registry publication even on a public host")
 	cmd.Flags().StringVar(&registryName, "name", "", "MCP Registry name to publish under (default: io.github.<owner>/<name> from a GHCR ref)")
+	cmd.Flags().BoolVar(&noSign, "no-sign", false, "push without signing (pulls will report the bundle unsigned)")
 	return cmd
+}
+
+// signAfterPush signs the pushed digest and uploads the signature next to the
+// bundle, returning the key fingerprint. Signing failure fails the push
+// command: a --sign the operator asked for must not silently not happen.
+func signAfterPush(ctx context.Context, w io.Writer, client *registry.Client, ref reference.Reference, digest string) (string, error) {
+	key, created, err := signing.EnsureKey()
+	if err != nil {
+		return "", err
+	}
+	fp := signing.Fingerprint(signing.PublicKeyEncoded(key.Public))
+	if created {
+		path, _ := signing.KeyPath()
+		_, _ = fmt.Fprintf(w, "Generated signing key %s at %s (back it up; 'agentcage keys' shows the public half)\n", fp, path)
+	}
+	sig, err := signing.Sign(key, digest, ref.Registry+"/"+ref.Repository)
+	if err != nil {
+		return "", err
+	}
+	if err := client.PushSignature(ctx, ref, digest, sig); err != nil {
+		return "", err
+	}
+	_, _ = fmt.Fprintf(w, "Signed: key %s\n", fp)
+	return fp, nil
 }
 
 // stampEvalsBeforePush runs the eval suite against the resolved bundle path

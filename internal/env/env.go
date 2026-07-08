@@ -39,6 +39,9 @@ const (
 	// GitHubClientID is the OAuth app client id for 'login mcp-registry'.
 	// No default: the command fails closed with instructions.
 	GitHubClientID = Prefix + "GITHUB_CLIENT_ID"
+	// RequireSignatures, when set truthy, refuses to pull any unsigned
+	// bundle. Off by default while the ecosystem is unsigned.
+	RequireSignatures = Prefix + "REQUIRE_SIGNATURES"
 )
 
 // MCP gateway variables the runtime injects into the MCP gateway container.

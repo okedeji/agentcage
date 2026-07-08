@@ -80,6 +80,11 @@ func Bundle(ctx context.Context, arg string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	// Signature notices go to stderr: locate runs inside interactive commands
+	// whose primary output owns stdout.
+	client.Notify = func(format string, args ...any) {
+		_, _ = fmt.Fprintf(os.Stderr, format+"\n", args...)
+	}
 	p, _, err := client.Pull(ctx, ref)
 	if err != nil {
 		return Result{}, err

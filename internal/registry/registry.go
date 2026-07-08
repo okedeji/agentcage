@@ -47,6 +47,11 @@ const (
 type Client struct {
 	cacheDir string
 	auth     remote.Client
+
+	// Notify, when set, receives human-readable signature notices (a new
+	// pin, a verified pull, an unsigned bundle). Enforcement happens either
+	// way; this only controls whether anyone hears about it.
+	Notify func(format string, args ...any)
 }
 
 // New builds a Client with credential-store auth and the default cache
@@ -130,6 +135,12 @@ func (c *Client) Pull(ctx context.Context, ref reference.Reference) (bundlePath,
 		return "", "", fmt.Errorf("pulling %s: %w", ref.OCIRef(), err)
 	}
 	digest = manifestDesc.Digest.String()
+
+	// Verify before caching: the cache is digest-addressed and immutable, so
+	// ingest is the one boundary where signature policy must hold.
+	if err := c.verifyPulled(ctx, repo, ref, digest); err != nil {
+		return "", "", err
+	}
 
 	path := c.cachePath(digest)
 	if err := writeCache(path, data); err != nil {

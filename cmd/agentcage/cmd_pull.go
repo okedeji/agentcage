@@ -39,6 +39,9 @@ it can be fed to 'agentcage run' or 'agentcage call'.`,
 			if err != nil {
 				return err
 			}
+			client.Notify = func(format string, args ...any) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", args...)
+			}
 
 			w := cmd.OutOrStdout()
 			target := ref.Tag
