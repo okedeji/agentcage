@@ -35,8 +35,8 @@ prior 'agentcage login' against the host (or any login that wrote to the shared
 credential store) is enough.
 
 The bundle comes from the local store: 'agentcage build -t REF' put it there,
-and push reads it back by REF with no file to line up. Pass an explicit bundle
-path (positional or -b) to push a file built elsewhere or with -o.`,
+and push reads it back by REF. Pass an explicit bundle path (positional or -b)
+to push a file built elsewhere or with -o.`,
 		Example: `  agentcage push @okedeji/researcher:0.1
   agentcage push @okedeji/researcher:0.1 ./researcher.agent
   agentcage push ghcr.io/okedeji/researcher:0.1 -b out/researcher.agent`,

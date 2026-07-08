@@ -35,11 +35,10 @@ func newBuildCmd() *cobra.Command {
 		Long: `Build an agent bundle from a directory containing an Agentfile and source.
 
 The directory defaults to the current directory. The bundle goes into the
-local store under ~/.agentcage, addressed by its content. With -t the store also 
-indexes the bundle by reference, so 'build -t @okedeji/researcher:0.1' lets 
-'push @okedeji/researcher:0.1' and 'run @okedeji/researcher:0.1' find it by name 
-with no file to line up. Without -t the bundle is stored by content hash alone. 
-Pass -o to also write a portable copy you can move by hand.
+local store under ~/.agentcage, addressed by its content. With -t the store also
+indexes the bundle by reference, so later 'push' and 'run' commands find it by
+name. Without -t the bundle is stored by content hash alone. Pass -o to also
+write a portable copy.
 
 By default build introspects the agent: it builds the image, boots the agent
 briefly, and asks its MCP server for its tools, writing their descriptions,

@@ -34,11 +34,11 @@ run, serve, push, and depend on via USES.
 
 SOURCE is an MCP Registry reference, any reverse-DNS name (io.github.user/server,
 com.example/server), or a direct package coordinate (npm:<pkg>, pypi:<pkg>,
-oci:<image>). npm and PyPI packages are
-wrapped by installing them; an OCI image is used as the base directly and needs
---entrypoint to say how it launches. A remote-only server (a hosted URL) cannot
-be imported: agentcage runs agents in cages and cannot contain a remote endpoint;
-reach it from an agent that declares EGRESS allow:<host> and its SECRETS instead.
+oci:<image>). npm and PyPI packages are wrapped by installing them; an OCI image
+is used as the base directly and needs --entrypoint to say how it launches. A
+remote-only server (a hosted URL) cannot be imported: agentcage runs agents in
+cages and cannot contain a remote endpoint; reach it from an agent that declares
+EGRESS allow:<host> and its SECRETS instead.
 
 The generated Agentfile is written into a directory (--dir, default ./<name>) and
 is yours to edit: add a MODEL to make it a reasoning agent, tighten its EGRESS,
