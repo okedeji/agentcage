@@ -28,14 +28,7 @@ jobs:
       - run: make test
       - run: make build
 
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+  # No golangci-lint release is built with Go 1.26 yet, and a binary built with
+  # an older Go refuses to lint a go1.26 module (exit 3). Lint runs locally via
+  # `make lint` / `make ci`; re-add a lint job here once a 1.26-built release
+  # ships. Building it from source in CI works but is slow and unsupported.
