@@ -118,6 +118,50 @@ func TestIsExecutable_AcceptsExecutableFile(t *testing.T) {
 	}
 }
 
+func TestExecutableDir_ReturnsADirectory(t *testing.T) {
+	dir, ok := executableDir()
+	if !ok {
+		t.Fatal("executableDir should resolve the test binary")
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("executableDir returned %q, not a directory: %v", dir, err)
+	}
+}
+
+// A Homebrew install invokes agentcage through a bin/ symlink into the Cellar;
+// the companions sit next to the real binary. filepath.EvalSymlinks, which
+// executableDir applies, must land on the real directory, not the link's.
+func TestEvalSymlinks_ResolvesToRealDir(t *testing.T) {
+	real := filepath.Join(t.TempDir(), "cellar")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	bin := filepath.Join(real, "agentcage")
+	if err := os.WriteFile(bin, []byte("x"), 0o755); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	linkDir := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(linkDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	link := filepath.Join(linkDir, "agentcage")
+	if err := os.Symlink(bin, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	resolved, err := filepath.EvalSymlinks(link)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	// Compare against the fully-resolved real dir: t.TempDir on macOS sits
+	// under /var, itself a symlink to /private/var, which EvalSymlinks also
+	// collapses. The point is that the link lands on the cellar, not linkDir.
+	wantReal, _ := filepath.EvalSymlinks(real)
+	if got := filepath.Dir(resolved); got != wantReal {
+		t.Errorf("resolved dir = %q, want the real cellar %q", got, wantReal)
+	}
+}
+
 func TestFindLimactl_ErrorMessageNamesPaths(t *testing.T) {
 	// Clear PATH to force a miss; if the environment still finds a bundled
 	// limactl the test skips.
@@ -129,7 +173,7 @@ func TestFindLimactl_ErrorMessageNamesPaths(t *testing.T) {
 	if err == nil {
 		t.Skip("FindLimactl succeeded; environment unexpectedly has limactl bundled")
 	}
-	if !strings.Contains(err.Error(), "make lima-deps") {
+	if !strings.Contains(err.Error(), "agentcage init") {
 		t.Errorf("error message should point at remediation, got: %v", err)
 	}
 }

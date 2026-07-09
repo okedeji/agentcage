@@ -1,0 +1,101 @@
+# goreleaser config for agentcage.
+#
+# An agentcage release is not one binary. The host CLI needs two companions
+# next to it at runtime, found via executableDir():
+#   - agentcage-linux-<arch>: baked into the in-VM gateway image (all platforms)
+#   - lima/: the bundled Lima VM driver (macOS only; Linux uses host containerd)
+#
+# So each archive ships the host binary plus its companions in the layout the
+# runtime expects. The build splits by OS: macOS archives carry lima/ (~77MB),
+# Linux archives do not. A `before` hook cross-compiles the linux companions
+# and fetches the SHA-pinned Lima bundles into dist/ staging dirs.
+version: 2
+
+project_name: agentcage
+
+before:
+  hooks:
+    - go mod download
+    - make release-deps
+
+builds:
+  - id: darwin
+    main: ./cmd/agentcage
+    binary: agentcage
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags:
+      - -X github.com/okedeji/agentcage/internal/identity.Version={{ .Version }}
+    goos: [darwin]
+    goarch: [amd64, arm64]
+
+  - id: linux
+    main: ./cmd/agentcage
+    binary: agentcage
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    ldflags:
+      - -X github.com/okedeji/agentcage/internal/identity.Version={{ .Version }}
+    goos: [linux]
+    goarch: [amd64, arm64]
+
+archives:
+  # macOS: host binary + linux companion + the Lima bundle.
+  - id: darwin
+    ids: [darwin]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - src: "bin/agentcage-linux-{{ .Arch }}"
+        strip_parent: true
+        info: { mode: 0o755 }
+      - src: "dist/lima-{{ .Os }}-{{ .Arch }}"
+        dst: "lima"
+      - LICENSE
+
+  # Linux: host binary + linux companion. No VM, so no Lima.
+  - id: linux
+    ids: [linux]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - src: "bin/agentcage-linux-{{ .Arch }}"
+        strip_parent: true
+        info: { mode: 0o755 }
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: okedeji
+    name: agentcage
+  draft: true
+  prerelease: auto
+
+# macOS install via a Homebrew cask. Casks (not the deprecated binary formulae)
+# are goreleaser's supported path and handle Gatekeeper quarantine, so a
+# downloaded binary is not blocked. Casks are macOS only; Linux installs from
+# the release archive or `go install`.
+#
+# A cask stages the whole archive in the Caskroom and symlinks the agentcage
+# binary onto PATH. The lima/ and agentcage-linux-<arch> companions stay next
+# to the real binary in the Caskroom, and executableDir() resolves the symlink
+# back to them, the same mechanism the libexec layout used.
+homebrew_casks:
+  - name: agentcage
+    ids: [darwin]
+    repository:
+      owner: okedeji
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/okedeji/agentcage"
+    description: "Run MCP agents you don't trust, in a cage. Signed and verified by default."
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/agentcage"]
+          end

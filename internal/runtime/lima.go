@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/okedeji/agentcage/internal/env"
 	"github.com/okedeji/agentcage/internal/identity"
 )
 
@@ -59,19 +60,27 @@ type LimaVM struct {
 	InstanceName string
 }
 
-// FindLimactl returns the path to a usable limactl: the bundled Lima layout
-// next to the running executable (what an installed agentcage and `make
-// lima-deps` produce), then ./bin/lima in a dev tree, then PATH. The error
-// names every path tried.
+// FindLimactl returns the path to a usable limactl: bundled next to the
+// running executable (an installed agentcage), then the runtime-fetched copy
+// under ~/.agentcage/lima (what init auto-downloads), then ./bin/lima in a dev
+// tree, then PATH. The error names every path tried.
 func FindLimactl() (string, error) {
 	var tried []string
 
-	if exe, err := os.Executable(); err == nil {
-		bundled := filepath.Join(filepath.Dir(exe), "lima", "bin", "limactl")
+	if dir, ok := executableDir(); ok {
+		bundled := filepath.Join(dir, "lima", "bin", "limactl")
 		if isExecutable(bundled) {
 			return bundled, nil
 		}
 		tried = append(tried, bundled)
+	}
+
+	if home, err := env.HomeDir(); err == nil {
+		fetched := filepath.Join(home, "lima", "bin", "limactl")
+		if isExecutable(fetched) {
+			return fetched, nil
+		}
+		tried = append(tried, fetched)
 	}
 
 	devPath := filepath.Join("bin", "lima", "bin", "limactl")
@@ -87,7 +96,7 @@ func FindLimactl() (string, error) {
 	}
 	tried = append(tried, "$PATH")
 
-	return "", fmt.Errorf("limactl not found (tried: %s); run 'make lima-deps' or install Lima v2.0+", strings.Join(tried, ", "))
+	return "", fmt.Errorf("limactl not found (tried: %s); run 'agentcage init' to fetch it, or install Lima v2.0+", strings.Join(tried, ", "))
 }
 
 func isExecutable(path string) bool {
@@ -96,6 +105,22 @@ func isExecutable(path string) bool {
 		return false
 	}
 	return st.Mode().Perm()&0o111 != 0
+}
+
+// executableDir is the directory holding the running binary and its bundled
+// companions (limactl, the linux agentcage). It resolves symlinks first: a
+// Homebrew install runs agentcage through a bin/ symlink into the Cellar, and
+// the companions sit next to the real binary, not the symlink. ok is false
+// when the path cannot be determined, so a lookup falls back to the dev tree.
+func executableDir() (string, bool) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", false
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return filepath.Dir(exe), true
 }
 
 func (vm *LimaVM) instanceName() string {

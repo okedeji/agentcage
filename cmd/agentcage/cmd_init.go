@@ -41,6 +41,14 @@ restarts the daemon.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+
+			// Fetch the pinned Lima bundle first if it is missing, before
+			// DefaultProvisioner tries to locate limactl and fails. A no-op
+			// off macOS and when limactl is already bundled or on PATH.
+			if err := runtime.EnsureLimaAvailable(ctx, cmd.ErrOrStderr()); err != nil {
+				return err
+			}
+
 			provisioner, err := runtime.DefaultProvisioner()
 			if err != nil {
 				return err
@@ -78,6 +86,13 @@ restarts the daemon.`,
 			if _, err := daemon.Ensure(ctx); err != nil {
 				return err
 			}
+
+			// Surface a missing in-VM companion now rather than at the first
+			// run. Bundled in a release; a from-source tree needs a build.
+			if _, err := runtime.FindLinuxBinary(); err != nil {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "note: the in-VM agent binary is not built yet; the first run needs it (run 'make build-linux' from source)")
+			}
+
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Runtime ready.")
 			return nil
 		},

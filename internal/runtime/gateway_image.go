@@ -28,8 +28,8 @@ func FindLinuxBinary() (string, error) {
 	name := "agentcage-linux-" + runtime.GOARCH
 	var tried []string
 
-	if exe, err := os.Executable(); err == nil {
-		bundled := filepath.Join(filepath.Dir(exe), name)
+	if dir, ok := executableDir(); ok {
+		bundled := filepath.Join(dir, name)
 		if isExecutable(bundled) {
 			return bundled, nil
 		}
