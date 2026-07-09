@@ -1,7 +1,10 @@
 .PHONY: all build build-linux build-linux-all setup clean test vet lint fmt-check ci tidy lima-deps lima-deps-all release-deps
 
 GO := go
-VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo dev)
+# git describe fails with no tags; the trailing sed still exits 0, so fall back
+# to "dev" explicitly rather than shipping an empty version.
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+VERSION := $(if $(VERSION),$(VERSION),dev)
 LDFLAGS := -X github.com/okedeji/agentcage/internal/identity.Version=$(VERSION:v%=%)
 GOFLAGS := -trimpath -ldflags '$(LDFLAGS)'
 BINDIR := bin
