@@ -1,4 +1,4 @@
-.PHONY: all build build-linux build-linux-all setup clean test vet lint fmt-check ci tidy lima-deps lima-deps-all release-deps
+.PHONY: all build build-linux build-linux-all setup clean test vet lint fmt-check ci tidy lima-deps lima-deps-all completions release-deps
 
 GO := go
 # git describe fails with no tags; the trailing sed still exits 0, so fall back
@@ -46,7 +46,7 @@ build-linux-all:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage-linux-amd64 ./cmd/agentcage/
 
 clean:
-	rm -rf $(BINDIR) dist .lima-release
+	rm -rf $(BINDIR) dist .lima-release completions
 
 test:
 	$(GO) test ./...
@@ -124,7 +124,16 @@ lima-deps-all:
 		echo "staged $$dest (lima v$(LIMA_VERSION))"; \
 	done
 
+# completions generates the shell completion scripts the release archives ship,
+# so `brew install` wires up tab-completion automatically. Output is
+# arch-independent, so generating with the host toolchain is fine.
+completions:
+	@mkdir -p completions
+	$(GO) run ./cmd/agentcage completion bash > completions/agentcage.bash
+	$(GO) run ./cmd/agentcage completion zsh  > completions/agentcage.zsh
+	$(GO) run ./cmd/agentcage completion fish > completions/agentcage.fish
+
 # release-deps prepares everything the goreleaser archives copy in: both in-VM
-# companion arches and both macOS Lima bundles. Invoked from .goreleaser.yaml's
-# before hook.
-release-deps: build-linux-all lima-deps-all
+# companion arches, both macOS Lima bundles, and the completion scripts.
+# Invoked from .goreleaser.yaml's before hook.
+release-deps: build-linux-all lima-deps-all completions

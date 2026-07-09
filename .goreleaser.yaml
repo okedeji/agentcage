@@ -51,6 +51,8 @@ archives:
         info: { mode: 0o755 }
       - src: ".lima-release/lima-{{ .Os }}-{{ .Arch }}"
         dst: "lima"
+      - src: "completions/*"
+        dst: "completions"
       - LICENSE
 
   # Linux: host binary + linux companion. No VM, so no Lima.
@@ -62,6 +64,8 @@ archives:
       - src: "bin/agentcage-linux-{{ .Arch }}"
         strip_parent: true
         info: { mode: 0o755 }
+      - src: "completions/*"
+        dst: "completions"
       - LICENSE
 
 checksum:
@@ -93,6 +97,12 @@ homebrew_casks:
     directory: Casks
     homepage: "https://github.com/okedeji/agentcage"
     description: "Run MCP agents you don't trust, in a cage. Signed and verified by default."
+    # Wire up tab-completion at install time, from the scripts shipped in the
+    # archive (paths are archive-relative).
+    completions:
+      bash: "completions/agentcage.bash"
+      zsh: "completions/agentcage.zsh"
+      fish: "completions/agentcage.fish"
     hooks:
       post:
         install: |

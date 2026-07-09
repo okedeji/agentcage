@@ -71,3 +71,6 @@ sample/
 *.agent
 # Lima release staging (out of dist/, which goreleaser owns)
 .lima-release/
+
+# Generated shell completions (release staging)
+completions/
