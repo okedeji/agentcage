@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/llmgateway"
-	"github.com/okedeji/agentcage/internal/secrets"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/llmgateway"
+	"github.com/okedeji/mcpvessel/internal/secrets"
 )
 
 // llmGatewayName is the LLM gateway's container name, also its hostname on
@@ -42,7 +42,7 @@ func SetRunBudget(ctx context.Context, runID string, microUSD int64) error {
 	return nil
 }
 
-// llmURL is one reasoning agent's AGENTCAGE_LLM_URL: the gateway at an
+// llmURL is one reasoning agent's VESSEL_LLM_URL: the gateway at an
 // unguessable per-agent token, so a sibling cannot forge another agent's path
 // to use its model or misattribute its spend.
 func llmURL(runID, token string) string {
@@ -50,7 +50,7 @@ func llmURL(runID, token string) string {
 }
 
 // rootAgentKey keys a lone agent or a tree's root in the gateway's per-agent
-// map and its AGENTCAGE_LLM_URL path.
+// map and its VESSEL_LLM_URL path.
 const rootAgentKey = "root"
 
 // manifestModel and manifestBudget tolerate a nil manifest: an unpulled node
@@ -59,14 +59,14 @@ func manifestModel(m *bundle.Manifest) string {
 	if m == nil {
 		return ""
 	}
-	return m.Agentfile.Model
+	return m.Vesselfile.Model
 }
 
 func manifestBudget(m *bundle.Manifest) int64 {
 	if m == nil {
 		return 0
 	}
-	return m.Agentfile.Budget
+	return m.Vesselfile.Budget
 }
 
 func nodeModel(n *agentNode) string {
@@ -117,7 +117,7 @@ func buildLLMConfig(agents, tokens map[string]string, budgetMicroUSD int64) (llm
 		if e.KeyRef != "" {
 			v, ok := store.Get(e.KeyRef)
 			if !ok {
-				return llmgateway.Config{}, fmt.Errorf("provider %q needs secret %q: run 'agentcage secrets set %s'", e.Name, e.KeyRef, e.KeyRef)
+				return llmgateway.Config{}, fmt.Errorf("provider %q needs secret %q: run 'mcpvessel secrets set %s'", e.Name, e.KeyRef, e.KeyRef)
 			}
 			key = v
 		}
@@ -133,7 +133,7 @@ func buildLLMConfig(agents, tokens map[string]string, budgetMicroUSD int64) (llm
 		}
 	}
 	if len(endpoints) == 0 {
-		return llmgateway.Config{}, fmt.Errorf("a reasoning agent needs an LLM provider: run 'agentcage config provider set'")
+		return llmgateway.Config{}, fmt.Errorf("a reasoning agent needs an LLM provider: run 'mcpvessel config provider set'")
 	}
 	// Route by capability token, meter by real key: paths stay unguessable
 	// and spend still attributes correctly.

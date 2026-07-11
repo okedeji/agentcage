@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
 const (
@@ -63,7 +63,7 @@ type runPlan struct {
 
 	// LLMAgents maps each reasoning agent's key to its advisory model; empty
 	// means no LLM gateway is needed. LLMTokens holds the unguessable token
-	// each agent's AGENTCAGE_LLM_URL carries; the gateway routes by token, not
+	// each agent's VESSEL_LLM_URL carries; the gateway routes by token, not
 	// the guessable agent key. Budget is the root's advisory cap in micro-USD.
 	LLMAgents map[string]string
 	LLMTokens map[string]string
@@ -103,7 +103,7 @@ type plannedAgent struct {
 // buildRunPlan turns a resolved tree into the containers, networks, and MCP
 // gateway routing for a run. runID scopes every name so concurrent runs do not
 // collide. Each USES edge becomes one gateway route (target plus deny) and one
-// injected AGENTCAGE_USES_<ALIAS>_URL on the caller, so every call in the tree
+// injected VESSEL_USES_<ALIAS>_URL on the caller, so every call in the tree
 // passes the referee that enforces deny.
 func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, error) {
 	mcpGatewayName := runID + "-gw"
@@ -266,8 +266,10 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 				agentEnv[k] = v
 			}
 		}
-		if err := injectOperatorValues(agentEnv, node.Manifest, ops.env, ops.secrets); err != nil {
-			return nil, fmt.Errorf("agent %s: %w", key, err)
+		if node.Manifest != nil {
+			if err := injectOperatorValues(agentEnv, node.Manifest.Vesselfile.Env, node.Manifest.Vesselfile.Secrets, ops.env, ops.secrets); err != nil {
+				return nil, fmt.Errorf("agent %s: %w", key, err)
+			}
 		}
 		plan.Agents = append(plan.Agents, plannedAgent{
 			Node: node,
@@ -297,14 +299,17 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		plan.LLMAgents[tree.Root] = effectiveModel(model, tree.Nodes[tree.Root], ops.models)
 	}
 	plan.RootCap = agentCap(tree.Nodes[tree.Root], ops.resources)
-	if hosts := egressHosts(nodeEgress(tree.Nodes[tree.Root])); len(hosts) > 0 {
+	if hosts := unionHosts(egressHosts(nodeEgress(tree.Nodes[tree.Root])), ops.egressAllow); len(hosts) > 0 {
 		plan.EgressAgents[containerName(tree.Root)] = egressAgent{Network: nodeNet(tree.Root), Hosts: hosts}
 		for k, v := range egressProxyEnv(runID) {
 			plan.RootEnv[k] = v
 		}
 	}
-	if err := injectOperatorValues(plan.RootEnv, tree.Nodes[tree.Root].Manifest, ops.env, ops.secrets); err != nil {
-		return nil, fmt.Errorf("agent %s: %w", tree.Root, err)
+	if rootManifest := tree.Nodes[tree.Root].Manifest; rootManifest != nil {
+		root := rootManifest.Vesselfile
+		if err := injectOperatorValues(plan.RootEnv, root.Env, root.Secrets, ops.env, ops.secrets); err != nil {
+			return nil, fmt.Errorf("agent %s: %w", tree.Root, err)
+		}
 	}
 
 	// The LLM gateway joins the dedicated networks of reasoning cages plus the
@@ -356,7 +361,7 @@ func classifyBans(tree *runTree) (wholeBanned map[string]bool, toolBanned map[st
 	if root == nil {
 		return wholeBanned, toolBanned, nil
 	}
-	for _, ban := range root.Agentfile.Ban {
+	for _, ban := range root.Vesselfile.Ban {
 		ref, err := reference.Parse(ban.Ref)
 		if err != nil {
 			return nil, nil, fmt.Errorf("BAN %s: %w", ban.Ref, err)
@@ -409,7 +414,7 @@ func agentImageRef(node *agentNode) string {
 	if tag == "" {
 		tag = "build"
 	}
-	return "agentcage/" + sanitizeRef(name) + ":" + tag
+	return "mcpvessel/" + sanitizeRef(name) + ":" + tag
 }
 
 // capabilityToken is the unguessable path a caller addresses one gateway route

@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
-	"github.com/okedeji/agentcage/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
 // listToolsTimeout bounds tools/list, a metadata round-trip after the
@@ -21,13 +21,21 @@ const listToolsTimeout = 60 * time.Second
 // IntrospectInput drives Introspect. ImageRef should match the ref the later
 // run derives so the image is reused rather than rebuilt.
 type IntrospectInput struct {
-	Agentfile *agentfile.Agentfile
-	SourceDir string
-	ImageRef  string
-	NoCache   bool
-	Stdout    io.Writer
-	Stderr    io.Writer
-	Verbose   bool
+	Vesselfile *vesselfile.Vesselfile
+	SourceDir  string
+	ImageRef   string
+	NoCache    bool
+
+	// Env and Secrets are the operator value pools for the introspection boot,
+	// scoped to what the Vesselfile declares. A server that needs a key or a
+	// config var to start (many SaaS servers do) can only be introspected when
+	// they are supplied.
+	Env     map[string]string
+	Secrets map[string]string
+
+	Stdout  io.Writer
+	Stderr  io.Writer
+	Verbose bool
 }
 
 // Introspect builds the agent's image, boots it, and returns the tools its
@@ -35,7 +43,7 @@ type IntrospectInput struct {
 // is never invoked; only the agent's own server startup executes.
 func Introspect(ctx context.Context, in IntrospectInput) ([]mcp.Tool, error) {
 	client, ws, err := bootAgent(ctx, bootInput{
-		Agentfile: in.Agentfile,
+		Vesselfile: in.Vesselfile,
 		// Labels are provenance only; the authoritative manifest is sealed
 		// later by the bundle build.
 		Manifest:  nil,
@@ -43,6 +51,8 @@ func Introspect(ctx context.Context, in IntrospectInput) ([]mcp.Tool, error) {
 		ImageRef:  in.ImageRef,
 		NoCache:   in.NoCache,
 		RunID:     introspectRunID(in.ImageRef),
+		OpEnv:     in.Env,
+		OpSecrets: in.Secrets,
 		Stdout:    in.Stdout,
 		Stderr:    in.Stderr,
 		Verbose:   in.Verbose,

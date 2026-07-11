@@ -3,9 +3,9 @@ package runtime
 import (
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/secrets"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/secrets"
 )
 
 func TestBuildLLMConfig_ResolvesKeysDefaultAndBudget(t *testing.T) {

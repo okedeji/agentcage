@@ -6,7 +6,7 @@ import (
 )
 
 func TestIntrospectRunID(t *testing.T) {
-	got := introspectRunID("agentcage/researcher:latest")
+	got := introspectRunID("mcpvessel/researcher:latest")
 	if !strings.Contains(got, "-introspect-") {
 		t.Errorf("introspectRunID = %q, want a -introspect- segment", got)
 	}

@@ -13,8 +13,8 @@ import (
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/content/memory"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
 // realBundle builds a minimal valid .agent; packBundle needs a readable
@@ -22,7 +22,7 @@ import (
 func realBundle(t *testing.T) string {
 	t.Helper()
 	src := t.TempDir()
-	if err := os.WriteFile(filepath.Join(src, "Agentfile"), []byte("FROM x\nENTRYPOINT y\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "Vesselfile"), []byte("FROM x\nENTRYPOINT y\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "agent.agent")
@@ -130,7 +130,7 @@ func TestPackBundle_StampsOwnershipForPublish(t *testing.T) {
 func TestSeedCache_MakesPullALocalHit(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()
-	t.Setenv("AGENTCAGE_HOME", home)
+	t.Setenv("VESSEL_HOME", home)
 
 	bundlePath := realBundle(t)
 	digest, err := BundleDigest(bundlePath)
@@ -179,15 +179,15 @@ func TestFetchBundle_RejectsNonBundleManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, _, err := fetchBundle(ctx, store, "0.1"); err == nil || !bytes.Contains([]byte(err.Error()), []byte("not an agentcage bundle")) {
-		t.Fatalf("err = %v, want a not-an-agentcage-bundle rejection", err)
+	if _, _, err := fetchBundle(ctx, store, "0.1"); err == nil || !bytes.Contains([]byte(err.Error()), []byte("not an mcpvessel bundle")) {
+		t.Fatalf("err = %v, want a not-an-mcpvessel-bundle rejection", err)
 	}
 }
 
 func TestCachePath_DigestIsFilesystemSafe(t *testing.T) {
-	c := &Client{cacheDir: "/home/u/.agentcage/cache"}
+	c := &Client{cacheDir: "/home/u/.mcpvessel/cache"}
 	got := c.cachePath("sha256:abc123")
-	want := filepath.Join("/home/u/.agentcage/cache", "bundles", "sha256-abc123.agent")
+	want := filepath.Join("/home/u/.mcpvessel/cache", "bundles", "sha256-abc123.agent")
 	if got != want {
 		t.Errorf("cachePath = %q, want %q", got, want)
 	}

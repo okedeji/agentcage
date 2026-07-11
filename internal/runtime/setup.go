@@ -6,13 +6,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/progress"
+	"github.com/okedeji/mcpvessel/internal/progress"
 )
 
 // Setup phase names, shown in the init / first-run UI. They must match what
 // the Lima output tap dispatches via progress.Setup.Start.
 //
-// "Linux VM", not "microVM": agentcage boots one shared Lima VM and runs
+// "Linux VM", not "microVM": mcpvessel boots one shared Lima VM and runs
 // agents as containers inside it, not per-agent Firecracker-style isolation.
 const (
 	SetupPhaseRuntime   = "Lima runtime ready"
@@ -177,7 +177,7 @@ func trimLimaPrefix(line string) string {
 // and the auto-bootstrap path say the same thing.
 const (
 	SetupTitle = "First-time setup (one-time, takes 2-5 minutes)"
-	SetupTip   = "Tip: agentcage caches everything in ~/.agentcage; later runs take seconds."
+	SetupTip   = "Tip: mcpvessel caches everything in ~/.mcpvessel; later runs take seconds."
 )
 
 // NewSetupUI constructs the setup UI, picking TTY or plain mode from the
@@ -187,7 +187,7 @@ func NewSetupUI(w io.Writer) progress.Setup {
 }
 
 // FirstRunDetected reports whether this host still needs its first-time Lima
-// setup: true only when no agentcage VM exists yet. Always false on Linux
+// setup: true only when no mcpvessel VM exists yet. Always false on Linux
 // native, which has no VM.
 func FirstRunDetected(ctx context.Context, p Provisioner) bool {
 	if _, ok := p.(*NativeProvisioner); ok {

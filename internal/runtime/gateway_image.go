@@ -11,21 +11,21 @@ import (
 	bkclient "github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/util/progress/progressui"
 
-	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/mcpvessel/internal/identity"
 )
 
 // GatewayImageRef is the gateway container's image ref, tagged by build
-// version so a new agentcage rebuilds it rather than reuse a stale gateway.
+// version so a new mcpvessel rebuilds it rather than reuse a stale gateway.
 func GatewayImageRef() string {
-	return "agentcage/gateway:" + identity.Version
+	return "mcpvessel/gateway:" + identity.Version
 }
 
-// FindLinuxBinary returns the path to the linux agentcage binary baked into
+// FindLinuxBinary returns the path to the linux mcpvessel binary baked into
 // the gateway image (the VM matches the host CPU, hence GOARCH). Lookup
 // mirrors FindLimactl: next to the running executable, then ./bin in a dev
 // tree; the error names every path tried.
 func FindLinuxBinary() (string, error) {
-	name := "agentcage-linux-" + runtime.GOARCH
+	name := "mcpvessel-linux-" + runtime.GOARCH
 	var tried []string
 
 	if dir, ok := executableDir(); ok {
@@ -43,10 +43,10 @@ func FindLinuxBinary() (string, error) {
 		tried = append(tried, abs)
 	}
 
-	return "", fmt.Errorf("linux agentcage binary %s not found (tried: %v); run 'make build-linux'", name, tried)
+	return "", fmt.Errorf("linux mcpvessel binary %s not found (tried: %v); run 'make build-linux'", name, tried)
 }
 
-// BuildGatewayImage bakes the linux agentcage binary into a scratch image
+// BuildGatewayImage bakes the linux mcpvessel binary into a scratch image
 // under GatewayImageRef. BuildKit caches the COPY, so an unchanged binary
 // rebuilds instantly.
 func BuildGatewayImage(ctx context.Context, bk *BuildKit, noCache bool, w io.Writer) error {
@@ -55,7 +55,7 @@ func BuildGatewayImage(ctx context.Context, bk *BuildKit, noCache bool, w io.Wri
 		return err
 	}
 
-	dir, err := os.MkdirTemp("", "agentcage-gateway-*")
+	dir, err := os.MkdirTemp("", "mcpvessel-gateway-*")
 	if err != nil {
 		return err
 	}
@@ -67,10 +67,10 @@ func BuildGatewayImage(ctx context.Context, bk *BuildKit, noCache bool, w io.Wri
 	if err != nil {
 		return fmt.Errorf("reading gateway binary %s: %w", binaryPath, err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "agentcage"), data, 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "mcpvessel"), data, 0o755); err != nil {
 		return fmt.Errorf("staging gateway binary: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "Agentfile"), []byte(gatewayDockerfile()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "Vesselfile"), []byte(gatewayDockerfile()), 0o644); err != nil {
 		return fmt.Errorf("writing gateway definition: %w", err)
 	}
 
@@ -88,7 +88,7 @@ func BuildGatewayImage(ctx context.Context, bk *BuildKit, noCache bool, w io.Wri
 	}()
 
 	onStatus := func(s *bkclient.SolveStatus) {
-		rewriteStatusForAgentcage(s)
+		rewriteStatusForMcpvessel(s)
 		statusCh <- s
 	}
 	err = solveImage(ctx, bk, dir, dir, GatewayImageRef(), noCache, onStatus)
@@ -100,7 +100,7 @@ func BuildGatewayImage(ctx context.Context, bk *BuildKit, noCache bool, w io.Wri
 // gatewayBinaryPath is where the binary lands in the gateway image. The
 // Dockerfile copies it here and the daemon execs it here; one owner so the
 // two cannot drift.
-const gatewayBinaryPath = "/agentcage"
+const gatewayBinaryPath = "/mcpvessel"
 
 // gatewayDockerfile builds the static binary onto scratch plus the system CA
 // bundle. The mode (mcp-gateway, llm-gateway, egress) arrives as container
@@ -113,6 +113,6 @@ func gatewayDockerfile() string {
 		"RUN apk add --no-cache ca-certificates\n" +
 		"FROM scratch\n" +
 		"COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt\n" +
-		"COPY agentcage " + gatewayBinaryPath + "\n" +
+		"COPY mcpvessel " + gatewayBinaryPath + "\n" +
 		"ENTRYPOINT [\"" + gatewayBinaryPath + "\"]\n"
 }

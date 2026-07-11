@@ -5,67 +5,91 @@ import (
 	"testing"
 )
 
-func TestAgentfile_NPM(t *testing.T) {
-	got, err := Agentfile(Source{Registry: NPM, Identifier: "@modelcontextprotocol/server-filesystem", Version: "1.0"})
+func TestVesselfile_NPM(t *testing.T) {
+	got, err := Vesselfile(Source{Registry: NPM, Identifier: "@modelcontextprotocol/server-filesystem", Version: "1.0"})
 	if err != nil {
-		t.Fatalf("Agentfile: %v", err)
+		t.Fatalf("Vesselfile: %v", err)
 	}
 	wantContains := []string{
 		"FROM node:22-slim",
 		"RUN npm install -g @modelcontextprotocol/server-filesystem@1.0",
 		"EXPOSE *",
-		"ENTRYPOINT ./agentcage mcp-bridge -- sh npm-entry.sh @modelcontextprotocol/server-filesystem",
+		`ENTRYPOINT ["./mcpvessel","mcp-bridge","--","sh","npm-entry.sh","@modelcontextprotocol/server-filesystem"]`,
 	}
 	for _, w := range wantContains {
 		if !strings.Contains(got, w) {
-			t.Errorf("Agentfile missing %q; got:\n%s", w, got)
+			t.Errorf("Vesselfile missing %q; got:\n%s", w, got)
 		}
 	}
 }
 
-func TestAgentfile_PyPIWithEnvAndSecret(t *testing.T) {
-	got, err := Agentfile(Source{
+func TestVesselfile_EgressAllow(t *testing.T) {
+	got, err := Vesselfile(Source{
+		Registry:   PyPI,
+		Identifier: "mcp-server-fetch",
+		Egress:     []string{"api.github.com", "objects.githubusercontent.com"},
+	})
+	if err != nil {
+		t.Fatalf("Vesselfile: %v", err)
+	}
+	if !strings.Contains(got, "EGRESS allow:api.github.com,objects.githubusercontent.com") {
+		t.Errorf("missing joined EGRESS line; got:\n%s", got)
+	}
+}
+
+func TestVesselfile_NoEgressByDefault(t *testing.T) {
+	got, err := Vesselfile(Source{Registry: PyPI, Identifier: "mcp-server-time"})
+	if err != nil {
+		t.Fatalf("Vesselfile: %v", err)
+	}
+	if strings.Contains(got, "EGRESS") {
+		t.Errorf("expected no EGRESS line by default; got:\n%s", got)
+	}
+}
+
+func TestVesselfile_PyPIWithEnvAndSecret(t *testing.T) {
+	got, err := Vesselfile(Source{
 		Registry:   PyPI,
 		Identifier: "mcp-server-fetch",
 		Env: []EnvVar{
-			{Name: "USER_AGENT", Default: "agentcage"},
+			{Name: "USER_AGENT", Default: "mcpvessel"},
 			{Name: "API_KEY", Secret: true},
 			{Name: "BASE_URL"},
 		},
 	})
 	if err != nil {
-		t.Fatalf("Agentfile: %v", err)
+		t.Fatalf("Vesselfile: %v", err)
 	}
 	for _, w := range []string{
 		"FROM python:3.12-slim",
 		"RUN pip install --no-cache-dir mcp-server-fetch\n",
 		"SECRETS API_KEY",
-		"ENV USER_AGENT=agentcage",
+		"ENV USER_AGENT=mcpvessel",
 		"ENV BASE_URL\n",
-		"ENTRYPOINT ./agentcage mcp-bridge -- mcp-server-fetch",
+		`ENTRYPOINT ["./mcpvessel","mcp-bridge","--","mcp-server-fetch"]`,
 	} {
 		if !strings.Contains(got, w) {
-			t.Errorf("Agentfile missing %q; got:\n%s", w, got)
+			t.Errorf("Vesselfile missing %q; got:\n%s", w, got)
 		}
 	}
 }
 
-func TestAgentfile_StampsOriginMarker(t *testing.T) {
-	got, err := Agentfile(Source{Registry: NPM, Identifier: "@scope/srv", Origin: "npm:@scope/srv"})
+func TestVesselfile_StampsOriginMarker(t *testing.T) {
+	got, err := Vesselfile(Source{Registry: NPM, Identifier: "@scope/srv", Origin: "npm:@scope/srv"})
 	if err != nil {
-		t.Fatalf("Agentfile: %v", err)
+		t.Fatalf("Vesselfile: %v", err)
 	}
 	if !strings.Contains(got, "META imported_from npm:@scope/srv") {
-		t.Errorf("Agentfile missing the imported_from marker; got:\n%s", got)
+		t.Errorf("Vesselfile missing the imported_from marker; got:\n%s", got)
 	}
 
 	// No origin, no marker.
-	bare, err := Agentfile(Source{Registry: NPM, Identifier: "@scope/srv"})
+	bare, err := Vesselfile(Source{Registry: NPM, Identifier: "@scope/srv"})
 	if err != nil {
-		t.Fatalf("Agentfile: %v", err)
+		t.Fatalf("Vesselfile: %v", err)
 	}
 	if strings.Contains(bare, "imported_from") {
-		t.Errorf("Agentfile stamped a marker with no origin; got:\n%s", bare)
+		t.Errorf("Vesselfile stamped a marker with no origin; got:\n%s", bare)
 	}
 }
 
@@ -76,35 +100,35 @@ func TestCanonicalOrigin(t *testing.T) {
 	}
 }
 
-func TestAgentfile_DescribesInputs(t *testing.T) {
-	got, err := Agentfile(Source{
+func TestVesselfile_DescribesInputs(t *testing.T) {
+	got, err := Vesselfile(Source{
 		Registry:   PyPI,
 		Identifier: "srv",
 		Env:        []EnvVar{{Name: "API_KEY", Secret: true, Description: "The service API key."}},
 	})
 	if err != nil {
-		t.Fatalf("Agentfile: %v", err)
+		t.Fatalf("Vesselfile: %v", err)
 	}
 	if !strings.Contains(got, "# The service API key.\nSECRETS API_KEY") {
-		t.Errorf("Agentfile does not document the input; got:\n%s", got)
+		t.Errorf("Vesselfile does not document the input; got:\n%s", got)
 	}
 }
 
-func TestAgentfile_OCINeedsLaunch(t *testing.T) {
-	if _, err := Agentfile(Source{Registry: OCI, Identifier: "ghcr.io/acme/mcp", Version: "1.2"}); err == nil {
+func TestVesselfile_OCINeedsLaunch(t *testing.T) {
+	if _, err := Vesselfile(Source{Registry: OCI, Identifier: "ghcr.io/acme/mcp", Version: "1.2"}); err == nil {
 		t.Fatal("want an error: oci wrap has no launch command")
 	}
-	got, err := Agentfile(Source{Registry: OCI, Identifier: "ghcr.io/acme/mcp", Version: "1.2", Launch: []string{"mcp-slack", "--stdio"}})
+	got, err := Vesselfile(Source{Registry: OCI, Identifier: "ghcr.io/acme/mcp", Version: "1.2", Launch: []string{"mcp-slack", "--stdio"}})
 	if err != nil {
-		t.Fatalf("Agentfile: %v", err)
+		t.Fatalf("Vesselfile: %v", err)
 	}
-	if !strings.Contains(got, "FROM ghcr.io/acme/mcp:1.2") || !strings.Contains(got, "ENTRYPOINT ./agentcage mcp-bridge -- mcp-slack --stdio") {
-		t.Errorf("oci Agentfile wrong; got:\n%s", got)
+	if !strings.Contains(got, "FROM ghcr.io/acme/mcp:1.2") || !strings.Contains(got, `ENTRYPOINT ["./mcpvessel","mcp-bridge","--","mcp-slack","--stdio"]`) {
+		t.Errorf("oci Vesselfile wrong; got:\n%s", got)
 	}
 }
 
-func TestAgentfile_UnsupportedRegistry(t *testing.T) {
-	if _, err := Agentfile(Source{Registry: "cargo", Identifier: "x"}); err == nil {
+func TestVesselfile_UnsupportedRegistry(t *testing.T) {
+	if _, err := Vesselfile(Source{Registry: "cargo", Identifier: "x"}); err == nil {
 		t.Fatal("want an error for an unsupported registry type")
 	}
 }

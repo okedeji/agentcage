@@ -39,7 +39,7 @@ type Config struct {
 // is an error; there is no anonymous device flow.
 func DeviceFlow(ctx context.Context, cfg Config) (string, error) {
 	if cfg.ClientID == "" {
-		return "", fmt.Errorf("no GitHub OAuth client id; set %s to a registered app", "AGENTCAGE_GITHUB_CLIENT_ID")
+		return "", fmt.Errorf("no GitHub OAuth client id; set %s to a registered app", "VESSEL_GITHUB_CLIENT_ID")
 	}
 	base := cfg.BaseURL
 	if base == "" {
@@ -112,7 +112,7 @@ func poll(ctx context.Context, base, clientID string, code deviceCode) (string, 
 		}
 
 		if time.Now().After(deadline) {
-			return "", fmt.Errorf("authorization timed out; run 'agentcage login mcp-registry' again")
+			return "", fmt.Errorf("authorization timed out; run 'mcpvessel login mcp-registry' again")
 		}
 		if err := sleep(ctx, interval); err != nil {
 			return "", err

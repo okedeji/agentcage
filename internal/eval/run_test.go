@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/daemon"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/daemon"
 )
 
 // fakeRunner returns canned output/usage/error so a suite runs without a
@@ -36,7 +36,7 @@ func (f fakeScorer) Score(_ context.Context, _, _, _ string) (Verdict, error) {
 }
 
 func manifestWith(main string, expose ...string) *bundle.Manifest {
-	return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Main: main, Expose: expose}}
+	return &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Main: main, Expose: expose}}
 }
 
 func suiteWith(cases ...Case) *Suite {

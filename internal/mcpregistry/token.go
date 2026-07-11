@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // authExchangePath trades a GitHub access token for the registry's own
@@ -84,7 +84,7 @@ type tokenFile struct {
 	ExpiresAt     time.Time `json:"expires_at,omitempty"`
 }
 
-// SaveToken writes the bearer to a 0600 file under ~/.agentcage, the same
+// SaveToken writes the bearer to a 0600 file under ~/.mcpvessel, the same
 // permission the secret store uses.
 func SaveToken(t Token) error {
 	path, err := tokenPath()

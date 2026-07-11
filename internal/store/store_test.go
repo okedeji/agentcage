@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
-// newTestStore roots the store at a temp AGENTCAGE_HOME to keep tests off the
-// real ~/.agentcage.
+// newTestStore roots the store at a temp VESSEL_HOME to keep tests off the
+// real ~/.mcpvessel.
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	s, err := New()
 	if err != nil {
 		t.Fatalf("New: %v", err)

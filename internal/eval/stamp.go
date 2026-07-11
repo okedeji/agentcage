@@ -3,7 +3,7 @@ package eval
 import (
 	"time"
 
-	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/bundle"
 )
 
 // Stamp writes a full-suite run's results into the bundle's manifest so the

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/secrets"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/secrets"
 )
 
 // judgeServer returns a provider stub that replies with content and a fixed
@@ -37,7 +37,7 @@ func judgeServer(t *testing.T, content string, calls *int) *httptest.Server {
 
 func judgeFor(t *testing.T, srv *httptest.Server) *Judgement {
 	t.Helper()
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	sec, err := secrets.Load()
 	if err != nil {
 		t.Fatalf("secrets.Load: %v", err)
@@ -96,7 +96,7 @@ func TestJudge_RetriesThenFailsClosed(t *testing.T) {
 }
 
 func TestNewJudge_Errors(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	sec, _ := secrets.Load()
 	sec.Set("k", "sk-test")
 

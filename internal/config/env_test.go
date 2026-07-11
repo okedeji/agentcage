@@ -3,10 +3,10 @@ package config
 import (
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
-const knob = "AGENTCAGE_TEST_KNOB"
+const knob = "VESSEL_TEST_KNOB"
 
 func storeEnv(t *testing.T, name, value string) {
 	t.Helper()

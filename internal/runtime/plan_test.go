@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
 // edgeKeyFromURL pulls the gateway edge key out of an injected USES URL. The
@@ -36,7 +36,7 @@ func TestBuildRunPlan_RootCapAndModelHonorOperatorConfig(t *testing.T) {
 			"root": {
 				Key:      "root",
 				Ref:      reference.Reference{Repository: "okedeji/boss"},
-				Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Model: "openai/gpt-4o"}},
+				Manifest: &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Model: "openai/gpt-4o"}},
 			},
 		},
 	}
@@ -72,7 +72,7 @@ func mustParseRef(t *testing.T, s string) reference.Reference {
 }
 
 func rootWithBans(bans ...bundle.BanSpec) *bundle.Manifest {
-	return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Ban: bans}}
+	return &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Ban: bans}}
 }
 
 func TestBuildRunPlan_SingleEdge(t *testing.T) {
@@ -116,7 +116,7 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 
 	// The root calls the gateway by an unguessable capability key, never the
 	// sub-agent directly.
-	url := plan.RootEnv["AGENTCAGE_USES_SUB_URL"]
+	url := plan.RootEnv["VESSEL_USES_SUB_URL"]
 	if !strings.HasPrefix(url, "http://run1-gw:9000/") {
 		t.Errorf("root USES url = %q, want the gateway prefix", url)
 	}
@@ -135,7 +135,7 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	if !sub.Spec.Detached {
 		t.Error("sub-agent must run detached")
 	}
-	if got := sub.Spec.Env["AGENTCAGE_SERVE_HTTP"]; got != ":8000" {
+	if got := sub.Spec.Env["VESSEL_SERVE_HTTP"]; got != ":8000" {
 		t.Errorf("sub SERVE_HTTP = %q, want :8000", got)
 	}
 	// Every cage is capped: agent default for subs, tighter default for the gateway.
@@ -156,7 +156,7 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 		t.Errorf("edge deny = %v, want [danger]", edge.Deny)
 	}
 
-	if got := plan.MCPGateway.Env["AGENTCAGE_MCP_ADDR"]; got != ":9000" {
+	if got := plan.MCPGateway.Env["VESSEL_MCP_ADDR"]; got != ":9000" {
 		t.Errorf("gateway addr = %q, want :9000", got)
 	}
 	if len(plan.MCPGateway.Args) != 1 || plan.MCPGateway.Args[0] != "mcp-gateway" {
@@ -167,7 +167,7 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	}
 	// The routing table round-trips, so the container and the plan cannot disagree.
 	var served mcpgateway.Config
-	if err := json.Unmarshal([]byte(plan.MCPGateway.Env["AGENTCAGE_MCP_CONFIG"]), &served); err != nil {
+	if err := json.Unmarshal([]byte(plan.MCPGateway.Env["VESSEL_MCP_CONFIG"]), &served); err != nil {
 		t.Fatalf("gateway config not valid json: %v", err)
 	}
 	if served.Edges[edgeKey].Target != edge.Target {
@@ -177,7 +177,7 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 
 func TestBuildRunPlan_InjectsLLMURLForReasoningAgents(t *testing.T) {
 	withModel := func(m string, budget int64) *bundle.Manifest {
-		return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Model: m, Budget: budget}}
+		return &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Model: m, Budget: budget}}
 	}
 	tree := &runTree{
 		Root: "root",
@@ -195,7 +195,7 @@ func TestBuildRunPlan_InjectsLLMURLForReasoningAgents(t *testing.T) {
 
 	// Each reasoning agent's LLM URL carries its unguessable capability token,
 	// not the guessable agent key, and lands in the gateway's per-agent map.
-	rootURL := plan.RootEnv["AGENTCAGE_LLM_URL"]
+	rootURL := plan.RootEnv["VESSEL_LLM_URL"]
 	if !strings.HasPrefix(rootURL, "http://run1-llm:9001/") {
 		t.Errorf("root LLM url = %q, want the gateway prefix", rootURL)
 	}
@@ -211,7 +211,7 @@ func TestBuildRunPlan_InjectsLLMURLForReasoningAgents(t *testing.T) {
 	}
 	for _, a := range plan.Agents {
 		if a.Spec.RunID == "run1-sub-ab" {
-			subURL := a.Spec.Env["AGENTCAGE_LLM_URL"]
+			subURL := a.Spec.Env["VESSEL_LLM_URL"]
 			tok := subURL[strings.LastIndexByte(subURL, '/')+1:]
 			if tok != plan.LLMTokens["sub-ab"] || len(tok) != 32 {
 				t.Errorf("sub LLM url = %q, token must be the capability token", subURL)
@@ -222,7 +222,7 @@ func TestBuildRunPlan_InjectsLLMURLForReasoningAgents(t *testing.T) {
 
 func TestBuildRunPlan_EgressAllowAgentsGetProxyEnv(t *testing.T) {
 	withEgress := func(policy string) *bundle.Manifest {
-		return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Egress: policy}}
+		return &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Egress: policy}}
 	}
 	tree := &runTree{
 		Root: "root",
@@ -395,10 +395,10 @@ func TestBuildRunPlan_WholeAgentBan(t *testing.T) {
 		t.Errorf("a banned agent was scheduled to start: %+v", plan.Agents)
 	}
 	// The URL is still injected so the caller gets a clean banned error.
-	if plan.RootEnv["AGENTCAGE_USES_WEIRD_URL"] == "" {
+	if plan.RootEnv["VESSEL_USES_WEIRD_URL"] == "" {
 		t.Fatal("banned edge should still inject the caller's URL")
 	}
-	edgeKey := edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_WEIRD_URL"])
+	edgeKey := edgeKeyFromURL(t, plan.RootEnv["VESSEL_USES_WEIRD_URL"])
 	edge, ok := plan.MCPGatewayCfg.Edges[edgeKey]
 	if !ok || !edge.Banned {
 		t.Errorf("edge %s should be banned, got %+v", edgeKey, edge)
@@ -425,7 +425,7 @@ func TestBuildRunPlan_ToolBanMergesIntoEdgeDeny(t *testing.T) {
 	if len(plan.Agents) != 1 {
 		t.Fatalf("a tool-banned agent should still run, agents = %d", len(plan.Agents))
 	}
-	edge := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_WEB_URL"])]
+	edge := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["VESSEL_USES_WEB_URL"])]
 	if edge.Banned {
 		t.Error("a tool ban must not mark the whole edge banned")
 	}
@@ -475,7 +475,7 @@ func TestBuildRunPlan_PrewarmsDirectChildrenDefersDeeper(t *testing.T) {
 
 	// The direct child's edge is live from boot; the deeper edge is inactive
 	// so the gateway holds its first call.
-	rootEdge := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["AGENTCAGE_USES_A_URL"])]
+	rootEdge := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["VESSEL_USES_A_URL"])]
 	if rootEdge.Inactive {
 		t.Error("edge to a prewarmed direct child must be active")
 	}
@@ -485,7 +485,7 @@ func TestBuildRunPlan_PrewarmsDirectChildrenDefersDeeper(t *testing.T) {
 			aAgent = ag
 		}
 	}
-	deepEdgeKey := edgeKeyFromURL(t, aAgent.Spec.Env["AGENTCAGE_USES_B_URL"])
+	deepEdgeKey := edgeKeyFromURL(t, aAgent.Spec.Env["VESSEL_USES_B_URL"])
 	if !plan.MCPGatewayCfg.Edges[deepEdgeKey].Inactive {
 		t.Error("edge to the deferred grandchild b must be inactive")
 	}
@@ -498,7 +498,7 @@ func TestBuildRunPlan_PrewarmsDirectChildrenDefersDeeper(t *testing.T) {
 
 func TestBuildRunPlan_TwoNetworkPoolsKeepKeyHolderOffPlainCages(t *testing.T) {
 	withModel := func(key, m string) *agentNode {
-		return &agentNode{Key: key, Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Model: m}}}
+		return &agentNode{Key: key, Manifest: &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Model: m}}}
 	}
 	tree := &runTree{
 		Root: "root",
@@ -547,7 +547,7 @@ func TestBuildRunPlan_PinsEgressAndConfiguredAgentsWarm(t *testing.T) {
 	// @o/a keep_warm; both must prewarm and be AlwaysWarm even though deep is
 	// not a direct child.
 	withEgress := func(ref reference.Reference, policy string) *agentNode {
-		return &agentNode{Key: "deep-1", Ref: ref, Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Egress: policy}}}
+		return &agentNode{Key: "deep-1", Ref: ref, Manifest: &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Egress: policy}}}
 	}
 	tree := &runTree{
 		Root: "root",
@@ -578,7 +578,7 @@ func TestBuildRunPlan_PinsEgressAndConfiguredAgentsWarm(t *testing.T) {
 		t.Errorf("config-pinned a-1 must be prewarmed and always-warm, got %+v", flags["a-1"])
 	}
 	// The deep agent is warm, so the edge to it is active, not held for activation.
-	deepEdge := edgeKeyFromURL(t, flags["a-1"].Spec.Env["AGENTCAGE_USES_DEEP_URL"])
+	deepEdge := edgeKeyFromURL(t, flags["a-1"].Spec.Env["VESSEL_USES_DEEP_URL"])
 	if plan.MCPGatewayCfg.Edges[deepEdge].Inactive {
 		t.Error("edge to a pinned-warm agent must be active")
 	}
@@ -614,12 +614,12 @@ func TestBuildRunPlan_NestedCallerServesAndCalls(t *testing.T) {
 	if a.Node == nil {
 		t.Fatal("agent a not in plan")
 	}
-	if got := a.Spec.Env["AGENTCAGE_SERVE_HTTP"]; got != ":8000" {
+	if got := a.Spec.Env["VESSEL_SERVE_HTTP"]; got != ":8000" {
 		t.Errorf("a SERVE_HTTP = %q, want :8000", got)
 	}
 	// a's url for b points at the gateway by capability key, not at b's
 	// container, so a's own deny edge to b is enforced.
-	gotURL := a.Spec.Env["AGENTCAGE_USES_B_URL"]
+	gotURL := a.Spec.Env["VESSEL_USES_B_URL"]
 	if !strings.HasPrefix(gotURL, "http://run9-gw:9000/") {
 		t.Errorf("a USES b url = %q, want the gateway prefix", gotURL)
 	}
@@ -627,7 +627,7 @@ func TestBuildRunPlan_NestedCallerServesAndCalls(t *testing.T) {
 		t.Errorf("a USES b url %q does not resolve to a gateway edge", gotURL)
 	}
 	// The nested edge is the gateway's, not the root's.
-	if _, isRoot := plan.RootEnv["AGENTCAGE_USES_B_URL"]; isRoot {
+	if _, isRoot := plan.RootEnv["VESSEL_USES_B_URL"]; isRoot {
 		t.Error("b leaked into the root's environment")
 	}
 }

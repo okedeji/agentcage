@@ -1,5 +1,5 @@
 // Package telemetry holds a run's trace model: the span tree the daemon
-// writes into history and `agentcage trace` renders.
+// writes into history and `mcpvessel trace` renders.
 package telemetry
 
 import "time"

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/history"
+	"github.com/okedeji/mcpvessel/internal/history"
 )
 
 func TestWriteMetrics(t *testing.T) {
@@ -32,13 +32,13 @@ func TestWriteMetrics(t *testing.T) {
 	out := b.String()
 
 	for _, want := range []string{
-		`agentcage_runs_total{status="succeeded"} 2`,
-		`agentcage_runs_total{status="failed"} 1`,
-		"agentcage_runs_live 0",
-		"# TYPE agentcage_cages_live gauge",
-		"agentcage_serve_clients 0",
-		"agentcage_cost_usd_total 0.020000",
-		"agentcage_tokens_total 2000",
+		`mcpvessel_runs_total{status="succeeded"} 2`,
+		`mcpvessel_runs_total{status="failed"} 1`,
+		"mcpvessel_runs_live 0",
+		"# TYPE mcpvessel_cages_live gauge",
+		"mcpvessel_serve_clients 0",
+		"mcpvessel_cost_usd_total 0.020000",
+		"mcpvessel_tokens_total 2000",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("metrics output missing %q in:\n%s", want, out)

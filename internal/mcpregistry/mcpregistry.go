@@ -16,14 +16,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 const (
 	defaultBaseURL = "https://registry.modelcontextprotocol.io"
 
-	// apiPrefix moves with the registry's API version, not agentcage's.
+	// apiPrefix moves with the registry's API version, not mcpvessel's.
 	apiPrefix = "/v0.1"
 
 	// requestTimeout bounds a single registry call so a wedged registry
@@ -39,7 +39,7 @@ type Client struct {
 }
 
 // New builds a Client against the official registry, or the
-// AGENTCAGE_MCP_REGISTRY override.
+// VESSEL_MCP_REGISTRY override.
 func New() *Client {
 	return &Client{
 		baseURL: baseURL(),
@@ -92,7 +92,7 @@ func (c *Client) Resolve(ctx context.Context, name string) (*Server, error) {
 // error, never a silent no-op.
 func (c *Client) Publish(ctx context.Context, s *Server, token string) error {
 	if token == "" {
-		return fmt.Errorf("publishing %s: no MCP Registry token; run 'agentcage login mcp-registry' first", s.Name)
+		return fmt.Errorf("publishing %s: no MCP Registry token; run 'mcpvessel login mcp-registry' first", s.Name)
 	}
 	body, err := json.Marshal(s)
 	if err != nil {
@@ -116,7 +116,7 @@ func (c *Client) Publish(ctx context.Context, s *Server, token string) error {
 	case http.StatusOK, http.StatusCreated:
 		return nil
 	case http.StatusUnauthorized:
-		return fmt.Errorf("publishing %s: token rejected; run 'agentcage login mcp-registry' again", s.Name)
+		return fmt.Errorf("publishing %s: token rejected; run 'mcpvessel login mcp-registry' again", s.Name)
 	case http.StatusForbidden:
 		return fmt.Errorf("publishing %s: token cannot publish this namespace", s.Name)
 	default:

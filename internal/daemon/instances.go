@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/mcp"
-	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // managedSession is what the manager needs from a booted instance.
@@ -17,6 +17,7 @@ import (
 type managedSession interface {
 	Call(ctx context.Context, tool string, args map[string]any) (string, error)
 	BindElicit(target mcp.ElicitHandler) func()
+	RunID() string
 	Release() error
 }
 

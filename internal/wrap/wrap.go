@@ -1,10 +1,11 @@
-// Package wrap generates the Agentfile that turns an existing MCP server
-// (npm, PyPI, or OCI) into an agentcage agent: a FROM/RUN/ENTRYPOINT that
+// Package wrap generates the Vesselfile that turns an existing MCP server
+// (npm, PyPI, or OCI) into an mcpvessel agent: a FROM/RUN/ENTRYPOINT that
 // installs and launches it over stdio. An import is then an ordinary build
-// against a generated Agentfile the operator owns.
+// against a generated Vesselfile the operator owns.
 package wrap
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -26,7 +27,7 @@ const (
 )
 
 // NPMLauncherFile is the offline launcher written beside an npm import's
-// Agentfile and run as its ENTRYPOINT.
+// Vesselfile and run as its ENTRYPOINT.
 const NPMLauncherFile = "npm-entry.sh"
 
 // npmLauncher resolves a globally-installed npm package's bin from its own
@@ -45,10 +46,10 @@ exec node "$main"
 func NPMLauncherScript() string { return npmLauncher }
 
 // The imported server speaks stdio; a USES sub-agent is reached over HTTP.
-// So the ENTRYPOINT is the agentcage bridge wrapping the server: as a
+// So the ENTRYPOINT is the mcpvessel bridge wrapping the server: as a
 // sub-agent it serves HTTP and forwards, as a root it execs the server.
 const (
-	BridgeBinaryName = "agentcage"
+	BridgeBinaryName = "mcpvessel"
 	BridgeSubcommand = "mcp-bridge"
 )
 
@@ -64,7 +65,7 @@ type EnvVar struct {
 }
 
 // Source is how a foreign MCP server is distributed, enough to generate its
-// Agentfile. Launch overrides the derived ENTRYPOINT and is required for OCI,
+// Vesselfile. Launch overrides the derived ENTRYPOINT and is required for OCI,
 // whose launch command wrap cannot infer.
 type Source struct {
 	Registry   string
@@ -72,6 +73,9 @@ type Source struct {
 	Version    string
 	Launch     []string
 	Env        []EnvVar
+	// Egress is the hosts the wrapped server may reach, written as an
+	// EGRESS allow: line. Empty leaves the cage deny-default (no network).
+	Egress []string
 	// Origin is the wrapped server's canonical identity, stamped as META
 	// imported_from. Empty leaves the marker off.
 	Origin string
@@ -84,9 +88,9 @@ func CanonicalOrigin(src Source) string {
 	return src.Registry + ":" + src.Identifier
 }
 
-// Agentfile renders the Agentfile wrapping src, or an error when src cannot be
+// Vesselfile renders the Vesselfile wrapping src, or an error when src cannot be
 // wrapped: an unsupported registry type, or an OCI image with no launch command.
-func Agentfile(src Source) (string, error) {
+func Vesselfile(src Source) (string, error) {
 	if src.Identifier == "" {
 		return "", fmt.Errorf("wrap: no package identifier")
 	}
@@ -121,6 +125,9 @@ func render(from, run string, src Source, defaultLaunch []string) (string, error
 		lines = append(lines, run)
 	}
 	lines = append(lines, envLines(src.Env)...)
+	if len(src.Egress) > 0 {
+		lines = append(lines, "EGRESS allow:"+strings.Join(src.Egress, ","))
+	}
 	if src.Origin != "" {
 		lines = append(lines, "META imported_from "+src.Origin)
 	}
@@ -130,12 +137,17 @@ func render(from, run string, src Source, defaultLaunch []string) (string, error
 	return strings.Join(lines, "\n") + "\n", nil
 }
 
+// bridgeEntrypoint renders the exec-form ENTRYPOINT: the bridge binary running
+// the wrapped server. Exec form (a JSON array, no shell) lets the agent sit on
+// a distroless base, which serious MCP server images increasingly are.
 func bridgeEntrypoint(launch []string) string {
-	return "./" + BridgeBinaryName + " " + BridgeSubcommand + " -- " + strings.Join(launch, " ")
+	argv := append([]string{"./" + BridgeBinaryName, BridgeSubcommand, "--"}, launch...)
+	out, _ := json.Marshal(argv)
+	return string(out)
 }
 
 // envLines renders the declared inputs, sorted so a re-import produces the
-// same Agentfile.
+// same Vesselfile.
 func envLines(env []EnvVar) []string {
 	sorted := append([]EnvVar(nil), env...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })

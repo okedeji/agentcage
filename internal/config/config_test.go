@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 func TestEffectiveMetricsAddr(t *testing.T) {

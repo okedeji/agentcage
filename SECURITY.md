@@ -1,6 +1,6 @@
 # Security policy
 
-agentcage runs agents in isolated containers behind policy gateways, with a
+mcpvessel runs agents in isolated containers behind policy gateways, with a
 signing and trust model over the artifacts. A hole in the sandbox or the trust
 model is the most serious kind of bug it can have. Reports are welcome and taken
 seriously.
@@ -9,10 +9,10 @@ seriously.
 
 Please report privately, not in a public issue:
 
-- Open a [GitHub private security advisory](https://github.com/okedeji/agentcage/security/advisories/new), or
-- Email **tobiokedeji@gmail.com** with `agentcage security` in the subject.
+- Open a [GitHub private security advisory](https://github.com/okedeji/mcpvessel/security/advisories/new), or
+- Email **tobiokedeji@gmail.com** with `mcpvessel security` in the subject.
 
-Include what you need to reproduce it: the Agentfile or bundle, the commands,
+Include what you need to reproduce it: the Vesselfile or bundle, the commands,
 and what you expected versus what happened. A proof of concept helps but is not
 required.
 

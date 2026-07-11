@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 func setHome(t *testing.T) string {

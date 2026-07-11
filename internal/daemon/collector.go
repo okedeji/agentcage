@@ -6,9 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/llmgateway"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
-	"github.com/okedeji/agentcage/internal/telemetry"
+	"github.com/okedeji/mcpvessel/internal/llmgateway"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/telemetry"
 )
 
 // buildTrace assembles a run's trace: the run span is the root, each agent
@@ -18,7 +18,7 @@ import (
 // graph.
 func buildTrace(runID string, start, end time.Time, calls []llmgateway.CallEvent, subCalls []mcpgateway.SubCallEvent) *telemetry.Trace {
 	root := &telemetry.Span{
-		Name:       "agentcage.run",
+		Name:       "mcpvessel.run",
 		Start:      start,
 		End:        end,
 		Attributes: map[string]any{"run_id": runID},
@@ -33,7 +33,7 @@ func buildTrace(runID string, start, end time.Time, calls []llmgateway.CallEvent
 		}
 		cs, ce := time.Unix(0, c.StartUnixNano), time.Unix(0, c.EndUnixNano)
 		ag.Children = append(ag.Children, &telemetry.Span{
-			Name:  "agentcage.llm.call",
+			Name:  "mcpvessel.llm.call",
 			Start: cs,
 			End:   ce,
 			Attributes: map[string]any{
@@ -52,7 +52,7 @@ func buildTrace(runID string, start, end time.Time, calls []llmgateway.CallEvent
 	}
 	for _, s := range subCalls {
 		root.Children = append(root.Children, &telemetry.Span{
-			Name:       "agentcage.sub_agent.run",
+			Name:       "mcpvessel.sub_agent.run",
 			Start:      time.Unix(0, s.StartUnixNano),
 			End:        time.Unix(0, s.EndUnixNano),
 			Attributes: map[string]any{"edge": s.Edge, "tool": s.Tool},

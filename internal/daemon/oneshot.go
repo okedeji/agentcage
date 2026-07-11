@@ -9,11 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/history"
-	"github.com/okedeji/agentcage/internal/locate"
-	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/egress"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/history"
+	"github.com/okedeji/mcpvessel/internal/locate"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // RunRequest is the POST /run body: one boot, one tool call, one teardown.
@@ -22,15 +23,16 @@ import (
 // String and GoString redact Secrets and Env so a logged request never leaks
 // them; JSON marshaling stays real because it is the wire format.
 type RunRequest struct {
-	Ref       string            `json:"ref"`
-	Tool      string            `json:"tool"`
-	Args      map[string]any    `json:"args,omitempty"`
-	Budget    int64             `json:"budget,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
-	Secrets   map[string]string `json:"secrets,omitempty"`
-	Resources config.Cap        `json:"resources,omitempty"`
-	NoCache   bool              `json:"no_cache,omitempty"`
-	Record    bool              `json:"record,omitempty"`
+	Ref       string              `json:"ref"`
+	Tool      string              `json:"tool"`
+	Args      map[string]any      `json:"args,omitempty"`
+	Budget    int64               `json:"budget,omitempty"`
+	Env       map[string]string   `json:"env,omitempty"`
+	Secrets   map[string]string   `json:"secrets,omitempty"`
+	Resources config.Cap          `json:"resources,omitempty"`
+	NoCache   bool                `json:"no_cache,omitempty"`
+	Record    bool                `json:"record,omitempty"`
+	Egress    map[string][]string `json:"egress,omitempty"` // scoped per-agent operator override
 	// TimeoutSeconds bounds the tool call, not the boot: a first-use image
 	// build can take minutes and must not count against the deadline. Zero
 	// means no deadline.
@@ -96,6 +98,7 @@ func (d *Daemon) handleRun(w http.ResponseWriter, r *http.Request) {
 		Resources:   req.Resources,
 		NoCache:     req.NoCache,
 		Record:      req.Record,
+		EgressAllow: egress.HostsFor(req.Egress, b.Name),
 		Interaction: env.InteractionOneShot,
 		Stdout:      io.Discard,
 		Stderr:      stream.logWriter(),
@@ -122,6 +125,7 @@ func (d *Daemon) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 	callStart := nowFunc()
 	result, callErr := session.Call(callCtx, req.Tool, callArgs)
+	callErr = enrichEgressError(callErr, d.denials.hosts(session.RunID()))
 	callMS := nowFunc().Sub(callStart).Milliseconds()
 	status := history.StatusSucceeded
 	if callErr != nil {

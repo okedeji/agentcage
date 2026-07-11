@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
 // fakeReg serves pre-built bundles and canned digests keyed by repository:tag.
@@ -49,7 +49,7 @@ func buildBundle(t *testing.T, name string, usesLines ...string) string {
 		body += u + "\n"
 	}
 	body += "ENTRYPOINT python3 agent.py\n"
-	if err := os.WriteFile(filepath.Join(src, "Agentfile"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "Vesselfile"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(src, "agent.py"), []byte("print('x')\n"), 0o644); err != nil {
@@ -63,7 +63,7 @@ func buildBundle(t *testing.T, name string, usesLines ...string) string {
 }
 
 func TestResolve_LocksDigests(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 	reg := &fakeReg{
 		digests: map[string]string{"acme/web:1.0.0": "sha256:web", "acme/pdf:2.0.0": "sha256:pdf"},
 		bundles: map[string]string{
@@ -90,7 +90,7 @@ func TestResolve_LocksDigests(t *testing.T) {
 }
 
 func TestResolve_DetectsCycleBackToParent(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 	web := buildBundle(t, "web", "USES @acme/parent:0.1")
 	reg := &fakeReg{
 		digests: map[string]string{"acme/web:1.0.0": "sha256:web", "acme/parent:0.1": "sha256:parent"},
@@ -109,7 +109,7 @@ func TestResolve_DetectsCycleBackToParent(t *testing.T) {
 }
 
 func TestResolve_DetectsCycleAmongDependencies(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 	a := buildBundle(t, "a", "USES @acme/b:1.0.0")
 	b := buildBundle(t, "b", "USES @acme/a:1.0.0")
 	reg := &fakeReg{
@@ -126,7 +126,7 @@ func TestResolve_DetectsCycleAmongDependencies(t *testing.T) {
 }
 
 func TestResolve_AcyclicGraphPasses(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 	leaf := buildBundle(t, "leaf")
 	mid := buildBundle(t, "mid", "USES @acme/leaf:1.0.0")
 	reg := &fakeReg{
@@ -142,7 +142,7 @@ func TestResolve_AcyclicGraphPasses(t *testing.T) {
 }
 
 func TestResolve_SkipCycleCheckStillLocksDigests(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 	// No bundle registered for web: with SkipCycleCheck the walk (and its
 	// pull) never runs, and resolution still returns the digest.
 	reg := &fakeReg{
@@ -161,11 +161,11 @@ func TestResolve_SkipCycleCheckStillLocksDigests(t *testing.T) {
 	}
 }
 
-func mustUses(t *testing.T, bundlePath string) []agentfile.Use {
+func mustUses(t *testing.T, bundlePath string) []vesselfile.Use {
 	t.Helper()
 	m, err := bundle.ReadManifest(bundlePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return usesFromSpec(m.Agentfile.Uses)
+	return usesFromSpec(m.Vesselfile.Uses)
 }

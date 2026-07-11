@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/mcpvessel/internal/config"
 )
 
 // Provisioner is the platform-specific gate to a Linux container environment
@@ -67,7 +67,7 @@ type ContainerSpec struct {
 // daemonResourceLabel marks daemon-managed containers and networks. A daemon's
 // runs die with it, so anything carrying this label at the next daemon startup
 // is a crash orphan safe to sweep. One-shot runs carry no label.
-const daemonResourceLabel = "agentcage.daemon"
+const daemonResourceLabel = "mcpvessel.daemon"
 
 // nerdctlRunArgs builds the run argument list. Env keys are sorted for
 // determinism. nerdctl rejects --rm together with -d, so a detached container
@@ -110,7 +110,7 @@ func nerdctlRunArgs(spec ContainerSpec) []string {
 
 // DefaultProvisioner returns the Provisioner for the host OS. Linux assumes
 // the distro's containerd and buildkitd are running at the default sockets;
-// macOS provisions ~/.agentcage/lima on first use; Windows is unsupported.
+// macOS provisions ~/.mcpvessel/lima on first use; Windows is unsupported.
 func DefaultProvisioner() (Provisioner, error) {
 	switch runtime.GOOS {
 	case "linux":
@@ -120,7 +120,7 @@ func DefaultProvisioner() (Provisioner, error) {
 	case "windows":
 		// Lima's WSL2 driver does not forward Unix sockets the way the macOS
 		// VZ driver does, so the architecture does not port over directly.
-		return nil, fmt.Errorf("the agentcage runtime is not yet supported on Windows; for now run agents on a macOS or Linux host (or run the agentcage CLI inside a WSL2 distro that has containerd + buildkitd)")
+		return nil, fmt.Errorf("the mcpvessel runtime is not yet supported on Windows; for now run agents on a macOS or Linux host (or run the mcpvessel CLI inside a WSL2 distro that has containerd + buildkitd)")
 	default:
 		return nil, fmt.Errorf("unsupported host OS: %s", runtime.GOOS)
 	}
@@ -194,7 +194,7 @@ type LimaProvisioner struct {
 	DiskGiB   int
 }
 
-// defaultLimaProvisioner uses the conventional ~/.agentcage/lima paths and the
+// defaultLimaProvisioner uses the conventional ~/.mcpvessel/lima paths and the
 // bundled limactl binary.
 func defaultLimaProvisioner() (*LimaProvisioner, error) {
 	home, err := os.UserHomeDir()
@@ -209,7 +209,7 @@ func defaultLimaProvisioner() (*LimaProvisioner, error) {
 	if err != nil {
 		return nil, err
 	}
-	base := filepath.Join(home, ".agentcage", "lima")
+	base := filepath.Join(home, ".mcpvessel", "lima")
 	return &LimaProvisioner{
 		VM: &LimaVM{
 			LimactlPath:   limactl,

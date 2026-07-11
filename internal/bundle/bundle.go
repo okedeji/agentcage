@@ -13,15 +13,15 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
-// AgentfileName is the filename expected at the root of a source directory.
-const AgentfileName = "Agentfile"
+// VesselfileName is the filename expected at the root of a source directory.
+const VesselfileName = "Vesselfile"
 
-// builtWith identifies the agentcage release that produced a bundle,
+// builtWith identifies the mcpvessel release that produced a bundle,
 // recorded in the manifest. The CLI sets it via SetBuiltWith before Build.
-var builtWith = "agentcage dev"
+var builtWith = "mcpvessel dev"
 
 // SetBuiltWith sets the version recorded in manifests from subsequent Builds.
 func SetBuiltWith(s string) { builtWith = s }
@@ -34,7 +34,7 @@ type Option func(*options)
 
 type options struct {
 	onStep        func(step, total int, message string)
-	resolveDigest func(u agentfile.Use) (string, error)
+	resolveDigest func(u vesselfile.Use) (string, error)
 	introspected  []IntrospectedTool
 	introspectSet bool
 }
@@ -58,14 +58,14 @@ func WithProgress(fn func(step, total int, message string)) Option {
 // digest locked into the manifest. Without it no digests are recorded. A
 // resolver error fails the build: a bundle that cannot pin its dependencies
 // must not ship claiming it did.
-func WithUsesResolver(fn func(u agentfile.Use) (string, error)) Option {
+func WithUsesResolver(fn func(u vesselfile.Use) (string, error)) Option {
 	return Option(func(o *options) { o.resolveDigest = fn })
 }
 
 // WithIntrospectedTools supplies the tools introspected from the running
 // agent. Passing the option (even with an empty slice) switches the catalog
 // to the introspected path; visibility is still classified from the
-// Agentfile.
+// Vesselfile.
 func WithIntrospectedTools(tools []IntrospectedTool) Option {
 	return Option(func(o *options) {
 		o.introspected = tools
@@ -78,7 +78,7 @@ const buildSteps = 3
 // Build packages the source tree at srcDir into a .agent file at outPath: a
 // gzip-tar with manifest.json at the root and a files/ directory holding
 // every source file except VCS metadata and the output itself. srcDir must
-// contain an Agentfile at its root; a parse failure writes no output.
+// contain a Vesselfile at its root; a parse failure writes no output.
 func Build(srcDir, outPath string, opts ...Option) error {
 	cfg := options{}
 	for _, opt := range opts {
@@ -96,8 +96,8 @@ func Build(srcDir, outPath string, opts ...Option) error {
 		return fmt.Errorf("resolving output path: %w", err)
 	}
 
-	notify(1, "Parsing Agentfile")
-	af, err := readAgentfile(srcDir)
+	notify(1, "Parsing Vesselfile")
+	af, err := readVesselfile(srcDir)
 	if err != nil {
 		return err
 	}
@@ -136,21 +136,21 @@ func HashSource(srcDir, outPath string) (string, error) {
 	return hash, nil
 }
 
-func readAgentfile(srcDir string) (*agentfile.Agentfile, error) {
-	path := filepath.Join(srcDir, AgentfileName)
+func readVesselfile(srcDir string) (*vesselfile.Vesselfile, error) {
+	path := filepath.Join(srcDir, VesselfileName)
 	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("%s not found at %s", AgentfileName, srcDir)
+			return nil, fmt.Errorf("%s not found at %s", VesselfileName, srcDir)
 		}
 		return nil, err
 	}
 	if info.IsDir() {
-		return nil, fmt.Errorf("%s at %s is a directory, expected a file", AgentfileName, srcDir)
+		return nil, fmt.Errorf("%s at %s is a directory, expected a file", VesselfileName, srcDir)
 	}
-	af, err := agentfile.ParseFile(path)
+	af, err := vesselfile.ParseFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", AgentfileName, err)
+		return nil, fmt.Errorf("parsing %s: %w", VesselfileName, err)
 	}
 	return af, nil
 }
@@ -176,7 +176,7 @@ func bundleSkip(srcDir, outAbs string) func(rel string) bool {
 	}
 }
 
-func buildManifest(af *agentfile.Agentfile, hash string, cfg options) (*Manifest, error) {
+func buildManifest(af *vesselfile.Vesselfile, hash string, cfg options) (*Manifest, error) {
 	uses, err := usesToSpec(af.Uses, cfg.resolveDigest)
 	if err != nil {
 		return nil, err
@@ -185,20 +185,21 @@ func buildManifest(af *agentfile.Agentfile, hash string, cfg options) (*Manifest
 	if err != nil {
 		return nil, err
 	}
-	spec := AgentfileSpec{
-		From:       af.From,
-		Entrypoint: af.Entrypoint,
-		Run:        af.Run,
-		Main:       af.Main,
-		Expose:     af.Expose,
-		Uses:       uses,
-		Ban:        bansToSpec(af.Ban),
-		Budget:     af.Budget,
-		Env:        af.Env,
-		Secrets:    af.Secrets,
-		Egress:     af.Egress,
-		Meta:       af.Meta,
-		Eval:       af.Eval,
+	spec := VesselfileSpec{
+		From:           af.From,
+		Entrypoint:     af.Entrypoint,
+		EntrypointExec: af.EntrypointExec,
+		Run:            af.Run,
+		Main:           af.Main,
+		Expose:         af.Expose,
+		Uses:           uses,
+		Ban:            bansToSpec(af.Ban),
+		Budget:         af.Budget,
+		Env:            af.Env,
+		Secrets:        af.Secrets,
+		Egress:         af.Egress,
+		Meta:           af.Meta,
+		Eval:           af.Eval,
 	}
 	if af.Resources != nil {
 		spec.Resources = &ResourcesSpec{CPUs: af.Resources.CPUs, Mem: af.Resources.Mem, Pids: af.Resources.Pids}
@@ -212,7 +213,7 @@ func buildManifest(af *agentfile.Agentfile, hash string, cfg options) (*Manifest
 	}
 	return &Manifest{
 		SpecVersion: specVersion,
-		Agentfile:   spec,
+		Vesselfile:  spec,
 		Tools:       tools,
 		Evals:       evals,
 		FilesHash:   hash,
@@ -221,20 +222,20 @@ func buildManifest(af *agentfile.Agentfile, hash string, cfg options) (*Manifest
 	}, nil
 }
 
-// buildCatalog merges introspected tools against the Agentfile's declared
+// buildCatalog merges introspected tools against the Vesselfile's declared
 // visibility, or falls back to the declared-only catalog.
-func buildCatalog(af *agentfile.Agentfile, cfg options) ([]Tool, error) {
+func buildCatalog(af *vesselfile.Vesselfile, cfg options) ([]Tool, error) {
 	if cfg.introspectSet {
 		return catalogFromIntrospection(af, cfg.introspected)
 	}
-	return catalogFromAgentfile(af), nil
+	return catalogFromVesselfile(af), nil
 }
 
 // catalogFromIntrospection classifies each served tool's visibility from the
-// Agentfile: MAIN is main, EXPOSE'd is public, everything else private. A
+// Vesselfile: MAIN is main, EXPOSE'd is public, everything else private. A
 // MAIN or EXPOSE naming a tool the agent does not serve is an error, the
 // check the parser deferred to build time.
-func catalogFromIntrospection(af *agentfile.Agentfile, introspected []IntrospectedTool) ([]Tool, error) {
+func catalogFromIntrospection(af *vesselfile.Vesselfile, introspected []IntrospectedTool) ([]Tool, error) {
 	served := make(map[string]bool, len(introspected))
 	for _, t := range introspected {
 		served[t.Name] = true
@@ -281,7 +282,7 @@ func catalogFromIntrospection(af *agentfile.Agentfile, introspected []Introspect
 	return tools, nil
 }
 
-func usesToSpec(uses []agentfile.Use, resolve func(agentfile.Use) (string, error)) ([]UseSpec, error) {
+func usesToSpec(uses []vesselfile.Use, resolve func(vesselfile.Use) (string, error)) ([]UseSpec, error) {
 	if len(uses) == 0 {
 		return nil, nil
 	}
@@ -305,7 +306,7 @@ func usesToSpec(uses []agentfile.Use, resolve func(agentfile.Use) (string, error
 	return out, nil
 }
 
-func bansToSpec(bans []agentfile.Ban) []BanSpec {
+func bansToSpec(bans []vesselfile.Ban) []BanSpec {
 	if len(bans) == 0 {
 		return nil
 	}
@@ -316,9 +317,9 @@ func bansToSpec(bans []agentfile.Ban) []BanSpec {
 	return out
 }
 
-// catalogFromAgentfile builds the declared-only catalog: names and visibility
+// catalogFromVesselfile builds the declared-only catalog: names and visibility
 // from MAIN and EXPOSE, nothing more.
-func catalogFromAgentfile(af *agentfile.Agentfile) []Tool {
+func catalogFromVesselfile(af *vesselfile.Vesselfile) []Tool {
 	if af.Main == "" && len(af.Expose) == 0 {
 		return nil
 	}

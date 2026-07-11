@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
 // registryClient is the slice of the registry the resolver needs.
@@ -50,7 +50,7 @@ type Result struct {
 
 // Resolve locks every direct USES tag to a digest and, unless skipped,
 // walks the transitive graph to reject cycles.
-func (r *Resolver) Resolve(ctx context.Context, uses []agentfile.Use, opts Options) (Result, error) {
+func (r *Resolver) Resolve(ctx context.Context, uses []vesselfile.Use, opts Options) (Result, error) {
 	digests := make(map[string]string, len(uses))
 	for _, u := range uses {
 		ref, err := refOf(u)
@@ -74,7 +74,7 @@ func (r *Resolver) Resolve(ctx context.Context, uses []agentfile.Use, opts Optio
 
 // checkCycles walks the graph depth-first. A node on the current path is a
 // cycle; fully explored nodes are cached so diamonds are not re-walked.
-func (r *Resolver) checkCycles(ctx context.Context, parentKey string, uses []agentfile.Use) error {
+func (r *Resolver) checkCycles(ctx context.Context, parentKey string, uses []vesselfile.Use) error {
 	onPath := map[string]bool{}
 	var path []string
 	if parentKey != "" {
@@ -82,10 +82,10 @@ func (r *Resolver) checkCycles(ctx context.Context, parentKey string, uses []age
 		path = append(path, parentKey)
 	}
 	explored := map[string]bool{}
-	cache := map[string][]agentfile.Use{}
+	cache := map[string][]vesselfile.Use{}
 
-	var visit func(uses []agentfile.Use) error
-	visit = func(uses []agentfile.Use) error {
+	var visit func(uses []vesselfile.Use) error
+	visit = func(uses []vesselfile.Use) error {
 		for _, u := range uses {
 			k := key(u)
 			if onPath[k] {
@@ -115,7 +115,7 @@ func (r *Resolver) checkCycles(ctx context.Context, parentKey string, uses []age
 
 // subAgentUses pulls a sub-agent's bundle and returns its declared USES,
 // cached so each node is pulled at most once per resolution.
-func (r *Resolver) subAgentUses(ctx context.Context, u agentfile.Use, cache map[string][]agentfile.Use) ([]agentfile.Use, error) {
+func (r *Resolver) subAgentUses(ctx context.Context, u vesselfile.Use, cache map[string][]vesselfile.Use) ([]vesselfile.Use, error) {
 	k := key(u)
 	if cached, ok := cache[k]; ok {
 		return cached, nil
@@ -132,30 +132,30 @@ func (r *Resolver) subAgentUses(ctx context.Context, u agentfile.Use, cache map[
 	if err != nil {
 		return nil, fmt.Errorf("reading %s manifest: %w", k, err)
 	}
-	children := usesFromSpec(manifest.Agentfile.Uses)
+	children := usesFromSpec(manifest.Vesselfile.Uses)
 	cache[k] = children
 	return children, nil
 }
 
-// refOf rejoins the Ref and Version the Agentfile parser split apart.
-func refOf(u agentfile.Use) (reference.Reference, error) {
+// refOf rejoins the Ref and Version the Vesselfile parser split apart.
+func refOf(u vesselfile.Use) (reference.Reference, error) {
 	return reference.Parse(u.Ref + ":" + u.Version)
 }
 
 // key is a node's graph identity: ref plus version, as the author wrote it.
-func key(u agentfile.Use) string {
+func key(u vesselfile.Use) string {
 	return u.Ref + ":" + u.Version
 }
 
 // usesFromSpec narrows manifest USES entries to ref and version; digest,
 // public, and deny do not affect graph shape.
-func usesFromSpec(specs []bundle.UseSpec) []agentfile.Use {
+func usesFromSpec(specs []bundle.UseSpec) []vesselfile.Use {
 	if len(specs) == 0 {
 		return nil
 	}
-	out := make([]agentfile.Use, len(specs))
+	out := make([]vesselfile.Use, len(specs))
 	for i, s := range specs {
-		out[i] = agentfile.Use{Ref: s.Ref, Version: s.Version}
+		out[i] = vesselfile.Use{Ref: s.Ref, Version: s.Version}
 	}
 	return out
 }

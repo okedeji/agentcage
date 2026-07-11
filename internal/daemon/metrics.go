@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // startMetrics binds the Prometheus scrape endpoint on addr and returns a stop
@@ -24,7 +24,7 @@ func (d *Daemon) startMetrics(addr string) func() {
 	mux.HandleFunc("GET /metrics", d.handleMetrics)
 	srv := &http.Server{Handler: mux}
 	go func() { _ = srv.Serve(ln) }()
-	fmt.Fprintf(os.Stderr, "agentcage metrics on http://%s/metrics\n", addr)
+	fmt.Fprintf(os.Stderr, "mcpvessel metrics on http://%s/metrics\n", addr)
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
@@ -71,34 +71,34 @@ func (d *Daemon) writeMetrics(b *strings.Builder) {
 		serveClients += m.clientCount()
 	}
 
-	fmt.Fprintln(b, "# HELP agentcage_runs_total Runs recorded in the history, by status.")
-	fmt.Fprintln(b, "# TYPE agentcage_runs_total counter")
+	fmt.Fprintln(b, "# HELP mcpvessel_runs_total Runs recorded in the history, by status.")
+	fmt.Fprintln(b, "# TYPE mcpvessel_runs_total counter")
 	statuses := make([]string, 0, len(byStatus))
 	for s := range byStatus {
 		statuses = append(statuses, s)
 	}
 	sort.Strings(statuses)
 	for _, s := range statuses {
-		fmt.Fprintf(b, "agentcage_runs_total{status=%q} %d\n", s, byStatus[s])
+		fmt.Fprintf(b, "mcpvessel_runs_total{status=%q} %d\n", s, byStatus[s])
 	}
 
-	fmt.Fprintln(b, "# HELP agentcage_runs_live Runs the daemon is currently holding.")
-	fmt.Fprintln(b, "# TYPE agentcage_runs_live gauge")
-	fmt.Fprintf(b, "agentcage_runs_live %d\n", liveRuns)
+	fmt.Fprintln(b, "# HELP mcpvessel_runs_live Runs the daemon is currently holding.")
+	fmt.Fprintln(b, "# TYPE mcpvessel_runs_live gauge")
+	fmt.Fprintf(b, "mcpvessel_runs_live %d\n", liveRuns)
 
-	fmt.Fprintln(b, "# HELP agentcage_cages_live Cages live across every run on this host.")
-	fmt.Fprintln(b, "# TYPE agentcage_cages_live gauge")
-	fmt.Fprintf(b, "agentcage_cages_live %d\n", runtime.LiveCages())
+	fmt.Fprintln(b, "# HELP mcpvessel_cages_live Cages live across every run on this host.")
+	fmt.Fprintln(b, "# TYPE mcpvessel_cages_live gauge")
+	fmt.Fprintf(b, "mcpvessel_cages_live %d\n", runtime.LiveCages())
 
-	fmt.Fprintln(b, "# HELP agentcage_serve_clients Per-client instances live behind serve front doors.")
-	fmt.Fprintln(b, "# TYPE agentcage_serve_clients gauge")
-	fmt.Fprintf(b, "agentcage_serve_clients %d\n", serveClients)
+	fmt.Fprintln(b, "# HELP mcpvessel_serve_clients Per-client instances live behind serve front doors.")
+	fmt.Fprintln(b, "# TYPE mcpvessel_serve_clients gauge")
+	fmt.Fprintf(b, "mcpvessel_serve_clients %d\n", serveClients)
 
-	fmt.Fprintln(b, "# HELP agentcage_cost_usd_total Metered LLM spend across recorded runs.")
-	fmt.Fprintln(b, "# TYPE agentcage_cost_usd_total counter")
-	fmt.Fprintf(b, "agentcage_cost_usd_total %.6f\n", float64(totalMicroUSD)/1e6)
+	fmt.Fprintln(b, "# HELP mcpvessel_cost_usd_total Metered LLM spend across recorded runs.")
+	fmt.Fprintln(b, "# TYPE mcpvessel_cost_usd_total counter")
+	fmt.Fprintf(b, "mcpvessel_cost_usd_total %.6f\n", float64(totalMicroUSD)/1e6)
 
-	fmt.Fprintln(b, "# HELP agentcage_tokens_total Prompt plus completion tokens across recorded runs.")
-	fmt.Fprintln(b, "# TYPE agentcage_tokens_total counter")
-	fmt.Fprintf(b, "agentcage_tokens_total %d\n", totalTokens)
+	fmt.Fprintln(b, "# HELP mcpvessel_tokens_total Prompt plus completion tokens across recorded runs.")
+	fmt.Fprintln(b, "# TYPE mcpvessel_tokens_total counter")
+	fmt.Fprintf(b, "mcpvessel_tokens_total %d\n", totalTokens)
 }

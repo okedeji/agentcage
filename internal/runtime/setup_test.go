@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/progress"
+	"github.com/okedeji/mcpvessel/internal/progress"
 )
 
 // The markers come from real limactl create/start runs on macOS. This pins
@@ -17,14 +17,14 @@ func TestSetupTap_DetectsLimaPhases(t *testing.T) {
 
 	tap := newSetupTap(ui)
 	limaOutput := strings.Join([]string{
-		`INFO[0000] Creating an instance "agentcage"`,
+		`INFO[0000] Creating an instance "mcpvessel"`,
 		`INFO[0005] Pulling: https://cloud-images.ubuntu.com/.../ubuntu.img`,
 		`INFO[0020] Downloading the image: 142 MB / 600 MB`,
-		`INFO[0050] Created an instance "agentcage"`,
-		`INFO[0051] Starting the instance "agentcage" with VM driver "vz"`,
+		`INFO[0050] Created an instance "mcpvessel"`,
+		`INFO[0051] Starting the instance "mcpvessel" with VM driver "vz"`,
 		`INFO[0060] [hostagent] Waiting for the guest agent to be running`,
 		`INFO[0062] [hostagent] Waiting for the final requirement 1 of 1: "boot scripts must have finished"`,
-		`INFO[0090] READY. Run ` + "`limactl shell agentcage`" + ` to open the shell.`,
+		`INFO[0090] READY. Run ` + "`limactl shell mcpvessel`" + ` to open the shell.`,
 		"",
 	}, "\n")
 
@@ -55,7 +55,7 @@ func TestSetupTap_BuffersAcrossWrites(t *testing.T) {
 	ui := progress.NewSetupPlain(&buf, "", "", SetupPhases)
 	tap := newSetupTap(ui)
 
-	full := `INFO[0000] Creating an instance "agentcage"` + "\n"
+	full := `INFO[0000] Creating an instance "mcpvessel"` + "\n"
 	mid := len(full) / 2
 	if _, err := tap.Write([]byte(full[:mid])); err != nil {
 		t.Fatalf("first write: %v", err)

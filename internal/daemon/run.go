@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/history"
-	"github.com/okedeji/agentcage/internal/locate"
-	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/history"
+	"github.com/okedeji/mcpvessel/internal/locate"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // startRequest is the POST /runs body: the agent to boot and hold.
@@ -39,8 +39,9 @@ func (d *Daemon) boot(ctx context.Context, in runtime.RunInput, display string) 
 		in.Stderr = os.Stderr
 	}
 	// The runtime tees the agent's stderr to this durable log once it knows the
-	// run id; build progress before the agent starts stays out of the file.
-	in.LogFile = openRunLogSink
+	// run id; build progress before the agent starts stays out of the file. The
+	// sink also records egress denials so a tool error can name blocked hosts.
+	in.LogFile = d.runLogSink
 	// Forward the run's in-process lifecycle (sub-agent activation, eviction,
 	// elicitation) onto the event feed.
 	in.OnEvent = func(e runtime.Event) {
@@ -115,7 +116,7 @@ func (d *Daemon) handleCallRun(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := session.Call(r.Context(), req.Tool, req.Args)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusInternalServerError, enrichEgressError(err, d.denials.hosts(id)).Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"result": result})

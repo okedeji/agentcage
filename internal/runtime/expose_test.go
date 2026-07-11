@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/bundle"
 )
 
 func agent(main string, expose []string, uses ...bundle.UseSpec) *bundle.Manifest {
-	return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Main: main, Expose: expose, Uses: uses}}
+	return &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Main: main, Expose: expose, Uses: uses}}
 }
 
 func pubUse(ref, version, digest string) bundle.UseSpec {
@@ -161,7 +161,7 @@ func TestPublicTools(t *testing.T) {
 // (which would match no tool at the front door and serve an empty endpoint).
 func TestPublicTools_WildcardUsesCatalog(t *testing.T) {
 	m := &bundle.Manifest{
-		Agentfile: bundle.AgentfileSpec{Expose: []string{"*"}},
+		Vesselfile: bundle.VesselfileSpec{Expose: []string{"*"}},
 		Tools: []bundle.Tool{
 			{Name: "create_issue", Visibility: bundle.VisibilityPublic},
 			{Name: "search", Visibility: bundle.VisibilityPublic},
@@ -184,7 +184,7 @@ func TestPublicTools_WildcardUsesCatalog(t *testing.T) {
 // named explicitly: MAIN and EXPOSE'd names come back, private ones do not.
 func TestPublicTools_CatalogVisibility(t *testing.T) {
 	m := &bundle.Manifest{
-		Agentfile: bundle.AgentfileSpec{Main: "respond", Expose: []string{"lookup"}},
+		Vesselfile: bundle.VesselfileSpec{Main: "respond", Expose: []string{"lookup"}},
 		Tools: []bundle.Tool{
 			{Name: "respond", Visibility: bundle.VisibilityMain},
 			{Name: "lookup", Visibility: bundle.VisibilityPublic},

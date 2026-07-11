@@ -153,7 +153,7 @@ func TestRunOnceUsage_OldDaemonFrameDecodesToZero(t *testing.T) {
 }
 
 func TestRunOnce_UnreachableDaemon(t *testing.T) {
-	_, err := Dial("/nonexistent/agentcage.sock").RunOnce(context.Background(), RunRequest{Ref: "x", Tool: "respond"}, &bytes.Buffer{})
+	_, err := Dial("/nonexistent/mcpvessel.sock").RunOnce(context.Background(), RunRequest{Ref: "x", Tool: "respond"}, &bytes.Buffer{})
 	var unreachable *Unreachable
 	if err == nil || !errors.As(err, &unreachable) {
 		t.Fatalf("err = %v, want an *Unreachable", err)

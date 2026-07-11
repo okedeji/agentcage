@@ -43,7 +43,7 @@ type Edge struct {
 type Config struct {
 	Edges map[string]Edge `json:"edges"`
 	// Record enables full-payload capture (arguments and responses) for
-	// replay. Off by default; `agentcage replay record` sets it.
+	// replay. Off by default; `mcpvessel replay record` sets it.
 	Record bool `json:"record,omitempty"`
 }
 

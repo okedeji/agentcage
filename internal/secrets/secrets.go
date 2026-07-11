@@ -1,5 +1,5 @@
 // Package secrets stores the operator's named secret values in a 0600 file
-// under ~/.agentcage. Provider endpoint keys and an agent's SECRETS entries
+// under ~/.mcpvessel. Provider endpoint keys and an agent's SECRETS entries
 // both resolve against it by name.
 package secrets
 
@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // Store holds named secret values. The redacting methods below keep values
@@ -108,5 +108,5 @@ func secretsPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locating home directory: %w", err)
 	}
-	return filepath.Join(home, ".agentcage", "secrets.json"), nil
+	return filepath.Join(home, ".mcpvessel", "secrets.json"), nil
 }

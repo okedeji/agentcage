@@ -21,7 +21,7 @@ import (
 // SpendLogPrefix marks a spend snapshot line in the gateway's stdout. No
 // graceful shutdown: the cumulative total is logged after every metered call
 // and the runtime reads the last line at teardown.
-const SpendLogPrefix = "AGENTCAGE_SPEND "
+const SpendLogPrefix = "VESSEL_SPEND "
 
 // WriteSpendLine emits one snapshot as a prefixed JSON line.
 func WriteSpendLine(w io.Writer, r SpendReport) {
@@ -62,7 +62,7 @@ type CallEvent struct {
 }
 
 // CallLogPrefix marks a per-call event line in the gateway's stdout.
-const CallLogPrefix = "AGENTCAGE_CALL "
+const CallLogPrefix = "VESSEL_CALL "
 
 // WriteCallLine emits one call event as a prefixed JSON line.
 func WriteCallLine(w io.Writer, e CallEvent) {
@@ -105,7 +105,7 @@ type CallRecord struct {
 }
 
 // ReplayLogPrefix marks a full-payload call record, written only when recording.
-const ReplayLogPrefix = "AGENTCAGE_REPLAY "
+const ReplayLogPrefix = "VESSEL_REPLAY "
 
 // WriteReplayLine emits one call record as a prefixed JSON line; []byte bodies
 // marshal as base64, keeping bodies with newlines on one line.
@@ -582,7 +582,7 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]any{"message": message, "type": "agentcage"},
+		"error": map[string]any{"message": message, "type": "mcpvessel"},
 	})
 }
 

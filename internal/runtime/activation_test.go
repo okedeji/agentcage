@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
 )
 
 // cageTracker stands in for the container runtime: records starts and stops,

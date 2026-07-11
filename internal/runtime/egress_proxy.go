@@ -8,9 +8,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/egress"
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/egress"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // egressProxyName is the proxy's container name, also its hostname on the run
@@ -28,7 +28,30 @@ func manifestEgress(m *bundle.Manifest) string {
 	if m == nil {
 		return ""
 	}
-	return m.Agentfile.Egress
+	return m.Vesselfile.Egress
+}
+
+// unionHosts merges two host lists, deduping while keeping the first list's
+// order and appending new hosts from the second.
+func unionHosts(base, extra []string) []string {
+	if len(extra) == 0 {
+		return base
+	}
+	seen := make(map[string]bool, len(base))
+	out := make([]string, 0, len(base)+len(extra))
+	for _, h := range base {
+		if !seen[h] {
+			seen[h] = true
+			out = append(out, h)
+		}
+	}
+	for _, h := range extra {
+		if !seen[h] {
+			seen[h] = true
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // egressHosts parses an EGRESS allow: policy into its host list. Any
@@ -70,6 +93,7 @@ func egressProxyEnv(runID string) map[string]string {
 // per-agent subnets prevent it, and the check fails closed if it ever happens.
 func startEgressProxy(ctx context.Context, sess *bootSession, runID, egressNetwork string, agents map[string]egressAgent, in bootInput, td *teardown) error {
 	sources := make(map[string][]string, len(agents))
+	names := make(map[string]string, len(agents))
 	nets := []string{egressNetwork}
 	for container, agent := range agents {
 		ip, err := containerIP(ctx, sess.provisioner, container)
@@ -83,9 +107,10 @@ func startEgressProxy(ctx context.Context, sess *bootSession, runID, egressNetwo
 			return fmt.Errorf("egress proxy: address %s claimed by two agents; refusing to mis-authorize egress", ip)
 		}
 		sources[ip] = agent.Hosts
+		names[ip] = container
 		nets = append(nets, agent.Network)
 	}
-	cfgJSON, err := json.Marshal(egress.Config{Sources: sources})
+	cfgJSON, err := json.Marshal(egress.Config{Sources: sources, Names: names, Observe: in.ObserveEgress})
 	if err != nil {
 		return fmt.Errorf("encoding egress config: %w", err)
 	}
@@ -111,7 +136,34 @@ func startEgressProxy(ctx context.Context, sess *bootSession, runID, egressNetwo
 		return err
 	}
 	td.push(func() error { return removeContainer(sess.provisioner, spec.RunID) })
+
+	// Tail the proxy's denial events into the run's durable log so they show up
+	// in `mcpvessel logs`. Best-effort: a pump that never starts is not fatal.
+	if in.LogFile != nil {
+		pumpEgressLog(sess.provisioner, spec.RunID, in.LogFile(runID), td)
+	}
 	return nil
+}
+
+// pumpEgressLog tails the detached proxy's stdout, where the egress handler
+// writes denial lines, into the run's durable log. It runs off a background
+// context, not the boot context, so it outlives a served instance's boot call
+// (the same reason the working set does); teardown cancels it.
+func pumpEgressLog(p Provisioner, proxyName string, sink io.WriteCloser, td *teardown) {
+	pumpCtx, cancel := context.WithCancel(context.Background())
+	cmd := p.Nerdctl(pumpCtx, "logs", "-f", proxyName)
+	cmd.Stdout = sink
+	cmd.Stderr = sink
+	if err := cmd.Start(); err != nil {
+		cancel()
+		_ = sink.Close()
+		return
+	}
+	td.push(func() error {
+		cancel()
+		_ = cmd.Wait()
+		return sink.Close()
+	})
 }
 
 // containerIP reads a container's address from nerdctl's flat

@@ -1,6 +1,6 @@
 package runtime
 
-import "github.com/okedeji/agentcage/internal/config"
+import "github.com/okedeji/mcpvessel/internal/config"
 
 // operatorInputs carries the per-run operator values the planner needs,
 // loaded once per run from RunInput and the config file.
@@ -23,6 +23,9 @@ type operatorInputs struct {
 	maxLive int
 	// record turns on the MCP gateway's full-payload capture for replay.
 	record bool
+	// egressAllow is the operator's per-run egress override for the root agent,
+	// added on top of what its Vesselfile declares.
+	egressAllow []string
 }
 
 // refKey is the config key for an agent: @org/name, version-independent so an

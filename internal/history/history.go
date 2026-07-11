@@ -1,5 +1,5 @@
 // Package history is the daemon's durable run log: a bbolt store under
-// ~/.agentcage, one record per run, keyed by the daemon-assigned run id.
+// ~/.mcpvessel, one record per run, keyed by the daemon-assigned run id.
 // Only the daemon writes here; a cage cannot forge a record.
 package history
 
@@ -12,7 +12,7 @@ import (
 
 	"go.etcd.io/bbolt"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 const dbName = "history.db"
@@ -56,7 +56,7 @@ type Store struct {
 	db *bbolt.DB
 }
 
-// DefaultPath is ~/.agentcage/history.db, honoring AGENTCAGE_HOME.
+// DefaultPath is ~/.mcpvessel/history.db, honoring VESSEL_HOME.
 func DefaultPath() (string, error) {
 	home, err := env.HomeDir()
 	if err != nil {

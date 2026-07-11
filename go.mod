@@ -1,4 +1,4 @@
-module github.com/okedeji/agentcage
+module github.com/okedeji/mcpvessel
 
 go 1.26.3
 

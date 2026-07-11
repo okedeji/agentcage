@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 const trustFileName = "trust.json"
@@ -141,7 +141,7 @@ func VerifyPull(sigArtifact []byte, digest, registryHost, repository string, not
 		return fmt.Errorf(
 			"SIGNING KEY MISMATCH for %s: bundle is signed by key %s but key %s was pinned %s.\n"+
 				"The publisher may have rotated keys, or this artifact is not from them.\n"+
-				"If you have verified the new key out of band, run 'agentcage trust rm %s' and pull again",
+				"If you have verified the new key out of band, run 'mcpvessel trust rm %s' and pull again",
 			scope, Fingerprint(pub), Fingerprint(existing.PublicKey),
 			existing.PinnedAt.Format("2006-01-02"), scope)
 	}

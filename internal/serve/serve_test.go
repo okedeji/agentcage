@@ -2,6 +2,9 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -9,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/mcp"
 )
 
 // staticAgent returns the same target for every session; no instance manager.
@@ -338,5 +341,114 @@ func TestHandler_FlatEndpointForwardsOriginalNameOnCollision(t *testing.T) {
 	}
 	if out != "time:search" {
 		t.Errorf("call dispatched to %q, want time:search (original name)", out)
+	}
+}
+
+// echoArgsAgent returns an agent whose tool calls echo "<tool> <json-args>", so
+// a test can assert the tool routed to and the args it received.
+func echoArgsAgent(addr, main string, tools ...string) Agent {
+	mcpTools := make([]mcp.Tool, len(tools))
+	for i, name := range tools {
+		mcpTools[i] = mcp.Tool{Name: name, Schema: map[string]any{"type": "object"}}
+	}
+	return Agent{
+		Address: addr,
+		Main:    main,
+		Tools:   mcpTools,
+		Resolve: func(context.Context, string) (Target, func(), error) {
+			return Target{Call: func(_ context.Context, tool string, args map[string]any) (string, error) {
+				b, _ := json.Marshal(args)
+				return tool + " " + string(b), nil
+			}}, func() {}, nil
+		},
+	}
+}
+
+type httpResp struct {
+	code int
+	body string
+}
+
+func postJSON(t *testing.T, url, body string) httpResp {
+	t.Helper()
+	resp, err := http.Post(url, "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post %s: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return httpResp{code: resp.StatusCode, body: string(b)}
+}
+
+func (r httpResp) result(t *testing.T) string {
+	t.Helper()
+	var out struct {
+		Result string `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(r.body), &out); err != nil {
+		t.Fatalf("decoding result from %q: %v", r.body, err)
+	}
+	return out.Result
+}
+
+func TestHTTP_CallTool(t *testing.T) {
+	srv := httptest.NewServer(Handler([]Agent{echoArgsAgent("time", "", "get_current_time")}, nil))
+	defer srv.Close()
+
+	res := postJSON(t, srv.URL+"/agents/time/tools/get_current_time", `{"timezone":"Africa/Lagos"}`)
+	if res.code != http.StatusOK {
+		t.Fatalf("status %d, body %s", res.code, res.body)
+	}
+	got := res.result(t)
+	if !strings.Contains(got, "get_current_time") || !strings.Contains(got, "Africa/Lagos") {
+		t.Errorf("result = %q, want the tool name and the argument echoed", got)
+	}
+}
+
+func TestHTTP_Prompt(t *testing.T) {
+	srv := httptest.NewServer(Handler([]Agent{echoArgsAgent("assistant", "respond", "respond")}, nil))
+	defer srv.Close()
+
+	res := postJSON(t, srv.URL+"/agents/assistant", `{"prompt":"what time is it in Lagos"}`)
+	if res.code != http.StatusOK {
+		t.Fatalf("status %d, body %s", res.code, res.body)
+	}
+	got := res.result(t)
+	if !strings.Contains(got, "respond") || !strings.Contains(got, "what time is it in Lagos") || !strings.Contains(got, "user") {
+		t.Errorf("result = %q, want the prompt wrapped as a user message to respond", got)
+	}
+}
+
+func TestHTTP_FlatCallTool(t *testing.T) {
+	agents := []Agent{echoArgsAgent("github", "", "search"), echoArgsAgent("time", "", "now")}
+	srv := httptest.NewServer(Handler(agents, mustFlat(t, agents)))
+	defer srv.Close()
+
+	res := postJSON(t, srv.URL+"/tools/time_now", `{}`)
+	if res.code != http.StatusOK {
+		t.Fatalf("status %d, body %s", res.code, res.body)
+	}
+	if !strings.Contains(res.result(t), "now") {
+		t.Errorf("result = %q, want the time agent's now tool", res.result(t))
+	}
+}
+
+func TestHTTP_UnknownToolIs404(t *testing.T) {
+	srv := httptest.NewServer(Handler([]Agent{echoArgsAgent("time", "", "now")}, nil))
+	defer srv.Close()
+
+	res := postJSON(t, srv.URL+"/agents/time/tools/secret_admin", `{}`)
+	if res.code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 for a non-public tool", res.code)
+	}
+}
+
+func TestHTTP_NoPromptEndpointWithoutMain(t *testing.T) {
+	srv := httptest.NewServer(Handler([]Agent{echoArgsAgent("time", "", "now")}, nil))
+	defer srv.Close()
+
+	res := postJSON(t, srv.URL+"/agents/time", `{"prompt":"hi"}`)
+	if res.code == http.StatusOK {
+		t.Errorf("prompt endpoint answered for an agent with no MAIN (status %d)", res.code)
 	}
 }

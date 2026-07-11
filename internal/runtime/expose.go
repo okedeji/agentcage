@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
 // Exposure is serve's access-control list for one served run: the agents an
@@ -179,11 +179,11 @@ func publicTools(m *bundle.Manifest) []string {
 		}
 		return tools
 	}
-	tools := make([]string, 0, len(m.Agentfile.Expose)+1)
-	if m.Agentfile.Main != "" {
-		tools = append(tools, m.Agentfile.Main)
+	tools := make([]string, 0, len(m.Vesselfile.Expose)+1)
+	if m.Vesselfile.Main != "" {
+		tools = append(tools, m.Vesselfile.Main)
 	}
-	for _, name := range m.Agentfile.Expose {
+	for _, name := range m.Vesselfile.Expose {
 		if name == "*" {
 			continue
 		}

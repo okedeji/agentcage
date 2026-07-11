@@ -8,7 +8,7 @@ import (
 )
 
 func TestOpenRunLogSink(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	sink := openRunLogSink("echo-1")
 	_, _ = sink.Write([]byte("agent line\n"))
 	_ = sink.Close()
@@ -24,7 +24,7 @@ func TestOpenRunLogSink(t *testing.T) {
 }
 
 func TestHandleRunLogs(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	d := New()
 
 	// A run with no log file is a 404.

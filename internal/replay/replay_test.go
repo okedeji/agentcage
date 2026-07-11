@@ -22,7 +22,7 @@ func TestRawOrString(t *testing.T) {
 }
 
 func TestWriteAndPath(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	rec := &Recording{
 		Version:  Version,
 		AgentRef: "@me/echo:1",

@@ -7,8 +7,8 @@ import (
 
 func TestGenerateLimaTemplate_RequiredFieldsPresent(t *testing.T) {
 	got := generateLimaTemplate(LimaTemplateInput{
-		InstanceName:  "agentcage",
-		HostSocketDir: "/home/u/.agentcage/lima/sock",
+		InstanceName:  "mcpvessel",
+		HostSocketDir: "/home/u/.mcpvessel/lima/sock",
 	})
 
 	wantLines := []string{
@@ -19,9 +19,9 @@ func TestGenerateLimaTemplate_RequiredFieldsPresent(t *testing.T) {
 		"  user: true",
 		"portForwards:",
 		`- guestSocket: "/run/user/{{.UID}}/buildkit-default/buildkitd.sock"`,
-		`  hostSocket: "/home/u/.agentcage/lima/sock/buildkitd.sock"`,
+		`  hostSocket: "/home/u/.mcpvessel/lima/sock/buildkitd.sock"`,
 		`- guestSocket: "/run/user/{{.UID}}/containerd/containerd.sock"`,
-		`  hostSocket: "/home/u/.agentcage/lima/sock/containerd.sock"`,
+		`  hostSocket: "/home/u/.mcpvessel/lima/sock/containerd.sock"`,
 	}
 	for _, line := range wantLines {
 		if !strings.Contains(got, line) {
@@ -32,7 +32,7 @@ func TestGenerateLimaTemplate_RequiredFieldsPresent(t *testing.T) {
 
 func TestGenerateLimaTemplate_AppliesResourceDefaults(t *testing.T) {
 	got := generateLimaTemplate(LimaTemplateInput{
-		InstanceName:  "agentcage",
+		InstanceName:  "mcpvessel",
 		HostSocketDir: "/tmp/sock",
 	})
 	for _, want := range []string{
@@ -48,7 +48,7 @@ func TestGenerateLimaTemplate_AppliesResourceDefaults(t *testing.T) {
 
 func TestGenerateLimaTemplate_HonorsResourceOverrides(t *testing.T) {
 	got := generateLimaTemplate(LimaTemplateInput{
-		InstanceName:  "agentcage",
+		InstanceName:  "mcpvessel",
 		HostSocketDir: "/tmp/sock",
 		CPUs:          8,
 		MemoryGiB:     16,
@@ -67,7 +67,7 @@ func TestGenerateLimaTemplate_HonorsResourceOverrides(t *testing.T) {
 
 func TestGenerateLimaTemplate_IsDeterministic(t *testing.T) {
 	in := LimaTemplateInput{
-		InstanceName:  "agentcage",
+		InstanceName:  "mcpvessel",
 		HostSocketDir: "/x/y/sock",
 		CPUs:          2,
 		MemoryGiB:     2,
@@ -84,10 +84,10 @@ func TestGenerateLimaTemplate_IsDeterministic(t *testing.T) {
 func TestGenerateLimaTemplate_QuotesHostSocketPath(t *testing.T) {
 	// A path with spaces must end up quoted as one YAML string.
 	got := generateLimaTemplate(LimaTemplateInput{
-		InstanceName:  "agentcage",
-		HostSocketDir: "/Users/x with space/.agentcage/lima/sock",
+		InstanceName:  "mcpvessel",
+		HostSocketDir: "/Users/x with space/.mcpvessel/lima/sock",
 	})
-	if !strings.Contains(got, `hostSocket: "/Users/x with space/.agentcage/lima/sock/buildkitd.sock"`) {
+	if !strings.Contains(got, `hostSocket: "/Users/x with space/.mcpvessel/lima/sock/buildkitd.sock"`) {
 		t.Errorf("host socket path not quoted:\n%s", got)
 	}
 }

@@ -1,27 +1,26 @@
-# agentcage
+# mcpvessel
 
-**Run any MCP server in a sandbox. No leaked keys, no network by default, no Docker.**
+**Cage untrusted MCP servers, keep using them, compose them into agents, and share them.**
 
-[![CI](https://github.com/okedeji/agentcage/actions/workflows/ci.yml/badge.svg)](https://github.com/okedeji/agentcage/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/okedeji/agentcage?include_prereleases&sort=semver)](https://github.com/okedeji/agentcage/releases)
-[![Go](https://img.shields.io/github/go-mod/go-version/okedeji/agentcage)](go.mod)
+[![CI](https://github.com/okedeji/mcpvessel/actions/workflows/ci.yml/badge.svg)](https://github.com/okedeji/mcpvessel/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/okedeji/mcpvessel?include_prereleases&sort=semver)](https://github.com/okedeji/mcpvessel/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL2-lightgrey)
 
 <!-- DEMO GIF GOES HERE: docs/demo.gif -- the 30-second "malicious server tries to steal keys, gets blocked" recording -->
 
-Every MCP server you `npx` runs with full access to your machine. Your files, your keys, your network, all of it. Most of them are fine. The trouble is you can't tell the fine ones apart from the one that quietly BCCs every email you send to someone else's inbox. That one is real, by the way. It was an npm package called `postmark-mcp`, it looked legitimate for fifteen versions, and then it wasn't.
+An MCP server runs as a subprocess with your full user permissions. Nothing in the protocol sandboxes it, so a server you install can read your SSH keys, your cloud credentials, and your `.env` files, run commands on your machine, and send any of it anywhere. This is not hypothetical: connecting to an untrusted MCP server has already produced remote code execution on the host ([CVE-2025-6514](https://nvd.nist.gov/vuln/detail/CVE-2025-6514), rated critical), and audits keep finding thousands of public servers with exploitable flaws. A server that is safe today can also ship a malicious update tomorrow, so vetting one once is not enough.
 
-agentcage runs those servers in a cage instead. One command, and no Docker to install.
+mcpvessel runs MCP servers in isolated containers instead: no host access, no outbound network unless you allow it, and no provider keys inside the sandbox. It brings its own runtime, so there is no Docker or container engine to install. The same tool can also compose several caged servers into an LLM agent and distribute them over an OCI registry, both covered below.
 
 > **Status: pre-1.0** (`v0.1.0-rc.x`). It works, but the CLI surface may still change between releases. Pin a release if you need something stable. See [supported versions](SECURITY.md#supported-versions).
 
 ## Contents
 
-- [Quickstart](#quickstart)
+- [Cage it](#cage-it)
+- [Give it a brain](#give-it-a-brain)
+- [Ship it](#ship-it)
 - [What the cage actually does](#what-the-cage-actually-does)
 - [What it does not protect against](#what-it-does-not-protect-against)
-- [It grows past plain tool servers, when you want it to](#it-grows-past-plain-tool-servers-when-you-want-it-to)
 - [How it works, briefly](#how-it-works-briefly)
 - [Install](#install)
 - [Requirements](#requirements)
@@ -30,31 +29,68 @@ agentcage runs those servers in a cage instead. One command, and no Docker to in
 - [Contributing and support](#contributing-and-support)
 - [License](#license)
 
-## Quickstart
+## Cage it
 
 On macOS or Linux:
 
 ```sh
-brew install --cask okedeji/tap/agentcage
-agentcage init
+brew install --cask okedeji/tap/mcpvessel
+mcpvessel init
 ```
 
-Now take a server you don't fully trust, put it in a cage, and hand it to your editor:
+Put the MCP servers you use behind one caged endpoint:
 
 ```sh
-agentcage import npm:@modelcontextprotocol/server-everything
-agentcage serve --listen 127.0.0.1:7000 ./server-everything
+mcpvessel import npm:@modelcontextprotocol/server-github pypi:mcp-server-time
+mcpvessel serve --listen 127.0.0.1:7000 ./server-github ./mcp-server-time
 ```
 
-That prints a URL. Point Cursor, Claude, or any MCP client at it:
+That prints one URL. Point Claude, Cursor, or any MCP client at it:
 
 ```
 http://127.0.0.1:7000/mcp
 ```
 
-Same tools you had before. Same editor. The difference is the server now runs with no access to your disk, no network it didn't ask for, and none of your API keys.
+Every server's tools appear together on that single URL, and your client calls them exactly as before. Each server runs in its own container on its own network: no host access, no outbound network it did not request, no provider keys, and no route to the other servers. A compromised server is isolated from the rest and from your machine.
 
-Swap that `npm:` for whatever actually makes you nervous. It takes any MCP server on npm, PyPI, or as a container image, whether or not it's in a registry: the GitHub server, a filesystem server, that one someone in a Discord swore was safe.
+It accepts any MCP server from npm, PyPI, or a container image, whether or not it is in a registry. One server or several, the commands are the same.
+
+## Give it a brain
+
+A caged server exposes tools for an MCP client like Claude to call, so your client does the thinking. Add `--reasoning` and the thinking moves inside the cage: the same servers become one agent that takes a goal and decides which tools to call, and in what order, on its own. You turn a set of MCP servers into an agent with one flag, and write no agent code:
+
+```sh
+mcpvessel import io.github.getsentry/sentry-mcp io.github.brave/brave-search-mcp-server --reasoning -t @me/oncall:0.1
+mcpvessel run @me/oncall:0.1 "what is causing our top Sentry error this week, and how do I fix it?"
+```
+
+This wraps both servers and runs an LLM tool-use loop over them, caged alongside them, with a per-run spend cap. The result is an agent you invoke like any other, and the servers stay sandboxed as before.
+
+It does not have to live in your terminal. Serve it and it is an HTTP endpoint you can hit with nothing but `curl`:
+
+```sh
+mcpvessel serve --listen 127.0.0.1:7000 @me/oncall:0.1
+curl -sX POST 127.0.0.1:7000/agents/oncall -d '{"prompt":"what is causing our top Sentry error, and how do I fix it?"}'
+# {"result": "..."}
+```
+
+No MCP client, no SDK, just JSON in and JSON out. The same agent can sit on a server, run in a CI job, or live behind your own API. It still speaks MCP on that port for clients that prefer it, and any single tool is directly callable at `POST /agents/<name>/tools/<tool>`.
+
+## Ship it
+
+A caged server or agent is a content-addressed bundle. Push it to any OCI registry:
+
+```sh
+mcpvessel push @me/oncall:0.1
+```
+
+A teammate pulls and runs it, sandboxed the same way, without importing or building it themselves:
+
+```sh
+mcpvessel run @me/oncall:0.1 "..."
+```
+
+It is signed on push and verified on pull, so they run exactly what you built, caged the same way.
 
 ## What the cage actually does
 
@@ -66,7 +102,7 @@ Three things, and they are the whole point.
 
 **Each server is on its own.** Caged servers can't see each other, and they can't see your host. One bad server can't reach the good ones sitting next to it.
 
-To be clear about what this is: agentcage contains what a server can *do*. It doesn't read the server's code or vet the package for you. That is the point, though. You don't have to trust the code if it can't reach your files, your network, or your keys anyway.
+To be clear about what this is: mcpvessel contains what a server can *do*. It doesn't read the server's code or vet the package for you. That is the point, though. You don't have to trust the code if it can't reach your files, your network, or your keys anyway.
 
 ## What it does not protect against
 
@@ -79,15 +115,9 @@ Being honest about the edges, because a security tool that overpromises is worse
 
 The full security scope and reporting policy is in [SECURITY.md](SECURITY.md).
 
-## It grows past plain tool servers, when you want it to
-
-Caging a plain tool server is step one, and honestly that is most of what people need. But the same `import` takes a `--reasoning` flag that turns a pile of tool servers into an actual agent that reasons across all of them, with a spend budget attached. And a caged agent can be pushed to any container registry and pulled by a teammate, the way you push a Docker image.
-
-That is all there when you want it. You don't need any of it to get value on day one.
-
 ## How it works, briefly
 
-A run is a small set of containers on private, internal-only networks. The server you cage sits alone on its own network with no route out. The only doors are small broker containers that agentcage runs for you: one filters every outbound network request against the allowlist you set, one brokers calls between servers, and when a server reasons with an LLM, one more holds your model key so the agent never sees it. On macOS all of this runs inside a lightweight Linux VM that agentcage sets up on first run, so nothing touches your host directly. On Linux it uses the host's own container runtime.
+A run is a small set of containers on private, internal-only networks. The server you cage sits alone on its own network with no route out. The only doors are small broker containers that mcpvessel runs for you: one filters every outbound network request against the allowlist you set, one brokers calls between servers, and when a server reasons with an LLM, one more holds your model key so the agent never sees it. On macOS all of this runs inside a lightweight Linux VM that mcpvessel sets up on first run, so nothing touches your host directly. On Linux it uses the host's own container runtime.
 
 For the security scope and threat model, see [SECURITY.md](SECURITY.md). A deeper architecture writeup is on the way.
 
@@ -96,16 +126,16 @@ For the security scope and threat model, see [SECURITY.md](SECURITY.md). A deepe
 **Homebrew (recommended).** Installs a signed cask and wires up shell completions:
 
 ```sh
-brew install --cask okedeji/tap/agentcage
+brew install --cask okedeji/tap/mcpvessel
 ```
 
-**Direct download.** Grab the archive for your OS and architecture from the [releases page](https://github.com/okedeji/agentcage/releases), verify it against `checksums.txt`, then put the binary on your `PATH`. This is the right path on Windows (run it inside WSL2).
+**Direct download.** Grab the archive for your OS and architecture from the [releases page](https://github.com/okedeji/mcpvessel/releases), verify it against `checksums.txt`, then put the binary on your `PATH`. This is the right path on Windows (run it inside WSL2).
 
 **From source.** For contributors and anyone who wants to build it themselves:
 
 ```sh
-git clone https://github.com/okedeji/agentcage
-cd agentcage
+git clone https://github.com/okedeji/mcpvessel
+cd mcpvessel
 make build
 ```
 
@@ -115,16 +145,16 @@ Note: on macOS the release archives bundle the Linux VM image the runtime needs,
 
 - macOS (Apple Silicon or Intel) or Linux. On Windows, it runs inside WSL2.
 - Homebrew, for the recommended install above.
-- On first run, `agentcage init` sets up the runtime. On macOS that is a one-time step: it downloads a small Linux VM image and starts a rootless container daemon, which takes two to five minutes depending on your connection. Every run after that is a few seconds. On Linux this is a no-op and uses the host's container runtime directly.
+- On first run, `mcpvessel init` sets up the runtime. On macOS that is a one-time step: it downloads a small Linux VM image and starts a rootless container daemon, which takes two to five minutes depending on your connection. Every run after that is a few seconds. On Linux this is a no-op and uses the host's container runtime directly.
 
 ## Uninstall
 
 Stop the runtime, remove the binary, then delete the state directory (this removes the macOS VM, cached images, your signing key, and config):
 
 ```sh
-agentcage daemon stop
-brew uninstall --cask agentcage   # or delete the binary you installed
-rm -rf ~/.agentcage
+mcpvessel daemon stop
+brew uninstall --cask mcpvessel   # or delete the binary you installed
+rm -rf ~/.mcpvessel
 ```
 
 ## Commands
@@ -138,7 +168,7 @@ Reference for the full command surface. You only need `import` and `serve` to ge
 | `serve` | Serve a caged agent to MCP clients over HTTP |
 | `run` | Run an agent by routing a prompt to its main tool |
 | `call` | Call a specific tool on an agent by name |
-| `build` | Build an agent bundle from an Agentfile |
+| `build` | Build an agent bundle from a Vesselfile |
 | `push` / `pull` | Push or pull an agent bundle to or from an OCI registry |
 | `search` / `register` | Find agents on, or publish to, the MCP Registry |
 | `inspect` / `tree` | Show an agent's manifest, tools, and its `USES` tree |
@@ -147,11 +177,11 @@ Reference for the full command surface. You only need `import` and `serve` to ge
 | `trace` / `replay` / `stats` | Inspect a run: trace, record for replay, live resource usage |
 | `config` / `secrets` / `trust` | Configure endpoints and caps, store secrets, pin publisher keys |
 
-Run `agentcage <command> --help` for details on any of these.
+Run `mcpvessel <command> --help` for details on any of these.
 
 ## Contributing and support
 
-- Bugs and feature requests: [open an issue](https://github.com/okedeji/agentcage/issues).
+- Bugs and feature requests: [open an issue](https://github.com/okedeji/mcpvessel/issues).
 - Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Found a security issue? Please report it privately. See [SECURITY.md](SECURITY.md).
 

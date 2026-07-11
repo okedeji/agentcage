@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/history"
+	"github.com/okedeji/mcpvessel/internal/history"
 )
 
 func TestEventBus_DeliversToSubscribers(t *testing.T) {

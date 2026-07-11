@@ -10,7 +10,7 @@ import (
 
 func TestRewriteManifest_StampsAndKeepsFilesIntact(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 MAIN respond
 EVAL tests/eval.yaml
 ENTRYPOINT python3 agent.py
@@ -60,7 +60,7 @@ ENTRYPOINT python3 agent.py
 
 func TestRewriteManifest_MutateErrorLeavesBundleUntouched(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), "FROM x\nENTRYPOINT y\n")
+	writeFile(t, filepath.Join(src, "Vesselfile"), "FROM x\nENTRYPOINT y\n")
 	writeFile(t, filepath.Join(src, "agent.py"), "print('x')\n")
 
 	out := filepath.Join(t.TempDir(), "a.agent")

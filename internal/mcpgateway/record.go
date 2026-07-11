@@ -34,8 +34,8 @@ type SubCallRecord struct {
 // Log prefixes for the gateway's per-call stdout lines, read by the daemon at
 // finish.
 const (
-	SubCallLogPrefix   = "AGENTCAGE_SUBCALL "
-	SubReplayLogPrefix = "AGENTCAGE_SUBREPLAY "
+	SubCallLogPrefix   = "VESSEL_SUBCALL "
+	SubReplayLogPrefix = "VESSEL_SUBREPLAY "
 )
 
 // Hooks are the gateway's per-call observation callbacks. Call fires for

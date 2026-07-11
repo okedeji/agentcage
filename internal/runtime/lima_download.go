@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // limaReleasePins is the single source of truth for the bundled Lima version
@@ -70,7 +70,7 @@ func limaAsset(goos, goarch string) (tarball, sha256Hex string, err error) {
 }
 
 // EnsureLimaAvailable makes sure a usable limactl exists, downloading the
-// pinned Lima bundle into ~/.agentcage/lima on first use if none is found. It
+// pinned Lima bundle into ~/.mcpvessel/lima on first use if none is found. It
 // is a no-op off macOS (Linux runs agents on host containerd, no VM) and a
 // no-op when limactl is already bundled next to the binary or on PATH. The
 // download is SHA-256 verified against the pin before anything is extracted,
@@ -151,7 +151,7 @@ func installLima(ctx context.Context, url, wantSHA, dest string) error {
 		}
 	}
 
-	// Same filesystem (both under ~/.agentcage), so rename is atomic.
+	// Same filesystem (both under ~/.mcpvessel), so rename is atomic.
 	_ = os.RemoveAll(dest)
 	if err := os.Rename(extractDir, dest); err != nil {
 		return fmt.Errorf("installing Lima to %s: %w", dest, err)

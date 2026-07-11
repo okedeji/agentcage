@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/history"
-	"github.com/okedeji/agentcage/internal/llmgateway"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
-	"github.com/okedeji/agentcage/internal/telemetry"
+	"github.com/okedeji/mcpvessel/internal/history"
+	"github.com/okedeji/mcpvessel/internal/llmgateway"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/telemetry"
 )
 
 func TestBuildTrace_GroupsCallsByAgentAndWidensSpans(t *testing.T) {
@@ -25,7 +25,7 @@ func TestBuildTrace_GroupsCallsByAgentAndWidensSpans(t *testing.T) {
 	}
 	tr := buildTrace("run-1", time.Unix(100, 0), time.Unix(110, 0), calls, subCalls)
 
-	if tr.Root.Name != "agentcage.run" || tr.Root.Attributes["run_id"] != "run-1" {
+	if tr.Root.Name != "mcpvessel.run" || tr.Root.Attributes["run_id"] != "run-1" {
 		t.Fatalf("root span wrong: %+v", tr.Root)
 	}
 	// Two agent spans plus one sub-agent span, ordered by start.
@@ -34,7 +34,7 @@ func TestBuildTrace_GroupsCallsByAgentAndWidensSpans(t *testing.T) {
 	}
 	var subSpan, rootAgent *telemetry.Span
 	for _, c := range tr.Root.Children {
-		if c.Name == "agentcage.sub_agent.run" {
+		if c.Name == "mcpvessel.sub_agent.run" {
 			subSpan = c
 		}
 		if c.Attributes["agent"] == "root" {

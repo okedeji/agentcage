@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/history"
-	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/history"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // shutdownTimeout bounds the drain of in-flight control-plane requests after
@@ -112,10 +112,10 @@ const maxSocketPathLen = 104
 
 // checkSocketPathLen rejects a socket path the OS could not bind, turning the
 // kernel's cryptic "invalid argument" into a clear cause and fix. Bites only
-// when AGENTCAGE_HOME points somewhere deep.
+// when VESSEL_HOME points somewhere deep.
 func checkSocketPathLen(path string) error {
 	if len(path) >= maxSocketPathLen {
-		return fmt.Errorf("control socket path is %d bytes, over this OS's %d-byte limit (%s); set AGENTCAGE_HOME to a shorter directory",
+		return fmt.Errorf("control socket path is %d bytes, over this OS's %d-byte limit (%s); set VESSEL_HOME to a shorter directory",
 			len(path), maxSocketPathLen, path)
 	}
 	return nil

@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/mcpvessel/internal/identity"
 )
 
 func TestGatewayImageRef_TaggedByVersion(t *testing.T) {
-	want := "agentcage/gateway:" + identity.Version
+	want := "mcpvessel/gateway:" + identity.Version
 	if got := GatewayImageRef(); got != want {
 		t.Errorf("GatewayImageRef = %q, want %q", got, want)
 	}
@@ -19,8 +19,8 @@ func TestGatewayDockerfile_ScratchEntersBareBinary(t *testing.T) {
 	df := gatewayDockerfile()
 	for _, want := range []string{
 		"FROM scratch",
-		"COPY agentcage /agentcage",
-		`ENTRYPOINT ["/agentcage"]`,
+		"COPY mcpvessel /mcpvessel",
+		`ENTRYPOINT ["/mcpvessel"]`,
 	} {
 		if !strings.Contains(df, want) {
 			t.Errorf("gateway definition missing %q:\n%s", want, df)
@@ -35,7 +35,7 @@ func TestFindLinuxBinary_MissingNamesArchAndBuildTarget(t *testing.T) {
 	if err == nil {
 		t.Fatal("FindLinuxBinary succeeded with no companion binary present")
 	}
-	if !strings.Contains(err.Error(), "agentcage-linux-"+runtime.GOARCH) {
+	if !strings.Contains(err.Error(), "mcpvessel-linux-"+runtime.GOARCH) {
 		t.Errorf("error does not name the arch-qualified binary: %v", err)
 	}
 	if !strings.Contains(err.Error(), "make build-linux") {

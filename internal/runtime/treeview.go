@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/bundle"
 )
 
 // PrintTree writes an indented view of every agent a root bundle would run,
@@ -32,9 +32,9 @@ func PrintTree(ctx context.Context, rootBundlePath, rootDisplay string, w io.Wri
 	_, _ = fmt.Fprintf(w, "\nBaseline memory (always-on): ~%s\n", HumanBytes(treeBaselineMemory(tree)))
 	_, _ = fmt.Fprintln(w, "  Elastic sub-agents activate on demand, bounded by cages.max_live.")
 
-	if len(root.Agentfile.Ban) > 0 {
+	if len(root.Vesselfile.Ban) > 0 {
 		_, _ = fmt.Fprintln(w, "\nBans (declared here, applied across the whole subtree):")
-		for _, b := range root.Agentfile.Ban {
+		for _, b := range root.Vesselfile.Ban {
 			line := "  " + b.Ref
 			if len(b.Tools) > 0 {
 				line += " ONLY " + strings.Join(b.Tools, ",")
@@ -84,7 +84,7 @@ func nodeGlance(m *bundle.Manifest) string {
 	if m == nil {
 		return ""
 	}
-	af := m.Agentfile
+	af := m.Vesselfile
 	var parts []string
 	if af.Model != "" {
 		parts = append(parts, "model="+af.Model)

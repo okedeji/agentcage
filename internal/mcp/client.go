@@ -9,7 +9,7 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/mcpvessel/internal/identity"
 )
 
 // connectRetryInterval paces ConnectHTTP's reconnects while a fresh agent
@@ -136,7 +136,7 @@ func (c *Client) Close() error {
 	return c.session.Close()
 }
 
-// Tool is the agentcage-shaped view of one tool the agent exposes: its
+// Tool is the mcpvessel-shaped view of one tool the agent exposes: its
 // name, description, and input schema as the agent's MCP server reports
 // them. Schema is nil when the agent declares no input schema.
 type Tool struct {

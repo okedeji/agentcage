@@ -13,7 +13,7 @@ import (
 //
 // ok=false when s carries no recognized registry prefix. A direct
 // coordinate declares no inputs; the operator edits ENV/SECRETS into the
-// generated Agentfile as needed.
+// generated Vesselfile as needed.
 func ParseCoordinate(s string) (Source, bool, error) {
 	registry, rest, ok := strings.Cut(s, ":")
 	if !ok {

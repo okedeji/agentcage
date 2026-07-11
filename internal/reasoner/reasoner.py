@@ -1,14 +1,14 @@
-"""agentcage reasoner: a reusable reasoning harness.
+"""mcpvessel reasoner: a reusable reasoning harness.
 
 It serves one MCP tool, `respond(messages)`, that answers a request by running
 an LLM tool-use loop over whatever tools it reaches through its USES sub-agents.
-It reads AGENTCAGE_USES_*_URL (each a tool server behind the gateway) and
-AGENTCAGE_LLM_URL (an OpenAI-compatible endpoint that never exposes a provider
+It reads VESSEL_USES_*_URL (each a tool server behind the gateway) and
+VESSEL_LLM_URL (an OpenAI-compatible endpoint that never exposes a provider
 key), so it holds no key of its own and boots fine with zero USES tools.
 
 This file is written into the generated reasoning agent, so it is yours to edit:
 tune the loop, change the model handling, or replace it entirely. Nothing here
-is agentcage-specific beyond the two environment variables above.
+is mcpvessel-specific beyond the two environment variables above.
 """
 
 import json
@@ -23,7 +23,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from openai import AsyncOpenAI
 
-# agentcage forwards this container's stderr verbatim, so quiet the libraries'
+# mcpvessel forwards this container's stderr verbatim, so quiet the libraries'
 # default request logging here rather than expecting the platform to.
 logging.getLogger("mcp").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # The provider/model is the operator's decision, resolved by the LLM gateway,
 # which rewrites the model field on the wire; the value sent here is only a
 # placeholder the gateway overrides. The operator's knobs use non-reserved env
-# names because the Agentfile parser forbids ENV keys under the AGENTCAGE_
+# names because the Vesselfile parser forbids ENV keys under the VESSEL_
 # prefix. MAX_TURNS bounds a runaway tool loop; the per-run budget is the real
 # ceiling, enforced by the gateway.
 MODEL = "gpt-4o-mini"
@@ -53,11 +53,11 @@ def _root_cause(err: BaseException) -> str:
 
 
 def _uses_urls() -> dict[str, str]:
-    """Each USES edge is injected as AGENTCAGE_USES_<ALIAS>_URL. The alias
+    """Each USES edge is injected as VESSEL_USES_<ALIAS>_URL. The alias
     labels a tool when two sub-agents serve tools of the same name."""
     out: dict[str, str] = {}
     for key, value in os.environ.items():
-        match = re.fullmatch(r"AGENTCAGE_USES_(.+)_URL", key)
+        match = re.fullmatch(r"VESSEL_USES_(.+)_URL", key)
         if match and value:
             out[match.group(1).lower()] = value
     return out
@@ -129,7 +129,7 @@ async def respond(messages: list[dict] = None) -> str:
     if failed:
         return "reasoning stopped: could not reach tool server(s): " + ", ".join(sorted(failed)) + ". Refusing rather than answer without a tool this agent declares; check that the sub-agents are healthy and retry."
 
-    client = AsyncOpenAI(base_url=os.environ["AGENTCAGE_LLM_URL"], api_key="unused", timeout=60)
+    client = AsyncOpenAI(base_url=os.environ["VESSEL_LLM_URL"], api_key="unused", timeout=60)
 
     for _ in range(MAX_TURNS):
         kwargs = {"model": MODEL, "messages": conversation}
@@ -175,7 +175,7 @@ async def respond(messages: list[dict] = None) -> str:
 
 
 if __name__ == "__main__":
-    serve = os.environ.get("AGENTCAGE_SERVE_HTTP")
+    serve = os.environ.get("VESSEL_SERVE_HTTP")
     if serve:
         host, _, port = serve.rpartition(":")
         mcp.settings.host = host or "0.0.0.0"

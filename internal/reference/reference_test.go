@@ -4,7 +4,7 @@ import "testing"
 
 func TestParse_Forms(t *testing.T) {
 	// Pin the default registry to ghcr.io regardless of the developer's env.
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 
 	cases := []struct {
 		name     string
@@ -73,7 +73,7 @@ func TestParse_Forms(t *testing.T) {
 }
 
 func TestParse_Rejects(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 	cases := []struct {
 		name string
 		in   string
@@ -94,7 +94,7 @@ func TestParse_Rejects(t *testing.T) {
 }
 
 func TestParse_RegistryOverride(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "registry.acme.internal")
+	t.Setenv("VESSEL_REGISTRY", "registry.acme.internal")
 	got, err := Parse("@team/agent:1")
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -113,7 +113,7 @@ func TestOCIRef_DigestWinsOverTag(t *testing.T) {
 }
 
 func TestDisplay_ShorthandForDefaultRegistry(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 
 	cases := []struct {
 		name string
@@ -135,7 +135,7 @@ func TestDisplay_ShorthandForDefaultRegistry(t *testing.T) {
 
 func TestDisplay_HonorsRegistryOverride(t *testing.T) {
 	// With the default pointed elsewhere, ghcr is just another explicit host.
-	t.Setenv("AGENTCAGE_REGISTRY", "registry.acme.internal")
+	t.Setenv("VESSEL_REGISTRY", "registry.acme.internal")
 	local := Reference{Registry: "registry.acme.internal", Repository: "team/agent", Tag: "1"}
 	if got := local.Display(); got != "@team/agent:1" {
 		t.Errorf("Display() = %q, want @team/agent:1", got)

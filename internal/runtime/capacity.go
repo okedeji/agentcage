@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/config"
 )
 
 // usableMemory applies machine.memory_gib to the machine's real memory,
@@ -41,8 +41,8 @@ func soloBaselineMemory(rootMem int64, reasons, egress bool) int64 {
 // CageMemoryBytes is the memory one cage gets: its manifest's RESOURCES hint,
 // or the runtime default when it states none.
 func CageMemoryBytes(m *bundle.Manifest) int64 {
-	if m != nil && m.Agentfile.Resources != nil {
-		if b := (config.Cap{Mem: m.Agentfile.Resources.Mem}).MemBytes(); b > 0 {
+	if m != nil && m.Vesselfile.Resources != nil {
+		if b := (config.Cap{Mem: m.Vesselfile.Resources.Mem}).MemBytes(); b > 0 {
 			return b
 		}
 	}

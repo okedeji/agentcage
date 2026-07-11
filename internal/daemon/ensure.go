@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // Command is the subcommand that runs the daemon: the name Ensure spawns and
@@ -44,7 +44,7 @@ func Stop(ctx context.Context) (stopped bool, err error) {
 			return true, nil
 		}
 		if time.Now().After(deadline) {
-			return false, fmt.Errorf("daemon did not stop within %s; check ~/.agentcage/daemon.log", stopTimeout)
+			return false, fmt.Errorf("daemon did not stop within %s; check ~/.mcpvessel/daemon.log", stopTimeout)
 		}
 		select {
 		case <-ctx.Done():
@@ -56,7 +56,7 @@ func Stop(ctx context.Context) (stopped bool, err error) {
 
 // Ensure returns a client for the daemon, starting one if none is listening.
 // The daemon is spawned detached, its output appended to
-// ~/.agentcage/daemon.log.
+// ~/.mcpvessel/daemon.log.
 func Ensure(ctx context.Context) (*Client, error) {
 	socket, err := SocketPath()
 	if err != nil {
@@ -77,7 +77,7 @@ func Ensure(ctx context.Context) (*Client, error) {
 			return c, nil
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("daemon did not come up within %s; check ~/.agentcage/daemon.log", startTimeout)
+			return nil, fmt.Errorf("daemon did not come up within %s; check ~/.mcpvessel/daemon.log", startTimeout)
 		}
 		select {
 		case <-ctx.Done():
@@ -97,18 +97,18 @@ func answers(ctx context.Context, c *Client) bool {
 
 // spawn starts the daemon detached so it survives the caller exiting. It runs
 // the same binary and inherits the environment, so the version and
-// AGENTCAGE_HOME (socket and store paths) match.
+// VESSEL_HOME (socket and store paths) match.
 func spawn() error {
 	exe, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("locating the agentcage binary: %w", err)
+		return fmt.Errorf("locating the mcpvessel binary: %w", err)
 	}
 	home, err := env.HomeDir()
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(home, 0o755); err != nil {
-		return fmt.Errorf("creating agentcage home: %w", err)
+		return fmt.Errorf("creating mcpvessel home: %w", err)
 	}
 	logFile, err := os.OpenFile(filepath.Join(home, "daemon.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {

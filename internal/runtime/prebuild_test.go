@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/bundle"
 )
 
 func TestNeedsGatewayImage(t *testing.T) {
@@ -13,7 +13,7 @@ func TestNeedsGatewayImage(t *testing.T) {
 		t.Error("plain single cage needs no gateway image")
 	}
 
-	reasoning := &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Main: "respond", Model: "openai/gpt-4o"}}
+	reasoning := &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Main: "respond", Model: "openai/gpt-4o"}}
 	if !needsGatewayImage(mustTree(t, reasoning, nil)) {
 		t.Error("a reasoning node starts the LLM gateway; its image is needed")
 	}

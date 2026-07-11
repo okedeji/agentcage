@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // ArtifactVersion is the locked signature artifact schema version.
@@ -42,7 +42,7 @@ type keyFile struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// KeyPath resolves ~/.agentcage/signing-key.json, honoring AGENTCAGE_HOME.
+// KeyPath resolves ~/.mcpvessel/signing-key.json, honoring VESSEL_HOME.
 func KeyPath() (string, error) {
 	home, err := env.HomeDir()
 	if err != nil {
@@ -99,7 +99,7 @@ func ExportKey() ([]byte, error) {
 	if _, ok, err := LoadKey(); err != nil {
 		return nil, err
 	} else if !ok {
-		return nil, fmt.Errorf("no signing key to export; 'agentcage keys' or a signed push generates one")
+		return nil, fmt.Errorf("no signing key to export; 'mcpvessel keys' or a signed push generates one")
 	}
 	path, err := KeyPath()
 	if err != nil {

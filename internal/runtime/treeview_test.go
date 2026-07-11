@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
 func TestNodeGlance_SummarizesOperationalAttributes(t *testing.T) {
 	m := &bundle.Manifest{
-		Agentfile: bundle.AgentfileSpec{
+		Vesselfile: bundle.VesselfileSpec{
 			Model:     "anthropic/claude-3.5",
 			Budget:    5_000_000,
 			Egress:    "deny-default",

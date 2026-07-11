@@ -5,7 +5,7 @@ GO := go
 # to "dev" explicitly rather than shipping an empty version.
 VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
 VERSION := $(if $(VERSION),$(VERSION),dev)
-LDFLAGS := -X github.com/okedeji/agentcage/internal/identity.Version=$(VERSION:v%=%)
+LDFLAGS := -X github.com/okedeji/mcpvessel/internal/identity.Version=$(VERSION:v%=%)
 GOFLAGS := -trimpath -ldflags '$(LDFLAGS)'
 BINDIR := bin
 
@@ -23,27 +23,27 @@ LIMA_SHA256_Linux_x86_64  := $(shell awk '$$1=="LIMA_SHA256_Linux_x86_64"{print 
 all: vet build
 
 build:
-	$(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage ./cmd/agentcage/
+	$(GO) build $(GOFLAGS) -o $(BINDIR)/mcpvessel ./cmd/mcpvessel/
 
 # setup builds both binaries a from-source runtime needs: the host CLI and the
-# in-VM companion. Lima is fetched by 'agentcage init' on first run, so this is
-# the whole from-source setup: `make setup && ./bin/agentcage init`.
+# in-VM companion. Lima is fetched by 'mcpvessel init' on first run, so this is
+# the whole from-source setup: `make setup && ./bin/mcpvessel init`.
 setup: build build-linux
 
-# build-linux cross-compiles the agentcage binary that runs inside the VM:
+# build-linux cross-compiles the mcpvessel binary that runs inside the VM:
 # baked into the gateway image and run by the in-VM daemon. The Lima VM matches
 # the host CPU, so the target arch is the host's GOARCH under linux; CGO is off
 # so the binary is static and drops into a scratch image. The runtime looks for
-# it at bin/agentcage-linux-<arch>, the same bin/ companion layout limactl uses.
+# it at bin/mcpvessel-linux-<arch>, the same bin/ companion layout limactl uses.
 build-linux:
-	CGO_ENABLED=0 GOOS=linux GOARCH=$$($(GO) env GOARCH) $(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage-linux-$$($(GO) env GOARCH) ./cmd/agentcage/
+	CGO_ENABLED=0 GOOS=linux GOARCH=$$($(GO) env GOARCH) $(GO) build $(GOFLAGS) -o $(BINDIR)/mcpvessel-linux-$$($(GO) env GOARCH) ./cmd/mcpvessel/
 
 # build-linux-all cross-compiles both in-VM companion arches, the companions a
 # release archive ships next to the host binary (one per archive arch). Used by
 # release-deps; a dev build only needs the host arch (build-linux).
 build-linux-all:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage-linux-arm64 ./cmd/agentcage/
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINDIR)/agentcage-linux-amd64 ./cmd/agentcage/
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GOFLAGS) -o $(BINDIR)/mcpvessel-linux-arm64 ./cmd/mcpvessel/
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINDIR)/mcpvessel-linux-amd64 ./cmd/mcpvessel/
 
 clean:
 	rm -rf $(BINDIR) dist .lima-release completions
@@ -66,7 +66,7 @@ ci: fmt-check vet lint test build
 tidy:
 	$(GO) mod tidy
 
-# lima-deps downloads the limactl binary that ships with agentcage on
+# lima-deps downloads the limactl binary that ships with mcpvessel on
 # macOS / Windows (no-op on Linux, which uses system containerd directly).
 # The release is pinned by version and SHA-256 above so a tampered mirror
 # cannot inject a different binary. The extracted limactl ends up at
@@ -129,9 +129,9 @@ lima-deps-all:
 # arch-independent, so generating with the host toolchain is fine.
 completions:
 	@mkdir -p completions
-	$(GO) run ./cmd/agentcage completion bash > completions/agentcage.bash
-	$(GO) run ./cmd/agentcage completion zsh  > completions/agentcage.zsh
-	$(GO) run ./cmd/agentcage completion fish > completions/agentcage.fish
+	$(GO) run ./cmd/mcpvessel completion bash > completions/mcpvessel.bash
+	$(GO) run ./cmd/mcpvessel completion zsh  > completions/mcpvessel.zsh
+	$(GO) run ./cmd/mcpvessel completion fish > completions/mcpvessel.fish
 
 # release-deps prepares everything the goreleaser archives copy in: both in-VM
 # companion arches, both macOS Lima bundles, and the completion scripts.

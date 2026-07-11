@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
-// minimalSource writes a small but valid Agentfile + agent.py into dir.
+// minimalSource writes a small but valid Vesselfile + agent.py into dir.
 func minimalSource(t *testing.T, dir string) {
 	t.Helper()
-	writeFile(t, filepath.Join(dir, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(dir, "Vesselfile"), `FROM python:3.12-slim
 RUN pip install --no-cache-dir mcp
 MODEL anthropic/claude-3.5
 MAIN respond
@@ -62,17 +62,17 @@ func TestBuild_HappyPath(t *testing.T) {
 	if !strings.HasPrefix(manifest.FilesHash, "sha256:") {
 		t.Errorf("FilesHash = %q, want sha256: prefix", manifest.FilesHash)
 	}
-	if manifest.Agentfile.From != "python:3.12-slim" {
-		t.Errorf("Agentfile.From = %q", manifest.Agentfile.From)
+	if manifest.Vesselfile.From != "python:3.12-slim" {
+		t.Errorf("Vesselfile.From = %q", manifest.Vesselfile.From)
 	}
-	if manifest.Agentfile.Model != "anthropic/claude-3.5" {
-		t.Errorf("Agentfile.Model = %q, want anthropic/claude-3.5", manifest.Agentfile.Model)
+	if manifest.Vesselfile.Model != "anthropic/claude-3.5" {
+		t.Errorf("Vesselfile.Model = %q, want anthropic/claude-3.5", manifest.Vesselfile.Model)
 	}
-	if manifest.Agentfile.Main != "respond" {
-		t.Errorf("Agentfile.Main = %q, want %q", manifest.Agentfile.Main, "respond")
+	if manifest.Vesselfile.Main != "respond" {
+		t.Errorf("Vesselfile.Main = %q, want %q", manifest.Vesselfile.Main, "respond")
 	}
-	if len(manifest.Agentfile.Expose) != 1 || manifest.Agentfile.Expose[0] != "fetch_paper" {
-		t.Errorf("Agentfile.Expose = %v, want [fetch_paper]", manifest.Agentfile.Expose)
+	if len(manifest.Vesselfile.Expose) != 1 || manifest.Vesselfile.Expose[0] != "fetch_paper" {
+		t.Errorf("Vesselfile.Expose = %v, want [fetch_paper]", manifest.Vesselfile.Expose)
 	}
 
 	// Built without introspection, so the catalog is declared-only:
@@ -85,8 +85,8 @@ func TestBuild_HappyPath(t *testing.T) {
 		t.Errorf("Tools = %+v, want %+v", manifest.Tools, wantTools)
 	}
 	want := map[string]string{
-		"files/Agentfile": "FROM python:3.12-slim\nRUN pip install --no-cache-dir mcp\nMODEL anthropic/claude-3.5\nMAIN respond\nEXPOSE fetch_paper\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
-		"files/agent.py":  "print('hello')\n",
+		"files/Vesselfile": "FROM python:3.12-slim\nRUN pip install --no-cache-dir mcp\nMODEL anthropic/claude-3.5\nMAIN respond\nEXPOSE fetch_paper\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
+		"files/agent.py":   "print('hello')\n",
 	}
 	if len(files) != len(want) {
 		t.Errorf("file count = %d, want %d (got %v)", len(files), len(want), keysOf(files))
@@ -161,7 +161,7 @@ func TestBuild_SkipsVCSDir(t *testing.T) {
 
 func TestBuild_UsesDenyRoundTrip(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 RUN pip install --no-cache-dir mcp
 MAIN respond
 USES @anthropic/web-search:1.2.0 DENY deep_crawl
@@ -182,14 +182,14 @@ ENTRYPOINT python3 agent.py
 		{Ref: "@user/billing", Version: "0.5.0", Public: true, Deny: []string{"charge_card", "refund"}},
 		{Ref: "@vendor/safe", Version: "1.0.0"},
 	}
-	if !reflect.DeepEqual(manifest.Agentfile.Uses, want) {
-		t.Errorf("Uses = %+v, want %+v", manifest.Agentfile.Uses, want)
+	if !reflect.DeepEqual(manifest.Vesselfile.Uses, want) {
+		t.Errorf("Uses = %+v, want %+v", manifest.Vesselfile.Uses, want)
 	}
 }
 
 func TestBuild_UsesResolverLocksDigests(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 MAIN respond
 USES @anthropic/web-search:1.2.0
 USES @user/pdf:0.4.0
@@ -202,14 +202,14 @@ ENTRYPOINT python3 agent.py
 		"@user/pdf":             "sha256:bbbb",
 	}
 	out := filepath.Join(t.TempDir(), "a.agent")
-	err := Build(src, out, WithUsesResolver(func(u agentfile.Use) (string, error) {
+	err := Build(src, out, WithUsesResolver(func(u vesselfile.Use) (string, error) {
 		return digests[u.Ref], nil
 	}))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	manifest, _ := extract(t, out)
-	for _, u := range manifest.Agentfile.Uses {
+	for _, u := range manifest.Vesselfile.Uses {
 		if u.Digest != digests[u.Ref] {
 			t.Errorf("Uses[%s].Digest = %q, want %q", u.Ref, u.Digest, digests[u.Ref])
 		}
@@ -218,7 +218,7 @@ ENTRYPOINT python3 agent.py
 
 func TestBuild_UsesResolverErrorFailsBuild(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 MAIN respond
 USES @anthropic/web-search:1.2.0
 ENTRYPOINT python3 agent.py
@@ -226,7 +226,7 @@ ENTRYPOINT python3 agent.py
 	writeFile(t, filepath.Join(src, "agent.py"), "print('x')\n")
 
 	out := filepath.Join(t.TempDir(), "a.agent")
-	err := Build(src, out, WithUsesResolver(func(u agentfile.Use) (string, error) {
+	err := Build(src, out, WithUsesResolver(func(u vesselfile.Use) (string, error) {
 		return "", os.ErrNotExist
 	}))
 	if err == nil {
@@ -239,7 +239,7 @@ ENTRYPOINT python3 agent.py
 
 func TestBuild_IntrospectionEnrichesCatalog(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 MAIN respond
 EXPOSE fetch_paper
 ENTRYPOINT python3 agent.py
@@ -282,7 +282,7 @@ ENTRYPOINT python3 agent.py
 
 func TestBuild_ExposeWildcardMakesEveryToolPublic(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM node:22-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM node:22-slim
 EXPOSE *
 ENTRYPOINT run
 `)
@@ -306,7 +306,7 @@ ENTRYPOINT run
 
 func TestBuild_IntrospectionRejectsDeclaredToolTheAgentDoesNotServe(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 MAIN respond
 ENTRYPOINT python3 agent.py
 `)
@@ -332,7 +332,7 @@ func TestBuild_CatalogOmittedForToolCollectionWithoutMainOrExpose(t *testing.T) 
 	// empty catalog; an uncallable bundle is the operator's problem, not
 	// the build's.
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 ENTRYPOINT python3 agent.py
 `)
 	writeFile(t, filepath.Join(src, "agent.py"), "print('x')\n")
@@ -349,7 +349,7 @@ ENTRYPOINT python3 agent.py
 
 func TestBuild_EvalDirectiveMarksDeclared(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 MAIN respond
 EVAL tests/eval.yaml
 ENTRYPOINT python3 agent.py
@@ -363,8 +363,8 @@ ENTRYPOINT python3 agent.py
 	}
 	manifest, _ := extract(t, out)
 
-	if manifest.Agentfile.Eval != "tests/eval.yaml" {
-		t.Errorf("Agentfile.Eval = %q, want tests/eval.yaml", manifest.Agentfile.Eval)
+	if manifest.Vesselfile.Eval != "tests/eval.yaml" {
+		t.Errorf("Vesselfile.Eval = %q, want tests/eval.yaml", manifest.Vesselfile.Eval)
 	}
 	if manifest.Evals == nil {
 		t.Fatal("Evals block is nil, want declared")
@@ -414,21 +414,21 @@ func TestBuild_ExcludesOwnTempFileWhenBuildingIntoSourceDir(t *testing.T) {
 	}
 }
 
-func TestBuild_MissingAgentfile(t *testing.T) {
+func TestBuild_MissingVesselfile(t *testing.T) {
 	src := t.TempDir()
 	out := filepath.Join(t.TempDir(), "a.agent")
 	err := Build(src, out)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "Agentfile not found") {
-		t.Errorf("error = %q, want 'Agentfile not found'", err.Error())
+	if !strings.Contains(err.Error(), "Vesselfile not found") {
+		t.Errorf("error = %q, want 'Vesselfile not found'", err.Error())
 	}
 }
 
-func TestBuild_InvalidAgentfile(t *testing.T) {
+func TestBuild_InvalidVesselfile(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `ENTRYPOINT python3 agent.py
+	writeFile(t, filepath.Join(src, "Vesselfile"), `ENTRYPOINT python3 agent.py
 `)
 	out := filepath.Join(t.TempDir(), "a.agent")
 	err := Build(src, out)

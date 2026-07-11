@@ -12,8 +12,8 @@ const DefaultContainerdAddress = "/run/containerd/containerd.sock"
 
 // DefaultContainerdNamespace is "default": what rootless BuildKit exports
 // image builds into and what nerdctl reads without --namespace. A dedicated
-// "agentcage" namespace would require reconfiguring BuildKit's containerd
-// worker, so we share default and identify our objects by io.agentcage.*
+// "mcpvessel" namespace would require reconfiguring BuildKit's containerd
+// worker, so we share default and identify our objects by io.mcpvessel.*
 // labels.
 const DefaultContainerdNamespace = "default"
 
@@ -24,7 +24,7 @@ const DefaultContainerdNamespace = "default"
 // snapshotter cannot be left unset.
 const DefaultSnapshotter = "overlayfs"
 
-// Containerd wraps a containerd client scoped to the agentcage namespace.
+// Containerd wraps a containerd client scoped to the mcpvessel namespace.
 // Close releases the wrapped client's gRPC connection and goroutines.
 type Containerd struct {
 	client    *client.Client

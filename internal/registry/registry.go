@@ -1,5 +1,5 @@
 // Package registry pushes and pulls .agent bundles as OCI artifacts: one
-// gzip-tar layer under a manifest whose artifactType marks it agentcage's.
+// gzip-tar layer under a manifest whose artifactType marks it mcpvessel's.
 // Auth reuses the operator's stored OCI credentials. Pulls are cached by
 // manifest digest; a repeated digest pull never touches the network.
 package registry
@@ -23,18 +23,18 @@ import (
 	"oras.land/oras-go/v2/registry/remote/credentials"
 	"oras.land/oras-go/v2/registry/remote/retry"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
 const (
 	// BundleMediaType is the OCI layer media type for a packed .agent bundle.
 	// Changing it strands every bundle already pushed under the old type.
-	BundleMediaType = "application/vnd.agentcage.bundle.v1+tar+gzip"
+	BundleMediaType = "application/vnd.mcpvessel.bundle.v1+tar+gzip"
 
-	// ArtifactType marks the bundle's OCI manifest as an agentcage bundle.
-	ArtifactType = "application/vnd.agentcage.bundle.v1"
+	// ArtifactType marks the bundle's OCI manifest as an mcpvessel bundle.
+	ArtifactType = "application/vnd.mcpvessel.bundle.v1"
 
 	// mcpServerNameAnnotation is the ownership annotation the MCP Registry
 	// requires: the artifact must name the reverse-DNS server it belongs to.
@@ -55,7 +55,7 @@ type Client struct {
 }
 
 // New builds a Client with credential-store auth and the default cache
-// (~/.agentcage/cache). An unreadable credential store is an error, not a
+// (~/.mcpvessel/cache). An unreadable credential store is an error, not a
 // silent fall-through to anonymous access.
 func New() (*Client, error) {
 	store, err := credentials.NewStoreFromDocker(credentials.StoreOptions{})
@@ -351,7 +351,7 @@ func fetchBundle(ctx context.Context, src oras.ReadOnlyTarget, ref string) ([]by
 
 	layer, ok := bundleLayer(manifest.Layers)
 	if !ok {
-		return nil, ocispec.Descriptor{}, fmt.Errorf("manifest has no %s layer: not an agentcage bundle", BundleMediaType)
+		return nil, ocispec.Descriptor{}, fmt.Errorf("manifest has no %s layer: not an mcpvessel bundle", BundleMediaType)
 	}
 
 	brc, err := src.Fetch(ctx, layer)
@@ -403,7 +403,7 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-// cacheDir resolves ~/.agentcage/cache, honoring AGENTCAGE_HOME.
+// cacheDir resolves ~/.mcpvessel/cache, honoring VESSEL_HOME.
 func cacheDir() (string, error) {
 	if home := strings.TrimSpace(os.Getenv(env.Home)); home != "" {
 		return filepath.Join(home, "cache"), nil
@@ -412,5 +412,5 @@ func cacheDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locating home directory: %w", err)
 	}
-	return filepath.Join(home, ".agentcage", "cache"), nil
+	return filepath.Join(home, ".mcpvessel", "cache"), nil
 }

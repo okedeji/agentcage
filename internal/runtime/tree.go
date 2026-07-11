@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
 // agentNode is one agent in a run's USES tree. The root is the agent the
@@ -56,7 +56,7 @@ func resolveTree(ctx context.Context, rootKey, rootBundle string, root *bundle.M
 
 	var walk func(callerKey string, m *bundle.Manifest) error
 	walk = func(callerKey string, m *bundle.Manifest) error {
-		for _, u := range m.Agentfile.Uses {
+		for _, u := range m.Vesselfile.Uses {
 			if u.Digest == "" {
 				return fmt.Errorf("USES %s:%s has no locked digest; rebuild the bundle so the runtime can pull by digest", u.Ref, u.Version)
 			}
@@ -105,7 +105,7 @@ func referenceForUse(u bundle.UseSpec) (reference.Reference, error) {
 }
 
 // usesAlias is the local name a parent calls a sub-agent by: the last path
-// segment of the USES ref. Feeds AGENTCAGE_USES_<ALIAS>_URL; the agent side
+// segment of the USES ref. Feeds VESSEL_USES_<ALIAS>_URL; the agent side
 // derives the same name from the same ref.
 func usesAlias(ref string) string {
 	ref = strings.TrimPrefix(ref, "@")

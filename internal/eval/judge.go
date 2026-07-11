@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/secrets"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/secrets"
 )
 
 // judgeTimeout bounds one grading call so a wedged provider fails the case,
@@ -56,7 +56,7 @@ func NewJudge(cfg *config.Config, sec *secrets.Store, override string) (*Judgeme
 	}
 	key, ok := sec.Get(ep.KeyRef)
 	if !ok {
-		return nil, fmt.Errorf("judge provider %q key %q is not in the secret store; run 'agentcage secrets set %s'", ep.Name, ep.KeyRef, ep.KeyRef)
+		return nil, fmt.Errorf("judge provider %q key %q is not in the secret store; run 'mcpvessel secrets set %s'", ep.Name, ep.KeyRef, ep.KeyRef)
 	}
 	return &Judgement{
 		baseURL:  strings.TrimRight(ep.BaseURL, "/"),
@@ -79,7 +79,7 @@ func resolveJudgeEndpoint(cfg *config.Config, override string) (config.Endpoint,
 				return e, model, nil
 			}
 		}
-		return config.Endpoint{}, "", fmt.Errorf("judge model %q: provider %q is not configured; run 'agentcage config provider set %s ...' or pick a configured provider", override, provider, provider)
+		return config.Endpoint{}, "", fmt.Errorf("judge model %q: provider %q is not configured; run 'mcpvessel config provider set %s ...' or pick a configured provider", override, provider, provider)
 	}
 	for _, e := range cfg.Providers {
 		if e.Default {
@@ -89,7 +89,7 @@ func resolveJudgeEndpoint(cfg *config.Config, override string) (config.Endpoint,
 			return e, e.Model, nil
 		}
 	}
-	return config.Endpoint{}, "", fmt.Errorf("no default LLM provider to judge with; set one with 'agentcage config provider set ... --default' or pass --judge-model provider/model")
+	return config.Endpoint{}, "", fmt.Errorf("no default LLM provider to judge with; set one with 'mcpvessel config provider set ... --default' or pass --judge-model provider/model")
 }
 
 // Score grades output against rubric. It retries once on an unparseable

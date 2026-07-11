@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
-// logsDirName is the per-run log directory under the agentcage home dir. Logs
+// logsDirName is the per-run log directory under the mcpvessel home dir. Logs
 // are files on disk so they outlive the run and a daemon restart; the history
 // store holds only metadata.
 const logsDirName = "logs"
@@ -19,7 +19,7 @@ const logsDirName = "logs"
 // logTailInterval is how often a following reader rechecks a live run's log.
 const logTailInterval = 200 * time.Millisecond
 
-// runLogPath is ~/.agentcage/logs/<run-id>.log.
+// runLogPath is ~/.mcpvessel/logs/<run-id>.log.
 func runLogPath(runID string) (string, error) {
 	home, err := env.HomeDir()
 	if err != nil {

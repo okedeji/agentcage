@@ -13,13 +13,13 @@ import (
 	"github.com/moby/buildkit/util/progress/progressui"
 	"github.com/tonistiigi/fsutil"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
-	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
 // BuildInput is everything BuildAgent needs to produce an image.
 type BuildInput struct {
-	Agentfile *agentfile.Agentfile
+	Vesselfile *vesselfile.Vesselfile
 
 	// Manifest supplies the image's OCI provenance labels.
 	Manifest *bundle.Manifest
@@ -37,7 +37,7 @@ type BuildInput struct {
 	NoCache bool
 }
 
-// BuildAgent generates a Dockerfile from the Agentfile and solves it via
+// BuildAgent generates a Dockerfile from the Vesselfile and solves it via
 // BuildKit's dockerfile.v0 frontend, exporting the image into containerd's
 // image store under ImageRef. The temp Dockerfile directory is removed even
 // on error.
@@ -45,8 +45,8 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 	if bk == nil {
 		return fmt.Errorf("buildkit client is nil")
 	}
-	if in.Agentfile == nil {
-		return fmt.Errorf("agentfile is nil")
+	if in.Vesselfile == nil {
+		return fmt.Errorf("vesselfile is nil")
 	}
 	if in.SourceDir == "" {
 		return fmt.Errorf("source directory is empty")
@@ -67,7 +67,7 @@ func BuildAgent(ctx context.Context, bk *BuildKit, in BuildInput) error {
 // solveImage runs the dockerfile.v0 frontend over a build context and a
 // definition dir, exporting into containerd's image store under imageRef.
 // Shared by the agent and gateway builds. The definition file is named
-// "Agentfile" so build progress reads in agentcage's vocabulary; the frontend
+// "Vesselfile" so build progress reads in mcpvessel's vocabulary; the frontend
 // still parses Dockerfile syntax.
 func solveImage(ctx context.Context, bk *BuildKit, contextDir, dockerfileDir, imageRef string, noCache bool, onStatus func(*bkclient.SolveStatus)) error {
 	ctxMount, err := fsutil.NewFS(contextDir)
@@ -79,7 +79,7 @@ func solveImage(ctx context.Context, bk *BuildKit, contextDir, dockerfileDir, im
 		return fmt.Errorf("mounting definition dir %s: %w", dockerfileDir, err)
 	}
 
-	frontendAttrs := map[string]string{"filename": "Agentfile"}
+	frontendAttrs := map[string]string{"filename": "Vesselfile"}
 	if noCache {
 		// The frontend treats a present "no-cache" key as a flag.
 		frontendAttrs["no-cache"] = ""
@@ -125,19 +125,19 @@ func solveImage(ctx context.Context, bk *BuildKit, contextDir, dockerfileDir, im
 }
 
 // writeBuildContext writes the generated Dockerfile into a fresh temp dir as
-// "Agentfile" and returns its path with a cleanup the caller must defer.
+// "Vesselfile" and returns its path with a cleanup the caller must defer.
 func writeBuildContext(in BuildInput) (string, func(), error) {
-	dir, err := os.MkdirTemp("", "agentcage-build-*")
+	dir, err := os.MkdirTemp("", "mcpvessel-build-*")
 	if err != nil {
 		return "", func() {}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
 
 	content := generateDockerfile(dockerfileInput{
-		Agentfile: in.Agentfile,
-		Labels:    labelsFromManifest(in.Manifest),
+		Vesselfile: in.Vesselfile,
+		Labels:     labelsFromManifest(in.Manifest),
 	})
-	path := filepath.Join(dir, "Agentfile")
+	path := filepath.Join(dir, "Vesselfile")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		cleanup()
 		return "", func() {}, err
@@ -152,19 +152,19 @@ func labelsFromManifest(m *bundle.Manifest) map[string]string {
 		return nil
 	}
 	labels := map[string]string{
-		"io.agentcage.spec_version": m.SpecVersion,
-		"io.agentcage.files_hash":   m.FilesHash,
-		"io.agentcage.built_with":   m.BuiltWith,
+		"io.mcpvessel.spec_version": m.SpecVersion,
+		"io.mcpvessel.files_hash":   m.FilesHash,
+		"io.mcpvessel.built_with":   m.BuiltWith,
 	}
 	if !m.BuiltAt.IsZero() {
-		labels["io.agentcage.built_at"] = m.BuiltAt.UTC().Format(time.RFC3339)
+		labels["io.mcpvessel.built_at"] = m.BuiltAt.UTC().Format(time.RFC3339)
 	}
 	return labels
 }
 
 // buildWithProgress runs BuildAgent, rendering the status stream to w.
 // AutoMode gives a live dashboard on a TTY and plain lines on a pipe, keeping
-// CI logs readable. Status names are rewritten to agentcage's vocabulary
+// CI logs readable. Status names are rewritten to mcpvessel's vocabulary
 // before display.
 func buildWithProgress(ctx context.Context, bk *BuildKit, in BuildInput, w io.Writer) error {
 	statusCh := make(chan *bkclient.SolveStatus, 16)
@@ -184,7 +184,7 @@ func buildWithProgress(ctx context.Context, bk *BuildKit, in BuildInput, w io.Wr
 	}()
 
 	in.OnStatus = func(s *bkclient.SolveStatus) {
-		rewriteStatusForAgentcage(s)
+		rewriteStatusForMcpvessel(s)
 		statusCh <- s
 	}
 	err := BuildAgent(ctx, bk, in)
@@ -193,20 +193,20 @@ func buildWithProgress(ctx context.Context, bk *BuildKit, in BuildInput, w io.Wr
 	return err
 }
 
-// rewriteStatusForAgentcage rewrites vertex and sub-status names in place.
+// rewriteStatusForMcpvessel rewrites vertex and sub-status names in place.
 // Display text only: errors, log lines, and digests stay untouched so a real
 // failure still points at what BuildKit actually saw.
-func rewriteStatusForAgentcage(s *bkclient.SolveStatus) {
+func rewriteStatusForMcpvessel(s *bkclient.SolveStatus) {
 	for _, v := range s.Vertexes {
-		v.Name = rewriteAgentcageDisplay(v.Name)
+		v.Name = rewriteMcpvesselDisplay(v.Name)
 	}
 	for _, vs := range s.Statuses {
-		vs.Name = rewriteAgentcageDisplay(vs.Name)
-		vs.ID = rewriteAgentcageDisplay(vs.ID)
+		vs.Name = rewriteMcpvesselDisplay(vs.Name)
+		vs.ID = rewriteMcpvesselDisplay(vs.ID)
 	}
 }
 
-func rewriteAgentcageDisplay(s string) string {
+func rewriteMcpvesselDisplay(s string) string {
 	if s == "" {
 		return s
 	}
@@ -214,7 +214,7 @@ func rewriteAgentcageDisplay(s string) string {
 	s = strings.ReplaceAll(s, "docker.io/library/", "")
 	s = strings.ReplaceAll(s, "docker.io/", "")
 	s = strings.ReplaceAll(s, ".dockerignore", ".agentignore")
-	s = strings.ReplaceAll(s, "Dockerfile", "Agentfile")
-	s = strings.ReplaceAll(s, "dockerfile", "agentfile")
+	s = strings.ReplaceAll(s, "Dockerfile", "Vesselfile")
+	s = strings.ReplaceAll(s, "dockerfile", "vesselfile")
 	return s
 }

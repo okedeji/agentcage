@@ -2,21 +2,16 @@ package runtime
 
 import (
 	"testing"
-
-	"github.com/okedeji/agentcage/internal/bundle"
 )
-
-func manifestWith(env map[string]string, secrets []string) *bundle.Manifest {
-	return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Env: env, Secrets: secrets}}
-}
 
 func TestInjectOperatorValues_ScopesToDeclaredNames(t *testing.T) {
 	agentEnv := map[string]string{}
-	m := manifestWith(map[string]string{"LOG_LEVEL": "info"}, []string{"notion_token"})
+	declaredEnv := map[string]string{"LOG_LEVEL": "info"}
+	declaredSecrets := []string{"notion_token"}
 	opEnv := map[string]string{"LOG_LEVEL": "debug", "OTHER": "nope"}
 	opSecrets := map[string]string{"notion_token": "ntn-secret", "elsewhere": "nope"}
 
-	if err := injectOperatorValues(agentEnv, m, opEnv, opSecrets); err != nil {
+	if err := injectOperatorValues(agentEnv, declaredEnv, declaredSecrets, opEnv, opSecrets); err != nil {
 		t.Fatalf("inject: %v", err)
 	}
 	if agentEnv["LOG_LEVEL"] != "debug" {
@@ -36,8 +31,7 @@ func TestInjectOperatorValues_ScopesToDeclaredNames(t *testing.T) {
 }
 
 func TestInjectOperatorValues_MissingDeclaredSecretFailsClosed(t *testing.T) {
-	m := manifestWith(nil, []string{"required_key"})
-	err := injectOperatorValues(map[string]string{}, m, nil, nil)
+	err := injectOperatorValues(map[string]string{}, nil, []string{"required_key"}, nil, nil)
 	if err == nil {
 		t.Fatal("expected a fail-closed error for a declared secret with no value")
 	}
@@ -46,10 +40,10 @@ func TestInjectOperatorValues_MissingDeclaredSecretFailsClosed(t *testing.T) {
 func TestInjectOperatorValues_RequiredEnvInput(t *testing.T) {
 	// An empty default is a required input: it injects when supplied and fails
 	// closed when not, while a key with a real default is left to the image.
-	m := manifestWith(map[string]string{"SYSTEM_PROMPT": "", "LOG_LEVEL": "info"}, nil)
+	declaredEnv := map[string]string{"SYSTEM_PROMPT": "", "LOG_LEVEL": "info"}
 
 	agentEnv := map[string]string{}
-	if err := injectOperatorValues(agentEnv, m, map[string]string{"SYSTEM_PROMPT": "be terse"}, nil); err != nil {
+	if err := injectOperatorValues(agentEnv, declaredEnv, nil, map[string]string{"SYSTEM_PROMPT": "be terse"}, nil); err != nil {
 		t.Fatalf("inject with required value supplied: %v", err)
 	}
 	if agentEnv["SYSTEM_PROMPT"] != "be terse" {
@@ -61,7 +55,7 @@ func TestInjectOperatorValues_RequiredEnvInput(t *testing.T) {
 		t.Error("a defaulted ENV should be left to the image, not injected")
 	}
 
-	if err := injectOperatorValues(map[string]string{}, m, nil, nil); err == nil {
+	if err := injectOperatorValues(map[string]string{}, declaredEnv, nil, nil, nil); err == nil {
 		t.Fatal("expected a fail-closed error for a required input with no value")
 	}
 }

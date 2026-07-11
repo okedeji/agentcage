@@ -13,7 +13,7 @@ import (
 
 func TestExtract_RoundTrip(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), `FROM python:3.12-slim
+	writeFile(t, filepath.Join(src, "Vesselfile"), `FROM python:3.12-slim
 RUN pip install --no-cache-dir mcp
 MODEL anthropic/claude-3.5
 META description "test agent"
@@ -33,15 +33,15 @@ ENTRYPOINT python3 agent.py
 		t.Fatalf("Extract: %v", err)
 	}
 
-	if manifest.Agentfile.From != "python:3.12-slim" {
-		t.Errorf("Manifest.From = %q", manifest.Agentfile.From)
+	if manifest.Vesselfile.From != "python:3.12-slim" {
+		t.Errorf("Manifest.From = %q", manifest.Vesselfile.From)
 	}
 	if !strings.HasPrefix(manifest.FilesHash, "sha256:") {
 		t.Errorf("FilesHash = %q", manifest.FilesHash)
 	}
 
 	for path, want := range map[string]string{
-		"Agentfile":        "FROM python:3.12-slim\nRUN pip install --no-cache-dir mcp\nMODEL anthropic/claude-3.5\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
+		"Vesselfile":       "FROM python:3.12-slim\nRUN pip install --no-cache-dir mcp\nMODEL anthropic/claude-3.5\nMETA description \"test agent\"\nENTRYPOINT python3 agent.py\n",
 		"agent.py":         "print('hello')\n",
 		"nested/helper.py": "# helper\n",
 	} {
@@ -58,7 +58,7 @@ ENTRYPOINT python3 agent.py
 
 func TestReadSourceFile_RoundTrip(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), "FROM x\nENTRYPOINT y\n")
+	writeFile(t, filepath.Join(src, "Vesselfile"), "FROM x\nENTRYPOINT y\n")
 	writeFile(t, filepath.Join(src, "tests", "eval.yaml"), "version: 0.1\ncases: []\n")
 
 	out := filepath.Join(t.TempDir(), "a.agent")
@@ -77,7 +77,7 @@ func TestReadSourceFile_RoundTrip(t *testing.T) {
 
 func TestReadSourceFile_Missing(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), "FROM x\nENTRYPOINT y\n")
+	writeFile(t, filepath.Join(src, "Vesselfile"), "FROM x\nENTRYPOINT y\n")
 
 	out := filepath.Join(t.TempDir(), "a.agent")
 	if err := Build(src, out); err != nil {
@@ -92,7 +92,7 @@ func TestReadSourceFile_Missing(t *testing.T) {
 
 func TestReadSourceFile_RefusesEscape(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), "FROM x\nENTRYPOINT y\n")
+	writeFile(t, filepath.Join(src, "Vesselfile"), "FROM x\nENTRYPOINT y\n")
 
 	out := filepath.Join(t.TempDir(), "a.agent")
 	if err := Build(src, out); err != nil {
@@ -139,7 +139,7 @@ func TestExtract_RefusesPathTraversal(t *testing.T) {
 
 func TestExtract_RejectsTamperedFiles(t *testing.T) {
 	src := t.TempDir()
-	writeFile(t, filepath.Join(src, "Agentfile"), "FROM x\nENTRYPOINT y\n")
+	writeFile(t, filepath.Join(src, "Vesselfile"), "FROM x\nENTRYPOINT y\n")
 	writeFile(t, filepath.Join(src, "agent.py"), "print('original')\n")
 
 	out := filepath.Join(t.TempDir(), "a.agent")
@@ -219,7 +219,7 @@ func mustWriteEvilBundle(t *testing.T, path string) {
 	// Minimal valid manifest first so the loop reaches the evil entry.
 	manifestBody, err := json.Marshal(&Manifest{
 		SpecVersion: "0.1",
-		Agentfile:   AgentfileSpec{From: "x", Entrypoint: "y"},
+		Vesselfile:  VesselfileSpec{From: "x", Entrypoint: "y"},
 		FilesHash:   "sha256:deadbeef",
 	})
 	if err != nil {

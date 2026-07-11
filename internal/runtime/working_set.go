@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/mcp"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
 )
 
 // nowFunc is overridable so the reaper's idle math is testable.

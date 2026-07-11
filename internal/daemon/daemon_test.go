@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/history"
-	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/mcpvessel/internal/history"
+	"github.com/okedeji/mcpvessel/internal/identity"
 )
 
 // shortSocket returns a socket path under a short /tmp dir, not t.TempDir():
@@ -26,19 +26,19 @@ func shortSocket(t *testing.T) string {
 		t.Fatalf("temp dir: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return filepath.Join(dir, "agentcage.sock")
+	return filepath.Join(dir, "mcpvessel.sock")
 }
 
 func TestCheckSocketPathLen(t *testing.T) {
-	if err := checkSocketPathLen("/tmp/ac/agentcage.sock"); err != nil {
+	if err := checkSocketPathLen("/tmp/ac/mcpvessel.sock"); err != nil {
 		t.Errorf("a short path should pass: %v", err)
 	}
-	long := "/var/folders/hz/" + strings.Repeat("x", maxSocketPathLen) + "/agentcage.sock"
+	long := "/var/folders/hz/" + strings.Repeat("x", maxSocketPathLen) + "/mcpvessel.sock"
 	err := checkSocketPathLen(long)
 	if err == nil {
 		t.Fatal("an over-limit path must be rejected with a clear error")
 	}
-	if !strings.Contains(err.Error(), "AGENTCAGE_HOME") {
+	if !strings.Contains(err.Error(), "VESSEL_HOME") {
 		t.Errorf("error should point the operator at the fix: %v", err)
 	}
 }
@@ -128,7 +128,7 @@ func TestListRuns_MergesHistoryAndLive(t *testing.T) {
 }
 
 func TestServe_SocketRoundTrip(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	socket := shortSocket(t)
 	d := New()
 	d.hold(RunInfo{
@@ -170,7 +170,7 @@ func TestServe_SocketRoundTrip(t *testing.T) {
 // Serve runs against a background context here, so only the /shutdown request
 // can stop it.
 func TestShutdown_StopsServe(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	socket := shortSocket(t)
 	d := New()
 	errc := make(chan error, 1)
@@ -192,7 +192,7 @@ func TestShutdown_StopsServe(t *testing.T) {
 }
 
 func TestServe_RefusesSecondListener(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	socket := shortSocket(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

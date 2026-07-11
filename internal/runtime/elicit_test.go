@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/mcp"
 )
 
 func okTarget(_ context.Context, q *mcp.ElicitRequest) (*mcp.ElicitResult, error) {

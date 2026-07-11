@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/bundle"
 )
 
 func buildBundleWithEval(t *testing.T) string {
@@ -21,7 +21,7 @@ func buildBundleWithEval(t *testing.T) string {
 			t.Fatalf("write %s: %v", rel, err)
 		}
 	}
-	write("Agentfile", "FROM x\nMAIN respond\nEVAL tests/eval.yaml\nENTRYPOINT y\n")
+	write("Vesselfile", "FROM x\nMAIN respond\nEVAL tests/eval.yaml\nENTRYPOINT y\n")
 	write("tests/eval.yaml", "version: 0.1\n")
 
 	out := filepath.Join(t.TempDir(), "a.agent")

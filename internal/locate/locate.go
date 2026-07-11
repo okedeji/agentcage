@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/mcpregistry"
-	"github.com/okedeji/agentcage/internal/reference"
-	"github.com/okedeji/agentcage/internal/registry"
-	"github.com/okedeji/agentcage/internal/store"
+	"github.com/okedeji/mcpvessel/internal/mcpregistry"
+	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/registry"
+	"github.com/okedeji/mcpvessel/internal/store"
 )
 
 // Result is a resolved bundle: local Path, the Display label human views
@@ -94,7 +94,7 @@ func Bundle(ctx context.Context, arg string) (Result, error) {
 
 // RegistryName reports whether arg is an MCP Registry name
 // (io.github.user/server). The grammar discriminates: exactly one slash, a
-// dotted namespace, no tag or digest, which no valid agentcage OCI ref
+// dotted namespace, no tag or digest, which no valid mcpvessel OCI ref
 // matches, so this never steals the reference parser's input.
 func RegistryName(arg string) (string, bool) {
 	if strings.HasPrefix(arg, "@") || strings.Contains(arg, "@") {

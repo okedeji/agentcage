@@ -7,9 +7,9 @@ import (
 
 	"oras.land/oras-go/v2/content/memory"
 
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/reference"
-	"github.com/okedeji/agentcage/internal/signing"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/signing"
 )
 
 func mustParseRef(t *testing.T, s string) reference.Reference {
@@ -89,7 +89,7 @@ func TestVerifyPulled_UnsignedFailsClosedUnderRequire(t *testing.T) {
 	ref := mustParseRef(t, "@okedeji/researcher:0.1")
 	err := c.verifyPulled(context.Background(), memory.New(), ref, "sha256:abc")
 	if err == nil || !strings.Contains(err.Error(), "not signed") {
-		t.Fatalf("err = %v, want an unsigned rejection under AGENTCAGE_REQUIRE_SIGNATURES", err)
+		t.Fatalf("err = %v, want an unsigned rejection under VESSEL_REQUIRE_SIGNATURES", err)
 	}
 }
 

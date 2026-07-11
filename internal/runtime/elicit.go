@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/mcp"
 )
 
 // elicitDeadline bounds a mid-call question's wait for the operator. A human

@@ -7,7 +7,7 @@ assignees: ""
 ---
 
 **The problem**
-What are you trying to do that agentcage makes hard or impossible today? Lead
+What are you trying to do that mcpvessel makes hard or impossible today? Lead
 with the use case, not the solution.
 
 **What you have in mind**

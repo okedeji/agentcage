@@ -1,4 +1,4 @@
-// Package replay owns the .replay artifact under ~/.agentcage/replays: the
+// Package replay owns the .replay artifact under ~/.mcpvessel/replays: the
 // full-payload recording of a run's external interactions. The daemon
 // assembles a Recording at a run's finish; readers decode the same shape.
 package replay
@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // Version is the artifact schema version, bumped only on breaking changes.
@@ -68,7 +68,7 @@ const (
 	EventLLMStream   = "llm.stream"
 )
 
-// Path is ~/.agentcage/replays/<run-id>.replay, honoring AGENTCAGE_HOME.
+// Path is ~/.mcpvessel/replays/<run-id>.replay, honoring VESSEL_HOME.
 func Path(runID string) (string, error) {
 	home, err := env.HomeDir()
 	if err != nil {

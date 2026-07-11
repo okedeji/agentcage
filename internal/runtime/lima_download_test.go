@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 func TestLimaPin_ReadsEmbeddedFile(t *testing.T) {
@@ -136,7 +136,7 @@ func TestInstallLima_TamperedArchiveRejected(t *testing.T) {
 }
 
 // EnsureLimaAvailable must be a pure no-op (never a download) when a usable
-// limactl already exists. Plant a fake one at the ~/.agentcage/lima path
+// limactl already exists. Plant a fake one at the ~/.mcpvessel/lima path
 // FindLimactl searches, so the test is deterministic and never touches the
 // network on any platform.
 func TestEnsureLimaAvailable_NoopWhenLimactlPresent(t *testing.T) {
@@ -154,7 +154,7 @@ func TestEnsureLimaAvailable_NoopWhenLimactlPresent(t *testing.T) {
 		t.Fatalf("FindLimactl should locate the planted limactl: %v", err)
 	}
 
-	// A real download would replace ~/.agentcage/lima; assert our fake survives.
+	// A real download would replace ~/.mcpvessel/lima; assert our fake survives.
 	before, _ := os.ReadFile(limactl)
 	if err := EnsureLimaAvailable(context.Background(), nil); err != nil {
 		t.Fatalf("EnsureLimaAvailable should no-op when limactl exists: %v", err)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
 func use(ref, version, digest string, deny ...string) bundle.UseSpec {
@@ -14,7 +14,7 @@ func use(ref, version, digest string, deny ...string) bundle.UseSpec {
 }
 
 func manifestUsing(uses ...bundle.UseSpec) *bundle.Manifest {
-	return &bundle.Manifest{Agentfile: bundle.AgentfileSpec{Uses: uses}}
+	return &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Uses: uses}}
 }
 
 // fakePuller resolves a USES reference to a manifest keyed by digest, so a

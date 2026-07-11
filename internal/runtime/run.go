@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
 // RunInput drives Acquire; it mirrors the CLI's run and call flags.
@@ -45,7 +45,7 @@ type RunInput struct {
 	// Managed labels containers and networks for the daemon's orphan sweep.
 	Managed bool
 
-	// Interaction is injected as AGENTCAGE_INTERACTION; empty injects nothing.
+	// Interaction is injected as VESSEL_INTERACTION; empty injects nothing.
 	Interaction string
 
 	// OnEvent observes the run's lifecycle events. Nil off the daemon path.
@@ -67,6 +67,16 @@ type RunInput struct {
 	// LogFile opens the run's durable log once the run id is known; the agent's
 	// stderr is teed there, build progress is not. Nil logs to Stderr alone.
 	LogFile func(runID string) io.WriteCloser
+
+	// ObserveEgress runs the egress proxy in audit mode: every host is allowed
+	// and recorded, so a run can learn a server's egress profile before it is
+	// locked down. Off leaves the cage deny-default.
+	ObserveEgress bool
+
+	// EgressAllow is the operator's per-run egress override for the root agent:
+	// hosts allowed on top of what the Vesselfile declares, for this run only.
+	// It does not change the bundle; --save persists it instead.
+	EgressAllow []string
 }
 
 // Session is one booted run: the root agent's open MCP session and the working
@@ -127,7 +137,7 @@ func (s *Session) Release() error {
 // extracted source is removed before returning; a boot that fails partway
 // releases what it acquired, so Acquire leaks nothing on error.
 func Acquire(ctx context.Context, in RunInput) (*Session, error) {
-	srcDir, err := os.MkdirTemp("", "agentcage-run-*")
+	srcDir, err := os.MkdirTemp("", "mcpvessel-run-*")
 	if err != nil {
 		return nil, fmt.Errorf("temp dir: %w", err)
 	}
@@ -138,11 +148,11 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 		return nil, err
 	}
 
-	// The manifest carries only the wire-format spec; reparse the Agentfile
+	// The manifest carries only the wire-format spec; reparse the Vesselfile
 	// struct the build path expects.
-	af, err := agentfile.ParseFile(filepath.Join(srcDir, "Agentfile"))
+	af, err := vesselfile.ParseFile(filepath.Join(srcDir, "Vesselfile"))
 	if err != nil {
-		return nil, fmt.Errorf("re-parsing bundled Agentfile: %w", err)
+		return nil, fmt.Errorf("re-parsing bundled Vesselfile: %w", err)
 	}
 
 	runID := in.RunID
@@ -165,23 +175,25 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 	}
 
 	boot := bootInput{
-		Agentfile:   af,
-		Manifest:    manifest,
-		SourceDir:   srcDir,
-		ImageRef:    deriveImageRef(in.BundlePath, manifest.FilesHash),
-		RunID:       runID,
-		Budget:      in.Budget,
-		OpEnv:       in.Env,
-		OpSecrets:   in.Secrets,
-		Stdout:      in.Stdout,
-		Stderr:      in.Stderr,
-		Verbose:     in.Verbose,
-		NoCache:     in.NoCache,
-		Managed:     in.Managed,
-		Interaction: in.Interaction,
-		OnEvent:     in.OnEvent,
-		Record:      in.Record,
-		LogFile:     in.LogFile,
+		Vesselfile:    af,
+		Manifest:      manifest,
+		SourceDir:     srcDir,
+		ImageRef:      deriveImageRef(in.BundlePath, manifest.FilesHash),
+		RunID:         runID,
+		Budget:        in.Budget,
+		OpEnv:         in.Env,
+		OpSecrets:     in.Secrets,
+		Stdout:        in.Stdout,
+		Stderr:        in.Stderr,
+		Verbose:       in.Verbose,
+		NoCache:       in.NoCache,
+		Managed:       in.Managed,
+		Interaction:   in.Interaction,
+		OnEvent:       in.OnEvent,
+		Record:        in.Record,
+		LogFile:       in.LogFile,
+		ObserveEgress: in.ObserveEgress,
+		EgressAllow:   in.EgressAllow,
 	}
 	if router != nil {
 		boot.ElicitHandler = router.route
@@ -197,11 +209,11 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 // start it speaking MCP. Manifest is optional, used only for the image's
 // provenance labels.
 type bootInput struct {
-	Agentfile *agentfile.Agentfile
-	Manifest  *bundle.Manifest
-	SourceDir string
-	ImageRef  string
-	RunID     string
+	Vesselfile *vesselfile.Vesselfile
+	Manifest   *bundle.Manifest
+	SourceDir  string
+	ImageRef   string
+	RunID      string
 
 	// Network and Env are set by the orchestrator when wiring a USES tree;
 	// empty for a single-cage run, which stays on the default network.
@@ -232,7 +244,7 @@ type bootInput struct {
 	NoCache bool
 	Managed bool
 
-	// Interaction injects AGENTCAGE_INTERACTION; empty injects nothing.
+	// Interaction injects VESSEL_INTERACTION; empty injects nothing.
 	Interaction string
 
 	// OnEvent observes activations and evictions. Nil off the daemon path.
@@ -241,6 +253,12 @@ type bootInput struct {
 	Record bool
 
 	LogFile func(runID string) io.WriteCloser
+
+	// ObserveEgress runs the egress proxy in audit mode for this boot.
+	ObserveEgress bool
+
+	// EgressAllow is the operator's per-run egress override for the root agent.
+	EgressAllow []string
 
 	// ElicitHandler routes the root's mid-call questions; interactive boots only.
 	ElicitHandler mcp.ElicitHandler
@@ -296,7 +314,8 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, err
 	// (LLM gateway) or allow: egress (egress proxy); the gateways are the run's
 	// only doors out. Without either it stays on the default network.
 	model := manifestModel(in.Manifest)
-	allowHosts := egressHosts(manifestEgress(in.Manifest))
+	// The operator's per-run --egress adds to what the Vesselfile declares.
+	allowHosts := unionHosts(egressHosts(manifestEgress(in.Manifest)), in.EgressAllow)
 
 	// Refuse the run before starting anything if the cage plus gateways does
 	// not fit the machine, the same admission a USES tree gets. Empty Cap means
@@ -331,7 +350,7 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, err
 	}
 
 	egressNet := in.RunID + "-egress"
-	if model != "" || len(allowHosts) > 0 {
+	if model != "" || len(allowHosts) > 0 || in.ObserveEgress {
 		network := in.RunID + "-net"
 		if err := createNetwork(ctx, sess.provisioner, network, true, in.Managed); err != nil {
 			return nil, nil, err
@@ -365,7 +384,7 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, err
 			in.Env[env.LLMURL] = llmURL(in.RunID, token)
 		}
 
-		if len(allowHosts) > 0 {
+		if len(allowHosts) > 0 || in.ObserveEgress {
 			for k, v := range egressProxyEnv(in.RunID) {
 				in.Env[k] = v
 			}
@@ -377,8 +396,10 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, err
 	if in.Env == nil {
 		in.Env = map[string]string{}
 	}
-	if err := injectOperatorValues(in.Env, in.Manifest, in.OpEnv, in.OpSecrets); err != nil {
-		return nil, nil, fmt.Errorf("agent %s: %w", rootAgentKey, err)
+	if in.Vesselfile != nil {
+		if err := injectOperatorValues(in.Env, in.Vesselfile.Env, in.Vesselfile.Secrets, in.OpEnv, in.OpSecrets); err != nil {
+			return nil, nil, fmt.Errorf("agent %s: %w", rootAgentKey, err)
+		}
 	}
 
 	client, err := startAttachedAgent(ctx, sess, in, td)
@@ -387,8 +408,9 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, err
 	}
 
 	// The egress proxy keys its allow-list by the agent's address, known only
-	// once the container is running, so it starts after the agent.
-	if len(allowHosts) > 0 {
+	// once the container is running, so it starts after the agent. Audit mode
+	// runs it even with no allow list, to record what the server reaches.
+	if len(allowHosts) > 0 || in.ObserveEgress {
 		if err := startEgressProxy(ctx, sess, in.RunID, egressNet, map[string]egressAgent{in.RunID: {Network: in.Network, Hosts: allowHosts}}, in, td); err != nil {
 			return nil, nil, err
 		}
@@ -476,10 +498,10 @@ func isTransientBuildError(err error) bool {
 // exit signal; sub-agents start detached and speak HTTP instead.
 func startAttachedAgent(ctx context.Context, sess *bootSession, in bootInput, td *teardown) (*mcp.Client, error) {
 	if err := buildImage(ctx, sess, BuildInput{
-		Agentfile: in.Agentfile,
-		Manifest:  in.Manifest,
-		SourceDir: in.SourceDir,
-		ImageRef:  in.ImageRef,
+		Vesselfile: in.Vesselfile,
+		Manifest:   in.Manifest,
+		SourceDir:  in.SourceDir,
+		ImageRef:   in.ImageRef,
 	}, in.NoCache, in.Stderr); err != nil {
 		return nil, err
 	}
@@ -572,7 +594,7 @@ func deriveImageRef(bundlePath, filesHash string) string {
 	if tag == "" {
 		tag = "build"
 	}
-	return "agentcage/" + sanitizeRef(base) + ":" + tag
+	return "mcpvessel/" + sanitizeRef(base) + ":" + tag
 }
 
 // shortDigest returns the first 12 hex chars of a sha256 digest.
@@ -622,8 +644,12 @@ func sanitizeRef(s string) string {
 			b.WriteRune('-')
 		}
 	}
-	if b.Len() == 0 {
+	// A container and network name must start with [a-zA-Z0-9]; '.', '-' and
+	// '_' are legal only mid-name. Trim any that lead so a source or dir named
+	// "_thing" does not derive an invalid network name and fail the run.
+	out := strings.TrimLeft(b.String(), "._-")
+	if out == "" {
 		return "agent"
 	}
-	return b.String()
+	return out
 }

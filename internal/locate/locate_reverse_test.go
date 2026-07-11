@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/reference"
-	"github.com/okedeji/agentcage/internal/store"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/store"
 )
 
 func TestReverseDNSName(t *testing.T) {
@@ -54,7 +54,7 @@ func TestBundle_ResolvesReverseDNSThroughStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := t.TempDir()
-	if err := os.WriteFile(filepath.Join(src, "Agentfile"), []byte("FROM x\nMAIN respond\nENTRYPOINT y\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "Vesselfile"), []byte("FROM x\nMAIN respond\nENTRYPOINT y\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	hash, err := bundle.HashSource(src, st.Dir())

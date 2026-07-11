@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/llmgateway"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
-	"github.com/okedeji/agentcage/internal/replay"
+	"github.com/okedeji/mcpvessel/internal/llmgateway"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/replay"
 )
 
 func TestReplayEvents_MapsRecordsInOrder(t *testing.T) {
@@ -56,7 +56,7 @@ func TestReplayEvents_MergesLLMAndSubagentByStart(t *testing.T) {
 }
 
 func TestHandleRunReplay(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	d := New()
 
 	// No artifact is a 404.

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/store"
+	"github.com/okedeji/mcpvessel/internal/store"
 )
 
 func TestBundle_LocalFile(t *testing.T) {
@@ -28,7 +28,7 @@ func TestBundle_LocalFile(t *testing.T) {
 
 func TestBundle_ContentHashFromStore(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("AGENTCAGE_HOME", home)
+	t.Setenv("VESSEL_HOME", home)
 
 	st, err := store.New()
 	if err != nil {
@@ -56,7 +56,7 @@ func TestBundle_ContentHashFromStore(t *testing.T) {
 }
 
 func TestBundle_ContentHashMissing(t *testing.T) {
-	t.Setenv("AGENTCAGE_HOME", t.TempDir())
+	t.Setenv("VESSEL_HOME", t.TempDir())
 	if _, err := Bundle(context.Background(), "sha256:deadbeef"); err == nil {
 		t.Fatal("expected an error for a hash with no stored bundle")
 	}
@@ -69,7 +69,7 @@ func TestBundle_BogusArgErrors(t *testing.T) {
 }
 
 func TestBundle_RefWithoutVersionErrors(t *testing.T) {
-	t.Setenv("AGENTCAGE_REGISTRY", "")
+	t.Setenv("VESSEL_REGISTRY", "")
 	if _, err := Bundle(context.Background(), "@anthropic/web-search"); err == nil {
 		t.Fatal("expected an error for a ref with no version")
 	}

@@ -1,6 +1,6 @@
-// Package serve exposes a served run's public agents over MCP-over-HTTP, one
-// endpoint per agent under /agents/. It builds handlers only; the daemon owns
-// the runs and decides what is public. Private tools are never registered,
+// Package serve exposes a served run's public agents over MCP-over-HTTP and
+// plain JSON-over-HTTP on one front door. It builds handlers only; the daemon
+// owns the runs and decides what is public. Private tools are never registered,
 // so registration is the access gate.
 package serve
 
@@ -8,20 +8,25 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/okedeji/agentcage/internal/identity"
-	"github.com/okedeji/agentcage/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/identity"
+	"github.com/okedeji/mcpvessel/internal/mcp"
 )
 
 // Agent is one exposed agent: its URL segment under /agents/, its public
-// tools (pre-filtered), and a per-session instance resolver.
+// tools (pre-filtered), its main tool, and a per-session instance resolver.
 type Agent struct {
 	Address string
 	Tools   []mcp.Tool
+
+	// Main is the agent's main tool, the target of the POST /agents/<address>
+	// prompt shortcut. Empty for a tool collection with no MAIN.
+	Main string
 
 	// Resolve maps an MCP session id to that client's own instance, booting one
 	// on first call so distinct clients run concurrently. release marks the call
@@ -88,9 +93,10 @@ func toolPrefix(addr string) string {
 	return b.String()
 }
 
-// Handler builds the front door: a streamable-HTTP MCP endpoint per agent at
-// /agents/<address>/mcp, each advertising only that agent's public tools,
-// plus the merged endpoint at FlatPath advertising flat.
+// Handler builds the front door: each exposed agent is reachable over
+// MCP-over-HTTP and over plain JSON-over-HTTP, and the merged endpoints carry
+// every agent's tools at once. The plain path reuses the same caged instance
+// and dispatch as MCP, so it is a second door, not a bypass.
 func Handler(agents []Agent, flat []FlatTool) http.Handler {
 	mux := http.NewServeMux()
 	for i := range agents {
@@ -105,6 +111,15 @@ func Handler(agents []Agent, flat []FlatTool) http.Handler {
 		}
 		handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return srv }, nil)
 		mux.Handle("/agents/"+a.Address+"/mcp", handler)
+
+		mux.HandleFunc("POST /agents/"+a.Address+"/tools/{tool}", func(w http.ResponseWriter, r *http.Request) {
+			httpCallTool(w, r, a, r.PathValue("tool"))
+		})
+		if a.Main != "" {
+			mux.HandleFunc("POST /agents/"+a.Address, func(w http.ResponseWriter, r *http.Request) {
+				httpPrompt(w, r, a)
+			})
+		}
 	}
 	if len(flat) > 0 {
 		srv := mcpsdk.NewServer(&mcpsdk.Implementation{Name: identity.Name, Version: identity.Version}, nil)
@@ -119,8 +134,116 @@ func Handler(agents []Agent, flat []FlatTool) http.Handler {
 		handler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return srv }, nil)
 		mux.Handle(FlatPath, handler)
 		mux.Handle(FlatPath+"/", handler)
+
+		byName := make(map[string]FlatTool, len(flat))
+		for _, ft := range flat {
+			byName[ft.Name] = ft
+		}
+		mux.HandleFunc("POST /tools/{name}", func(w http.ResponseWriter, r *http.Request) {
+			ft, ok := byName[r.PathValue("name")]
+			if !ok {
+				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("unknown tool %q", r.PathValue("name")))
+				return
+			}
+			httpCallTool(w, r, agents[ft.Agent], ft.Tool.Name)
+		})
 	}
 	return mux
+}
+
+// httpSessionID keys the plain-HTTP path's instance: all HTTP callers to one
+// agent share a single instance, booted on first call and reaped when idle.
+const httpSessionID = "http"
+
+// httpCallTool invokes a public tool with the JSON body as its arguments; a
+// tool outside the agent's public set is a 404.
+func httpCallTool(w http.ResponseWriter, r *http.Request, a Agent, tool string) {
+	if !publicTool(a, tool) {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("unknown tool %q", tool))
+		return
+	}
+	args, err := readArgs(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httpInvoke(w, r, a, tool, args)
+}
+
+// httpPrompt routes {"prompt": "..."} (or a raw messages array) to the agent's
+// main tool, wrapping a prompt as one user message the way run does.
+func httpPrompt(w http.ResponseWriter, r *http.Request, a Agent) {
+	var body struct {
+		Prompt   string           `json:"prompt"`
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+		writeJSONError(w, http.StatusBadRequest, "decoding request: "+err.Error())
+		return
+	}
+	var args map[string]any
+	switch {
+	case len(body.Messages) > 0:
+		args = map[string]any{"messages": body.Messages}
+	case body.Prompt != "":
+		args = map[string]any{"messages": []map[string]any{{"role": "user", "content": body.Prompt}}}
+	default:
+		writeJSONError(w, http.StatusBadRequest, "provide a prompt or messages in the body")
+		return
+	}
+	httpInvoke(w, r, a, a.Main, args)
+}
+
+// httpInvoke resolves the agent's shared HTTP instance and calls tool. It binds
+// no elicitation channel: a curl caller cannot answer a mid-call question, so an
+// agent that asks fails closed.
+func httpInvoke(w http.ResponseWriter, r *http.Request, a Agent, tool string, args map[string]any) {
+	target, release, err := a.Resolve(r.Context(), httpSessionID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer release()
+	text, err := target.Call(r.Context(), tool, args)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"result": text})
+}
+
+func publicTool(a Agent, tool string) bool {
+	for _, t := range a.Tools {
+		if t.Name == tool {
+			return true
+		}
+	}
+	return false
+}
+
+// readArgs decodes the JSON body as the tool's arguments; an empty body is none.
+func readArgs(r *http.Request) (map[string]any, error) {
+	args := map[string]any{}
+	if r.Body == nil {
+		return args, nil
+	}
+	if err := json.NewDecoder(r.Body).Decode(&args); err != nil {
+		if err == io.EOF {
+			return map[string]any{}, nil
+		}
+		return nil, fmt.Errorf("decoding arguments: %w", err)
+	}
+	return args, nil
+}
+
+func writeJSONError(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]any{"error": msg})
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 // dispatch turns one agent's resolver into an MCP tool handler, forwarding

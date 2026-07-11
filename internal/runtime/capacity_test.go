@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/config"
 )
 
 func TestTreeBaselineMemory(t *testing.T) {
 	node := func(model, egress, mem string) *agentNode {
-		return &agentNode{Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{
+		return &agentNode{Manifest: &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{
 			Model: model, Egress: egress, Resources: &bundle.ResourcesSpec{Mem: mem},
 		}}}
 	}
@@ -59,7 +59,7 @@ func TestSoloBaselineMemory(t *testing.T) {
 
 func TestTreeBaselineMemory_CountsDeepEgress(t *testing.T) {
 	node := func(model, egress, mem string) *agentNode {
-		return &agentNode{Manifest: &bundle.Manifest{Agentfile: bundle.AgentfileSpec{
+		return &agentNode{Manifest: &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{
 			Model: model, Egress: egress, Resources: &bundle.ResourcesSpec{Mem: mem},
 		}}}
 	}

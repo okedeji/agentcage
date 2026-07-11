@@ -1,11 +1,12 @@
 // Package reasoner carries the Python reasoning harness that
 // `import --reasoning` writes into a generated agent, and renders that
-// agent's Agentfile. The harness ships as source so the operator can read
+// agent's Vesselfile. The harness ships as source so the operator can read
 // and edit it in their own directory.
 package reasoner
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -37,9 +38,9 @@ type Params struct {
 	SystemPrompt string
 }
 
-// Agentfile renders the reasoning agent that runs the harness over its USES
+// Vesselfile renders the reasoning agent that runs the harness over its USES
 // tools.
-func Agentfile(p Params) (string, error) {
+func Vesselfile(p Params) (string, error) {
 	if len(p.UsesRefs) == 0 {
 		return "", fmt.Errorf("reasoner: no tool-collection ref to USES")
 	}
@@ -58,10 +59,13 @@ func Agentfile(p Params) (string, error) {
 		lines = append(lines, "USES "+ref)
 	}
 	if p.SystemPrompt != "" {
-		// Not an AGENTCAGE_ name: the parser reserves that prefix for the
+		// Not an VESSEL_ name: the parser reserves that prefix for the
 		// runtime's own injected variables.
 		lines = append(lines, "ENV REASONER_SYSTEM_PROMPT="+strings.ReplaceAll(p.SystemPrompt, "\n", " "))
 	}
-	lines = append(lines, "ENTRYPOINT python3 "+HarnessFileName)
+	// Exec form so the reasoner needs no shell in its base image, matching the
+	// wrapped tool collections it composes.
+	entry, _ := json.Marshal([]string{"python3", HarnessFileName})
+	lines = append(lines, "ENTRYPOINT "+string(entry))
 	return strings.Join(lines, "\n") + "\n", nil
 }

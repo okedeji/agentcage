@@ -1,6 +1,6 @@
 package runtime
 
-import "github.com/okedeji/agentcage/internal/config"
+import "github.com/okedeji/mcpvessel/internal/config"
 
 // Role-based default caps; a cage is never started uncapped. Gateways are
 // static binaries that barely allocate. The agent default is sized for a

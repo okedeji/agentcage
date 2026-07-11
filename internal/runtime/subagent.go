@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 
-	"github.com/okedeji/agentcage/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
 )
 
 // mcpGatewayContainer mirrors the container name the planner gives the

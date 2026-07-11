@@ -1,4 +1,4 @@
-// Package daemon is agentcage's long-lived host process. It owns every running
+// Package daemon is mcpvessel's long-lived host process. It owns every running
 // agent and answers two listeners: the control plane on a Unix socket and the
 // serve front door on TCP. It runs on the host, not in the Lima VM, holding
 // each run over the stdio of a long-lived nerdctl subprocess.
@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,16 +17,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/history"
-	"github.com/okedeji/agentcage/internal/identity"
-	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/history"
+	"github.com/okedeji/mcpvessel/internal/identity"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
-const socketName = "agentcage.sock"
+const socketName = "mcpvessel.sock"
 
-// SocketPath returns the control socket path, ~/.agentcage/agentcage.sock,
-// honoring AGENTCAGE_HOME.
+// SocketPath returns the control socket path, ~/.mcpvessel/mcpvessel.sock,
+// honoring VESSEL_HOME.
 func SocketPath() (string, error) {
 	home, err := env.HomeDir()
 	if err != nil {
@@ -58,6 +59,9 @@ type Daemon struct {
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
 	events       *eventBus
+	// denials tracks per-run egress denials, parsed from the run log, so a
+	// served tool error can name what the cage blocked.
+	denials *egressDenials
 }
 
 // front is one serve front door: an HTTP server and the runs it exposes.
@@ -77,7 +81,13 @@ type heldRun struct {
 
 // New returns a daemon with an empty registry.
 func New() *Daemon {
-	return &Daemon{runs: map[string]*heldRun{}, shutdown: make(chan struct{}), events: newEventBus()}
+	return &Daemon{runs: map[string]*heldRun{}, shutdown: make(chan struct{}), events: newEventBus(), denials: newEgressDenials()}
+}
+
+// runLogSink opens the run's durable log and, on the way, records the egress
+// denials the proxy writes into it so tool errors can name blocked hosts.
+func (d *Daemon) runLogSink(runID string) io.WriteCloser {
+	return &denialScanSink{w: openRunLogSink(runID), runID: runID, den: d.denials}
 }
 
 func (d *Daemon) hold(info RunInfo, session *runtime.Session) {
@@ -182,6 +192,7 @@ func (d *Daemon) recordStart(info RunInfo) {
 // off; the history write is best-effort. Returns the final spend in micro-USD
 // (0 when the run made no metered call).
 func (d *Daemon) finish(runID, ref, status string, callErr error) int64 {
+	d.denials.clear(runID)
 	report, calls, ok := runtime.RunTelemetry(context.Background(), runID)
 	if status == history.StatusFailed && ok && report.BudgetMicroUSD > 0 && report.TotalMicroUSD >= report.BudgetMicroUSD {
 		status = history.StatusOverBudget

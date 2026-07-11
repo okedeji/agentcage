@@ -12,13 +12,13 @@ func TestDeriveImageRef(t *testing.T) {
 		want string
 	}{
 		// The name is the basename; the tag is the short files hash.
-		{"researcher.agent", "agentcage/researcher:abcdef012345"},
-		{"./researcher.agent", "agentcage/researcher:abcdef012345"},
-		{"/tmp/dir/hello.agent", "agentcage/hello:abcdef012345"},
-		{"a/b/Researcher.agent", "agentcage/Researcher:abcdef012345"},
+		{"researcher.agent", "mcpvessel/researcher:abcdef012345"},
+		{"./researcher.agent", "mcpvessel/researcher:abcdef012345"},
+		{"/tmp/dir/hello.agent", "mcpvessel/hello:abcdef012345"},
+		{"a/b/Researcher.agent", "mcpvessel/Researcher:abcdef012345"},
 		// Bad characters in the basename get sanitized to dashes.
-		{"my agent.agent", "agentcage/my-agent:abcdef012345"},
-		{"weird@name.agent", "agentcage/weird-name:abcdef012345"},
+		{"my agent.agent", "mcpvessel/my-agent:abcdef012345"},
+		{"weird@name.agent", "mcpvessel/weird-name:abcdef012345"},
 	}
 	for _, tc := range cases {
 		if got := deriveImageRef(tc.in, hash); got != tc.want {
@@ -26,8 +26,8 @@ func TestDeriveImageRef(t *testing.T) {
 		}
 	}
 	// A missing hash still yields a valid ref.
-	if got := deriveImageRef("x.agent", ""); got != "agentcage/x:build" {
-		t.Errorf("deriveImageRef with empty hash = %q, want agentcage/x:build", got)
+	if got := deriveImageRef("x.agent", ""); got != "mcpvessel/x:build" {
+		t.Errorf("deriveImageRef with empty hash = %q, want mcpvessel/x:build", got)
 	}
 }
 
@@ -85,7 +85,10 @@ func TestSanitizeRef(t *testing.T) {
 		{"my.agent", "my.agent"},
 		{"my agent", "my-agent"},
 		{"weird@name", "weird-name"},
-		{"日本語", "---"}, // one dash per rune
+		{"日本語", "agent"},    // all runes invalid; nothing valid leads, so fall back
+		{"_thing", "thing"}, // a leading separator is invalid as a name's first char
+		{".hidden", "hidden"},
+		{"--x", "x"},
 		{"", "agent"},
 	}
 	for _, tc := range cases {

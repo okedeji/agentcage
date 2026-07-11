@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 func TestExchangeGitHubToken(t *testing.T) {

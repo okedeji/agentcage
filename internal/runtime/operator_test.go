@@ -3,7 +3,7 @@ package runtime
 import (
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/config"
+	"github.com/okedeji/mcpvessel/internal/config"
 )
 
 func node(t *testing.T, ref string) *agentNode {

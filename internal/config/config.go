@@ -1,4 +1,4 @@
-// Package config reads and writes the operator's ~/.agentcage/config.json:
+// Package config reads and writes the operator's ~/.mcpvessel/config.json:
 // LLM provider endpoints and per-cage resource caps. Secret values never
 // live here; an endpoint names a key by reference into the secret store.
 package config
@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
-// Config is the on-disk ~/.agentcage/config.json.
+// Config is the on-disk ~/.mcpvessel/config.json.
 type Config struct {
 	Providers []Endpoint        `json:"providers,omitempty"`
 	Resources Resources         `json:"resources,omitempty"`
@@ -25,7 +25,7 @@ type Config struct {
 	Machine   Machine           `json:"machine,omitempty"`
 	Serve     Serve             `json:"serve,omitempty"`
 	Telemetry Telemetry         `json:"telemetry,omitempty"`
-	Env       map[string]string `json:"env,omitempty"` // persisted AGENTCAGE_* knobs; a real environment variable of the same name overrides one here
+	Env       map[string]string `json:"env,omitempty"` // persisted VESSEL_* knobs; a real environment variable of the same name overrides one here
 }
 
 // DefaultMetricsAddr is the daemon's default Prometheus endpoint. Loopback:
@@ -52,7 +52,7 @@ func (t Telemetry) EffectiveMetricsAddr() string {
 	}
 }
 
-// Machine is how much of the host agentcage may use for cages. On macOS it
+// Machine is how much of the host mcpvessel may use for cages. On macOS it
 // sizes the Lima VM cages run in. On Linux there is no VM: MemoryGiB caps
 // the host RAM admitted against, and CPUs and DiskGiB are ignored. Zero
 // means the runtime default (a 4 GiB VM on macOS, the whole host on Linux).
@@ -76,7 +76,7 @@ func (m Machine) Validate() error {
 }
 
 // Endpoint is one operator-configured OpenAI-compatible LLM endpoint.
-// KeyRef names a secret in the ~/.agentcage store; the key never lives
+// KeyRef names a secret in the ~/.mcpvessel store; the key never lives
 // here. PriceIn and PriceOut are micro-USD per million tokens, keeping
 // cost integer math against the run's micro-USD budget.
 type Endpoint struct {
@@ -179,7 +179,7 @@ func (cg Cages) Validate() error {
 	return nil
 }
 
-// Serve is the operator's policy for `agentcage serve`. Each connected
+// Serve is the operator's policy for `mcpvessel serve`. Each connected
 // client gets its own agent instance (cage tree plus conversation state);
 // MaxClients counts whole instances, a level above the Cages policy that
 // governs cages within one. Zero means the runtime default; a negative is
@@ -187,6 +187,7 @@ func (cg Cages) Validate() error {
 type Serve struct {
 	MaxClients           int `json:"max_clients,omitempty"`             // concurrent client instances per served agent
 	ClientIdleTTLSeconds int `json:"client_idle_ttl_seconds,omitempty"` // reap an instance whose client has gone quiet this long
+	ObserveSeconds       int `json:"observe_seconds,omitempty"`         // how long `mcpvessel observe` records egress before reporting
 }
 
 // Serve policy defaults. Each instance is a whole agent tree, so the client
@@ -196,6 +197,9 @@ type Serve struct {
 const (
 	DefaultMaxClients           = 8
 	DefaultClientIdleTTLSeconds = 900
+	// DefaultObserveSeconds is a window long enough to drive a few tool calls
+	// through a client while staying short enough not to feel stuck.
+	DefaultObserveSeconds = 60
 )
 
 // EffectiveMaxClients and EffectiveClientIdleTTL resolve each knob to the
@@ -214,6 +218,13 @@ func (s Serve) EffectiveClientIdleTTL() time.Duration {
 	return DefaultClientIdleTTLSeconds * time.Second
 }
 
+func (s Serve) EffectiveObserveDuration() time.Duration {
+	if s.ObserveSeconds > 0 {
+		return time.Duration(s.ObserveSeconds) * time.Second
+	}
+	return DefaultObserveSeconds * time.Second
+}
+
 // Validate rejects negative values. Zero means default; a negative fails
 // closed, never read as unlimited.
 func (s Serve) Validate() error {
@@ -226,7 +237,7 @@ func (s Serve) Validate() error {
 	return nil
 }
 
-// Load reads ~/.agentcage/config.json. A missing file is an empty config,
+// Load reads ~/.mcpvessel/config.json. A missing file is an empty config,
 // not an error; a malformed one is an error, so a typo does not silently
 // drop providers.
 func Load() (*Config, error) {
@@ -469,8 +480,8 @@ func LookupEnvOr(name, def string) string {
 	return def
 }
 
-// Path resolves ~/.agentcage/config.json, honoring AGENTCAGE_HOME so all of
-// agentcage's state moves together.
+// Path resolves ~/.mcpvessel/config.json, honoring VESSEL_HOME so all of
+// mcpvessel's state moves together.
 func Path() (string, error) {
 	if home := strings.TrimSpace(os.Getenv(env.Home)); home != "" {
 		return filepath.Join(home, "config.json"), nil
@@ -479,5 +490,5 @@ func Path() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locating home directory: %w", err)
 	}
-	return filepath.Join(home, ".agentcage", "config.json"), nil
+	return filepath.Join(home, ".mcpvessel", "config.json"), nil
 }

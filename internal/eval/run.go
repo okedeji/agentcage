@@ -9,15 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/daemon"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/daemon"
 )
 
 // nowFunc is overridable so tests can pin the suite's elapsed time.
 var nowFunc = time.Now
 
 // runner is the daemon seam: each case goes through the same one-shot path as
-// `agentcage run`. Defined at the point of consumption so a test drives a
+// `mcpvessel run`. Defined at the point of consumption so a test drives a
 // whole suite with a fake.
 type runner interface {
 	RunOnceUsage(ctx context.Context, req daemon.RunRequest, logs io.Writer) (string, daemon.RunUsage, error)
@@ -201,10 +201,10 @@ func checkExpectations(e Expect, output string, usage daemon.RunUsage) []string 
 
 // toolIsPublic mirrors the MAIN-or-EXPOSE contract that call and run enforce.
 func toolIsPublic(m *bundle.Manifest, tool string) error {
-	if m.Agentfile.Main == tool {
+	if m.Vesselfile.Main == tool {
 		return nil
 	}
-	for _, name := range m.Agentfile.Expose {
+	for _, name := range m.Vesselfile.Expose {
 		if name == tool {
 			return nil
 		}

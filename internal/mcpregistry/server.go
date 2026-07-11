@@ -3,7 +3,7 @@ package mcpregistry
 import (
 	"fmt"
 
-	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/bundle"
 )
 
 // Server is the MCP Registry's server.json record, spelled exactly as the
@@ -43,7 +43,7 @@ type Package struct {
 }
 
 // Transport is how a launched package speaks MCP. Only stdio can be
-// wrapped as an agentcage agent.
+// wrapped as an mcpvessel agent.
 type Transport struct {
 	Type string `json:"type"`
 	URL  string `json:"url,omitempty"`
@@ -57,7 +57,7 @@ type Remote struct {
 }
 
 // KeyValueInput is a declared input (env var or argument), mapped onto the
-// generated Agentfile's ENV and SECRETS.
+// generated Vesselfile's ENV and SECRETS.
 type KeyValueInput struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
@@ -96,9 +96,9 @@ type serverEnvelope struct {
 }
 
 const (
-	// evalsMetaKey holds the eval signal agentcage stamps onto a public
+	// evalsMetaKey holds the eval signal mcpvessel stamps onto a public
 	// entry, reverse-DNS namespaced per the registry's _meta extension rule.
-	evalsMetaKey = "io.agentcage/evals"
+	evalsMetaKey = "io.mcpvessel/evals"
 
 	// publisherMetaKey is the registry's standard slot for who published and
 	// with what tool.
@@ -107,7 +107,7 @@ const (
 	// importedFromMetaKey carries the wrapped server's canonical identity so
 	// a published wrapper is discoverable as "the wrapped X". Namespaced like
 	// the eval key.
-	importedFromMetaKey = "io.agentcage/imported_from"
+	importedFromMetaKey = "io.mcpvessel/imported_from"
 
 	// maxDescription is the registry's server.json description ceiling.
 	maxDescription = 100
@@ -121,12 +121,12 @@ const (
 // version point at the pushed bundle, any eval stamp rides under _meta.
 func ServerJSONFromManifest(m bundle.Manifest, name, ociRef, version string) *Server {
 	meta := map[string]any{
-		publisherMetaKey: map[string]any{"tool": "agentcage"},
+		publisherMetaKey: map[string]any{"tool": "mcpvessel"},
 	}
 	if m.Evals != nil {
 		meta[evalsMetaKey] = m.Evals
 	}
-	if from := m.Agentfile.Meta["imported_from"]; from != "" {
+	if from := m.Vesselfile.Meta["imported_from"]; from != "" {
 		meta[importedFromMetaKey] = from
 	}
 	return &Server{
@@ -146,7 +146,7 @@ func ServerJSONFromManifest(m bundle.Manifest, name, ociRef, version string) *Se
 }
 
 // OCIReference returns the coordinates of the entry's oci package, or
-// ok=false when it has none (a server agentcage did not publish).
+// ok=false when it has none (a server mcpvessel did not publish).
 func (s *Server) OCIReference() (ref, version string, ok bool) {
 	for _, p := range s.Packages {
 		if p.RegistryType == "oci" {
@@ -180,7 +180,7 @@ func (s *Server) EvalSummary() string {
 }
 
 // ImportedFrom returns the canonical identity of the server this entry
-// wraps, or "" when the entry is not an agentcage wrapper.
+// wraps, or "" when the entry is not an mcpvessel wrapper.
 func (s *Server) ImportedFrom() string {
 	from, _ := s.Meta[importedFromMetaKey].(string)
 	return from
@@ -189,9 +189,9 @@ func (s *Server) ImportedFrom() string {
 // description resolves the required 1-100 char description from META, with
 // a name-derived fallback so publish never fails the length rule.
 func description(m bundle.Manifest, name string) string {
-	d := m.Agentfile.Meta["description"]
+	d := m.Vesselfile.Meta["description"]
 	if d == "" {
-		d = "agentcage agent " + name
+		d = "mcpvessel agent " + name
 	}
 	if len(d) > maxDescription {
 		d = d[:maxDescription]

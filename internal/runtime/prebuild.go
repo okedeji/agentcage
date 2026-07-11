@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
-	"github.com/okedeji/agentcage/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
 // PrebuildImages builds every image one instance boot of bundlePath would
@@ -23,7 +23,7 @@ import (
 // Acquire derives it, tree nodes as the run plan derives them. A mismatch
 // here would build an image the boot never looks up.
 func PrebuildImages(ctx context.Context, bundlePath string, stderr io.Writer) error {
-	srcDir, err := os.MkdirTemp("", "agentcage-prebuild-*")
+	srcDir, err := os.MkdirTemp("", "mcpvessel-prebuild-*")
 	if err != nil {
 		return fmt.Errorf("temp dir: %w", err)
 	}
@@ -33,9 +33,9 @@ func PrebuildImages(ctx context.Context, bundlePath string, stderr io.Writer) er
 	if err != nil {
 		return err
 	}
-	af, err := agentfile.ParseFile(filepath.Join(srcDir, "Agentfile"))
+	af, err := vesselfile.ParseFile(filepath.Join(srcDir, "Vesselfile"))
 	if err != nil {
-		return fmt.Errorf("re-parsing bundled Agentfile: %w", err)
+		return fmt.Errorf("re-parsing bundled Vesselfile: %w", err)
 	}
 
 	td := &teardown{}
@@ -46,10 +46,10 @@ func PrebuildImages(ctx context.Context, bundlePath string, stderr io.Writer) er
 	}
 
 	if err := buildImage(ctx, sess, BuildInput{
-		Agentfile: af,
-		Manifest:  manifest,
-		SourceDir: srcDir,
-		ImageRef:  deriveImageRef(bundlePath, manifest.FilesHash),
+		Vesselfile: af,
+		Manifest:   manifest,
+		SourceDir:  srcDir,
+		ImageRef:   deriveImageRef(bundlePath, manifest.FilesHash),
 	}, false, stderr); err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func needsGatewayImage(tree *runTree) bool {
 		return true
 	}
 	for _, node := range tree.Nodes {
-		if node.Manifest != nil && node.Manifest.Agentfile.Model != "" {
+		if node.Manifest != nil && node.Manifest.Vesselfile.Model != "" {
 			return true
 		}
 	}

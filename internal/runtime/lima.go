@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/identity"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/identity"
 )
 
-// DefaultLimaInstanceName is the single shared Lima VM agentcage provisions;
+// DefaultLimaInstanceName is the single shared Lima VM mcpvessel provisions;
 // one VM hosts every build on this machine.
 const DefaultLimaInstanceName = identity.Name
 
@@ -42,14 +42,14 @@ func (s LimaStatus) String() string {
 }
 
 // LimaVM wraps the bundled limactl binary, scoping every call to an
-// agentcage-private LIMA_HOME so state does not collide with the user's other
+// mcpvessel-private LIMA_HOME so state does not collide with the user's other
 // Lima instances (Colima, Rancher Desktop, plain Lima).
 type LimaVM struct {
 	// LimactlPath is the limactl binary to drive; pick with FindLimactl.
 	LimactlPath string
 
 	// HomeDir becomes LIMA_HOME for every invocation. Typically
-	// ~/.agentcage/lima/data.
+	// ~/.mcpvessel/lima/data.
 	HomeDir string
 
 	// HostSocketDir receives the forwarded in-VM Unix sockets. The generated
@@ -61,8 +61,8 @@ type LimaVM struct {
 }
 
 // FindLimactl returns the path to a usable limactl: bundled next to the
-// running executable (an installed agentcage), then the runtime-fetched copy
-// under ~/.agentcage/lima (what init auto-downloads), then ./bin/lima in a dev
+// running executable (an installed mcpvessel), then the runtime-fetched copy
+// under ~/.mcpvessel/lima (what init auto-downloads), then ./bin/lima in a dev
 // tree, then PATH. The error names every path tried.
 func FindLimactl() (string, error) {
 	var tried []string
@@ -96,7 +96,7 @@ func FindLimactl() (string, error) {
 	}
 	tried = append(tried, "$PATH")
 
-	return "", fmt.Errorf("limactl not found (tried: %s); run 'agentcage init' to fetch it, or install Lima v2.0+", strings.Join(tried, ", "))
+	return "", fmt.Errorf("limactl not found (tried: %s); run 'mcpvessel init' to fetch it, or install Lima v2.0+", strings.Join(tried, ", "))
 }
 
 func isExecutable(path string) bool {
@@ -108,8 +108,8 @@ func isExecutable(path string) bool {
 }
 
 // executableDir is the directory holding the running binary and its bundled
-// companions (limactl, the linux agentcage). It resolves symlinks first: a
-// Homebrew install runs agentcage through a bin/ symlink into the Cellar, and
+// companions (limactl, the linux mcpvessel). It resolves symlinks first: a
+// Homebrew install runs mcpvessel through a bin/ symlink into the Cellar, and
 // the companions sit next to the real binary, not the symlink. ok is false
 // when the path cannot be determined, so a lookup falls back to the dev tree.
 func executableDir() (string, bool) {
@@ -178,7 +178,7 @@ func (vm *LimaVM) Create(ctx context.Context, template string, stdout, stderr io
 		return fmt.Errorf("mkdir HostSocketDir %s: %w", vm.HostSocketDir, err)
 	}
 
-	tmpf, err := os.CreateTemp("", "agentcage-lima-*.yaml")
+	tmpf, err := os.CreateTemp("", "mcpvessel-lima-*.yaml")
 	if err != nil {
 		return fmt.Errorf("temp template file: %w", err)
 	}

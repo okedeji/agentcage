@@ -37,13 +37,13 @@ func TestDialContainerd_UsesCustomAddress(t *testing.T) {
 
 func TestContainerd_AccessorsReturnConfig(t *testing.T) {
 	c := &Containerd{
-		namespace: "agentcage",
+		namespace: "mcpvessel",
 		address:   "/some/path/containerd.sock",
 	}
 	if c.Address() != "/some/path/containerd.sock" {
 		t.Errorf("Address() = %q", c.Address())
 	}
-	if c.Namespace() != "agentcage" {
+	if c.Namespace() != "mcpvessel" {
 		t.Errorf("Namespace() = %q", c.Namespace())
 	}
 }

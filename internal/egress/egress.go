@@ -13,13 +13,20 @@ import (
 )
 
 // Config maps a source (a cage's run-network address) to the hostnames it may
-// reach. Default deny: an unknown source or unlisted host is refused.
+// reach. Default deny: an unknown source or unlisted host is refused. Names
+// maps a source address to a human label (the agent's name) for event lines.
+// Observe flips the proxy to audit mode: every host is allowed and recorded,
+// so the operator can learn a server's egress profile before locking it down.
 type Config struct {
 	Sources map[string][]string `json:"sources"`
+	Names   map[string]string   `json:"names,omitempty"`
+	Observe bool                `json:"observe,omitempty"`
 }
 
-// Handler returns the CONNECT proxy; allow sets are compiled once at boot.
-func Handler(cfg Config) http.Handler {
+// Handler returns the CONNECT proxy; allow sets are compiled once at boot. It
+// writes one line to events per (agent, host, decision) the first time it sees
+// it: a denial in normal mode, or an observation in audit mode.
+func Handler(cfg Config, events io.Writer) http.Handler {
 	allow := make(map[string]map[string]bool, len(cfg.Sources))
 	for src, hosts := range cfg.Sources {
 		set := make(map[string]bool, len(hosts))
@@ -29,13 +36,48 @@ func Handler(cfg Config) http.Handler {
 		allow[src] = set
 	}
 
+	var mu sync.Mutex
+	logged := map[string]bool{}
+	logOnce := func(kind, src, host string) {
+		if events == nil {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		key := kind + " " + src + " " + host
+		if logged[key] {
+			return
+		}
+		logged[key] = true
+		name := cfg.Names[src]
+		if name == "" {
+			name = src
+		}
+		switch kind {
+		case "observed":
+			// Audit mode: a machine-readable marker the CLI collects into an
+			// EGRESS line, plus the agent for a multi-cage run.
+			_, _ = fmt.Fprintf(events, "egress observed: %s (agent %s)\n", host, name)
+		default:
+			// Lead with the fast path (allow for one run), then the permanent
+			// one (bake it into the Vesselfile and rebuild).
+			_, _ = fmt.Fprintf(events, "egress denied: %s (agent %s) — allow it with 'mcpvessel run/serve --egress %s', or bake it in with EGRESS allow:%s and a rebuild\n", host, name, host, host)
+		}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodConnect {
 			http.Error(w, "egress proxy only supports CONNECT", http.StatusMethodNotAllowed)
 			return
 		}
 		host := hostOnly(r.Host)
-		if !allow[hostOnly(r.RemoteAddr)][host] {
+		src := hostOnly(r.RemoteAddr)
+		// Audit mode allows every host and records it; normal mode denies
+		// anything the source's allow list does not name.
+		if cfg.Observe {
+			logOnce("observed", src, host)
+		} else if !allow[src][host] {
+			logOnce("denied", src, host)
 			http.Error(w, "egress to "+host+" not allowed", http.StatusForbidden)
 			return
 		}

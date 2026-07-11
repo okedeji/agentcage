@@ -25,7 +25,7 @@ func testServer(t *testing.T, addTools func(s *mcpsdk.Server)) (*Client, *mcpsdk
 	})
 
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{
-		Name:    "agentcage-test-server",
+		Name:    "mcpvessel-test-server",
 		Version: "0.0.0",
 	}, nil)
 	if addTools != nil {
@@ -59,7 +59,7 @@ func TestConnect_HandshakeSucceeds(t *testing.T) {
 
 func TestConnectHTTP_CallsToolOverHTTP(t *testing.T) {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{
-		Name:    "agentcage-test-server",
+		Name:    "mcpvessel-test-server",
 		Version: "0.0.0",
 	}, nil)
 	registerEchoTool(server)
@@ -105,7 +105,7 @@ func TestConnect_AnswersElicitation(t *testing.T) {
 		_ = cliConn.Close()
 	})
 
-	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "agentcage-test-server", Version: "0.0.0"}, nil)
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "mcpvessel-test-server", Version: "0.0.0"}, nil)
 	registerAskTool(server)
 
 	serverCtx, cancelServer := context.WithCancel(context.Background())

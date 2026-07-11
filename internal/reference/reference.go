@@ -1,6 +1,6 @@
 // Package reference parses agent references into OCI coordinates. The
 // @org/name shorthand maps to the default registry (ghcr.io, overridable
-// via AGENTCAGE_REGISTRY); a fully-qualified host/org/name passes through.
+// via VESSEL_REGISTRY); a fully-qualified host/org/name passes through.
 // Reverse-DNS MCP Registry names are not recognized here; resolving one is
 // the registry client's job.
 package reference
@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // fallbackRegistry is where host-less references resolve. GHCR offers
@@ -130,7 +130,7 @@ func IsPublicHost(host string) bool {
 
 // ReverseDNSName derives the MCP Registry name a reference publishes
 // under, io.github.<owner>/<name>. Only GHCR maps, because GitHub is the
-// namespace agentcage proves ownership of at login; any other host, or a
+// namespace mcpvessel proves ownership of at login; any other host, or a
 // path deeper than owner/name, reports false rather than guessing.
 func (r Reference) ReverseDNSName() (string, bool) {
 	if r.Registry != "ghcr.io" {

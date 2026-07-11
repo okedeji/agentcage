@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/mcp"
 )
 
 // fakeSession is a managedSession that records whether it was released.
@@ -20,6 +20,7 @@ func (f *fakeSession) Call(context.Context, string, map[string]any) (string, err
 	return f.id, nil
 }
 func (f *fakeSession) BindElicit(mcp.ElicitHandler) func() { return func() {} }
+func (f *fakeSession) RunID() string                       { return f.id }
 func (f *fakeSession) Release() error {
 	f.released.Store(true)
 	return nil

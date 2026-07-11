@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/mcp"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
 )
 
 // controlReexecBackoff spaces re-execs of the activation bridge after its

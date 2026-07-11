@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking. agentcage is early and solo-maintained, so the most useful
+Thanks for looking. mcpvessel is early and solo-maintained, so the most useful
 contributions right now are bug reports with a reproduction, and small focused
 PRs. Before a large change, open an issue so we can agree on the shape first.
 
@@ -8,14 +8,14 @@ PRs. Before a large change, open an issue so we can agree on the shape first.
 
 ```sh
 make ci            # fmt-check, vet, lint, test, build (run this before build)
-make build         # the host CLI -> bin/agentcage
+make build         # the host CLI -> bin/mcpvessel
 make build-linux   # the in-VM companion binary (needed to actually run agents)
 ```
 
 You need Go 1.26+. `make lint` needs
 [golangci-lint](https://golangci-lint.run/welcome/install/). Running agents
 needs a container runtime: containerd + buildkit + nerdctl on Linux, or the
-bundled Lima VM on macOS (`agentcage init` sets it up).
+bundled Lima VM on macOS (`mcpvessel init` sets it up).
 
 The test suite is hermetic. It uses `httptest` servers and fakes rather than a
 real daemon or VM, so `make test` passes offline with no containers running.

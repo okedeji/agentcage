@@ -129,7 +129,7 @@ func TestExecutableDir_ReturnsADirectory(t *testing.T) {
 	}
 }
 
-// A Homebrew install invokes agentcage through a bin/ symlink into the Cellar;
+// A Homebrew install invokes mcpvessel through a bin/ symlink into the Cellar;
 // the companions sit next to the real binary. filepath.EvalSymlinks, which
 // executableDir applies, must land on the real directory, not the link's.
 func TestEvalSymlinks_ResolvesToRealDir(t *testing.T) {
@@ -137,7 +137,7 @@ func TestEvalSymlinks_ResolvesToRealDir(t *testing.T) {
 	if err := os.MkdirAll(real, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	bin := filepath.Join(real, "agentcage")
+	bin := filepath.Join(real, "mcpvessel")
 	if err := os.WriteFile(bin, []byte("x"), 0o755); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestEvalSymlinks_ResolvesToRealDir(t *testing.T) {
 	if err := os.MkdirAll(linkDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	link := filepath.Join(linkDir, "agentcage")
+	link := filepath.Join(linkDir, "mcpvessel")
 	if err := os.Symlink(bin, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestFindLimactl_ErrorMessageNamesPaths(t *testing.T) {
 	if err == nil {
 		t.Skip("FindLimactl succeeded; environment unexpectedly has limactl bundled")
 	}
-	if !strings.Contains(err.Error(), "agentcage init") {
+	if !strings.Contains(err.Error(), "mcpvessel init") {
 		t.Errorf("error message should point at remediation, got: %v", err)
 	}
 }

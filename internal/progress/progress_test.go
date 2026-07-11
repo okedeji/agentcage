@@ -9,12 +9,12 @@ import (
 func TestPlain_StepsAndDone(t *testing.T) {
 	var buf bytes.Buffer
 	p := NewPlain(&buf)
-	p.Step(1, 3, "Parsing Agentfile")
+	p.Step(1, 3, "Parsing Vesselfile")
 	p.Step(2, 3, "Hashing source tree")
 	p.Step(3, 3, "Sealing bundle")
 	p.Done()
 
-	want := "Step 1/3 : Parsing Agentfile\nStep 2/3 : Hashing source tree\nStep 3/3 : Sealing bundle\n"
+	want := "Step 1/3 : Parsing Vesselfile\nStep 2/3 : Hashing source tree\nStep 3/3 : Sealing bundle\n"
 	if got := buf.String(); got != want {
 		t.Errorf("output mismatch:\n got %q\nwant %q", got, want)
 	}
@@ -25,7 +25,7 @@ func TestTTY_RendersHeaderAndSteps(t *testing.T) {
 	// back, so a bytes.Buffer still captures the output.
 	var buf bytes.Buffer
 	r := NewTTY(&buf)
-	r.Step(1, 3, "Parsing Agentfile")
+	r.Step(1, 3, "Parsing Vesselfile")
 	r.Step(2, 3, "Hashing source tree")
 	r.Step(3, 3, "Sealing bundle")
 	r.Done()
@@ -34,7 +34,7 @@ func TestTTY_RendersHeaderAndSteps(t *testing.T) {
 	for _, want := range []string{
 		"[+] Building",
 		"FINISHED",
-		"=> [1/3] Parsing Agentfile",
+		"=> [1/3] Parsing Vesselfile",
 		"=> [2/3] Hashing source tree",
 		"=> [3/3] Sealing bundle",
 	} {

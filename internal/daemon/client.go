@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/llmgateway"
-	"github.com/okedeji/agentcage/internal/runtime"
-	"github.com/okedeji/agentcage/internal/telemetry"
+	"github.com/okedeji/mcpvessel/internal/llmgateway"
+	"github.com/okedeji/mcpvessel/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/telemetry"
 )
 
 // Client talks to a running daemon over its Unix socket.
@@ -300,13 +300,15 @@ type ServeTarget struct {
 
 // Serve asks the daemon to register the bundles' exposed sets and open one
 // MCP front door bound to listen.
-func (c *Client) Serve(ctx context.Context, targets []ServeTarget, listen string, expose, noExpose []string) (ServeResult, error) {
+func (c *Client) Serve(ctx context.Context, targets []ServeTarget, listen string, expose, noExpose []string, observe bool, egress map[string][]string) (ServeResult, error) {
 	var out ServeResult
 	err := c.post(ctx, "/serve", map[string]any{
 		"bundles":   targets,
 		"listen":    listen,
 		"expose":    expose,
 		"no_expose": noExpose,
+		"observe":   observe,
+		"egress":    egress,
 	}, &out)
 	return out, err
 }

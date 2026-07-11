@@ -3,7 +3,7 @@ package daemon
 import (
 	"net/http"
 
-	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // handleStats serves a live snapshot of every running cage's resource usage,

@@ -1,4 +1,4 @@
-// Package store keeps built .agent bundles under ~/.agentcage/store.
+// Package store keeps built .agent bundles under ~/.mcpvessel/store.
 // Bundles are content-addressed by manifest files_hash under bundles/;
 // refs/ maps a reference to that hash. No daemon involved: build writes,
 // push/run/call read directly.
@@ -12,16 +12,16 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/reference"
 )
 
-// Store is the local bundle store under ~/.agentcage/store.
+// Store is the local bundle store under ~/.mcpvessel/store.
 type Store struct {
 	dir string
 }
 
-// New opens the store, honoring AGENTCAGE_HOME. The directory is created
+// New opens the store, honoring VESSEL_HOME. The directory is created
 // lazily by the first write.
 func New() (*Store, error) {
 	dir, err := storeDir()
@@ -258,7 +258,7 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-// storeDir resolves ~/.agentcage/store, honoring AGENTCAGE_HOME.
+// storeDir resolves ~/.mcpvessel/store, honoring VESSEL_HOME.
 func storeDir() (string, error) {
 	if home := strings.TrimSpace(os.Getenv(env.Home)); home != "" {
 		return filepath.Join(home, "store"), nil
@@ -267,5 +267,5 @@ func storeDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locating home directory: %w", err)
 	}
-	return filepath.Join(home, ".agentcage", "store"), nil
+	return filepath.Join(home, ".mcpvessel", "store"), nil
 }

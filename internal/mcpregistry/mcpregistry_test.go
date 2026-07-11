@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/env"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/env"
 )
 
 // stubRegistry stands in for the MCP Registry: search returns whatever servers
@@ -135,8 +135,8 @@ func TestPublish_TokenRejected(t *testing.T) {
 func TestServerJSONFromManifest_MapsFields(t *testing.T) {
 	passed := 47
 	m := bundle.Manifest{
-		Agentfile: bundle.AgentfileSpec{Meta: map[string]string{"description": "a filesystem agent"}},
-		Evals:     &bundle.Evals{Declared: true, Passed: &passed},
+		Vesselfile: bundle.VesselfileSpec{Meta: map[string]string{"description": "a filesystem agent"}},
+		Evals:      &bundle.Evals{Declared: true, Passed: &passed},
 	}
 	s := ServerJSONFromManifest(m, "io.github.a/fs", "ghcr.io/a/fs", "0.1")
 	if s.Name != "io.github.a/fs" || s.Version != "0.1" || s.Description != "a filesystem agent" {
@@ -156,7 +156,7 @@ func TestServerJSONFromManifest_MapsFields(t *testing.T) {
 }
 
 func TestServerJSONFromManifest_StampsImportedFrom(t *testing.T) {
-	m := bundle.Manifest{Agentfile: bundle.AgentfileSpec{Meta: map[string]string{"imported_from": "npm:@scope/server-time"}}}
+	m := bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Meta: map[string]string{"imported_from": "npm:@scope/server-time"}}}
 	s := ServerJSONFromManifest(m, "io.github.a/time", "ghcr.io/a/time", "0.1")
 	if got := s.ImportedFrom(); got != "npm:@scope/server-time" {
 		t.Errorf("ImportedFrom = %q, want the marker stamped into _meta and read back", got)
@@ -170,7 +170,7 @@ func TestServerJSONFromManifest_StampsImportedFrom(t *testing.T) {
 }
 
 func TestServerJSONFromManifest_DescriptionFallbackAndClamp(t *testing.T) {
-	long := bundle.Manifest{Agentfile: bundle.AgentfileSpec{Meta: map[string]string{"description": strings.Repeat("x", 200)}}}
+	long := bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Meta: map[string]string{"description": strings.Repeat("x", 200)}}}
 	if got := ServerJSONFromManifest(long, "io.github.a/fs", "ghcr.io/a/fs", "0.1").Description; len(got) != maxDescription {
 		t.Errorf("description len = %d, want clamped to %d", len(got), maxDescription)
 	}

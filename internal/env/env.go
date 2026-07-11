@@ -1,4 +1,4 @@
-// Package env is the single source of the AGENTCAGE_* environment variable
+// Package env is the single source of the VESSEL_* environment variable
 // names. Agents and the Python SDK mirror these names on their side; this
 // package is the Go owner of that cross-language contract.
 package env
@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// HomeDir resolves the ~/.agentcage state root. AGENTCAGE_HOME, when set, is
+// HomeDir resolves the ~/.mcpvessel state root. VESSEL_HOME, when set, is
 // that root directly.
 func HomeDir() (string, error) {
 	if h := strings.TrimSpace(os.Getenv(Home)); h != "" {
@@ -20,19 +20,19 @@ func HomeDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locating home directory: %w", err)
 	}
-	return filepath.Join(home, ".agentcage"), nil
+	return filepath.Join(home, ".mcpvessel"), nil
 }
 
-// Prefix is reserved for runtime-injected variables. The Agentfile parser
-// rejects author ENV keys carrying it, so an Agentfile cannot shadow the
+// Prefix is reserved for runtime-injected variables. The Vesselfile parser
+// rejects author ENV keys carrying it, so a Vesselfile cannot shadow the
 // runtime.
-const Prefix = "AGENTCAGE_"
+const Prefix = "VESSEL_"
 
 // Config knobs the binary reads from its own environment.
 const (
 	// Registry overrides the default OCI host for shorthand references.
 	Registry = Prefix + "REGISTRY"
-	// Home overrides the ~/.agentcage root for cache and state.
+	// Home overrides the ~/.mcpvessel root for cache and state.
 	Home = Prefix + "HOME"
 	// MCPRegistry overrides the official MCP Registry base URL.
 	MCPRegistry = Prefix + "MCP_REGISTRY"
@@ -53,7 +53,7 @@ const (
 )
 
 // DefaultMCPGatewayPort is the MCP gateway's listen port on the run network,
-// where the injected AGENTCAGE_USES_<NAME>_URL values point. Both the
+// where the injected VESSEL_USES_<NAME>_URL values point. Both the
 // mcp-gateway command and the orchestrator default to it.
 const DefaultMCPGatewayPort = "9000"
 

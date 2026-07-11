@@ -9,23 +9,26 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/history"
-	"github.com/okedeji/agentcage/internal/locate"
-	"github.com/okedeji/agentcage/internal/mcp"
-	"github.com/okedeji/agentcage/internal/reference"
-	"github.com/okedeji/agentcage/internal/runtime"
-	"github.com/okedeji/agentcage/internal/serve"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/egress"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/history"
+	"github.com/okedeji/mcpvessel/internal/locate"
+	"github.com/okedeji/mcpvessel/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/serve"
 )
 
 // serveRequest is the POST /serve body.
 type serveRequest struct {
-	Bundles  []serveBundle `json:"bundles"`
-	Listen   string        `json:"listen"`
-	Expose   []string      `json:"expose,omitempty"`
-	NoExpose []string      `json:"no_expose,omitempty"`
+	Bundles  []serveBundle       `json:"bundles"`
+	Listen   string              `json:"listen"`
+	Expose   []string            `json:"expose,omitempty"`
+	NoExpose []string            `json:"no_expose,omitempty"`
+	Observe  bool                `json:"observe,omitempty"`
+	Egress   map[string][]string `json:"egress,omitempty"` // scoped per-agent operator override
 }
 
 // serveBundle is one bundle to serve; Name, when set, overrides the root
@@ -125,7 +128,7 @@ func (d *Daemon) handleServe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agents, ids, err := d.registerExposed(services, cfg.Serve)
+	agents, ids, err := d.registerExposed(services, cfg.Serve, req.Observe, req.Egress)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -171,7 +174,7 @@ func (d *Daemon) handleServe(w http.ResponseWriter, r *http.Request) {
 // read from the bundle's catalog (no boot needed to list them), an instance
 // manager booting per-client instances on demand, and a serve entry in the
 // registry. On error it rolls back the entries already created.
-func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve) ([]serve.Agent, []string, error) {
+func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve, observe bool, scopedEgress map[string][]string) ([]serve.Agent, []string, error) {
 	agents := make([]serve.Agent, 0, len(services))
 	ids := make([]string, 0, len(services))
 	for _, svc := range services {
@@ -193,6 +196,12 @@ func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve) ([
 					Managed:     true,
 					Stdout:      io.Discard,
 					Stderr:      os.Stderr,
+					// A served instance is a run; give it a durable log so its
+					// output and egress denials show in `mcpvessel logs`, and so
+					// the daemon can name blocked hosts in a tool error.
+					LogFile:       d.runLogSink,
+					ObserveEgress: observe,
+					EgressAllow:   egress.HostsFor(scopedEgress, ea.Address),
 				})
 				if err != nil {
 					return nil, err
@@ -223,12 +232,20 @@ func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve) ([
 		agents = append(agents, serve.Agent{
 			Address: ea.Address,
 			Tools:   catalogTools(manifest, ea.Tools),
+			Main:    manifest.Vesselfile.Main,
 			Resolve: func(ctx context.Context, sessionID string) (serve.Target, func(), error) {
 				session, release, err := m.acquire(ctx, sessionID)
 				if err != nil {
 					return serve.Target{}, nil, err
 				}
-				return serve.Target{Call: session.Call, BindElicit: session.BindElicit}, release, nil
+				// Wrap Call so a tool error names any host the cage blocked, so
+				// the calling client (or an LLM) can relay why it failed.
+				runID := session.RunID()
+				call := func(ctx context.Context, tool string, args map[string]any) (string, error) {
+					res, err := session.Call(ctx, tool, args)
+					return res, enrichEgressError(err, d.denials.hosts(runID))
+				}
+				return serve.Target{Call: call, BindElicit: session.BindElicit}, release, nil
 			},
 		})
 	}

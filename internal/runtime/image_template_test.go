@@ -4,15 +4,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
 func TestGenerateDockerfile_Minimal(t *testing.T) {
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 -m agent",
 	}
-	got := generateDockerfile(dockerfileInput{Agentfile: af})
+	got := generateDockerfile(dockerfileInput{Vesselfile: af})
 
 	wantLines := []string{
 		"FROM python:3.12-slim",
@@ -27,8 +27,27 @@ func TestGenerateDockerfile_Minimal(t *testing.T) {
 	}
 }
 
+func TestGenerateDockerfile_ExecFormNoShell(t *testing.T) {
+	// An exec-form ENTRYPOINT runs argv directly, so a distroless base with no
+	// shell still boots. The sh -c wrapper must be absent.
+	af := &vesselfile.Vesselfile{
+		From:           "ghcr.io/github/github-mcp-server:0.16.0",
+		Entrypoint:     "./mcpvessel mcp-bridge -- /server/github-mcp-server stdio",
+		EntrypointExec: []string{"./mcpvessel", "mcp-bridge", "--", "/server/github-mcp-server", "stdio"},
+	}
+	got := generateDockerfile(dockerfileInput{Vesselfile: af})
+
+	want := `ENTRYPOINT ["./mcpvessel", "mcp-bridge", "--", "/server/github-mcp-server", "stdio"]`
+	if !strings.Contains(got, want) {
+		t.Errorf("missing %q in:\n%s", want, got)
+	}
+	if strings.Contains(got, `"sh", "-c"`) {
+		t.Errorf("exec form must not wrap in sh -c:\n%s", got)
+	}
+}
+
 func TestGenerateDockerfile_RunStepsInOrder(t *testing.T) {
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "node:20-slim",
 		Entrypoint: "node dist/server.js",
 		Run: []string{
@@ -36,7 +55,7 @@ func TestGenerateDockerfile_RunStepsInOrder(t *testing.T) {
 			"npm run build",
 		},
 	}
-	got := generateDockerfile(dockerfileInput{Agentfile: af})
+	got := generateDockerfile(dockerfileInput{Vesselfile: af})
 
 	npmCI := strings.Index(got, "RUN npm ci")
 	npmBuild := strings.Index(got, "RUN npm run build")
@@ -51,12 +70,12 @@ func TestGenerateDockerfile_RunStepsInOrder(t *testing.T) {
 func TestGenerateDockerfile_RunPrecedesCopy(t *testing.T) {
 	// RUN before COPY keeps the dependency install cached across source
 	// edits; regressing this pushes rebuilds from seconds back to 20-30s.
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 agent.py",
 		Run:        []string{"pip install mcp"},
 	}
-	got := generateDockerfile(dockerfileInput{Agentfile: af})
+	got := generateDockerfile(dockerfileInput{Vesselfile: af})
 
 	runIdx := strings.Index(got, "RUN pip install mcp")
 	copyIdx := strings.Index(got, "COPY . /agent")
@@ -70,7 +89,7 @@ func TestGenerateDockerfile_RunPrecedesCopy(t *testing.T) {
 }
 
 func TestGenerateDockerfile_EnvDeterministic(t *testing.T) {
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 main.py",
 		Env: map[string]string{
@@ -81,59 +100,59 @@ func TestGenerateDockerfile_EnvDeterministic(t *testing.T) {
 	}
 	// Output must be byte-identical regardless of map iteration order, or
 	// BuildKit's cache key thrashes on every build.
-	first := generateDockerfile(dockerfileInput{Agentfile: af})
+	first := generateDockerfile(dockerfileInput{Vesselfile: af})
 	for i := 0; i < 10; i++ {
-		if got := generateDockerfile(dockerfileInput{Agentfile: af}); got != first {
+		if got := generateDockerfile(dockerfileInput{Vesselfile: af}); got != first {
 			t.Fatalf("non-deterministic codegen: ENV map iteration leaked into output")
 		}
 	}
 }
 
 func TestGenerateDockerfile_EnvValueWithSpaces(t *testing.T) {
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 main.py",
 		Env: map[string]string{
 			"GREETING": "hello world",
 		},
 	}
-	got := generateDockerfile(dockerfileInput{Agentfile: af})
+	got := generateDockerfile(dockerfileInput{Vesselfile: af})
 	if !strings.Contains(got, `ENV GREETING="hello world"`) {
 		t.Errorf("ENV value with spaces not quoted:\n%s", got)
 	}
 }
 
 func TestGenerateDockerfile_EnvValueSimple(t *testing.T) {
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 main.py",
 		Env: map[string]string{
 			"LEVEL": "info",
 		},
 	}
-	got := generateDockerfile(dockerfileInput{Agentfile: af})
+	got := generateDockerfile(dockerfileInput{Vesselfile: af})
 	if !strings.Contains(got, "ENV LEVEL=info\n") {
 		t.Errorf("simple ENV value should not be quoted:\n%s", got)
 	}
 }
 
 func TestGenerateDockerfile_LabelsSortedAndQuoted(t *testing.T) {
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 main.py",
 	}
 	got := generateDockerfile(dockerfileInput{
-		Agentfile: af,
+		Vesselfile: af,
 		Labels: map[string]string{
-			"io.agentcage.spec_version": "1",
-			"io.agentcage.agent_ref":    "@okedeji/researcher:1.0",
-			"io.agentcage.built_at":     "2026-06-07T00:00:00Z",
+			"io.mcpvessel.spec_version": "1",
+			"io.mcpvessel.agent_ref":    "@okedeji/researcher:1.0",
+			"io.mcpvessel.built_at":     "2026-06-07T00:00:00Z",
 		},
 	})
 
-	idxAgentRef := strings.Index(got, "LABEL io.agentcage.agent_ref")
-	idxBuiltAt := strings.Index(got, "LABEL io.agentcage.built_at")
-	idxSpecVersion := strings.Index(got, "LABEL io.agentcage.spec_version")
+	idxAgentRef := strings.Index(got, "LABEL io.mcpvessel.agent_ref")
+	idxBuiltAt := strings.Index(got, "LABEL io.mcpvessel.built_at")
+	idxSpecVersion := strings.Index(got, "LABEL io.mcpvessel.spec_version")
 	if idxAgentRef < 0 || idxBuiltAt < 0 || idxSpecVersion < 0 {
 		t.Fatalf("expected labels missing:\n%s", got)
 	}
@@ -141,49 +160,49 @@ func TestGenerateDockerfile_LabelsSortedAndQuoted(t *testing.T) {
 	if idxAgentRef >= idxBuiltAt || idxBuiltAt >= idxSpecVersion {
 		t.Errorf("labels not emitted in sorted order")
 	}
-	if !strings.Contains(got, `LABEL io.agentcage.agent_ref="@okedeji/researcher:1.0"`) {
+	if !strings.Contains(got, `LABEL io.mcpvessel.agent_ref="@okedeji/researcher:1.0"`) {
 		t.Errorf("label value not quoted:\n%s", got)
 	}
 }
 
 func TestGenerateDockerfile_EmptyLabelsSkipped(t *testing.T) {
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 main.py",
 	}
 	got := generateDockerfile(dockerfileInput{
-		Agentfile: af,
+		Vesselfile: af,
 		Labels: map[string]string{
-			"io.agentcage.empty":   "",
-			"io.agentcage.present": "yes",
+			"io.mcpvessel.empty":   "",
+			"io.mcpvessel.present": "yes",
 		},
 	})
-	if strings.Contains(got, "io.agentcage.empty") {
+	if strings.Contains(got, "io.mcpvessel.empty") {
 		t.Errorf("empty-valued label should be skipped:\n%s", got)
 	}
-	if !strings.Contains(got, "io.agentcage.present") {
+	if !strings.Contains(got, "io.mcpvessel.present") {
 		t.Errorf("non-empty label should be present:\n%s", got)
 	}
 }
 
 func TestGenerateDockerfile_EntrypointQuoting(t *testing.T) {
 	// A multi-token entrypoint must land as one quoted sh -c argument.
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: `python3 -m agent --flag "value"`,
 	}
-	got := generateDockerfile(dockerfileInput{Agentfile: af})
+	got := generateDockerfile(dockerfileInput{Vesselfile: af})
 	if !strings.Contains(got, `ENTRYPOINT ["sh", "-c", "python3 -m agent --flag \"value\""]`) {
 		t.Errorf("entrypoint with embedded quotes not escaped:\n%s", got)
 	}
 }
 
 func TestGenerateDockerfile_SyntaxDirectivePresent(t *testing.T) {
-	af := &agentfile.Agentfile{
+	af := &vesselfile.Vesselfile{
 		From:       "python:3.12-slim",
 		Entrypoint: "python3 main.py",
 	}
-	got := generateDockerfile(dockerfileInput{Agentfile: af})
+	got := generateDockerfile(dockerfileInput{Vesselfile: af})
 	// The "# syntax=" directive must appear early so BuildKit pulls the named
 	// frontend before processing the rest of the file.
 	if !strings.HasPrefix(got, "# Auto-generated") {

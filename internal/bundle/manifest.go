@@ -1,4 +1,4 @@
-// Package bundle reads an agent's source directory plus its Agentfile
+// Package bundle reads an agent's source directory plus its Vesselfile
 // and packages them into a .agent file: a gzip-tarball of the source
 // tree alongside a manifest.json that describes it.
 package bundle
@@ -6,15 +6,15 @@ package bundle
 import "time"
 
 // Manifest is the JSON document at the root of every .agent file: the parsed
-// Agentfile, a hash pinning the source tree, and build metadata.
+// Vesselfile, a hash pinning the source tree, and build metadata.
 type Manifest struct {
-	SpecVersion string        `json:"spec_version"`
-	Agentfile   AgentfileSpec `json:"agentfile"`
-	Tools       []Tool        `json:"tools,omitempty"`
-	Evals       *Evals        `json:"evals,omitempty"`
-	FilesHash   string        `json:"files_hash"`
-	BuiltAt     time.Time     `json:"built_at"`
-	BuiltWith   string        `json:"built_with"`
+	SpecVersion string         `json:"spec_version"`
+	Vesselfile  VesselfileSpec `json:"vesselfile"`
+	Tools       []Tool         `json:"tools,omitempty"`
+	Evals       *Evals         `json:"evals,omitempty"`
+	FilesHash   string         `json:"files_hash"`
+	BuiltAt     time.Time      `json:"built_at"`
+	BuiltWith   string         `json:"built_with"`
 }
 
 // Evals is the eval status carried in a manifest. Declared is set at build
@@ -50,24 +50,25 @@ const (
 	VisibilityPrivate Visibility = "private"
 )
 
-// AgentfileSpec is the wire form of a parsed Agentfile, decoupled from the
+// VesselfileSpec is the wire form of a parsed Vesselfile, decoupled from the
 // parser's in-memory types so the manifest schema can evolve independently.
-type AgentfileSpec struct {
-	From       string            `json:"from"`
-	Entrypoint string            `json:"entrypoint"`
-	Run        []string          `json:"run,omitempty"`
-	Model      string            `json:"model,omitempty"` // "provider/name"
-	Main       string            `json:"main,omitempty"`  // name of the tool that runs on `agentcage run`; omitted for tool collections
-	Expose     []string          `json:"expose,omitempty"`
-	Uses       []UseSpec         `json:"uses,omitempty"`
-	Ban        []BanSpec         `json:"ban,omitempty"`    // agents (or their tools) forbidden anywhere in the subtree
-	Budget     int64             `json:"budget,omitempty"` // USD cost cap per run in micro-USD
-	Resources  *ResourcesSpec    `json:"resources,omitempty"`
-	Env        map[string]string `json:"env,omitempty"`
-	Secrets    []string          `json:"secrets,omitempty"`
-	Egress     string            `json:"egress,omitempty"`
-	Meta       map[string]string `json:"meta,omitempty"`
-	Eval       string            `json:"eval,omitempty"`
+type VesselfileSpec struct {
+	From           string            `json:"from"`
+	Entrypoint     string            `json:"entrypoint"`
+	EntrypointExec []string          `json:"entrypointExec,omitempty"` // exec-form ENTRYPOINT argv; nil for shell form
+	Run            []string          `json:"run,omitempty"`
+	Model          string            `json:"model,omitempty"` // "provider/name"
+	Main           string            `json:"main,omitempty"`  // name of the tool that runs on `mcpvessel run`; omitted for tool collections
+	Expose         []string          `json:"expose,omitempty"`
+	Uses           []UseSpec         `json:"uses,omitempty"`
+	Ban            []BanSpec         `json:"ban,omitempty"`    // agents (or their tools) forbidden anywhere in the subtree
+	Budget         int64             `json:"budget,omitempty"` // USD cost cap per run in micro-USD
+	Resources      *ResourcesSpec    `json:"resources,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	Secrets        []string          `json:"secrets,omitempty"`
+	Egress         string            `json:"egress,omitempty"`
+	Meta           map[string]string `json:"meta,omitempty"`
+	Eval           string            `json:"eval,omitempty"`
 }
 
 // ResourcesSpec is the wire form of the advisory RESOURCES directive: the
@@ -78,7 +79,7 @@ type ResourcesSpec struct {
 	Pids int    `json:"pids,omitempty"`
 }
 
-// UseSpec is one entry in AgentfileSpec.Uses. An empty Deny accepts every
+// UseSpec is one entry in VesselfileSpec.Uses. An empty Deny accepts every
 // EXPOSE'd tool of the sub-agent. Digest is the sha256 the tag resolved to at
 // build time, the lockfile: the daemon pulls by digest, so a dependency
 // re-pushed under the same tag does not change what this bundle runs against.

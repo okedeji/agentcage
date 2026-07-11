@@ -13,18 +13,18 @@ import (
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/errdef"
 
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/env"
-	"github.com/okedeji/agentcage/internal/reference"
-	"github.com/okedeji/agentcage/internal/signing"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/env"
+	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/signing"
 )
 
 const (
 	// SignatureMediaType is the OCI layer media type for a bundle signature.
-	SignatureMediaType = "application/vnd.agentcage.signature.v1+json"
+	SignatureMediaType = "application/vnd.mcpvessel.signature.v1+json"
 
 	// SignatureArtifactType marks a signature's OCI manifest.
-	SignatureArtifactType = "application/vnd.agentcage.signature.v1"
+	SignatureArtifactType = "application/vnd.mcpvessel.signature.v1"
 )
 
 // signatureTag maps a bundle's manifest digest to the tag its signature lives
@@ -121,7 +121,7 @@ func fetchSignature(ctx context.Context, src oras.ReadOnlyTarget, digest string)
 // verifyPulled enforces the signature policy at cache ingest, the one point
 // every network pull passes. A published signature must verify and match the
 // scope's pinned key. An unsigned bundle passes unless
-// AGENTCAGE_REQUIRE_SIGNATURES is set, in which case it fails closed.
+// VESSEL_REQUIRE_SIGNATURES is set, in which case it fails closed.
 func (c *Client) verifyPulled(ctx context.Context, src oras.ReadOnlyTarget, ref reference.Reference, digest string) error {
 	sig, ok, err := fetchSignature(ctx, src, digest)
 	if err != nil {

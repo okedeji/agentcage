@@ -1,8 +1,8 @@
-# goreleaser config for agentcage.
+# goreleaser config for mcpvessel.
 #
-# An agentcage release is not one binary. The host CLI needs two companions
+# An mcpvessel release is not one binary. The host CLI needs two companions
 # next to it at runtime, found via executableDir():
-#   - agentcage-linux-<arch>: baked into the in-VM gateway image (all platforms)
+#   - mcpvessel-linux-<arch>: baked into the in-VM gateway image (all platforms)
 #   - lima/: the bundled Lima VM driver (macOS only; Linux uses host containerd)
 #
 # So each archive ships the host binary plus its companions in the layout the
@@ -11,7 +11,7 @@
 # and fetches the SHA-pinned Lima bundles into dist/ staging dirs.
 version: 2
 
-project_name: agentcage
+project_name: mcpvessel
 
 before:
   hooks:
@@ -20,22 +20,22 @@ before:
 
 builds:
   - id: darwin
-    main: ./cmd/agentcage
-    binary: agentcage
+    main: ./cmd/mcpvessel
+    binary: mcpvessel
     env: [CGO_ENABLED=0]
     flags: [-trimpath]
     ldflags:
-      - -X github.com/okedeji/agentcage/internal/identity.Version={{ .Version }}
+      - -X github.com/okedeji/mcpvessel/internal/identity.Version={{ .Version }}
     goos: [darwin]
     goarch: [amd64, arm64]
 
   - id: linux
-    main: ./cmd/agentcage
-    binary: agentcage
+    main: ./cmd/mcpvessel
+    binary: mcpvessel
     env: [CGO_ENABLED=0]
     flags: [-trimpath]
     ldflags:
-      - -X github.com/okedeji/agentcage/internal/identity.Version={{ .Version }}
+      - -X github.com/okedeji/mcpvessel/internal/identity.Version={{ .Version }}
     goos: [linux]
     goarch: [amd64, arm64]
 
@@ -46,7 +46,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     files:
-      - src: "bin/agentcage-linux-{{ .Arch }}"
+      - src: "bin/mcpvessel-linux-{{ .Arch }}"
         strip_parent: true
         info: { mode: 0o755 }
       - src: ".lima-release/lima-{{ .Os }}-{{ .Arch }}"
@@ -61,7 +61,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     files:
-      - src: "bin/agentcage-linux-{{ .Arch }}"
+      - src: "bin/mcpvessel-linux-{{ .Arch }}"
         strip_parent: true
         info: { mode: 0o755 }
       - src: "completions/*"
@@ -74,7 +74,7 @@ checksum:
 release:
   github:
     owner: okedeji
-    name: agentcage
+    name: mcpvessel
   draft: true
   prerelease: auto
 
@@ -83,29 +83,29 @@ release:
 # downloaded binary is not blocked. Casks are macOS only; Linux installs from
 # the release archive or `go install`.
 #
-# A cask stages the whole archive in the Caskroom and symlinks the agentcage
-# binary onto PATH. The lima/ and agentcage-linux-<arch> companions stay next
+# A cask stages the whole archive in the Caskroom and symlinks the mcpvessel
+# binary onto PATH. The lima/ and mcpvessel-linux-<arch> companions stay next
 # to the real binary in the Caskroom, and executableDir() resolves the symlink
 # back to them, the same mechanism the libexec layout used.
 homebrew_casks:
-  - name: agentcage
+  - name: mcpvessel
     ids: [darwin]
     repository:
       owner: okedeji
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
-    homepage: "https://github.com/okedeji/agentcage"
+    homepage: "https://github.com/okedeji/mcpvessel"
     description: "Build, sign, and run MCP agents in isolated containers"
     # Wire up tab-completion at install time, from the scripts shipped in the
     # archive (paths are archive-relative).
     completions:
-      bash: "completions/agentcage.bash"
-      zsh: "completions/agentcage.zsh"
-      fish: "completions/agentcage.fish"
+      bash: "completions/mcpvessel.bash"
+      zsh: "completions/mcpvessel.zsh"
+      fish: "completions/mcpvessel.fish"
     hooks:
       post:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/agentcage"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/mcpvessel"]
           end

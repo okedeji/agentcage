@@ -9,12 +9,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/llmgateway"
-	"github.com/okedeji/agentcage/internal/locate"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
-	"github.com/okedeji/agentcage/internal/replay"
-	"github.com/okedeji/agentcage/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/llmgateway"
+	"github.com/okedeji/mcpvessel/internal/locate"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/replay"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // writeReplay assembles and writes a recording run's .replay artifact: the
@@ -108,7 +108,7 @@ func (d *Daemon) handleRunReplay(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "no replay for run "+id+" (was it recorded with 'agentcage replay record'?)")
+		writeError(w, http.StatusNotFound, "no replay for run "+id+" (was it recorded with 'mcpvessel replay record'?)")
 		return
 	}
 	defer func() { _ = f.Close() }()

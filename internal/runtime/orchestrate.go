@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/okedeji/agentcage/internal/agentfile"
-	"github.com/okedeji/agentcage/internal/bundle"
-	"github.com/okedeji/agentcage/internal/config"
-	"github.com/okedeji/agentcage/internal/mcp"
-	"github.com/okedeji/agentcage/internal/mcpgateway"
-	"github.com/okedeji/agentcage/internal/reference"
-	"github.com/okedeji/agentcage/internal/registry"
+	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/mcp"
+	"github.com/okedeji/mcpvessel/internal/mcpgateway"
+	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/registry"
+	"github.com/okedeji/mcpvessel/internal/vesselfile"
 )
 
 // containerStopTimeout bounds teardown of one container or network: rm -f
@@ -36,13 +36,13 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 	// the more specific choice.
 	res := cfg.Resources
 	res.Defaults = overlayCap(in.Resources, res.Defaults)
-	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), keepWarm: cfg.Cages.KeepWarm, maxLive: cfg.Cages.EffectiveMaxLive(), record: in.Record}
+	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), keepWarm: cfg.Cages.KeepWarm, maxLive: cfg.Cages.EffectiveMaxLive(), record: in.Record, egressAllow: in.EgressAllow}
 
 	// The machine memory cap applies to both boot paths; the live-cage caps
 	// and idle TTL only bound a USES tree's elastic set.
 	boot.MachineMemCap = cfg.Machine.MemoryBytes()
 
-	if len(boot.Manifest.Agentfile.Uses) == 0 {
+	if len(boot.Manifest.Vesselfile.Uses) == 0 {
 		// No registry ref, so per-agent overrides do not key a directly-run
 		// agent; the default caps still apply.
 		boot.Cap = agentCap(nil, ops.resources)
@@ -251,7 +251,7 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 		td.push(func() error { return removeNetwork(sess.provisioner, egressNet) })
 	}
 
-	// Boots before the root so a reasoning root finds AGENTCAGE_LLM_URL
+	// Boots before the root so a reasoning root finds VESSEL_LLM_URL
 	// already listening.
 	if len(plan.LLMAgents) > 0 {
 		budget := resolveBudget(in.Budget, plan.Budget, in.Stderr)
@@ -327,7 +327,7 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 }
 
 // buildAgentImage extracts a sub-agent's bundle to a temp dir, reparses its
-// Agentfile, and builds its image. The extracted source is deleted once the
+// Vesselfile, and builds its image. The extracted source is deleted once the
 // image lands in containerd.
 func buildAgentImage(ctx context.Context, sess *bootSession, node *agentNode, imageRef string, noCache bool, stderr io.Writer) error {
 	// Check before paying to extract: a present content-addressed image
@@ -336,7 +336,7 @@ func buildAgentImage(ctx context.Context, sess *bootSession, node *agentNode, im
 		return nil
 	}
 
-	srcDir, err := os.MkdirTemp("", "agentcage-sub-*")
+	srcDir, err := os.MkdirTemp("", "mcpvessel-sub-*")
 	if err != nil {
 		return err
 	}
@@ -346,15 +346,15 @@ func buildAgentImage(ctx context.Context, sess *bootSession, node *agentNode, im
 	if err != nil {
 		return fmt.Errorf("extracting %s: %w", node.Key, err)
 	}
-	af, err := agentfile.ParseFile(filepath.Join(srcDir, "Agentfile"))
+	af, err := vesselfile.ParseFile(filepath.Join(srcDir, "Vesselfile"))
 	if err != nil {
-		return fmt.Errorf("re-parsing %s Agentfile: %w", node.Key, err)
+		return fmt.Errorf("re-parsing %s Vesselfile: %w", node.Key, err)
 	}
 	return buildImage(ctx, sess, BuildInput{
-		Agentfile: af,
-		Manifest:  manifest,
-		SourceDir: srcDir,
-		ImageRef:  imageRef,
+		Vesselfile: af,
+		Manifest:   manifest,
+		SourceDir:  srcDir,
+		ImageRef:   imageRef,
 	}, noCache, stderr)
 }
 
