@@ -181,6 +181,10 @@ func spec(src Source, sep string) string {
 	return src.Identifier + sep + src.Version
 }
 
+// OCIImageRef is the image reference an OCI source wraps, so a caller can pull
+// or inspect it (for example to read its baked launch command).
+func OCIImageRef(src Source) string { return ociImage(src) }
+
 // ociImage pins by digest when the version is one, by tag otherwise.
 func ociImage(src Source) string {
 	switch {

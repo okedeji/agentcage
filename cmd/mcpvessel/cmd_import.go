@@ -167,6 +167,15 @@ func importCollection(cmd *cobra.Command, arg, dir, tag, entrypoint string, mode
 		src.Launch = launch
 	case entrypoint != "":
 		src.Launch = strings.Fields(entrypoint)
+	case src.Registry == wrap.OCI:
+		// No launch given for an image; read the one baked into it so the
+		// operator need not know its in-container command. A failure falls
+		// through to wrap's "pass --entrypoint" error.
+		if l, err := runtime.ImageLaunch(cmd.Context(), wrap.OCIImageRef(src)); err == nil {
+			src.Launch = l
+		} else {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "note: could not read the launch command from the image: %v\n", err)
+		}
 	}
 	outDir := dir
 	if outDir == "" {
@@ -359,6 +368,10 @@ func reuseOrWrapTool(cmd *cobra.Command, p reasoningParams, arg, parent, prefix,
 		src.Launch = launch
 	case p.entrypoint != "":
 		src.Launch = strings.Fields(p.entrypoint)
+	case src.Registry == wrap.OCI:
+		if l, err := runtime.ImageLaunch(cmd.Context(), wrap.OCIImageRef(src)); err == nil {
+			src.Launch = l
+		}
 	}
 
 	if !p.noReuse {
