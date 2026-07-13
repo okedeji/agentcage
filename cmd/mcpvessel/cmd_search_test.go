@@ -48,7 +48,10 @@ func TestPrintSearchResults_RendersEvalSignal(t *testing.T) {
 		Version:     "0.1",
 		Description: "a filesystem agent",
 		Meta: map[string]any{
-			"io.mcpvessel/evals": map[string]any{"declared": true, "passed": 47.0, "failed": 3.0, "judge_score": 0.83},
+			// The eval signal rides inside the registry's publisher-provided slot.
+			"io.modelcontextprotocol.registry/publisher-provided": map[string]any{
+				"evals": map[string]any{"declared": true, "passed": 47.0, "failed": 3.0, "judge_score": 0.83},
+			},
 		},
 	}}
 	var out bytes.Buffer

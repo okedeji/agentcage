@@ -150,8 +150,14 @@ func TestServerJSONFromManifest_MapsFields(t *testing.T) {
 	if !ok || ref != "ghcr.io/a/fs:0.1" || version != "" {
 		t.Errorf("OCIReference = %q %q %v, want the version embedded in the identifier", ref, version, ok)
 	}
-	if _, ok := s.Meta[evalsMetaKey]; !ok {
-		t.Errorf("meta missing the evals key %q", evalsMetaKey)
+	// Evals ride inside the publisher-provided slot, not as a top-level _meta
+	// key (the registry rejects sibling keys outside its own namespaces).
+	provided, ok := s.Meta[publisherMetaKey].(map[string]any)
+	if !ok {
+		t.Fatalf("_meta missing the publisher-provided slot")
+	}
+	if _, ok := provided[providedEvalsKey]; !ok {
+		t.Errorf("publisher-provided missing the evals key %q", providedEvalsKey)
 	}
 }
 

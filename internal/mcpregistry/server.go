@@ -96,18 +96,16 @@ type serverEnvelope struct {
 }
 
 const (
-	// evalsMetaKey holds the eval signal mcpvessel stamps onto a public
-	// entry, reverse-DNS namespaced per the registry's _meta extension rule.
-	evalsMetaKey = "io.mcpvessel/evals"
-
-	// publisherMetaKey is the registry's standard slot for who published and
-	// with what tool.
+	// publisherMetaKey is the registry's one free-form publisher slot, and the
+	// only _meta namespace a publisher may set. Everything mcpvessel records
+	// rides inside it: a top-level _meta key outside the registry's own
+	// namespaces is rejected on publish (422 "unexpected property").
 	publisherMetaKey = "io.modelcontextprotocol.registry/publisher-provided"
 
-	// importedFromMetaKey carries the wrapped server's canonical identity so
-	// a published wrapper is discoverable as "the wrapped X". Namespaced like
-	// the eval key.
-	importedFromMetaKey = "io.mcpvessel/imported_from"
+	// Keys mcpvessel writes inside the publisher-provided object.
+	providedToolKey         = "tool"          // the tool that published (always "mcpvessel")
+	providedEvalsKey        = "evals"         // the stamped eval signal, when present
+	providedImportedFromKey = "imported_from" // the wrapped server's canonical identity
 
 	// maxDescription is the registry's server.json description ceiling.
 	maxDescription = 100
@@ -120,15 +118,16 @@ const (
 // name is the reverse-DNS namespace the caller proved it owns, ociRef and
 // version point at the pushed bundle, any eval stamp rides under _meta.
 func ServerJSONFromManifest(m bundle.Manifest, name, ociRef, version string) *Server {
-	meta := map[string]any{
-		publisherMetaKey: map[string]any{"tool": "mcpvessel"},
-	}
+	// Everything rides inside the one free-form publisher slot; sibling
+	// top-level _meta keys are rejected on publish (422 "unexpected property").
+	provided := map[string]any{providedToolKey: "mcpvessel"}
 	if m.Evals != nil {
-		meta[evalsMetaKey] = m.Evals
+		provided[providedEvalsKey] = m.Evals
 	}
 	if from := m.Vesselfile.Meta["imported_from"]; from != "" {
-		meta[importedFromMetaKey] = from
+		provided[providedImportedFromKey] = from
 	}
+	meta := map[string]any{publisherMetaKey: provided}
 	return &Server{
 		Schema:      schemaURI,
 		Name:        name,
@@ -160,7 +159,7 @@ func (s *Server) OCIReference() (ref, version string, ok bool) {
 // or "" when none. It reads the generic wire map, which survives the
 // registry round-trip where the typed publish shape does not.
 func (s *Server) EvalSummary() string {
-	raw, ok := s.Meta[evalsMetaKey].(map[string]any)
+	raw, ok := s.publisherProvided()[providedEvalsKey].(map[string]any)
 	if !ok {
 		return ""
 	}
@@ -182,8 +181,15 @@ func (s *Server) EvalSummary() string {
 // ImportedFrom returns the canonical identity of the server this entry
 // wraps, or "" when the entry is not an mcpvessel wrapper.
 func (s *Server) ImportedFrom() string {
-	from, _ := s.Meta[importedFromMetaKey].(string)
+	from, _ := s.publisherProvided()[providedImportedFromKey].(string)
 	return from
+}
+
+// publisherProvided returns mcpvessel's free-form _meta slot, or nil. Indexing
+// the nil result is safe, so callers read keys straight off it.
+func (s *Server) publisherProvided() map[string]any {
+	p, _ := s.Meta[publisherMetaKey].(map[string]any)
+	return p
 }
 
 // description resolves the required 1-100 char description from META, with
