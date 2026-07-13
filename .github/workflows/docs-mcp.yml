@@ -29,6 +29,9 @@ on:
     branches: [main]
     paths: ["tools/docs-mcp/**"]
     tags: ["docs-mcp-v*"]
+  # Manual run from the Actions tab, so the pipeline can be tested without a
+  # dummy commit under tools/docs-mcp/. A dispatch on main takes the :edge path.
+  workflow_dispatch:
 
 permissions:
   contents: read
