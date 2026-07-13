@@ -63,13 +63,22 @@ jobs:
           curl -fsSL -o /tmp/nerdctl-full.tgz \
             "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-full-${NERDCTL_VERSION}-linux-amd64.tar.gz"
           sudo tar Cxzf /usr/local /tmp/nerdctl-full.tgz
+
+          # Point buildkitd at the containerd worker (default namespace) instead
+          # of its own OCI worker. `mcpvessel build` exports the introspection
+          # image into containerd and then runs it with nerdctl; if buildkitd
+          # used its separate OCI store, nerdctl could not find the freshly built
+          # image and would try to pull it from a registry (auth failure).
+          sudo mkdir -p /etc/buildkit
+          printf '[worker.oci]\n  enabled = false\n[worker.containerd]\n  enabled = true\n  namespace = "default"\n' \
+            | sudo tee /etc/buildkit/buildkitd.toml >/dev/null
+
           sudo systemctl daemon-reload
-          sudo systemctl enable --now containerd buildkit
-          # Wait for both sockets to appear before the first build.
-          for i in $(seq 1 30); do
-            [ -S /run/containerd/containerd.sock ] && [ -S /run/buildkit/buildkitd.sock ] && break
-            sleep 1
-          done
+          # containerd first: the buildkit containerd worker needs it up.
+          sudo systemctl enable --now containerd
+          for i in $(seq 1 30); do [ -S /run/containerd/containerd.sock ] && break; sleep 1; done
+          sudo systemctl enable --now buildkit
+          for i in $(seq 1 30); do [ -S /run/buildkit/buildkitd.sock ] && break; sleep 1; done
           sudo /usr/local/bin/nerdctl version
 
       # build produces the host CLI we invoke; build-linux produces the
