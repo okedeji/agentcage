@@ -69,15 +69,29 @@ jobs:
           done
           sudo /usr/local/bin/nerdctl version
 
+      # build produces the host CLI we invoke; build-linux produces the
+      # bin/mcpvessel-linux-<arch> companion that `build` stages into the agent
+      # as the mcp-bridge (FindLinuxBinary looks for that companion, not the
+      # running binary).
       - name: Build the mcpvessel CLI
-        run: make build
+        run: make build build-linux
 
       # Restore the stable signing key so every publish is signed with the same
-      # identity pulls have already pinned.
+      # identity pulls have already pinned. The secret is passed through env, not
+      # inlined into the script: the key is JSON with quotes, and inlining would
+      # collide with the shell's own quoting.
       - name: Restore signing key
-        run: printf '%s' "${{ secrets.MCPVESSEL_SIGNING_KEY }}" | sudo -H ./bin/mcpvessel keys import
+        env:
+          SIGNING_KEY: ${{ secrets.MCPVESSEL_SIGNING_KEY }}
+        run: printf '%s' "$SIGNING_KEY" | sudo -H ./bin/mcpvessel keys import
 
       - name: Build, sign, push (and register on a tag)
+        env:
+          # Secrets go through env, never inlined into the script, so their
+          # contents cannot break shell parsing or leak via a traced command.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_TOKEN: ${{ secrets.MCP_REGISTRY_GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
 
@@ -92,14 +106,14 @@ jobs:
           echo "Publishing ${REF} (register=${REGISTER})"
 
           # OCI login: the Actions token can push to packages under this owner.
-          printf '%s' "${{ secrets.GITHUB_TOKEN }}" \
-            | sudo -H ./bin/mcpvessel login "ghcr.io" -u "${{ github.repository_owner }}" --password-stdin
+          printf '%s' "$GHCR_TOKEN" \
+            | sudo -H ./bin/mcpvessel login "ghcr.io" -u "$OWNER" --password-stdin
 
           # build auto-stages the mcp-bridge into the source tree before hashing.
           sudo -H ./bin/mcpvessel build ./tools/docs-mcp -t "${REF}"
 
           if [[ "${REGISTER}" == "1" ]]; then
-            printf '%s' "${{ secrets.MCP_REGISTRY_GITHUB_TOKEN }}" \
+            printf '%s' "$REGISTRY_TOKEN" \
               | sudo -H ./bin/mcpvessel login mcp-registry --password-stdin
             sudo -H ./bin/mcpvessel push "${REF}" --public
           else
