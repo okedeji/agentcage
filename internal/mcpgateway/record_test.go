@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,11 +21,22 @@ func TestGateway_RecordsSubAgentCall(t *testing.T) {
 	defer subSrv.Close()
 
 	g := New(Config{Edges: map[string]Edge{"sub": {Target: subSrv.URL + "/mcp"}}, Record: true})
+	// The record hooks fire on the gateway's server goroutine after the response
+	// is proxied back, so CallTool can return before they run. Guard the slices
+	// with a mutex and block on recorded until the payload hook (the last hook in
+	// recordSubCall) fires, so the reads are both synchronized and ordered.
+	var mu sync.Mutex
 	var calls []SubCallEvent
 	var records []SubCallRecord
+	recorded := make(chan struct{}, 1)
 	g.SetHooks(Hooks{
-		Call:    func(e SubCallEvent) { calls = append(calls, e) },
-		Payload: func(r SubCallRecord) { records = append(records, r) },
+		Call: func(e SubCallEvent) { mu.Lock(); calls = append(calls, e); mu.Unlock() },
+		Payload: func(r SubCallRecord) {
+			mu.Lock()
+			records = append(records, r)
+			mu.Unlock()
+			recorded <- struct{}{}
+		},
 	})
 	gwSrv := httptest.NewServer(g.Handler())
 	defer gwSrv.Close()
@@ -42,6 +54,16 @@ func TestGateway_RecordsSubAgentCall(t *testing.T) {
 		t.Fatalf("CallTool: %v", err)
 	}
 
+	// The record hooks run after the response is sent, so wait for the payload
+	// hook before reading rather than racing it.
+	select {
+	case <-recorded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("record hook did not fire within 5s")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
 	// Only the tools/call is recorded, not the handshake or tools/list.
 	if len(calls) != 1 || calls[0].Tool != "search" || calls[0].Edge != "sub" {
 		t.Fatalf("call events = %+v, want one search call on edge sub", calls)
