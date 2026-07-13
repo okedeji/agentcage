@@ -66,6 +66,7 @@ type VesselfileSpec struct {
 	Resources      *ResourcesSpec    `json:"resources,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
 	Secrets        []string          `json:"secrets,omitempty"`
+	Optional       []string          `json:"optional,omitempty"` // ENV/SECRETS names that are optional, not fail-closed
 	Egress         string            `json:"egress,omitempty"`
 	Meta           map[string]string `json:"meta,omitempty"`
 	Eval           string            `json:"eval,omitempty"`

@@ -197,6 +197,7 @@ func buildManifest(af *vesselfile.Vesselfile, hash string, cfg options) (*Manife
 		Budget:         af.Budget,
 		Env:            af.Env,
 		Secrets:        af.Secrets,
+		Optional:       af.Optional,
 		Egress:         af.Egress,
 		Meta:           af.Meta,
 		Eval:           af.Eval,

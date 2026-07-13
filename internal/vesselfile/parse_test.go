@@ -474,3 +474,33 @@ func TestParse_Errors(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_OptionalInputs(t *testing.T) {
+	src := `FROM python:3.12-slim
+SECRETS GITHUB_PERSONAL_ACCESS_TOKEN? REQUIRED_KEY
+ENV OPTIONAL_HOST?
+ENTRYPOINT python3 server.py
+`
+	got, err := Parse(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// The "?" is stripped from the declared names.
+	wantSecrets := []string{"GITHUB_PERSONAL_ACCESS_TOKEN", "REQUIRED_KEY"}
+	if !reflect.DeepEqual(got.Secrets, wantSecrets) {
+		t.Errorf("Secrets = %v, want %v", got.Secrets, wantSecrets)
+	}
+	if _, ok := got.Env["OPTIONAL_HOST"]; !ok {
+		t.Errorf("optional env not declared: %v", got.Env)
+	}
+	opt := map[string]bool{}
+	for _, n := range got.Optional {
+		opt[n] = true
+	}
+	if !opt["GITHUB_PERSONAL_ACCESS_TOKEN"] || !opt["OPTIONAL_HOST"] {
+		t.Errorf("optional set wrong: %v", got.Optional)
+	}
+	if opt["REQUIRED_KEY"] {
+		t.Error("REQUIRED_KEY should not be optional")
+	}
+}

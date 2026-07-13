@@ -175,7 +175,7 @@ func confirmLoginIfNeeded(cmd *cobra.Command, mustPublish bool) (bool, error) {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Pushing without publishing; run 'mcpvessel register <ref>' later to publish.")
 		return false, nil
 	}
-	if err := loginMCPRegistry(cmd); err != nil {
+	if err := loginMCPRegistry(cmd, "", false); err != nil {
 		return false, err
 	}
 	return true, nil

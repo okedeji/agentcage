@@ -75,3 +75,4 @@ sample/
 
 # Generated shell completions (release staging)
 completions/
+tools/docs-mcp/mcpvessel

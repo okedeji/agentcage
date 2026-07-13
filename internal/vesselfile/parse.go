@@ -400,7 +400,12 @@ func parseResources(af *Vesselfile, rest string, lineNo int) error {
 // nothing is baked into the image and the run fails closed unless the
 // operator supplies it. The empty value marks the required form.
 func parseEnv(af *Vesselfile, rest string, lineNo int) error {
-	key, value, _ := strings.Cut(rest, "=")
+	key, value, hasValue := strings.Cut(rest, "=")
+	// A trailing "?" on a value-less key marks the input optional.
+	if !hasValue && strings.HasSuffix(key, "?") {
+		key = strings.TrimSuffix(key, "?")
+		af.Optional = append(af.Optional, key)
+	}
 	if key == "" {
 		return fmt.Errorf("line %d: ENV requires a key", lineNo)
 	}
@@ -416,7 +421,15 @@ func parseSecrets(af *Vesselfile, rest string, lineNo int) error {
 		return fmt.Errorf("line %d: SECRETS requires at least one key", lineNo)
 	}
 	rest = strings.ReplaceAll(rest, ",", " ")
-	af.Secrets = append(af.Secrets, strings.Fields(rest)...)
+	for _, name := range strings.Fields(rest) {
+		// A trailing "?" marks the secret optional: injected if supplied, absent
+		// (not an error) otherwise.
+		if strings.HasSuffix(name, "?") {
+			name = strings.TrimSuffix(name, "?")
+			af.Optional = append(af.Optional, name)
+		}
+		af.Secrets = append(af.Secrets, name)
+	}
 	return nil
 }
 

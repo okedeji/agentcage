@@ -42,6 +42,22 @@ Out of scope:
 - Denial of service from an agent you deliberately ran with generous caps.
 - Anything requiring you to already hold the host user's credentials or root.
 
+## Signing and trust
+
+Every bundle is signed on push and verified on pull. The first pull of a
+publisher pins the key it sees and prints its fingerprint; every later pull must
+match that pin. A changed key fails closed with a loud error rather than swapping
+silently. This is trust on first use, the same model as SSH known hosts.
+
+Servers published from this project are signed with key fingerprint
+`bf4894a180f2` (scope `ghcr.io/okedeji`). Your first pull prints
+`Signature verified; pinned signing key bf4894a180f2 ... (first use)`. Confirm it
+matches this before you trust it. If a later pull reports a key mismatch and you
+have not been told to expect a rotation, stop and check.
+
+The limits are the ones listed above: a signature proves origin, not intent, and
+the sandbox, not the signature, is what contains a malicious agent.
+
 ## Supported versions
 
 Pre-1.0, only the latest tagged release gets fixes. Pin a digest if you need a

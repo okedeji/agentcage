@@ -38,18 +38,21 @@ reads the same store stays authenticated to this host too, and an existing login
 for it means you do not need this command at all.
 
 'mcpvessel login mcp-registry' runs GitHub's device flow to prove the namespace
-you publish under, then caches the registry token under ~/.mcpvessel. It needs a
-GitHub OAuth app client id in VESSEL_GITHUB_CLIENT_ID.
+you publish under, then caches the registry token under ~/.mcpvessel. The device
+flow needs a GitHub OAuth app client id in VESSEL_GITHUB_CLIENT_ID. In CI, skip
+the device flow by feeding a GitHub token (a PAT owned by the namespace's user)
+with --password-stdin; no OAuth app is needed then.
 
 Pass --password-stdin to feed a token without it landing in your shell history.`,
 		Example: `  mcpvessel login ghcr.io -u okedeji --password-stdin < token.txt
   mcpvessel login
   mcpvessel login mcp-registry
+  mcpvessel login mcp-registry --password-stdin < gh-token.txt
   mcpvessel login registry.acme.internal -u ci`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 && args[0] == mcpRegistryTarget {
-				return loginMCPRegistry(cmd)
+				return loginMCPRegistry(cmd, password, passwordStdin)
 			}
 
 			host := reference.DefaultRegistry()
@@ -84,21 +87,12 @@ Pass --password-stdin to feed a token without it landing in your shell history.`
 	return cmd
 }
 
-// loginMCPRegistry runs the GitHub device flow, exchanges the token for a
-// registry bearer, and caches it for push. Fails closed when no OAuth app is
-// configured: there is no anonymous publish.
-func loginMCPRegistry(cmd *cobra.Command) error {
-	clientID := config.LookupEnv(env.GitHubClientID)
-	if clientID == "" {
-		return fmt.Errorf("publishing to the MCP Registry needs a GitHub OAuth app; set it with 'mcpvessel config env set %s <client-id>'", env.GitHubClientID)
-	}
-
-	ghToken, err := githubauth.DeviceFlow(cmd.Context(), githubauth.Config{
-		ClientID: clientID,
-		Notify: func(p githubauth.Prompt) {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Open %s and enter code: %s\n", p.VerificationURI, p.UserCode)
-		},
-	})
+// loginMCPRegistry resolves a GitHub token, exchanges it for a registry bearer,
+// and caches it for push. A token fed non-interactively skips the device flow
+// (the CI path); otherwise the device flow runs. Fails closed when neither a
+// token nor an OAuth app is available: there is no anonymous publish.
+func loginMCPRegistry(cmd *cobra.Command, password string, passwordStdin bool) error {
+	ghToken, err := mcpRegistryGitHubToken(cmd, password, passwordStdin)
 	if err != nil {
 		return err
 	}
@@ -112,6 +106,37 @@ func loginMCPRegistry(cmd *cobra.Command) error {
 	}
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Login Succeeded")
 	return nil
+}
+
+// mcpRegistryGitHubToken returns the GitHub token to exchange. A token piped in
+// (--password-stdin) or passed with -p is used directly, so CI never runs the
+// interactive device flow and needs no OAuth app; otherwise the device flow
+// runs and requires VESSEL_GITHUB_CLIENT_ID.
+func mcpRegistryGitHubToken(cmd *cobra.Command, password string, passwordStdin bool) (string, error) {
+	if passwordStdin {
+		if password != "" {
+			return "", errors.New("--password and --password-stdin cannot be combined")
+		}
+		data, err := io.ReadAll(cmd.InOrStdin())
+		if err != nil {
+			return "", fmt.Errorf("reading GitHub token from stdin: %w", err)
+		}
+		password = string(data)
+	}
+	if tok := strings.TrimRight(password, "\r\n"); tok != "" {
+		return tok, nil
+	}
+
+	clientID := config.LookupEnv(env.GitHubClientID)
+	if clientID == "" {
+		return "", fmt.Errorf("publishing to the MCP Registry needs a GitHub OAuth app; set it with 'mcpvessel config env set %s <client-id>', or feed a GitHub token with --password-stdin", env.GitHubClientID)
+	}
+	return githubauth.DeviceFlow(cmd.Context(), githubauth.Config{
+		ClientID: clientID,
+		Notify: func(p githubauth.Prompt) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Open %s and enter code: %s\n", p.VerificationURI, p.UserCode)
+		},
+	})
 }
 
 // isInteractive reports whether stdin is a real terminal; a pipe or test

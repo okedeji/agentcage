@@ -404,7 +404,7 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, err
 		in.Env = map[string]string{}
 	}
 	if in.Vesselfile != nil {
-		if err := injectOperatorValues(in.Env, in.Vesselfile.Env, in.Vesselfile.Secrets, in.OpEnv, in.OpSecrets); err != nil {
+		if err := injectOperatorValues(in.Env, in.Vesselfile.Env, in.Vesselfile.Secrets, in.Vesselfile.Optional, in.OpEnv, in.OpSecrets); err != nil {
 			return nil, nil, fmt.Errorf("agent %s: %w", rootAgentKey, err)
 		}
 	}

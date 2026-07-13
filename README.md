@@ -38,11 +38,12 @@ brew install --cask okedeji/tap/mcpvessel
 mcpvessel init
 ```
 
-Put the MCP servers you use behind one caged endpoint:
+Take a real MCP server, GitHub's, and put it behind a caged endpoint. It needs a token, so store that first (read from stdin, never on the command line):
 
 ```sh
-mcpvessel import npm:@modelcontextprotocol/server-github pypi:mcp-server-time
-mcpvessel serve --listen 127.0.0.1:7000 ./server-github ./mcp-server-time
+mcpvessel secrets set GITHUB_PERSONAL_ACCESS_TOKEN
+mcpvessel import io.github.github/github-mcp-server --secret GITHUB_PERSONAL_ACCESS_TOKEN --dir ./github
+mcpvessel serve --listen 127.0.0.1:7000 --secret GITHUB_PERSONAL_ACCESS_TOKEN --egress api.github.com ./github
 ```
 
 That prints one URL. Point Claude, Cursor, or any MCP client at it:
@@ -51,25 +52,56 @@ That prints one URL. Point Claude, Cursor, or any MCP client at it:
 http://127.0.0.1:7000/mcp
 ```
 
-Every server's tools appear together on that single URL, and your client calls them exactly as before. Each server runs in its own container on its own network: no host access, no outbound network it did not request, no provider keys, and no route to the other servers. A compromised server is isolated from the rest and from your machine.
+All of GitHub's tools appear on that URL, and your client calls them exactly as before. The server runs in its own container with the internet switched off except for `api.github.com`, and its token stays inside the cage: it reaches GitHub and nowhere else, and it can never leave.
 
-It accepts any MCP server from npm, PyPI, or a container image, whether or not it is in a registry. One server or several, the commands are the same.
+Not sure which hosts a server needs? Run it in audit mode and mcpvessel prints the exact line to allow:
+
+```sh
+mcpvessel observe --secret GITHUB_PERSONAL_ACCESS_TOKEN ./github
+# exercise it through your client, then it reports:
+#   Observed egress:
+#     EGRESS allow:api.github.com
+```
+
+Put several servers behind the same endpoint by importing more and serving them together, each in its own container with no route to the others:
+
+```sh
+mcpvessel import pypi:mcp-server-time --dir ./time
+mcpvessel serve --listen 127.0.0.1:7000 \
+  --secret GITHUB_PERSONAL_ACCESS_TOKEN --egress github:api.github.com ./github ./time
+```
+
+Every server's tools appear together on that single URL. `--egress github:...` scopes the allowance to the one server that needs it; the time server gets no network, since it needs none. It accepts any MCP server from npm, PyPI, or a container image, whether or not it is in a registry.
 
 ## Give it a brain
 
-A caged server exposes tools for an MCP client like Claude to call, so your client does the thinking. Add `--reasoning` and the thinking moves inside the cage: the same servers become one agent that takes a goal and decides which tools to call, and in what order, on its own. You turn a set of MCP servers into an agent with one flag, and write no agent code:
+A caged server exposes tools for an MCP client like Claude to call, so your client does the thinking. Add `--reasoning` and the thinking moves inside the cage: the same servers become one agent that takes a goal and decides which tools to call, and in what order, on its own. You turn a set of MCP servers into an agent with one flag, and write no agent code.
+
+Compose an on-call helper that reasons across Sentry and Brave Search. Store their keys, then wrap both under one reasoning agent:
 
 ```sh
-mcpvessel import io.github.getsentry/sentry-mcp io.github.brave/brave-search-mcp-server --reasoning -t @me/oncall:0.1
-mcpvessel run @me/oncall:0.1 "what is causing our top Sentry error this week, and how do I fix it?"
+mcpvessel secrets set SENTRY_ACCESS_TOKEN
+mcpvessel secrets set BRAVE_API_KEY
+mcpvessel import io.github.getsentry/sentry-mcp io.github.brave/brave-search-mcp-server \
+  --reasoning -t @me/oncall:0.1 --secret SENTRY_ACCESS_TOKEN --secret BRAVE_API_KEY
 ```
 
-This wraps both servers and runs an LLM tool-use loop over them, caged alongside them, with a per-run spend cap. The result is an agent you invoke like any other, and the servers stay sandboxed as before.
+Run it with a goal. Pass the same keys and allow the servers the hosts they reach (find them with `mcpvessel observe`, or a blocked call names the one it wanted); the model comes from your `mcpvessel config`:
+
+```sh
+mcpvessel run @me/oncall:0.1 "what is causing our top Sentry error this week, and how do I fix it?" \
+  --secret SENTRY_ACCESS_TOKEN --secret BRAVE_API_KEY \
+  --egress sentry.io --egress api.search.brave.com
+```
+
+This runs an LLM tool-use loop over both servers, caged alongside them, with a per-run spend cap. The result is an agent you invoke like any other, and the servers stay sandboxed as before.
 
 It does not have to live in your terminal. Serve it and it is an HTTP endpoint you can hit with nothing but `curl`:
 
 ```sh
-mcpvessel serve --listen 127.0.0.1:7000 @me/oncall:0.1
+mcpvessel serve --listen 127.0.0.1:7000 \
+  --secret SENTRY_ACCESS_TOKEN --secret BRAVE_API_KEY \
+  --egress sentry.io --egress api.search.brave.com @me/oncall:0.1
 curl -sX POST 127.0.0.1:7000/agents/oncall -d '{"prompt":"what is causing our top Sentry error, and how do I fix it?"}'
 # {"result": "..."}
 ```
@@ -90,7 +122,7 @@ A teammate pulls and runs it, sandboxed the same way, without importing or build
 mcpvessel run @me/oncall:0.1 "..."
 ```
 
-It is signed on push and verified on pull, so they run exactly what you built, caged the same way.
+It is signed on push and verified on pull, so they run exactly what you built, caged the same way. The publisher key fingerprint and how to verify a pull are in [SECURITY.md](SECURITY.md#signing-and-trust).
 
 ## What the cage actually does
 
@@ -168,6 +200,7 @@ Reference for the full command surface. You only need `import` and `serve` to ge
 | `serve` | Serve a caged agent to MCP clients over HTTP |
 | `run` | Run an agent by routing a prompt to its main tool |
 | `call` | Call a specific tool on an agent by name |
+| `observe` | Watch a caged server in audit mode to learn its egress hosts |
 | `build` | Build an agent bundle from a Vesselfile |
 | `push` / `pull` | Push or pull an agent bundle to or from an OCI registry |
 | `search` / `register` | Find agents on, or publish to, the MCP Registry |

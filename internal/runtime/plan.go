@@ -270,7 +270,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 			}
 		}
 		if node.Manifest != nil {
-			if err := injectOperatorValues(agentEnv, node.Manifest.Vesselfile.Env, node.Manifest.Vesselfile.Secrets, ops.env, ops.secrets); err != nil {
+			if err := injectOperatorValues(agentEnv, node.Manifest.Vesselfile.Env, node.Manifest.Vesselfile.Secrets, node.Manifest.Vesselfile.Optional, ops.env, ops.secrets); err != nil {
 				return nil, fmt.Errorf("agent %s: %w", key, err)
 			}
 		}
@@ -310,7 +310,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	}
 	if rootManifest := tree.Nodes[tree.Root].Manifest; rootManifest != nil {
 		root := rootManifest.Vesselfile
-		if err := injectOperatorValues(plan.RootEnv, root.Env, root.Secrets, ops.env, ops.secrets); err != nil {
+		if err := injectOperatorValues(plan.RootEnv, root.Env, root.Secrets, root.Optional, ops.env, ops.secrets); err != nil {
 			return nil, fmt.Errorf("agent %s: %w", tree.Root, err)
 		}
 	}

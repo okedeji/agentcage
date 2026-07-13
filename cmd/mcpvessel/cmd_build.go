@@ -20,6 +20,7 @@ import (
 	"github.com/okedeji/mcpvessel/internal/runtime"
 	"github.com/okedeji/mcpvessel/internal/store"
 	"github.com/okedeji/mcpvessel/internal/vesselfile"
+	"github.com/okedeji/mcpvessel/internal/wrap"
 )
 
 func newBuildCmd() *cobra.Command {
@@ -146,6 +147,12 @@ func buildIntoStore(ctx context.Context, stdout, stderr io.Writer, cfg buildConf
 		return "", "", err
 	}
 
+	// Stage the mcp-bridge before hashing so a hand-written agent builds without
+	// the author copying a binary in themselves.
+	if err := stageBridge(cfg.srcDir, stderr); err != nil {
+		return "", "", err
+	}
+
 	// Anchor the hash on the store dir (outside the source tree) so it
 	// matches the files_hash bundle.Build recomputes when writing the bundle.
 	hash, err = bundle.HashSource(cfg.srcDir, st.Dir())
@@ -172,6 +179,26 @@ func buildIntoStore(ctx context.Context, stdout, stderr io.Writer, cfg buildConf
 		return "", "", err
 	}
 	return hash, cfg.outPath, nil
+}
+
+// stageBridge copies the mcp-bridge binary into srcDir when the Vesselfile's
+// ENTRYPOINT runs it and it is not already present, so `mcpvessel build` on a
+// hand-written agent works without the author staging a linux binary by hand.
+// import already does this for generated agents; this brings build to parity. A
+// Vesselfile that does not parse or does not use the bridge is left untouched.
+func stageBridge(srcDir string, stderr io.Writer) error {
+	af, err := vesselfile.ParseFile(filepath.Join(srcDir, bundle.VesselfileName))
+	if err != nil || !strings.Contains(af.Entrypoint, wrap.BridgeSubcommand) {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(srcDir, wrap.BridgeBinaryName)); err == nil {
+		return nil // already staged, by import or by hand
+	}
+	if err := writeBridgeBinary(srcDir); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(stderr, "Staged the mcp-bridge into %s.\n", srcDir)
+	return nil
 }
 
 // validateEvalSuite fails the build when a declared EVAL suite escapes the

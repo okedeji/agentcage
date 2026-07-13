@@ -27,9 +27,13 @@ type Vesselfile struct {
 	Resources      *Resources        // RESOURCES: advisory cpu/mem/pids hint; nil when unset
 	Env            map[string]string // ENV: author-supplied environment variables, or value-less operator-required inputs
 	Secrets        []string          // SECRETS: secret keys to inject at runtime
-	Egress         string            // EGRESS: egress policy ("deny-default" or "allow:domain,domain")
-	Meta           map[string]string // META: registry discovery metadata
-	Eval           string            // EVAL: path to the eval suite
+	// Optional lists ENV/SECRETS names marked optional (a trailing "?"): injected
+	// when the operator supplies them, absent otherwise, never failing the boot.
+	// For a server whose tool needs a key only for an extra capability.
+	Optional []string
+	Egress   string            // EGRESS: egress policy ("deny-default" or "allow:domain,domain")
+	Meta     map[string]string // META: registry discovery metadata
+	Eval     string            // EVAL: path to the eval suite
 }
 
 // Use is one USES dependency. Public mirrors the PUBLIC modifier; Deny

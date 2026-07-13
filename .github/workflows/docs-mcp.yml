@@ -1,0 +1,107 @@
+name: Docs MCP
+
+# Build the docs-assistant MCP server and push it to GHCR, dogfooding mcpvessel
+# itself (build -> sign -> push -> register). It fires two ways:
+#
+#   - a push to main that touches tools/docs-mcp/** -> publish the moving :edge
+#     tag (OCI only, no registry churn). The server reads the docs live from
+#     GitHub at call time, so the image only actually changes when server.py or
+#     the Vesselfile changes, which is exactly what the path filter catches.
+#   - a docs-mcp-v* tag (e.g. docs-mcp-v0.1.0) -> publish the pinned version and
+#     register it in the MCP Registry so users can discover and import it.
+#
+# Required repo secrets:
+#   MCPVESSEL_SIGNING_KEY        contents of `mcpvessel keys export`, so every
+#                               publish signs with one stable key (pulls pin it;
+#                               a rotating key would break trust for anyone who
+#                               already pulled).
+#   MCP_REGISTRY_GITHUB_TOKEN   a GitHub token (PAT) owned by the namespace user,
+#                               exchanged for the MCP Registry bearer. Only used
+#                               on tag builds that register.
+#
+# One-time manual step: after the first push, make the GHCR package public
+# (Packages -> mcpvessel-docs -> visibility). The registry publish refuses to
+# advertise a bundle that is not anonymously pullable, so --public fails until
+# the package is public.
+
+on:
+  push:
+    branches: [main]
+    paths: ["tools/docs-mcp/**"]
+    tags: ["docs-mcp-v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      # ghcr.io/<owner>/mcpvessel-docs. Keys off the owner, not the repo slug, so
+      # it survives a repo rename. ReverseDNSName derives io.github.<owner>/... .
+      IMAGE: ghcr.io/${{ github.repository_owner }}/mcpvessel-docs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # mcpvessel's Linux path talks to the rootful containerd + buildkit sockets
+      # (/run/containerd, /run/buildkit), so install the nerdctl "full" bundle
+      # (containerd + buildkitd + CNI + nerdctl) as system services and run
+      # mcpvessel as root against them.
+      - name: Install containerd + buildkit + nerdctl
+        run: |
+          set -euo pipefail
+          NERDCTL_VERSION=2.0.3
+          curl -fsSL -o /tmp/nerdctl-full.tgz \
+            "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-full-${NERDCTL_VERSION}-linux-amd64.tar.gz"
+          sudo tar Cxzf /usr/local /tmp/nerdctl-full.tgz
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now containerd buildkit
+          # Wait for both sockets to appear before the first build.
+          for i in $(seq 1 30); do
+            [ -S /run/containerd/containerd.sock ] && [ -S /run/buildkit/buildkitd.sock ] && break
+            sleep 1
+          done
+          sudo /usr/local/bin/nerdctl version
+
+      - name: Build the mcpvessel CLI
+        run: make build
+
+      # Restore the stable signing key so every publish is signed with the same
+      # identity pulls have already pinned.
+      - name: Restore signing key
+        run: printf '%s' "${{ secrets.MCPVESSEL_SIGNING_KEY }}" | sudo -H ./bin/mcpvessel keys import
+
+      - name: Build, sign, push (and register on a tag)
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF}" == refs/tags/docs-mcp-v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/docs-mcp-v}"
+            REGISTER=1
+          else
+            TAG="edge"
+            REGISTER=0
+          fi
+          REF="${IMAGE}:${TAG}"
+          echo "Publishing ${REF} (register=${REGISTER})"
+
+          # OCI login: the Actions token can push to packages under this owner.
+          printf '%s' "${{ secrets.GITHUB_TOKEN }}" \
+            | sudo -H ./bin/mcpvessel login "ghcr.io" -u "${{ github.repository_owner }}" --password-stdin
+
+          # build auto-stages the mcp-bridge into the source tree before hashing.
+          sudo -H ./bin/mcpvessel build ./tools/docs-mcp -t "${REF}"
+
+          if [[ "${REGISTER}" == "1" ]]; then
+            printf '%s' "${{ secrets.MCP_REGISTRY_GITHUB_TOKEN }}" \
+              | sudo -H ./bin/mcpvessel login mcp-registry --password-stdin
+            sudo -H ./bin/mcpvessel push "${REF}" --public
+          else
+            sudo -H ./bin/mcpvessel push "${REF}" --private
+          fi
