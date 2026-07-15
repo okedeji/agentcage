@@ -2,7 +2,71 @@ package runtime
 
 import (
 	"fmt"
+	"sort"
 )
+
+// ScopedSecrets is the operator's secret pool, keyed by agent scope; "" is
+// the broadcast pool every agent draws from. An agent's effective pool is
+// the broadcast plus its own scope, the scoped value winning a name
+// collision. Scopes let one run grant a secret to a single agent
+// (--secret agent:NAME) instead of to every agent that declares its name,
+// the same choice --egress gives for hosts.
+type ScopedSecrets map[string]map[string]string
+
+// For resolves one agent's effective pool: broadcast overlaid by its scope.
+func (s ScopedSecrets) For(scope string) map[string]string {
+	if len(s) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(s[""])+len(s[scope]))
+	for k, v := range s[""] {
+		out[k] = v
+	}
+	if scope != "" {
+		for k, v := range s[scope] {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// Flatten merges every scope into one pool, for boots with a single agent
+// (introspection, eval) where scoping has nothing to distinguish.
+func (s ScopedSecrets) Flatten() map[string]string {
+	if len(s) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for _, pool := range s {
+		for k, v := range pool {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// Scopes lists the non-broadcast scope names, sorted, so a boot can flag a
+// scope that matches no agent in the run instead of silently granting
+// nothing.
+func (s ScopedSecrets) Scopes() []string {
+	var out []string
+	for scope := range s {
+		if scope != "" {
+			out = append(out, scope)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Broadcast wraps a flat pool as an unscoped ScopedSecrets, for callers that
+// have no scoping to express.
+func Broadcast(pool map[string]string) ScopedSecrets {
+	if len(pool) == 0 {
+		return nil
+	}
+	return ScopedSecrets{"": pool}
+}
 
 // injectOperatorValues adds the operator's env overrides and secret values to
 // one agent's container env, scoped to what the agent declares. An undeclared

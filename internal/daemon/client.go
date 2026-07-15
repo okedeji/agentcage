@@ -342,7 +342,7 @@ type ServeTarget struct {
 
 // Serve asks the daemon to register the bundles' exposed sets and open one
 // MCP front door bound to listen.
-func (c *Client) Serve(ctx context.Context, targets []ServeTarget, listen string, expose, noExpose []string, observe bool, egress map[string][]string, env, secrets map[string]string) (ServeResult, error) {
+func (c *Client) Serve(ctx context.Context, targets []ServeTarget, listen string, expose, noExpose []string, observe bool, egress map[string][]string, env map[string]string, secrets runtime.ScopedSecrets) (ServeResult, error) {
 	var out ServeResult
 	err := c.post(ctx, "/serve", map[string]any{
 		"bundles":   targets,

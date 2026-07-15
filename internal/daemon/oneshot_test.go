@@ -11,17 +11,23 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 func TestRunRequest_RedactsSecrets(t *testing.T) {
 	req := RunRequest{
-		Ref:     "@me/x:0.1",
-		Tool:    "respond",
-		Env:     map[string]string{"REGION": "eu"},
-		Secrets: map[string]string{"OPENAI_API_KEY": "sk-supersecret"},
+		Ref:  "@me/x:0.1",
+		Tool: "respond",
+		Env:  map[string]string{"REGION": "eu"},
+		// Both the broadcast pool and a scoped grant must stay unrendered.
+		Secrets: runtime.ScopedSecrets{
+			"":    {"OPENAI_API_KEY": "sk-supersecret"},
+			"sub": {"SENTRY_TOKEN": "sk-scopedsecret"},
+		},
 	}
 	for _, s := range []string{req.String(), req.GoString()} {
-		if strings.Contains(s, "sk-supersecret") {
+		if strings.Contains(s, "sk-supersecret") || strings.Contains(s, "sk-scopedsecret") {
 			t.Errorf("rendered request leaks a secret value: %q", s)
 		}
 		if strings.Contains(s, "eu") {

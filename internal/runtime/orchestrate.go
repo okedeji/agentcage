@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,7 +37,7 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 	// the more specific choice.
 	res := cfg.Resources
 	res.Defaults = overlayCap(in.Resources, res.Defaults)
-	ops := operatorInputs{env: in.Env, secrets: in.Secrets, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), keepWarm: cfg.Cages.KeepWarm, maxLive: cfg.Cages.EffectiveMaxLive(), record: in.Record, egressAllow: in.EgressAllow}
+	ops := operatorInputs{env: in.Env, secrets: in.Secrets, rootName: in.Name, models: cfg.Models, resources: res, managed: in.Managed, prewarm: cfg.Cages.EffectivePrewarm(), keepWarm: cfg.Cages.KeepWarm, maxLive: cfg.Cages.EffectiveMaxLive(), record: in.Record, egressAllow: in.EgressAllow}
 
 	// The machine memory cap applies to both boot paths; the live-cage caps
 	// and idle TTL only bound a USES tree's elastic set.
@@ -55,6 +56,7 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 	if err != nil {
 		return nil, nil, err
 	}
+	warnSecretShapes(in.Stderr, tree, in.Name, in.Secrets)
 	plan, err := buildRunPlan(tree, runID, ops)
 	if err != nil {
 		return nil, nil, err
@@ -64,6 +66,50 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 	boot.HostMax = cfg.Cages.EffectiveHostMaxLive()
 	boot.IdleTTL = cfg.Cages.EffectiveIdleTTL()
 	return bootTree(ctx, boot, tree, plan, runID)
+}
+
+// warnSecretShapes flags two grant shapes worth an operator's eye before a
+// tree boots. A broadcast-granted secret declared by more than one agent
+// reaches all of them, which is legitimate but also the exact shape of a
+// sibling harvesting a credential meant for another; naming it lets the
+// operator scope the grant. A scope matching no agent in the run grants
+// nothing, silently, which is almost always a typo.
+func warnSecretShapes(w io.Writer, tree *runTree, rootName string, secrets ScopedSecrets) {
+	if w == nil || len(secrets) == 0 {
+		return
+	}
+	scopes := map[string]bool{rootName: true}
+	declaredBy := map[string][]string{}
+	for _, key := range sortedNodeKeys(tree.Nodes) {
+		node := tree.Nodes[key]
+		scope := rootName
+		if key != tree.Root {
+			scope = usesAlias(node.Ref.Repository)
+			scopes[scope] = true
+		}
+		if node.Manifest == nil {
+			continue
+		}
+		for _, name := range node.Manifest.Vesselfile.Secrets {
+			declaredBy[name] = append(declaredBy[name], scope)
+		}
+	}
+	names := make([]string, 0, len(declaredBy))
+	for name := range declaredBy {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if _, broadcast := secrets[""][name]; broadcast && len(declaredBy[name]) > 1 {
+			_, _ = fmt.Fprintf(w, "warning: agents %s all declare secret %s and the broadcast grant reaches every one of them; scope it with --secret <agent>:%s if only one should have it\n",
+				strings.Join(declaredBy[name], ", "), name, name)
+		}
+	}
+	for _, scope := range secrets.Scopes() {
+		if !scopes[scope] {
+			_, _ = fmt.Fprintf(w, "warning: --secret scope %q matches no agent in this run; nothing was granted under it\n", scope)
+		}
+	}
 }
 
 // resolveRunTree walks the root's transitive USES graph, pulling each

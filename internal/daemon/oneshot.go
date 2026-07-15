@@ -23,16 +23,18 @@ import (
 // String and GoString redact Secrets and Env so a logged request never leaks
 // them; JSON marshaling stays real because it is the wire format.
 type RunRequest struct {
-	Ref       string              `json:"ref"`
-	Tool      string              `json:"tool"`
-	Args      map[string]any      `json:"args,omitempty"`
-	Budget    int64               `json:"budget,omitempty"`
-	Env       map[string]string   `json:"env,omitempty"`
-	Secrets   map[string]string   `json:"secrets,omitempty"`
-	Resources config.Cap          `json:"resources,omitempty"`
-	NoCache   bool                `json:"no_cache,omitempty"`
-	Record    bool                `json:"record,omitempty"`
-	Egress    map[string][]string `json:"egress,omitempty"` // scoped per-agent operator override
+	Ref    string            `json:"ref"`
+	Tool   string            `json:"tool"`
+	Args   map[string]any    `json:"args,omitempty"`
+	Budget int64             `json:"budget,omitempty"`
+	Env    map[string]string `json:"env,omitempty"`
+	// Secrets is scoped: "" is the broadcast pool, any other key grants only
+	// the agent with that short name (run name or USES alias).
+	Secrets   runtime.ScopedSecrets `json:"secrets,omitempty"`
+	Resources config.Cap            `json:"resources,omitempty"`
+	NoCache   bool                  `json:"no_cache,omitempty"`
+	Record    bool                  `json:"record,omitempty"`
+	Egress    map[string][]string   `json:"egress,omitempty"` // scoped per-agent operator override
 	// TimeoutSeconds bounds the tool call, not the boot: a first-use image
 	// build can take minutes and must not count against the deadline. Zero
 	// means no deadline.

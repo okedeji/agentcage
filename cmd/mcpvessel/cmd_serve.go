@@ -68,7 +68,7 @@ shuts down.`,
 			// hosts are allowed for this serve only, and never touch the bundle.
 			runtimeEgress := scoped
 			if save {
-				if err := saveEgress(cmd.Context(), cmd.ErrOrStderr(), args, scoped, envPool, secretPool); err != nil {
+				if err := saveEgress(cmd.Context(), cmd.ErrOrStderr(), args, scoped, envPool, secretPool.Flatten()); err != nil {
 					return err
 				}
 				runtimeEgress = nil
@@ -79,7 +79,7 @@ shuts down.`,
 					return err
 				}
 			}
-			bakedEgress, err := prebuildServeImages(cmd.Context(), cmd.ErrOrStderr(), targets, expose, noExpose)
+			policies, err := prebuildServeImages(cmd.Context(), cmd.ErrOrStderr(), targets, expose, noExpose)
 			if err != nil {
 				return err
 			}
@@ -117,7 +117,16 @@ shuts down.`,
 			_, _ = fmt.Fprintln(out, "Egress:")
 			for _, a := range res.Agents {
 				_, _ = fmt.Fprintf(out, "  %s: %s\n", a.Address,
-					formatEgress(egress.AllowHosts(bakedEgress[a.Address]), egress.HostsFor(scoped, a.Address)))
+					formatEgress(egress.AllowHosts(policies[a.Address].Egress), egress.HostsFor(scoped, a.Address)))
+			}
+			// And which declared secrets each agent will actually receive:
+			// a broadcast --secret reaches every agent declaring its name,
+			// agent:NAME pins it to one.
+			_, _ = fmt.Fprintln(out, "Secrets:")
+			for _, a := range res.Agents {
+				pol := policies[a.Address]
+				_, _ = fmt.Fprintf(out, "  %s: %s\n", a.Address,
+					formatSecretGrants(pol.Secrets, pol.Optional, secretPool.For(a.Address)))
 			}
 			_, _ = fmt.Fprintln(out, "Plain HTTP on the same port:")
 			_, _ = fmt.Fprintln(out, "  POST /agents/<name>/tools/<tool>  call a tool with JSON args")
@@ -130,12 +139,20 @@ shuts down.`,
 	cmd.Flags().StringArrayVar(&noExpose, "no-expose", nil, "hide this agent even if USES PUBLIC, matched by repository (repeatable)")
 	cmd.Flags().StringArrayVar(&egressFlags, "egress", nil, "allow a served agent hosts for this run: host,host, or agent:host,host to scope one of several (repeatable)")
 	cmd.Flags().BoolVar(&save, "save", false, "with --egress, write the hosts into the agent's Vesselfile and rebuild instead of allowing them for this run only (source directories only)")
-	cmd.Flags().StringArrayVar(&secretFlags, "secret", nil, "supply a secret NAME a served agent needs, resolved from your environment or the mcpvessel secret store (repeatable)")
-	cmd.Flags().StringVar(&secretFile, "secret-file", "", "read secret values (NAME=VALUE per line) from a perms-restricted file")
+	cmd.Flags().StringArrayVar(&secretFlags, "secret", nil, "supply a secret NAME a served agent needs, or agent:NAME to grant one agent of several; the value resolves from your environment or the mcpvessel secret store (repeatable)")
+	cmd.Flags().StringVar(&secretFile, "secret-file", "", "read secret values ([agent:]NAME=VALUE per line) from a perms-restricted file")
 	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "supply an env value a served agent needs: KEY=VALUE, or KEY to pass it through from your environment (repeatable)")
 	cmd.Flags().StringVar(&envFile, "env-file", "", "read env values (KEY=VALUE per line) from a file")
 	_ = cmd.MarkFlagRequired("listen")
 	return cmd
+}
+
+// exposedPolicy is what the boot-time reports need from one exposed agent's
+// manifest: its baked egress policy and its declared secrets.
+type exposedPolicy struct {
+	Egress   string
+	Secrets  []string
+	Optional []string
 }
 
 // prebuildServeImages builds, before the front door opens, every image the
@@ -146,12 +163,14 @@ shuts down.`,
 // belongs in this terminal, not inside an MCP error in Cursor. Everything is
 // content-addressed, so already-built bundles cost an existence check.
 //
-// It also returns each exposed agent's baked EGRESS policy by address, for
-// the boot-time egress report: the daemon honors a bundle's baked hosts with
-// no flag at all, so serve must show them before any traffic flows.
-func prebuildServeImages(ctx context.Context, stderr io.Writer, targets []daemon.ServeTarget, expose, noExpose []string) (map[string]string, error) {
+// It also returns each exposed agent's baked EGRESS policy and declared
+// secrets by address, for the boot-time reports: the daemon honors a
+// bundle's baked hosts with no flag at all, and injects a granted secret
+// into any agent declaring its name, so serve must show both before any
+// traffic flows.
+func prebuildServeImages(ctx context.Context, stderr io.Writer, targets []daemon.ServeTarget, expose, noExpose []string) (map[string]exposedPolicy, error) {
 	prebuilt := map[string]bool{}
-	baked := map[string]string{}
+	baked := map[string]exposedPolicy{}
 	for _, t := range targets {
 		b, err := locate.Bundle(ctx, t.Ref)
 		if err != nil {
@@ -175,7 +194,11 @@ func prebuildServeImages(ctx context.Context, stderr io.Writer, targets []daemon
 		}
 		for _, ea := range exposed {
 			if m, err := bundle.ReadManifest(ea.Bundle); err == nil {
-				baked[ea.Address] = m.Vesselfile.Egress
+				baked[ea.Address] = exposedPolicy{
+					Egress:   m.Vesselfile.Egress,
+					Secrets:  m.Vesselfile.Secrets,
+					Optional: m.Vesselfile.Optional,
+				}
 			}
 			if prebuilt[ea.Bundle] {
 				continue

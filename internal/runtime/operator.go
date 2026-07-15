@@ -5,8 +5,12 @@ import "github.com/okedeji/mcpvessel/internal/config"
 // operatorInputs carries the per-run operator values the planner needs,
 // loaded once per run from RunInput and the config file.
 type operatorInputs struct {
-	env       map[string]string
-	secrets   map[string]string
+	env map[string]string
+	// secrets is scoped: the broadcast pool plus per-agent grants keyed by
+	// the run name (root) or a USES alias (sub-agents).
+	secrets ScopedSecrets
+	// rootName is the root agent's secret scope, the resolved run name.
+	rootName  string
 	models    map[string]string
 	resources config.Resources
 	// managed labels planned containers so a restarted daemon can sweep orphans.

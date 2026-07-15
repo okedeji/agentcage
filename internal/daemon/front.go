@@ -28,9 +28,11 @@ type serveRequest struct {
 	Expose   []string            `json:"expose,omitempty"`
 	NoExpose []string            `json:"no_expose,omitempty"`
 	Observe  bool                `json:"observe,omitempty"`
-	Egress   map[string][]string `json:"egress,omitempty"`  // scoped per-agent operator override
-	Env      map[string]string   `json:"env,omitempty"`     // operator env pool, scoped per agent by declaration
-	Secrets  map[string]string   `json:"secrets,omitempty"` // operator secret pool, scoped per agent by declaration
+	Egress   map[string][]string `json:"egress,omitempty"` // scoped per-agent operator override
+	Env      map[string]string   `json:"env,omitempty"`    // operator env pool, scoped per agent by declaration
+	// Secrets is the operator secret pool: broadcast under "", or granted to
+	// one agent under its short name; declaration still gates injection.
+	Secrets runtime.ScopedSecrets `json:"secrets,omitempty"`
 }
 
 // serveBundle is one bundle to serve; Name, when set, overrides the root
@@ -176,7 +178,7 @@ func (d *Daemon) handleServe(w http.ResponseWriter, r *http.Request) {
 // read from the bundle's catalog (no boot needed to list them), an instance
 // manager booting per-client instances on demand, and a serve entry in the
 // registry. On error it rolls back the entries already created.
-func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve, observe bool, scopedEgress map[string][]string, envPool, secretPool map[string]string) ([]serve.Agent, []string, error) {
+func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve, observe bool, scopedEgress map[string][]string, envPool map[string]string, secretPool runtime.ScopedSecrets) ([]serve.Agent, []string, error) {
 	agents := make([]serve.Agent, 0, len(services))
 	ids := make([]string, 0, len(services))
 	for _, svc := range services {

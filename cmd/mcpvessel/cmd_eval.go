@@ -91,9 +91,11 @@ with the provider key, never inside a cage.`,
 				caseName:   caseName,
 				judgeModel: judgeModel,
 				env:        envPool,
-				secrets:    secretPool,
-				results:    results,
-				logs:       cmd.ErrOrStderr(),
+				// One agent per eval run; a scoped grant has nothing to
+				// distinguish, so the pool flattens.
+				secrets: secretPool.Flatten(),
+				results: results,
+				logs:    cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err

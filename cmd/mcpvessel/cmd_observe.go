@@ -12,6 +12,7 @@ import (
 
 	"github.com/okedeji/mcpvessel/internal/config"
 	"github.com/okedeji/mcpvessel/internal/daemon"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // observeDefaultListen is where observe serves the agent so a client can reach
@@ -92,7 +93,7 @@ here: observe only records, then you add the line and rebuild.`,
 // observeEgressHosts serves target with its cage in audit mode, prints where to
 // reach it, records for dur (or until ctx is cancelled), then returns the sorted
 // set of hosts it reached. The front door is always torn down before returning.
-func observeEgressHosts(ctx context.Context, out io.Writer, socket string, target daemon.ServeTarget, listen string, dur time.Duration, env, secrets map[string]string) ([]string, error) {
+func observeEgressHosts(ctx context.Context, out io.Writer, socket string, target daemon.ServeTarget, listen string, dur time.Duration, env map[string]string, secrets runtime.ScopedSecrets) ([]string, error) {
 	client := daemon.Dial(socket)
 	since := time.Now()
 	res, err := client.Serve(ctx, []daemon.ServeTarget{target}, listen, nil, nil, true, nil, env, secrets)

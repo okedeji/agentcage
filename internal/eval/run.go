@@ -11,6 +11,7 @@ import (
 
 	"github.com/okedeji/mcpvessel/internal/bundle"
 	"github.com/okedeji/mcpvessel/internal/daemon"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // nowFunc is overridable so tests can pin the suite's elapsed time.
@@ -112,11 +113,13 @@ func runCase(ctx context.Context, d runner, j scorer, opts Options, c Case) Case
 	}
 
 	output, usage, err := d.RunOnceUsage(ctx, daemon.RunRequest{
-		Ref:            opts.Ref,
-		Tool:           c.Input.Tool,
-		Args:           c.Input.Args,
-		Env:            opts.Env,
-		Secrets:        opts.Secrets,
+		Ref:  opts.Ref,
+		Tool: c.Input.Tool,
+		Args: c.Input.Args,
+		Env:  opts.Env,
+		// Eval runs one agent; the flat pool broadcasts, scoping has nothing
+		// to distinguish.
+		Secrets:        runtime.Broadcast(opts.Secrets),
 		Budget:         c.Expect.MaxCostMicroUSD(),
 		TimeoutSeconds: int64(c.Expect.MaxDurationSeconds),
 	}, opts.Logs)

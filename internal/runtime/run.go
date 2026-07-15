@@ -28,9 +28,10 @@ type RunInput struct {
 	Budget int64
 
 	// Env and Secrets are operator value pools; each agent receives only the
-	// names its manifest declares.
+	// names its manifest declares. Secrets may additionally be scoped to one
+	// agent by its short name (the run name, or a sub-agent's USES alias).
 	Env     map[string]string
-	Secrets map[string]string
+	Secrets ScopedSecrets
 
 	// Resources overrides the default cap per field; a per-agent config cap
 	// still wins.
@@ -155,14 +156,15 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 		return nil, fmt.Errorf("re-parsing bundled Vesselfile: %w", err)
 	}
 
+	// The resolved name doubles as the root's secret scope, so a scoped
+	// --secret works whether or not the caller set Name explicitly.
+	if in.Name == "" {
+		in.Name = strings.TrimSuffix(filepath.Base(in.BundlePath), filepath.Ext(in.BundlePath))
+	}
 	runID := in.RunID
 	if runID == "" {
-		name := in.Name
-		if name == "" {
-			name = strings.TrimSuffix(filepath.Base(in.BundlePath), filepath.Ext(in.BundlePath))
-		}
 		// The suffix keeps repeated and concurrent runs of one bundle distinct.
-		runID = deriveRunID(name, manifest.FilesHash) + "-" + uniqueSuffix()
+		runID = deriveRunID(in.Name, manifest.FilesHash) + "-" + uniqueSuffix()
 	}
 
 	// Only an interactive boot gets a question channel; a one-shot boot never
@@ -183,7 +185,7 @@ func Acquire(ctx context.Context, in RunInput) (*Session, error) {
 		RunID:         runID,
 		Budget:        in.Budget,
 		OpEnv:         in.Env,
-		OpSecrets:     in.Secrets,
+		OpSecrets:     in.Secrets.For(in.Name),
 		Stdout:        in.Stdout,
 		Stderr:        in.Stderr,
 		Verbose:       in.Verbose,

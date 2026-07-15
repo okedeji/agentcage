@@ -102,9 +102,11 @@ tools: a single brain reasoning across every server.`,
 					mode:       mode,
 					noReuse:    noReuse,
 					env:        env,
-					secrets:    secrets,
-					egress:     egressScoped,
-					force:      force,
+					// Import boots servers one at a time for introspection;
+					// scoping distinguishes nothing here and flattens.
+					secrets: secrets.Flatten(),
+					egress:  egressScoped,
+					force:   force,
 				})
 			}
 
@@ -121,7 +123,7 @@ tools: a single brain reasoning across every server.`,
 
 			usedDir := map[string]bool{}
 			for _, arg := range args {
-				if err := importCollection(cmd, arg, dir, tag, entrypoint, mode, usedDir, env, secrets, egressScoped, force, observeEgress); err != nil {
+				if err := importCollection(cmd, arg, dir, tag, entrypoint, mode, usedDir, env, secrets.Flatten(), egressScoped, force, observeEgress); err != nil {
 					return err
 				}
 			}
@@ -244,7 +246,7 @@ func observeAndSetEgress(cmd *cobra.Command, outDir string, src wrap.Source, reb
 	if err != nil {
 		return err
 	}
-	hosts, err := observeEgressHosts(cmd.Context(), cmd.ErrOrStderr(), socket, target, observeDefaultListen, cfg.Serve.EffectiveObserveDuration(), env, secrets)
+	hosts, err := observeEgressHosts(cmd.Context(), cmd.ErrOrStderr(), socket, target, observeDefaultListen, cfg.Serve.EffectiveObserveDuration(), env, runtime.Broadcast(secrets))
 	if err != nil {
 		return err
 	}

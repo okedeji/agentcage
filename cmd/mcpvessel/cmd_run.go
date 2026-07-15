@@ -14,6 +14,7 @@ import (
 	"github.com/okedeji/mcpvessel/internal/daemon"
 	"github.com/okedeji/mcpvessel/internal/egress"
 	"github.com/okedeji/mcpvessel/internal/locate"
+	"github.com/okedeji/mcpvessel/internal/runtime"
 	"github.com/okedeji/mcpvessel/internal/secrets"
 )
 
@@ -97,9 +98,11 @@ A bundle with no MAIN is a tool collection. Call one of its tools by name with
 			scoped := egress.ParseScoped(egressFlags)
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "egress: %s\n",
 				formatEgress(egress.AllowHosts(manifest.Vesselfile.Egress), egress.HostsFor(scoped, b.Name)))
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "secrets: %s\n",
+				formatSecretGrants(manifest.Vesselfile.Secrets, manifest.Vesselfile.Optional, secretPool.For(b.Name)))
 			runtimeEgress := scoped
 			if save {
-				if err := saveEgress(cmd.Context(), cmd.ErrOrStderr(), args[:1], scoped, envPool, secretPool); err != nil {
+				if err := saveEgress(cmd.Context(), cmd.ErrOrStderr(), args[:1], scoped, envPool, secretPool.Flatten()); err != nil {
 					return err
 				}
 				runtimeEgress = nil
@@ -133,10 +136,10 @@ A bundle with no MAIN is a tool collection. Call one of its tools by name with
 	cmd.Flags().StringVar(&budget, "budget", "", "cap the run's LLM spend in USD, e.g. 5.00 (overrides the agent's advisory BUDGET)")
 	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "supply an env value: KEY=VALUE, or KEY to pass it through from your environment (repeatable)")
 	cmd.Flags().StringVar(&envFile, "env-file", "", "read env values (KEY=VALUE per line) from a file")
-	cmd.Flags().StringArrayVar(&secretFlags, "secret", nil, "supply a secret NAME, resolved from your environment or the mcpvessel secret store (repeatable)")
+	cmd.Flags().StringArrayVar(&secretFlags, "secret", nil, "supply a secret NAME, or agent:NAME to grant one agent of several; the value resolves from your environment or the mcpvessel secret store (repeatable)")
 	cmd.Flags().StringArrayVar(&egressFlags, "egress", nil, "allow the agent hosts for this run: host,host, or agent:host,host to scope one (repeatable)")
 	cmd.Flags().BoolVar(&save, "save", false, "with --egress, write the hosts into the agent's Vesselfile and rebuild instead of allowing them for this run only (source directories only)")
-	cmd.Flags().StringVar(&secretFile, "secret-file", "", "read secret values (NAME=VALUE per line) from a perms-restricted file")
+	cmd.Flags().StringVar(&secretFile, "secret-file", "", "read secret values ([agent:]NAME=VALUE per line) from a perms-restricted file")
 	cmd.Flags().StringVar(&memory, "memory", "", "per-cage memory cap for this run, e.g. 2g (overrides the configured default)")
 	cmd.Flags().StringVar(&cpus, "cpus", "", "per-cage CPU cap for this run, e.g. 2 or 0.5")
 	cmd.Flags().IntVar(&pids, "pids", 0, "per-cage pids cap for this run")
@@ -146,8 +149,10 @@ A bundle with no MAIN is a tool collection. Call one of its tools by name with
 // buildInputPools resolves the env and secret flags into the pools the runtime
 // injects per agent. --secret values come from the environment or the mcpvessel
 // store, never the command line, keeping them out of the process table; one
-// with no value anywhere fails closed.
-func buildInputPools(envFlags []string, envFile string, secretFlags []string, secretFile string) (envPool, secretPool map[string]string, err error) {
+// with no value anywhere fails closed. A NAME grants every agent that
+// declares it; agent:NAME grants only that agent, the same scoping --egress
+// gives hosts. The value always resolves by the bare NAME.
+func buildInputPools(envFlags []string, envFile string, secretFlags []string, secretFile string) (envPool map[string]string, secretPool runtime.ScopedSecrets, err error) {
 	envPool = map[string]string{}
 	if envFile != "" {
 		data, err := os.ReadFile(envFile)
@@ -174,7 +179,15 @@ func buildInputPools(envFlags []string, envFile string, secretFlags []string, se
 		}
 	}
 
-	secretPool = map[string]string{}
+	secretPool = runtime.ScopedSecrets{}
+	grant := func(scope, name, value string) {
+		pool := secretPool[scope]
+		if pool == nil {
+			pool = map[string]string{}
+			secretPool[scope] = pool
+		}
+		pool[name] = value
+	}
 	if secretFile != "" {
 		data, err := os.ReadFile(secretFile)
 		if err != nil {
@@ -187,9 +200,10 @@ func buildInputPools(envFlags []string, envFile string, secretFlags []string, se
 			}
 			k, v, ok := strings.Cut(line, "=")
 			if !ok {
-				return nil, nil, fmt.Errorf("--secret-file line %q is not NAME=VALUE", line)
+				return nil, nil, fmt.Errorf("--secret-file line %q is not [agent:]NAME=VALUE", line)
 			}
-			secretPool[k] = v
+			scope, name := splitSecretScope(k)
+			grant(scope, name, v)
 		}
 	}
 	if len(secretFlags) > 0 {
@@ -197,15 +211,26 @@ func buildInputPools(envFlags []string, envFile string, secretFlags []string, se
 		if err != nil {
 			return nil, nil, err
 		}
-		for _, name := range secretFlags {
+		for _, flag := range secretFlags {
+			scope, name := splitSecretScope(flag)
 			if v, ok := os.LookupEnv(name); ok {
-				secretPool[name] = v
+				grant(scope, name, v)
 			} else if v, ok := store.Get(name); ok {
-				secretPool[name] = v
+				grant(scope, name, v)
 			} else {
 				return nil, nil, fmt.Errorf("--secret %q is not in your environment or the secret store; store it first with 'mcpvessel secrets set %s' (reads the value from stdin), or export it in your environment", name, name)
 			}
 		}
 	}
 	return envPool, secretPool, nil
+}
+
+// splitSecretScope peels an optional agent scope off a --secret entry. A
+// secret name never contains a colon, so the colon unambiguously separates
+// "agent:NAME" from a bare NAME, the same grammar --egress uses for hosts.
+func splitSecretScope(s string) (scope, name string) {
+	if i := strings.Index(s, ":"); i >= 0 {
+		return strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+1:])
+	}
+	return "", strings.TrimSpace(s)
 }
