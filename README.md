@@ -44,24 +44,33 @@ It brings its own runtime, so there is no Docker or container engine to install.
 On macOS or Linux:
 
 ```sh
+# Install the signed cask (this also wires up shell completions).
 brew install --cask okedeji/tap/mcpvessel
+
+# One-time runtime setup; on macOS this fetches a small Linux VM.
 mcpvessel init
 ```
 
-Try it in one command. This pulls mcpvessel's own docs as a signed MCP server and runs it caged, no token, no config:
+> [!TIP]
+> **Try it in one command**, no token, no config. This pulls mcpvessel's own docs as a signed MCP server and runs it caged:
+>
+> ```sh
+> mcpvessel serve io.github.okedeji/mcpvessel-docs --listen 127.0.0.1:7000
+> # point your MCP client at http://127.0.0.1:7000/mcp and ask it anything about mcpvessel
+> ```
+
+Caging a server of your own works the same way, whichever server it is. The example below uses GitHub's, because it carries a real token the cage must keep from leaking:
 
 ```sh
-mcpvessel serve --listen 127.0.0.1:7000 io.github.okedeji/mcpvessel-docs
-# point your MCP client at http://127.0.0.1:7000/mcp and ask it anything about mcpvessel
-```
-
-Caging a server of your own works the same way, whichever server it is. The example below uses GitHub's, because it carries a real token the cage must keep from leaking. Three steps: store the token, wrap the server, expose it on one URL:
-
-```sh
+# Store the token. mcpvessel prompts for the value and hides your typing.
+# (Or pipe it in for scripts: mcpvessel secrets set NAME < token.txt)
 mcpvessel secrets set GITHUB_PERSONAL_ACCESS_TOKEN
-# Value: <paste the token; typing stays hidden. Or pipe it: mcpvessel secrets set NAME < token.txt>
-mcpvessel import io.github.github/github-mcp-server --secret GITHUB_PERSONAL_ACCESS_TOKEN
-mcpvessel serve --listen 127.0.0.1:7000 --secret GITHUB_PERSONAL_ACCESS_TOKEN --egress api.github.com ./github-mcp-server
+
+# Cage GitHub's MCP server, named @me/github:0.1.
+mcpvessel import io.github.github/github-mcp-server -t @me/github:0.1 --secret GITHUB_PERSONAL_ACCESS_TOKEN
+
+# Serve it on one URL, with api.github.com the only host it can reach.
+mcpvessel serve @me/github:0.1 --listen 127.0.0.1:7000 --secret GITHUB_PERSONAL_ACCESS_TOKEN --egress api.github.com
 ```
 
 That prints one URL. Point Claude, Cursor, or any MCP client at it:
@@ -72,11 +81,13 @@ http://127.0.0.1:7000/mcp
 
 All of GitHub's tools appear on that URL, and your client calls them exactly as before. The server runs in its own container with the internet switched off except for `api.github.com`, and its token stays inside the cage: it reaches GitHub and nowhere else, and it can never leave.
 
+`-t @me/github:0.1` is the caged server's handle: what you serve, push, and pull by. `import` also writes the editable source to `./github-mcp-server/`, yours to tweak and rebuild anytime.
+
 Not sure which hosts a server needs? Run it in audit mode and mcpvessel prints the exact line to allow:
 
 ```sh
-mcpvessel observe --secret GITHUB_PERSONAL_ACCESS_TOKEN ./github-mcp-server
-# exercise it through your client, then it reports:
+mcpvessel observe @me/github:0.1 --secret GITHUB_PERSONAL_ACCESS_TOKEN
+# exercise its tools (from your MCP client or with curl), then it reports:
 #   Observed egress:
 #     EGRESS allow:api.github.com
 ```
@@ -84,95 +95,87 @@ mcpvessel observe --secret GITHUB_PERSONAL_ACCESS_TOKEN ./github-mcp-server
 Put several servers behind the same endpoint by importing more and serving them together, each in its own container with no route to the others:
 
 ```sh
-mcpvessel import pypi:mcp-server-time
-mcpvessel serve --listen 127.0.0.1:7000 \
-  --secret GITHUB_PERSONAL_ACCESS_TOKEN --egress github-mcp-server:api.github.com \
-  ./github-mcp-server ./mcp-server-time
+# Cage a second server, a clock, named @me/time:0.1.
+mcpvessel import pypi:mcp-server-time -t @me/time:0.1
+
+# Serve both on one URL; --egress me-github:... grants hosts to only the GitHub server.
+mcpvessel serve @me/github:0.1 @me/time:0.1 \
+  --listen 127.0.0.1:7000 --secret GITHUB_PERSONAL_ACCESS_TOKEN \
+  --egress me-github:api.github.com
 ```
 
-Every server's tools appear together on that single URL. `--egress github-mcp-server:...` scopes the allowance to the one server that needs it; the time server gets no network, since it needs none.
+Every server's tools appear together on that single URL, each still in its own cage. `--egress me-github:api.github.com` grants that host to the GitHub server alone; `me-github` is its address, which `serve` prints. The time server gets no network, since it needs none.
 
 mcpvessel accepts any MCP server from npm, PyPI, or a container image, whether or not it is in a registry. If it runs as an MCP server, it can be caged.
 
 ## Give it a brain
 
-A caged server exposes tools for an MCP client like Claude to call, so your client does the thinking. Add `--reasoning` and the thinking moves inside the cage: the same servers become one agent that takes a goal and decides which tools to call, and in what order, on its own. You turn a set of MCP servers into an agent with one flag, and write no agent code.
+A caged server exposes tools while an MCP client like Claude does the thinking. Add `--reasoning` and the thinking moves inside the cage. The same servers become one agent that takes a goal and decides for itself which tools to call, in what order. One flag, no agent code.
 
-Compose an on-call helper that reasons across Sentry and Brave Search. Store their keys, then wrap both under one reasoning agent:
+Compose an on-call helper that reasons across Sentry and Brave Search:
 
 ```sh
+# Store each server's key (prompts for the value; typing stays hidden).
 mcpvessel secrets set SENTRY_ACCESS_TOKEN
 mcpvessel secrets set BRAVE_API_KEY
+
+# Compose both servers under one reasoning agent, named @me/oncall:0.1.
 mcpvessel import io.github.getsentry/sentry-mcp io.github.brave/brave-search-mcp-server \
   --reasoning -t @me/oncall:0.1 --secret SENTRY_ACCESS_TOKEN --secret BRAVE_API_KEY
 ```
 
-Run it with a goal. Pass the same keys and allow the servers the hosts they reach (find them with `mcpvessel observe`, or a blocked call names the one it wanted); the model comes from your `mcpvessel config`:
+> [!TIP]
+> Shape how it reasons with `--prompt "You are an on-call SRE; escalate P1s and cite the runbook."` (or `--prompt-file ./prompt.md` for a multi-line one).
+
+It needs a configured LLM provider (`mcpvessel config provider set`), plus the same keys and egress as before:
 
 ```sh
+# Give it a task, it reasons over both servers' tools to answer.
 mcpvessel run @me/oncall:0.1 "what is causing our top Sentry error this week, and how do I fix it?" \
   --secret SENTRY_ACCESS_TOKEN --secret BRAVE_API_KEY \
   --egress sentry.io --egress api.search.brave.com
 ```
 
-This runs an LLM tool-use loop over both servers, caged alongside them, with a per-run spend cap. The result is an agent you invoke like any other, and the servers stay sandboxed as before.
+This runs an LLM tool-use loop over both servers, caged alongside them, with a per-run spend cap. The result is an agent you invoke like any other, and the servers stay sandboxed as before. A secret only ever reaches a server that declares it, and like `--egress`, `--secret` can scope a key to just one server of several.
 
 It does not have to live in your terminal. Serve it and it is an HTTP endpoint you can hit with nothing but `curl`:
 
 ```sh
-mcpvessel serve --listen 127.0.0.1:7000 \
-  --secret SENTRY_ACCESS_TOKEN --secret BRAVE_API_KEY \
-  --egress sentry.io --egress api.search.brave.com @me/oncall:0.1
+# Serve the agent on one URL.
+mcpvessel serve @me/oncall:0.1 \
+  --listen 127.0.0.1:7000 --secret SENTRY_ACCESS_TOKEN --secret BRAVE_API_KEY \
+  --egress sentry.io --egress api.search.brave.com
+
+# Prompt it with curl; the result comes back as JSON.
 curl -sX POST 127.0.0.1:7000/agents/oncall -d '{"prompt":"what is causing our top Sentry error, and how do I fix it?"}'
 # {"result": "..."}
 ```
 
-No MCP client, no SDK, just JSON in and JSON out. The same agent can sit on a server, run in a CI job, or live behind your own API. It still speaks MCP on that port for clients that prefer it, and any single tool is directly callable at `POST /agents/<name>/tools/<tool>`.
+No MCP client or SDK needed, just JSON in and JSON out. The same agent can sit on a server, run in a CI job, or live behind your own API. It still speaks MCP on that port for clients that prefer it, and any single tool is directly callable at `POST /agents/<name>/tools/<tool>`.
+
+> [!TIP]
+> For a response an app can render as it generates, add `{"stream": true}` to the body; the answer streams back as Server-Sent Events, chunk by chunk, instead of one JSON blob.
 
 ## Ship it
 
-A caged server or agent is a content-addressed bundle. Push it to any OCI registry:
+A caged server or agent is a content-addressed bundle. Push it to any OCI registry you have logged in to (`mcpvessel login`):
 
 ```sh
 mcpvessel push @me/oncall:0.1
 ```
 
-A teammate pulls and runs it, sandboxed the same way, without importing or building it themselves:
+A teammate pulls and runs it by the same reference, sandboxed the same way, without importing or building it themselves:
 
 ```sh
-mcpvessel run @me/oncall:0.1 "..."
+mcpvessel run @me/oncall:0.1 "what is causing our top Sentry error?"
 ```
 
 It is signed on push and verified on pull, so they run exactly what you built, caged the same way. The publisher key fingerprint and how to verify a pull are in [SECURITY.md](SECURITY.md#signing-and-trust).
 
-## What the cage actually does
-
-Three things, and they are the whole point.
-
-**No network beyond the allowlist.** A caged server starts with the internet switched off. Hosts get onto its allowlist exactly two ways: you pass `--egress`, or the bundle's author baked them into its manifest. Either way that list is the whole world the server can reach: `serve` and `run` print it before any traffic flows, and `mcpvessel inspect` shows a bundle's baked hosts before you ever run it. It can't phone home to anywhere that is not on the list.
-
-**Your keys can't leak out.** A server that needs a credential to do its job, a GitHub token or a database password, gets only the ones you explicitly grant with `--secret`, and nothing else. Declaring a secret never auto-pulls it from your store or environment; the grant is yours, per run, every time. Inside the cage it can use that key against the hosts on its allowlist, but it can't send the key, or your data, anywhere else.
-
-**Each server is on its own.** Caged servers can't see each other, and they can't see your host. One bad server can't reach the good ones sitting next to it.
-
-To be clear about what this is: mcpvessel contains what a server can *do*. It doesn't read the server's code or vet the package for you. That is the point, though. You don't have to trust the code if it can't reach your files, your network, or your keys anyway.
-
-## What it does not protect against
-
-Being honest about the edges, because a security tool that overpromises is worse than one that doesn't:
-
-- **It does not vet code.** It contains what a server can reach, not what its code says. A caged server is free to misbehave inside its cage; it just can't get out of it.
-- **It is not a defense against a compromised host.** If someone already has your host user or root, the cage is not the thing standing between them and your machine.
-- **Denial of service is up to you.** A server you deliberately run with generous CPU or memory caps can still burn them. The caps are yours to set.
-- **Signing proves origin, not intent.** Publishing and pulling agents uses trust on first use: the first pull of a publisher trusts the key it sees. The sandbox, not the signature, is what contains a malicious agent.
-
-The full security scope and reporting policy is in [SECURITY.md](SECURITY.md).
 
 ## How it works, briefly
 
 A run is a small set of containers on private, internal-only networks. The server you cage sits alone on its own network with no route out. The only doors are small broker containers that mcpvessel runs for you: one filters every outbound network request against the allowlist you set, one brokers calls between servers, and when a server reasons with an LLM, one more holds your model key so the agent never sees it. On macOS all of this runs inside a lightweight Linux VM that mcpvessel sets up on first run, so nothing touches your host directly. On Linux it uses the host's own container runtime.
-
-For the security scope and threat model, see [SECURITY.md](SECURITY.md). A deeper architecture writeup is on the way.
 
 ## Install
 
@@ -212,26 +215,9 @@ rm -rf ~/.mcpvessel
 
 ## Commands
 
-Reference for the full command surface. You only need `import` and `serve` to get started; the rest is there when you grow into it.
+`mcpvessel --help` lists every command, and `mcpvessel <command> --help` covers any one in full, with its flags and examples. You only need `import` and `serve` to get started; the rest is there as you grow into it.
 
-| Command | What it does |
-| --- | --- |
-| `init` | Prepare the runtime (one-time setup) |
-| `import` | Wrap existing MCP servers as a caged agent |
-| `serve` | Serve a caged agent to MCP clients over HTTP |
-| `run` | Run an agent by routing a prompt to its main tool |
-| `call` | Call a specific tool on an agent by name |
-| `observe` | Watch a caged server in audit mode to learn its egress hosts |
-| `build` | Build an agent bundle from a Vesselfile |
-| `push` / `pull` | Push or pull an agent bundle to or from an OCI registry |
-| `search` / `register` | Find agents on, or publish to, the MCP Registry |
-| `inspect` / `tree` | Show an agent's manifest, tools, and its `USES` tree |
-| `ps` / `logs` / `stop` | List, inspect, and stop running agents |
-| `spend` / `budget` | Show and manage a running agent's LLM spend |
-| `trace` / `replay` / `stats` | Inspect a run: trace, record for replay, live resource usage |
-| `config` / `secrets` / `trust` | Configure endpoints and caps, store secrets, pin publisher keys |
-
-Run `mcpvessel <command> --help` for details on any of these.
+Deeper guides for each command live in the [docs](docs/) directory.
 
 ## Contributing and support
 
