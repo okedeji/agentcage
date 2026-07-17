@@ -225,8 +225,6 @@ Deeper guides for each command live in the [docs](docs/) directory.
 - Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Found a security issue? Please report it privately. See [SECURITY.md](SECURITY.md).
 
-This is a solo-maintained project, so please allow a few days for a reply.
-
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).

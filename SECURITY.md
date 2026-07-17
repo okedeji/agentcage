@@ -57,8 +57,3 @@ have not been told to expect a rotation, stop and check.
 
 The limits are the ones listed above: a signature proves origin, not intent, and
 the sandbox, not the signature, is what contains a malicious agent.
-
-## Supported versions
-
-Pre-1.0, only the latest tagged release gets fixes. Pin a digest if you need a
-stable artifact.
