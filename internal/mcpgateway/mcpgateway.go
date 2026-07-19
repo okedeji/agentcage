@@ -29,11 +29,16 @@ const activationWaitTimeout = 30 * time.Second
 // Edge is one routing entry: a USES sub-agent's MCP URL plus the tools the
 // caller may not invoke. Banned (a whole-agent BAN) rejects every call,
 // handshake included; the target never starts. Tool-level bans arrive merged
-// into Deny. Inactive means the target is not booted: the first call blocks
-// while the daemon activates it.
+// into Deny. Allow is the sub-agent's build-time tool catalog: a tools/call
+// to a name outside it is refused and tools/list is filtered to it, so a
+// server cannot advertise tools at run time that the build never observed.
+// Nil Allow means the bundle recorded no catalog and the filter is off.
+// Inactive means the target is not booted: the first call blocks while the
+// daemon activates it.
 type Edge struct {
 	Target   string   `json:"target"` // sub-agent MCP URL, e.g. http://web-search:8000/mcp
 	Deny     []string `json:"deny,omitempty"`
+	Allow    []string `json:"allow,omitempty"`
 	Banned   bool     `json:"banned,omitempty"`
 	Inactive bool     `json:"inactive,omitempty"`
 }
@@ -52,10 +57,11 @@ type Config struct {
 type Gateway struct {
 	proxies map[string]*httputil.ReverseProxy
 	deny    map[string]map[string]bool
+	allow   map[string]map[string]bool
 	banned  map[string]bool
 
-	// mu guards the mutable state below. proxies/deny/banned are write-once
-	// at New and read without the lock.
+	// mu guards the mutable state below. proxies/deny/allow/banned are
+	// write-once at New and read without the lock.
 	mu       sync.Mutex
 	active   map[string]bool
 	waiters  map[string][]chan bool
@@ -91,6 +97,7 @@ func New(cfg Config) *Gateway {
 	g := &Gateway{
 		proxies:  make(map[string]*httputil.ReverseProxy, len(cfg.Edges)),
 		deny:     make(map[string]map[string]bool, len(cfg.Edges)),
+		allow:    make(map[string]map[string]bool, len(cfg.Edges)),
 		banned:   make(map[string]bool, len(cfg.Edges)),
 		active:   make(map[string]bool, len(cfg.Edges)),
 		waiters:  make(map[string][]chan bool),
@@ -139,6 +146,7 @@ func New(cfg Config) *Gateway {
 			ModifyResponse: g.modifyResponse(edgeID),
 		}
 		g.deny[id] = denySet(edge.Deny)
+		g.allow[id] = denySet(edge.Allow)
 		g.active[id] = !edge.Inactive
 	}
 	return g
@@ -267,6 +275,10 @@ func (g *Gateway) Handler() http.Handler {
 				writeDenied(w, body, tool)
 				return
 			}
+			if tool, out := uncatalogedCall(body, g.allow[id]); out {
+				writeUncataloged(w, body, tool)
+				return
+			}
 			body = rewriteInitialize(body)
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			r.ContentLength = int64(len(body))
@@ -301,42 +313,59 @@ func (g *Gateway) Handler() http.Handler {
 	})
 }
 
-// deniedCall reports whether body is a tools/call to a denied tool. Both a
+// toolCallNames returns the tool name of every tools/call in body. Both a
 // single request object and a batch array are inspected: a batch could
-// otherwise smuggle a denied call past a single-object check. Any denied
-// element denies the whole forward. An unparseable body is not denied; the
-// sub-agent rejects garbage.
-func deniedCall(body []byte, deny map[string]bool) (string, bool) {
-	if len(deny) == 0 {
-		return "", false
-	}
+// otherwise smuggle a call past a single-object check. An unparseable body
+// yields none; the sub-agent rejects garbage.
+func toolCallNames(body []byte) []string {
 	if trimmed := bytes.TrimSpace(body); len(trimmed) > 0 && trimmed[0] == '[' {
 		var batch []json.RawMessage
 		if json.Unmarshal(trimmed, &batch) != nil {
-			return "", false
+			return nil
 		}
+		var names []string
 		for _, el := range batch {
-			if tool, denied := deniedOne(el, deny); denied {
-				return tool, true
-			}
+			names = append(names, toolCallNames(el)...)
 		}
-		return "", false
+		return names
 	}
-	return deniedOne(body, deny)
-}
-
-func deniedOne(body []byte, deny map[string]bool) (string, bool) {
 	var req struct {
 		Method string `json:"method"`
 		Params struct {
 			Name string `json:"name"`
 		} `json:"params"`
 	}
-	if json.Unmarshal(body, &req) != nil {
+	if json.Unmarshal(body, &req) != nil || req.Method != "tools/call" {
+		return nil
+	}
+	return []string{req.Params.Name}
+}
+
+// deniedCall reports whether body is a tools/call to a denied tool. Any
+// denied element denies the whole forward.
+func deniedCall(body []byte, deny map[string]bool) (string, bool) {
+	if len(deny) == 0 {
 		return "", false
 	}
-	if req.Method == "tools/call" && deny[req.Params.Name] {
-		return req.Params.Name, true
+	for _, name := range toolCallNames(body) {
+		if deny[name] {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// uncatalogedCall reports whether body is a tools/call to a tool outside the
+// edge's build-time catalog. A nil allow-set means the bundle recorded no
+// catalog, so the filter is off; DENY and BAN still apply.
+func uncatalogedCall(body []byte, allow map[string]bool) (string, bool) {
+	if allow == nil {
+		return "", false
+	}
+	for _, name := range toolCallNames(body) {
+		if !allow[name] {
+			return name, true
+		}
 	}
 	return "", false
 }
@@ -344,6 +373,17 @@ func deniedOne(body []byte, deny map[string]bool) (string, bool) {
 // writeDenied answers with a JSON-RPC error carrying the request's id, so the
 // caller's MCP client sees a normal tool error, not a transport failure.
 func writeDenied(w http.ResponseWriter, body []byte, tool string) {
+	writeToolError(w, body, -32003, "tool "+tool+" denied by the MCP gateway")
+}
+
+// writeUncataloged rejects a call to a tool the build never observed on the
+// target: the pinned catalog, not the running server's word, decides what an
+// edge can carry.
+func writeUncataloged(w http.ResponseWriter, body []byte, tool string) {
+	writeToolError(w, body, -32005, "tool "+tool+" is not in the agent's build-time catalog")
+}
+
+func writeToolError(w http.ResponseWriter, body []byte, code int, message string) {
 	var req struct {
 		ID json.RawMessage `json:"id"`
 	}
@@ -361,8 +401,8 @@ func writeDenied(w http.ResponseWriter, body []byte, tool string) {
 			Message string `json:"message"`
 		} `json:"error"`
 	}{JSONRPC: "2.0", ID: id}
-	resp.Error.Code = -32003
-	resp.Error.Message = "tool " + tool + " denied by the MCP gateway"
+	resp.Error.Code = code
+	resp.Error.Message = message
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

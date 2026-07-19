@@ -78,10 +78,11 @@ func replaceField(m map[string]json.RawMessage, key string, value any) bool {
 // streaming filter.
 func (g *Gateway) modifyResponse(edge string) func(*http.Response) error {
 	return func(resp *http.Response) error {
-		// deny is read here, not captured above: New builds this hook before
-		// filling the deny map. The map is write-once and complete before any
+		// deny/allow are read here, not captured above: New builds this hook
+		// before filling the maps. Both are write-once and complete before any
 		// response arrives.
 		deny := g.deny[edge]
+		allow := g.allow[edge]
 		ct := baseMediaType(resp.Header.Get("Content-Type"))
 		switch ct {
 		case "text/event-stream":
@@ -97,7 +98,7 @@ func (g *Gateway) modifyResponse(edge string) func(*http.Response) error {
 			src := resp.Body
 			pr, pw := io.Pipe()
 			go func() {
-				err := g.filterStream(ctx, edge, sessionID, subURL, deny, src, pw)
+				err := g.filterStream(ctx, edge, sessionID, subURL, deny, allow, src, pw)
 				_ = src.Close()
 				_ = pw.CloseWithError(err)
 			}()
@@ -108,7 +109,7 @@ func (g *Gateway) modifyResponse(edge string) func(*http.Response) error {
 			if err != nil {
 				return err
 			}
-			if stripped, changed := stripDeniedTools(body, deny); changed {
+			if stripped, changed := stripDeniedTools(body, deny, allow); changed {
 				body = stripped
 			}
 			resp.Body = io.NopCloser(bytes.NewReader(body))
@@ -124,7 +125,7 @@ func (g *Gateway) modifyResponse(edge string) func(*http.Response) error {
 // pulled out of the parent-bound stream, answered over the control stream,
 // and the answer posted back so the sub-agent resumes. Every other event
 // forwards verbatim.
-func (g *Gateway) filterStream(ctx context.Context, edge, sessionID, subURL string, deny map[string]bool, src io.Reader, dst io.Writer) error {
+func (g *Gateway) filterStream(ctx context.Context, edge, sessionID, subURL string, deny, allow map[string]bool, src io.Reader, dst io.Writer) error {
 	sc := bufio.NewScanner(src)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	var event []string
@@ -139,7 +140,7 @@ func (g *Gateway) filterStream(ctx context.Context, edge, sessionID, subURL stri
 				g.answerSubElicit(ctx, edge, sessionID, subURL, data)
 				return nil
 			}
-			if stripped, changed := stripDeniedTools(data, deny); changed {
+			if stripped, changed := stripDeniedTools(data, deny, allow); changed {
 				return writeEvent(dst, event, stripped)
 			}
 		}
@@ -231,11 +232,13 @@ func (g *Gateway) postBackChannel(ctx context.Context, subURL, sessionID string,
 	_ = resp.Body.Close()
 }
 
-// stripDeniedTools removes denied tools from a tools/list result so a
-// parent's LLM never discovers a tool the gateway would reject the call to.
-// A message with no result.tools array is left untouched.
-func stripDeniedTools(data []byte, deny map[string]bool) ([]byte, bool) {
-	if len(deny) == 0 {
+// stripDeniedTools removes from a tools/list result the tools the gateway
+// would reject the call to, so a parent's LLM never discovers one: tools the
+// edge denies, and tools outside the edge's build-time catalog (a nil allow
+// means no catalog was recorded and only deny applies). A message with no
+// result.tools array is left untouched.
+func stripDeniedTools(data []byte, deny, allow map[string]bool) ([]byte, bool) {
+	if len(deny) == 0 && allow == nil {
 		return data, false
 	}
 	var msg map[string]json.RawMessage
@@ -255,7 +258,8 @@ func stripDeniedTools(data []byte, deny map[string]bool) ([]byte, bool) {
 		var named struct {
 			Name string `json:"name"`
 		}
-		if json.Unmarshal(t, &named) == nil && deny[named.Name] {
+		if json.Unmarshal(t, &named) == nil &&
+			(deny[named.Name] || (allow != nil && !allow[named.Name])) {
 			continue
 		}
 		kept = append(kept, t)

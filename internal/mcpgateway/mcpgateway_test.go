@@ -74,6 +74,61 @@ func TestHandler_ForwardsAllowedAndRejectsDenied(t *testing.T) {
 	}
 }
 
+func TestUncatalogedCall(t *testing.T) {
+	allow := denySet([]string{"search"})
+	if tool, out := uncatalogedCall([]byte(`{"method":"tools/call","params":{"name":"exfiltrate"}}`), allow); !out || tool != "exfiltrate" {
+		t.Errorf("uncatalogedCall = (%q, %v), want (exfiltrate, true)", tool, out)
+	}
+	if _, out := uncatalogedCall([]byte(`{"method":"tools/call","params":{"name":"search"}}`), allow); out {
+		t.Error("a cataloged tool should pass")
+	}
+	if _, out := uncatalogedCall([]byte(`{"method":"tools/list"}`), allow); out {
+		t.Error("a non-call method should pass")
+	}
+	// A batch must not smuggle an uncataloged call past a single-object check.
+	if tool, out := uncatalogedCall([]byte(`[{"method":"tools/call","params":{"name":"search"}},{"method":"tools/call","params":{"name":"exfiltrate"}}]`), allow); !out || tool != "exfiltrate" {
+		t.Errorf("batch uncatalogedCall = (%q, %v), want (exfiltrate, true)", tool, out)
+	}
+	if _, out := uncatalogedCall([]byte(`{"method":"tools/call","params":{"name":"x"}}`), nil); out {
+		t.Error("a nil allow-set (no recorded catalog) should filter nothing")
+	}
+}
+
+func TestHandler_RejectsUncatalogedTool(t *testing.T) {
+	hits := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"result":{"ok":true}}`)
+	}))
+	defer upstream.Close()
+
+	gw := httptest.NewServer(Handler(Config{Edges: map[string]Edge{
+		"web": {Target: upstream.URL + "/mcp", Allow: []string{"search"}},
+	}}))
+	defer gw.Close()
+
+	resp := postJSON(t, gw.URL+"/web/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search"}}`)
+	if hits != 1 {
+		t.Errorf("cataloged call not forwarded (upstream hits = %d)", hits)
+	}
+	if !strings.Contains(resp, `"ok":true`) {
+		t.Errorf("upstream response not returned: %s", resp)
+	}
+
+	// A call to a tool outside the build-time catalog never reaches upstream.
+	resp = postJSON(t, gw.URL+"/web/mcp", `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"exfiltrate"}}`)
+	if hits != 1 {
+		t.Errorf("uncataloged call reached upstream (upstream hits = %d)", hits)
+	}
+	if !strings.Contains(resp, "-32005") || !strings.Contains(resp, "exfiltrate") {
+		t.Errorf("expected a catalog error naming the tool, got: %s", resp)
+	}
+	if !strings.Contains(resp, `"id":9`) {
+		t.Errorf("catalog error should echo request id 9: %s", resp)
+	}
+}
+
 func TestHandler_BannedEdgeRejectsEverything(t *testing.T) {
 	hits := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -50,7 +50,7 @@ func hasElicitationCap(t *testing.T, body []byte) bool {
 func TestStripDeniedTools(t *testing.T) {
 	deny := denySet([]string{"delete_all"})
 	list := `{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"search"},{"name":"delete_all"}]}}`
-	out, changed := stripDeniedTools([]byte(list), deny)
+	out, changed := stripDeniedTools([]byte(list), deny, nil)
 	if !changed {
 		t.Fatal("expected the denied tool to be stripped")
 	}
@@ -61,14 +61,35 @@ func TestStripDeniedTools(t *testing.T) {
 		t.Errorf("allowed tool was dropped: %s", out)
 	}
 
-	if _, changed := stripDeniedTools([]byte(`{"result":{"tools":[{"name":"search"}]}}`), deny); changed {
+	if _, changed := stripDeniedTools([]byte(`{"result":{"tools":[{"name":"search"}]}}`), deny, nil); changed {
 		t.Error("a list with no denied tools should be unchanged")
 	}
-	if _, changed := stripDeniedTools([]byte(`{"result":{"ok":true}}`), deny); changed {
+	if _, changed := stripDeniedTools([]byte(`{"result":{"ok":true}}`), deny, nil); changed {
 		t.Error("a non-list result should be unchanged")
 	}
-	if _, changed := stripDeniedTools([]byte(list), nil); changed {
+	if _, changed := stripDeniedTools([]byte(list), nil, nil); changed {
 		t.Error("an empty deny set should strip nothing")
+	}
+}
+
+func TestStripUncatalogedTools(t *testing.T) {
+	// A tool the build never observed is stripped even with nothing denied,
+	// so a server cannot advertise new tools to its parent at run time.
+	allow := denySet([]string{"search"})
+	list := `{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"search"},{"name":"exfiltrate"}]}}`
+	out, changed := stripDeniedTools([]byte(list), nil, allow)
+	if !changed {
+		t.Fatal("expected the uncataloged tool to be stripped")
+	}
+	if strings.Contains(string(out), "exfiltrate") {
+		t.Errorf("uncataloged tool still present: %s", out)
+	}
+	if !strings.Contains(string(out), "search") {
+		t.Errorf("cataloged tool was dropped: %s", out)
+	}
+
+	if _, changed := stripDeniedTools([]byte(`{"result":{"tools":[{"name":"search"}]}}`), nil, allow); changed {
+		t.Error("a fully cataloged list should be unchanged")
 	}
 }
 

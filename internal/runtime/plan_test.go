@@ -175,6 +175,41 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	}
 }
 
+func TestBuildRunPlan_PinsEdgeToBuildTimeCatalog(t *testing.T) {
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root": {Key: "root"},
+			"sub-abc": {Key: "sub-abc", Manifest: &bundle.Manifest{Tools: []bundle.Tool{
+				{Name: "search", Visibility: bundle.VisibilityMain},
+				{Name: "fetch", Visibility: bundle.VisibilityPrivate},
+			}}},
+			"sub-def": {Key: "sub-def"},
+		},
+		Edges: []usesEdge{
+			{Caller: "root", Sub: "sub-abc", Alias: "cat"},
+			{Caller: "root", Sub: "sub-def", Alias: "raw"},
+		},
+	}
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{maxLive: 32})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+
+	// A bundle with a recorded catalog gets it pinned as the edge's allow-set,
+	// every visibility included: the parent sees what the build observed, not
+	// what the running server later claims.
+	catEdge := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["VESSEL_USES_CAT_URL"])]
+	if got := strings.Join(catEdge.Allow, ","); got != "search,fetch" {
+		t.Errorf("edge allow = %v, want [search fetch]", catEdge.Allow)
+	}
+	// No recorded catalog means no filter, not a ban of every tool.
+	rawEdge := plan.MCPGatewayCfg.Edges[edgeKeyFromURL(t, plan.RootEnv["VESSEL_USES_RAW_URL"])]
+	if rawEdge.Allow != nil {
+		t.Errorf("edge allow with no catalog = %v, want nil", rawEdge.Allow)
+	}
+}
+
 func TestBuildRunPlan_InjectsLLMURLForReasoningAgents(t *testing.T) {
 	withModel := func(m string, budget int64) *bundle.Manifest {
 		return &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Model: m, Budget: budget}}

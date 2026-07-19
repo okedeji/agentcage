@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/okedeji/mcpvessel/internal/bundle"
 	"github.com/okedeji/mcpvessel/internal/config"
 	"github.com/okedeji/mcpvessel/internal/env"
 	"github.com/okedeji/mcpvessel/internal/mcpgateway"
@@ -216,6 +217,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 			edge.Banned = true
 		} else {
 			edge.Deny = mergeDeny(e.Deny, toolBanned[e.Sub])
+			edge.Allow = catalogNames(tree.Nodes[e.Sub].Manifest)
 			edge.Inactive = !prewarmed[e.Sub]
 		}
 		plan.MCPGatewayCfg.Edges[edgeKey] = edge
@@ -410,6 +412,22 @@ func mergeDeny(a, b []string) []string {
 		}
 	}
 	return out
+}
+
+// catalogNames lists the tool names the build observed for a bundle, which
+// becomes the edge's allow-set: the gateway refuses a call to, and strips
+// from tools/list, any tool the pinned catalog does not name. Nil when the
+// bundle recorded no catalog, which leaves only DENY and BAN on the edge
+// rather than refusing every tool.
+func catalogNames(m *bundle.Manifest) []string {
+	if m == nil || len(m.Tools) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(m.Tools))
+	for _, t := range m.Tools {
+		names = append(names, t.Name)
+	}
+	return names
 }
 
 // agentImageRef is the local image ref a tree node builds into: the repository
