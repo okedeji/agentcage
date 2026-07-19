@@ -115,30 +115,21 @@ Taken together, a cage's complete set of reachable peers is: the MCP gateway (to
 
 ## 7. Capability and grant model
 
-Authority in a run is handed out as capabilities and gated at injection. Figure 4 traces a secret's path; the same discipline applies to every grant.
+Authority in a run is handed out as capabilities and gated at injection. Figure 3 traces a secret's path; the same discipline applies to every grant.
 
 **Capability tokens.** A capability token is sixteen bytes from a cryptographic random source, hex-encoded, minted per run and invalid after teardown. Both the LLM gateway routes and the MCP gateway edges are addressed by such tokens. Token addressing is chosen over name-based access control because a token is unforgeable (a cage cannot compute one it was not given), unguessable (128 bits of entropy), and non-transferable across runs (a token names nothing in a run that did not mint it). A name, by contrast, is exactly the kind of value a hostile cage can construct.
 
 **Secrets.** Two stores are kept distinct. Secret *values* live in an operator store, entered only over stdin, never as a command argument; the store type redacts itself in its `String`, `GoString`, and `MarshalJSON` forms, so a value cannot leak through an incidental log or serialization. Secret *bindings*, which agent receives which named secret, live in operator config and hold names only, never values. At run time a value is injected into a cage only if that cage's manifest declares the name in `SECRETS`; a broadcast grant therefore cannot leak into a server that never asked for it. Grants can be narrowed from the broadcast pool to a single agent, and the runtime warns on the one grant shape that resembles credential harvesting: a single secret broadcast to a run in which more than one agent declares it.
 
-```
-  Figure 4. Secret value and grant flow.
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/fig3-secret-dark.svg">
+  <img alt="Secret value and grant flow. A secret value is entered over stdin into the operator's secret store and never leaves it. Separately, a config binding maps a versioned agent key (@org/name:ver) to a secret NAME, holding the name only and never the value. At run time a declaration gate injects the named secret into cage XYZ only if that cage's manifest lists the NAME under SECRETS." src="figures/fig3-secret-light.svg" width="720">
+</picture>
+<br>
+<em>Figure 3. Secret value and grant flow. A secret value enters the operator store over stdin and never leaves it. A config binding maps a versioned agent key to a secret <code>NAME</code>, holding the name only, never the value. At run time the declaration gate injects a named secret into a cage only if that cage's manifest lists the name under <code>SECRETS</code>.</em>
+</div>
 
-   stdin ──▶ [ secret store ]        (value; self-redacting; ~/.mcpvessel/secrets.json)
-                   │
-                   │ resolved at run time, by name
-                   ▼
-   config binding: "@org/name:ver -> [NAME]"   (name only; never the value)
-                   │
-                   ▼
-   run-time pool ──▶ declaration gate: inject NAME only if manifest SECRETS lists it
-                   │
-                   ▼
-              cage env
-
-   Never happens:   value written into a bundle   ✗
-                    value written into config      ✗
-```
 
 **Egress grants.** A cage's outbound allow-set is the union of four sources: hosts the author baked into the Vesselfile `EGRESS allow:`, hosts the operator passed with `--egress` for this run, hosts persisted in operator config, and hosts approved live during the run (§6.2). Config and live approvals are keyed to the agent's exact version, so a version change re-asks rather than silently carrying an old decision forward.
 
@@ -169,10 +160,10 @@ Following the numbered arrows in Figure 1:
 
 ## 9. Identity, build, and distribution
 
-A bundle's identity and provenance are established by construction, not assertion. Figure 3 shows the derivation.
+A bundle's identity and provenance are established by construction, not assertion. Figure 4 shows the derivation.
 
 ```
-  Figure 3. Identity derivation.
+  Figure 4. Identity derivation.
 
   source tree ──sha256──▶ files hash ───────────────▶ bundle identity
                               │                         (re-hashed on every extract:
