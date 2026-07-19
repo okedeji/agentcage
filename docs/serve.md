@@ -151,7 +151,7 @@ curl -N -H 'Accept: text/event-stream' \
 - `--save` mutates and rebuilds your source directory. Without it, `--egress` is purely for the current serve and never touches the bundle.
 - The boot-time Egress and Secrets reports are the last chance to see what the cage will get before any call runs. A pulled bundle's baked egress applies with no flag, so it shows there.
 - The plain-HTTP prompt route (`POST /agents/<address>`) exists only for an agent with a `MAIN`. A tool collection has none; call its tools by name at `POST /agents/<address>/tools/<tool>`.
-- `serve` is deny-default. A served server reaching a new host has the connection held, surfaced on the `events` feed and `mcpvessel egress ls`; approve it with [egress](egress.md) allow and it is remembered for next time.
+- `serve` is deny-default. A served server reaching a new host has that call fail fast (the client cannot answer an inline prompt), with the host surfaced on the `events` feed and `mcpvessel egress ls` and named in the tool error; approve it with [egress](egress.md) allow, it is remembered for next time, and the client's retry passes.
 
 ## See also
 

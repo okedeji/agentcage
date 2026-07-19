@@ -49,6 +49,16 @@ func (e *egressDenials) hosts(runID string) []string {
 	return out
 }
 
+// remove drops one host from a run's denied set, so a host approved after it was
+// denied stops showing up in the tool error's blocked list.
+func (e *egressDenials) remove(runID, host string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if set := e.byRun[runID]; set != nil {
+		delete(set, host)
+	}
+}
+
 func (e *egressDenials) clear(runID string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -150,6 +160,13 @@ func (s *denialScanSink) Write(p []byte) (int, error) {
 func (s *denialScanSink) scan(line string) {
 	if host, ok := parseEgressHost(line, "egress denied: "); ok {
 		s.den.record(s.runID, host)
+		// A denial resolves a hold (a rejection or a lapsed deadline), so the host
+		// is no longer pending. Clearing it keeps `egress ls` from listing a host
+		// that already failed; the event lets a watcher see the outcome.
+		if s.pend != nil {
+			s.pend.remove(s.runID, host)
+		}
+		s.publish(Event{Type: EventEgressDenied, RunID: s.runID, Target: host})
 		return
 	}
 	if host, ok := parseEgressHost(line, "egress pending: "); ok {
@@ -164,6 +181,9 @@ func (s *denialScanSink) scan(line string) {
 		return
 	}
 	if host, ok := parseEgressHost(line, "egress allowed: "); ok {
+		// An approval resolves any prior denial for the host, so it no longer
+		// belongs in a later tool error's blocked list.
+		s.den.remove(s.runID, host)
 		if s.pend != nil {
 			s.pend.remove(s.runID, host)
 		}
@@ -194,11 +214,24 @@ func parseEgressHost(line, marker string) (string, bool) {
 
 // enrichEgressError appends the cage's blocked hosts to a tool error, so the
 // caller learns the failure was the cage denying egress and how to allow it.
-func enrichEgressError(err error, hosts []string) error {
+func enrichEgressError(err error, runID string, hosts []string) error {
 	if err == nil || len(hosts) == 0 {
 		return err
 	}
-	joined := strings.Join(hosts, ",")
-	return fmt.Errorf("%w\nthe cage blocked this server from reaching %s; allow it with 'mcpvessel run/serve --egress %s', or bake it into the Vesselfile with EGRESS allow:%s and a rebuild",
-		err, strings.Join(hosts, ", "), joined, joined)
+	host := hosts[0]
+	more := ""
+	if len(hosts) > 1 {
+		more = " (repeat for each blocked host)"
+	}
+	// Three ways out, weakest grant first: this run only, remembered in config
+	// for future runs, or baked into the image to travel with it. The caller (an
+	// operator or an LLM relaying the tool error) picks the scope it wants.
+	return fmt.Errorf("%w\nthe cage was blocked from reaching %s. To allow it, choose one:\n"+
+		"  this run only:            mcpvessel egress allow %s %s --once%s\n"+
+		"  remember for future runs: mcpvessel egress allow %s %s%s\n"+
+		"  bake in (and share):      add 'EGRESS allow:%s' to the Vesselfile, then rebuild",
+		err, strings.Join(hosts, ", "),
+		runID, host, more,
+		runID, host, more,
+		strings.Join(hosts, ","))
 }

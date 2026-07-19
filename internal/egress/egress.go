@@ -19,6 +19,12 @@ import (
 type Config struct {
 	Sources map[string][]string `json:"sources"`
 	Names   map[string]string   `json:"names,omitempty"`
+	// NoHold makes an unapproved host fail fast instead of parking the call for
+	// the operator. A served agent is driven by a remote MCP client that cannot
+	// answer an inline prompt, so holding only stalls it: the client relays the
+	// denial, the operator approves, and the client retries. A run/call has an
+	// operator at the terminal, so it holds. See the hold deadline in await.
+	NoHold bool `json:"no_hold,omitempty"`
 }
 
 // holdDeadline bounds how long a CONNECT to an unapproved host waits for the
@@ -48,6 +54,7 @@ type Proxy struct {
 	logged   map[string]bool            // dedup for allowed/denied lines
 	events   io.Writer
 	deadline time.Duration
+	noHold   bool // served: fail fast instead of parking the call
 }
 
 // New builds a Proxy from cfg, writing decision lines to events.
@@ -68,6 +75,7 @@ func New(cfg Config, events io.Writer) *Proxy {
 		logged:   map[string]bool{},
 		events:   events,
 		deadline: holdDeadline,
+		noHold:   cfg.NoHold,
 	}
 }
 
@@ -108,6 +116,16 @@ func (p *Proxy) await(src, host string) bool {
 		p.mu.Unlock()
 		p.mark("allowed", src, host)
 		return true
+	}
+	if p.noHold {
+		// Served: do not park the call. Still surface the host as pending so the
+		// operator can approve it (which joins the runtime allow-set), and record
+		// the denial so the tool error names the host. The client retries after
+		// approval and the host then passes.
+		p.mu.Unlock()
+		p.pending(src, host)
+		p.mark("denied", src, host)
+		return false
 	}
 	wtr := &waiter{ch: make(chan struct{})}
 	first := len(p.holds[host]) == 0
@@ -219,7 +237,7 @@ func (p *Proxy) mark(kind, src, host string) {
 	case "allowed":
 		_, _ = fmt.Fprintf(p.events, "egress allowed: %s (agent %s)\n", host, name)
 	default:
-		_, _ = fmt.Fprintf(p.events, "egress denied: %s (agent %s) — approve it with 'mcpvessel egress allow', or bake it into the Vesselfile with EGRESS allow:%s\n", host, name, host)
+		_, _ = fmt.Fprintf(p.events, "egress denied: %s (agent %s). Approve it with 'mcpvessel egress allow', or bake it into the Vesselfile with EGRESS allow:%s\n", host, name, host)
 	}
 }
 

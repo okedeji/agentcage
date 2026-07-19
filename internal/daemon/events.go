@@ -30,6 +30,9 @@ const (
 	// EventEgressApproved fires when a held host is approved and the connection
 	// released; Target is the host.
 	EventEgressApproved = "egress.approved"
+	// EventEgressDenied fires when a held host is rejected or its hold lapses and
+	// the connection is refused; Target is the host.
+	EventEgressDenied = "egress.denied"
 )
 
 // eventBufferSize bounds each subscriber's queue. A watcher this far behind

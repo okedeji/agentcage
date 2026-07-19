@@ -116,7 +116,7 @@ func (d *Daemon) handleCallRun(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := session.Call(r.Context(), req.Tool, req.Args)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, enrichEgressError(err, d.denials.hosts(id)).Error())
+		writeError(w, http.StatusInternalServerError, enrichEgressError(err, id, d.denials.hosts(id)).Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"result": result})

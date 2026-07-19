@@ -132,7 +132,7 @@ func (d *Daemon) handleRun(w http.ResponseWriter, r *http.Request) {
 	stopWatch := d.watchEgressPending(session.RunID(), stream)
 	result, callErr := session.Call(callCtx, req.Tool, callArgs)
 	stopWatch()
-	callErr = enrichEgressError(callErr, d.denials.hosts(session.RunID()))
+	callErr = enrichEgressError(callErr, session.RunID(), d.denials.hosts(session.RunID()))
 	callMS := nowFunc().Sub(callStart).Milliseconds()
 	status := history.StatusSucceeded
 	if callErr != nil {

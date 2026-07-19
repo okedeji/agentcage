@@ -30,17 +30,64 @@ func TestDenialSink_RecordsFromLogLines(t *testing.T) {
 	}
 }
 
+func TestDenialSink_DeniedClearsPending(t *testing.T) {
+	den := newEgressDenials()
+	pend := newPendingEgress()
+	sink := &denialScanSink{w: nopWriteCloser{}, runID: "run-1", den: den, pend: pend}
+
+	// A held host is pending until it is decided.
+	_, _ = sink.Write([]byte("egress pending: api.example (agent x)\n"))
+	if got := pend.list()["run-1"]; len(got) != 1 || got[0] != "api.example" {
+		t.Fatalf("pending after pending line = %v, want [api.example]", got)
+	}
+
+	// A denial (a rejection or a lapsed hold) clears it from pending and records it.
+	_, _ = sink.Write([]byte("egress denied: api.example (agent x) — ...\n"))
+	if got := pend.list()["run-1"]; len(got) != 0 {
+		t.Errorf("pending after denial = %v, want cleared", got)
+	}
+	if got := den.hosts("run-1"); len(got) != 1 || got[0] != "api.example" {
+		t.Errorf("denials = %v, want [api.example]", got)
+	}
+}
+
+func TestDenialSink_AllowedClearsDenial(t *testing.T) {
+	den := newEgressDenials()
+	pend := newPendingEgress()
+	sink := &denialScanSink{w: nopWriteCloser{}, runID: "run-1", den: den, pend: pend}
+
+	// A served proxy denies a host on first contact (fail fast)...
+	_, _ = sink.Write([]byte("egress denied: api.example (agent x) — ...\n"))
+	if got := den.hosts("run-1"); len(got) != 1 || got[0] != "api.example" {
+		t.Fatalf("denials after denial = %v, want [api.example]", got)
+	}
+	// ...then the operator approves it, so it must no longer read as blocked.
+	_, _ = sink.Write([]byte("egress allowed: api.example (agent x)\n"))
+	if got := den.hosts("run-1"); got != nil {
+		t.Errorf("denials after approval = %v, want cleared", got)
+	}
+}
+
 func TestEnrichEgressError(t *testing.T) {
 	base := errors.New("tool returned an error: connection issue")
-	got := enrichEgressError(base, []string{"api.github.com"})
-	if !strings.Contains(got.Error(), "connection issue") || !strings.Contains(got.Error(), "EGRESS allow:api.github.com") {
-		t.Errorf("enriched error missing parts: %v", got)
+	got := enrichEgressError(base, "run-1", []string{"api.github.com"})
+	// The client-facing message must name the failure and all three grant
+	// scopes: this run only (--once), remembered in config, and baked-in.
+	for _, want := range []string{
+		"connection issue",
+		"mcpvessel egress allow run-1 api.github.com --once",
+		"mcpvessel egress allow run-1 api.github.com\n",
+		"EGRESS allow:api.github.com",
+	} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("enriched error missing %q: %v", want, got)
+		}
 	}
 	// No hosts leaves the error untouched; nil stays nil.
-	if enrichEgressError(base, nil) != base {
+	if enrichEgressError(base, "run-1", nil) != base {
 		t.Error("no hosts should return the original error")
 	}
-	if enrichEgressError(nil, []string{"x"}) != nil {
+	if enrichEgressError(nil, "run-1", []string{"x"}) != nil {
 		t.Error("nil error should stay nil")
 	}
 }

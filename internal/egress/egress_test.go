@@ -197,6 +197,43 @@ func TestProxy_HoldThenDeny(t *testing.T) {
 	}
 }
 
+func TestProxy_NoHoldFailsFastThenApprovalPasses(t *testing.T) {
+	// A served proxy must not park an unapproved host: the connect returns 403
+	// at once, but the host is still surfaced as pending and recorded as denied
+	// so the operator can approve it and the client's retry passes.
+	probe := httptest.NewServer(testHandler(Config{}))
+	_, srcIP, pc := connect(t, probe.Listener.Addr().String(), "x:1")
+	_ = pc.Close()
+	probe.Close()
+
+	var events bytes.Buffer
+	p := New(Config{Sources: map[string][]string{srcIP: {}}, Names: map[string]string{srcIP: "fetch"}, NoHold: true}, &events)
+	srv := httptest.NewServer(p.Handler())
+	defer srv.Close()
+
+	// No goroutine and no waitHold: a served proxy fails fast, so the connect
+	// returns without anyone approving it.
+	start := time.Now()
+	status, _, c := connect(t, srv.Listener.Addr().String(), "api.test:443")
+	_ = c.Close()
+	if !contains(status, "403") {
+		t.Fatalf("served host status = %q, want an immediate 403", status)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("served connect took %s, want it to fail fast without holding", elapsed)
+	}
+	if log := events.String(); !strings.Contains(log, "egress pending: api.test") || !strings.Contains(log, "egress denied: api.test") {
+		t.Errorf("fail-fast log = %q, want both a pending and a denied line", log)
+	}
+
+	// After the operator approves, the same host passes without holding: the
+	// client's retry (modeled here at the decision level) is admitted at once.
+	p.decide("api.test", true)
+	if !p.await(srcIP, "api.test") {
+		t.Error("approved host was not admitted on retry")
+	}
+}
+
 func TestHandler_TunnelsAllowedHost(t *testing.T) {
 	// The backend is on loopback, which the SSRF guard rightly refuses;
 	// swap in a permissive dialer to exercise the data path.

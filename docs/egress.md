@@ -1,6 +1,6 @@
 # egress
 
-Approve or reject an outbound host a caged server is trying to reach. A run is deny-default: a server reaches only the hosts you have allowed, and the first time it reaches a new one the connection is held while mcpvessel asks you. `egress allow` releases a held host and remembers it; `egress deny` rejects one and forgets it; `egress ls` shows what is currently held. This is how you let a server talk to the internet without knowing its hosts in advance and without ever opening it wide.
+Approve or reject an outbound host a caged server is trying to reach. A run is deny-default: a server reaches only the hosts you have allowed, and the first time it reaches a new one mcpvessel surfaces it for you to decide (holding a foreground call, or failing a served one fast so the client can retry). `egress allow` releases a held host and remembers it; `egress deny` rejects one and forgets it; `egress ls` shows what is currently held. This is how you let a server talk to the internet without knowing its hosts in advance and without ever opening it wide.
 
 ```
 mcpvessel egress allow TARGET HOST [--once]
@@ -19,21 +19,22 @@ Every caged server starts with no outbound network. It reaches a host only if th
 3. **The operator's config**, `mcpvessel config egress`, allowed for every run of a tag.
 4. **An interactive approval**, `mcpvessel egress allow`, which allows a held host now and writes it into the config so the next run does not ask again.
 
-Anything not in that set is not refused outright. The proxy **holds** the connection and asks you. That is the difference from a plain firewall: a host you did not anticipate does not fail the call, it pauses it, and you decide.
+Anything not in that set is not refused outright: the host is surfaced to you to decide, and how the call behaves while you decide depends on who is driving it.
 
-## What a hold looks like
+## What a block looks like
 
-When a server reaches an unapproved host, three things happen at once, so whoever is positioned to answer can:
+When a server reaches an unapproved host, the proxy always surfaces it the same way, and the pending call behaves according to who can answer:
 
-- **At a terminal** (`run`/`call` in the foreground), you get an inline prompt: `egress pending: api.github.com. Allow this host? [y/N]`. Answer `y` and the call continues.
-- **In the run's output and the event feed**, a line names the host and the exact command to approve it: `mcpvessel egress allow <run> <host>`. `mcpvessel events` carries the same, so a watcher or a script can react.
-- **`mcpvessel egress ls`** lists every held host across runs, each with its approve command.
+- **At a terminal** (`run`/`call` in the foreground), the connection is **held** and you get an inline prompt: `egress pending: api.github.com. Allow this host? [y/N]`. Answer `y` and the same held call continues, no retry needed.
+- **When served to a client** (`serve` behind Claude or another MCP client), the call **fails fast** instead of hanging: the client cannot answer a prompt, so the tool error tells it the host was blocked and how to allow it, the client relays that to you, you approve out of band, and the client retries. The retry passes.
+- **In the run's output and the event feed** (both cases), a line names the host and the exact command to approve it: `mcpvessel egress allow <run> <host>`. `mcpvessel events` carries the same, so a watcher or a script can react.
+- **`mcpvessel egress ls`** lists every surfaced host across runs, each with its approve command.
 
-You approve from wherever is convenient: type `y` at the prompt, or run `egress allow` from another shell. Either releases the same held connection.
+You approve from wherever is convenient: type `y` at a foreground prompt, or run `egress allow` from another shell. Either admits the host on the same live run.
 
 ### The one caveat worth knowing
 
-A held connection counts against the *server's own* network timeout. Most servers give a connection only a few seconds before they give up, which is fine when you answer an inline prompt in the moment, but means an approval you take a minute to make can arrive after the server already errored. That is not a problem in practice: the approval is still remembered, so the next run of that tag reaches the host with no hold at all. First call slow to approve, retry instant.
+For a foreground `run`/`call`, a held connection counts against the *server's own* network timeout. Most servers give a connection only a few seconds before they give up, which is fine when you answer the inline prompt in the moment, but means an approval you take a minute to make can arrive after the server already errored. That is not a problem in practice: the approval is still remembered, so the next run of that tag reaches the host with no hold at all. First call slow to approve, retry instant. A served call sidesteps this entirely, since it fails fast and relies on the client's retry rather than holding.
 
 ## Allowing a host
 
@@ -91,8 +92,8 @@ A server that genuinely needs no network should declare `EGRESS deny-default` in
 
 - `egress ls` reads live holds from the daemon; a host drops off it the moment it is approved, denied, or the run ends.
 - Approving a tag with several live runs releases the host on all of them.
-- The hold is bounded: an unanswered hold fails closed after a few minutes rather than pinning the cage forever.
-- A malicious server phoning home shows up as a held host you did not expect. Denying it (or just not approving) keeps the connection, and any secret the server holds, from ever leaving.
+- A foreground hold is bounded: an unanswered hold fails closed after a few minutes rather than pinning the cage forever. A served call does not hold at all; it fails fast and waits for the client to retry.
+- A malicious server phoning home shows up as a blocked host you did not expect. Denying it (or just not approving) keeps the connection, and any secret the server holds, from ever leaving.
 - Nothing here relaxes the rest of the cage. Egress is one wall; the filesystem, the secrets, and the sibling isolation are unaffected by an approval.
 
 ## See also

@@ -131,7 +131,11 @@ func startEgressProxy(ctx context.Context, sess *bootSession, runID, egressNetwo
 		names[ip] = container
 		nets = append(nets, agent.Network)
 	}
-	cfgJSON, err := json.Marshal(egress.Config{Sources: sources, Names: names})
+	// A served instance (Managed) is driven by a remote MCP client that cannot
+	// answer an inline approval, so a held host only stalls it; fail fast and let
+	// the client relay the denial for the operator to approve out of band. A
+	// run/call has an operator at the terminal, so it holds for the decision.
+	cfgJSON, err := json.Marshal(egress.Config{Sources: sources, Names: names, NoHold: in.Managed})
 	if err != nil {
 		return fmt.Errorf("encoding egress config: %w", err)
 	}

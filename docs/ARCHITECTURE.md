@@ -45,15 +45,15 @@ The reader interested in the security argument should read §2 (threat model), �
 
 An **author** builds and signs a bundle; an **operator** runs it. A **bundle** is a content-addressed, signed artifact holding an agent's source and manifest. A **cage** is one OCI container running one MCP server. A **run** is the set of cages, networks, and brokers started together under one run id and torn down together; `run`, `call`, and `serve` each produce one. A **broker** is a container mcpvessel interposes between cages and a resource. An agent may declare dependencies on other published agents (`USES`), so a run is in general a **tree** of cages.
 
-Figure 1 shows one run of a two-agent tree. Every later section refers back to it.
+Figure 1 shows one run of an agent tree: a single reasoner composing sub-agents and tool collectors, the latter two drawn stacked to show a run may hold several of each. Every later section refers back to it.
 
 <div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/fig1-topology-dark.svg">
-  <img alt="One run of a two-agent tree. The operator's CLI and the daemon run on the host, alongside the ~/.mcpvessel store; the cages (reasoner, sub-agents, tool collectors) and the brokers (MCP gateway, LLM gateway, egress proxy) run inside a Lima VM on macOS or directly on the host on Linux. Each cage is on its own private network. The reasoner reaches the MCP gateway for tool calls and the LLM gateway for model calls; the LLM gateway holds the provider key and reaches the provider directly, while the egress proxy filters all other outbound traffic deny-default. The daemon drives the VM via limactl shell and nerdctl exec." src="figures/fig1-topology-light.svg" width="760">
+  <img alt="One run of an agent tree. The operator's CLI and the daemon run on the host, alongside the ~/.mcpvessel store; the cages (reasoner, sub-agents, tool collectors) and the brokers (MCP gateway, LLM gateway, egress proxy) run inside a Lima VM on macOS or directly on the host on Linux. Each cage is on its own private network. The reasoner reaches the MCP gateway for tool calls and the LLM gateway for model calls; the LLM gateway holds the provider key and reaches the provider directly, while the egress proxy filters all other outbound traffic deny-default. The daemon drives the VM via limactl shell and nerdctl exec." src="figures/fig1-topology-light.svg" width="760">
 </picture>
 <br>
-<em>Figure 1. One run of a two-agent tree. The CLI, daemon, and <code>~/.mcpvessel</code> run on the host; the cages and brokers run in the Lima VM on macOS or on the host on Linux. Cages are untrusted; the brokers and daemon are the TCB, and each cage wall plus the VM wall (macOS) is a boundary. No two cages share a network. The reasoning cage reaches the MCP gateway (tool calls) and the LLM gateway (model calls) on separate URLs; the two brokers never talk. Cage egress is filtered by the proxy deny-default; the LLM gateway reaches the provider directly. Numbered arrows trace the tool-call lifecycle of §8.1.</em>
+<em>Figure 1. One run of an agent tree: a single reasoner composing sub-agents and tool collectors, the latter drawn stacked to denote pools of several. The CLI, daemon, and <code>~/.mcpvessel</code> run on the host; the cages and brokers run in the Lima VM on macOS or on the host on Linux. Cages are untrusted; the brokers and daemon are the TCB, and each cage wall plus the VM wall (macOS) is a boundary. No two cages share a network. The reasoning cage reaches the MCP gateway (tool calls) and the LLM gateway (model calls) on separate URLs; the two brokers never talk. Cage egress is filtered by the proxy deny-default; the LLM gateway reaches the provider directly. Numbered arrows trace the tool-call lifecycle of §8.1.</em>
 </div>
 
 Three entry surfaces feed this topology and converge on it: `run` and `call` boot a run over a one-shot stdio session; `serve` opens a long-lived MCP-over-HTTP front door; and `serve` also answers plain REST for callers that speak no MCP. All three produce the same cage-and-broker graph behind the entry point, so the guarantees below hold regardless of how a run was started.
@@ -86,31 +86,18 @@ The subsections below describe each broker in a fixed frame: what it *mediates*,
 
 The proxy authorizes by source network address. This is sound only because a cage's address is unambiguous: per-cage networks (I1) make one address name one cage, the proxy refuses to start if two agents ever resolve to the same address ("refusing to mis-authorize egress", a fail-closed check), and egress-bearing cages are pinned warm so their address cannot drift mid-run.
 
-A host absent from the allow-set is not refused outright. The proxy **holds** the connection and asks the operator, and only a genuine rejection or a lapsed deadline turns a hold into a refusal. A server whose Vesselfile declares `EGRESS deny-default` is the one exception: it runs with no proxy and no outbound path at all, hard isolation for a tool that should never touch the network.
+A host absent from the allow-set is not refused outright; it is surfaced to the operator to decide. How the pending connection behaves while the operator decides depends on whether a human is positioned to answer in the moment. For an attached `run`/`call`, the proxy **holds** the connection, and only a genuine rejection or a lapsed deadline turns a hold into a refusal. For a served run, whose caller is a remote MCP client that cannot answer an inline prompt, the proxy instead **fails the connection fast**: it still surfaces the host, but the tool error names it and the approve command, the client relays that to the operator, and the client retries once the host is approved. Holding a served call would only stall a caller that cannot answer; failing fast turns the client's own retry into the release mechanism. Either way the security posture is identical, an unapproved host never opens, and both paths persist an approval so a later run does not ask again. A server whose Vesselfile declares `EGRESS deny-default` is the one exception: it runs with no proxy and no outbound path at all, hard isolation for a tool that should never touch the network.
 
 The hold mechanism must cross the cage boundary to reach a human, and it does so through a deliberate asymmetry, shown in Figure 2. The proxy cannot dial the daemon: it sits on internal cage networks, and the daemon is on the host, outside them. So the two directions of the approval conversation travel by different means and never share a channel.
 
-```
-  Figure 2. The egress hold and approval channel.
-
-   cage ──CONNECT api.example──▶ ┌───────────────┐
-                                 │ egress proxy  │  host not in allow-set
-                                 │  HOLD conn ───┼──▶ "egress pending: api.example"
-                                 └───────┬───────┘        (stdout)
-                                         │                    │
-        approve-in                       │ signal-out         ▼
-   ┌───────────────┐                     │            ┌──────────────┐
-   │ mcpvessel     │                     │            │ log pump ────┼─▶ durable log
-   │ egress allow  │                     │            │ (scans lines)│
-   └──────┬────────┘                     │            └──────┬───────┘
-          │ daemon                       │                   │ event bus
-          ▼ nerdctl exec                 │                   ▼
-   ┌──────────────────┐                  │            terminal prompt [y/N]
-   │ loopback control │──── release ─────┘            /  mcpvessel egress ls
-   │ listener (:9005) │                                \ events feed
-   └──────────────────┘
-     approved ─▶ tunnel opens        denied / deadline ─▶ 403
-```
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/fig2-egress-dark.svg">
+  <img alt="The egress hold and approval channel. A cage's CONNECT to a host not in its allow-set is held by the egress proxy, which writes an 'egress pending' line to its own stdout. That signal-out path is read by the daemon's log pump, which records the held host and surfaces it as a terminal prompt, a row in 'mcpvessel egress ls', and an events-feed item. The reverse approve-in path runs 'mcpvessel egress allow' to the daemon, which execs the proxy's loopback control listener to release the held connection. An approval opens the tunnel; a denial or a lapsed deadline returns a 403. The two directions use different transports because the proxy sits on internal cage networks and cannot dial the daemon on the host." src="figures/fig2-egress-light.svg" width="820">
+</picture>
+<br>
+<em>Figure 2. The egress hold and approval channel. The proxy cannot dial the daemon, so the two directions of the approval conversation travel on different transports. Signal-out rides the proxy's stdout: it writes an <code>egress pending:</code> line, the daemon's log pump scans it, and the held host surfaces as a terminal prompt, an <code>egress ls</code> row, and an events-feed item. Approve-in rides <code>mcpvessel egress allow</code> through the daemon, which execs the proxy's loopback control listener to release the connection. An approval opens the tunnel and is persisted to config; a denial or a lapsed hold deadline returns a 403.</em>
+</div>
 
 Signal-out rides the container's own stdout: the proxy writes an `egress pending:` line, the daemon's log pump scans it, records the held host, and publishes an event that surfaces as a terminal prompt, an entry in `mcpvessel egress ls`, and an item on the events feed. Approve-in rides the reverse path: `mcpvessel egress allow` reaches the daemon, which execs the proxy's loopback control listener and releases (or, on `deny`, drops) the held connection. The two half-channels are wired through different transports precisely because the isolation model forbids a shared one; the asymmetry is the model holding, not a workaround. An approval is also persisted to operator config keyed by the agent's version, so a later run of the same agent reaches the host without a second hold.
 
