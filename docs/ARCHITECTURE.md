@@ -130,7 +130,6 @@ Authority in a run is handed out as capabilities and gated at injection. Figure 
 <em>Figure 3. Secret value and grant flow. A secret value enters the operator store over stdin and never leaves it. A config binding maps a versioned agent key to a secret <code>NAME</code>, holding the name only, never the value. At run time the declaration gate injects a named secret into a cage only if that cage's manifest lists the name under <code>SECRETS</code>.</em>
 </div>
 
-
 **Egress grants.** A cage's outbound allow-set is the union of four sources: hosts the author baked into the Vesselfile `EGRESS allow:`, hosts the operator passed with `--egress` for this run, hosts persisted in operator config, and hosts approved live during the run (§6.2). Config and live approvals are keyed to the agent's exact version, so a version change re-asks rather than silently carrying an old decision forward.
 
 **Elicitation.** A reasoning agent may ask the operator a question mid-call. The channel is advertised only when a handler is bound to answer, so an agent that tries to ask when no one can answer fails closed rather than hanging, and the wait is bounded by a deadline. The same mechanism underlies the interactive egress prompt.
@@ -160,22 +159,7 @@ Following the numbered arrows in Figure 1:
 
 ## 9. Identity, build, and distribution
 
-A bundle's identity and provenance are established by construction, not assertion. Figure 4 shows the derivation.
-
-```
-  Figure 4. Identity derivation.
-
-  source tree ──sha256──▶ files hash ───────────────▶ bundle identity
-                              │                         (re-hashed on every extract:
-                              │                          a tampered bundle is rejected)
-                              ▼
-  files hash + codegen fingerprint + bridge fingerprint ──sha256──▶ image tag
-                              │
-                              ▼
-  OCI manifest digest + repository ──ed25519──▶ signature ──▶ TOFU pin (first pull)
-                                                                 │
-                                              later pull key mismatch ─▶ fail closed
-```
+A bundle's identity and provenance are established by construction, not assertion, through the chain the four properties below describe: a content hash names the bundle, a build digest names the image, and a signature bound to the repository plus a trust-on-first-use pin names the publisher.
 
 **Content addressing.** A bundle's identity is the hash of its files, so identical source yields an identical bundle and a pull can confirm it received exactly those bytes. Extraction re-hashes the tree against the manifest, so a bundle altered in transit or at rest is rejected on load.
 
