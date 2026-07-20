@@ -109,7 +109,11 @@ homebrew_casks:
       fish: "completions/mcpvessel.fish"
     hooks:
       post:
+        # Strip Gatekeeper quarantine from the WHOLE staged tree, not just the
+        # mcpvessel binary: the archive also ships limactl, qemu, and the Lima
+        # guest agents, and a quarantined un-notarized limactl is killed by
+        # Gatekeeper on first `mcpvessel init` ("limactl ... signal: killed").
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/mcpvessel"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", staged_path]
           end
