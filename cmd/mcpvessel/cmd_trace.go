@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -30,7 +31,11 @@ trace.`,
 			}
 			tr, err := daemon.Dial(socket).Trace(cmd.Context(), args[0])
 			if err != nil {
-				return fmt.Errorf("%w (is the daemon running? does the run exist and did it make any LLM calls?)", err)
+				var unreachable *daemon.Unreachable
+				if errors.As(err, &unreachable) {
+					return fmt.Errorf("%w (the daemon is not running; start it with 'mcpvessel init')", err)
+				}
+				return err
 			}
 			printTrace(cmd.OutOrStdout(), tr)
 			return nil

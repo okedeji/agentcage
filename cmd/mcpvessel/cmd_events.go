@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -30,7 +31,11 @@ JSON object per line.`,
 			}
 			emit := eventPrinter(cmd.OutOrStdout())
 			if err := daemon.Dial(socket).Events(cmd.Context(), emit); err != nil {
-				return fmt.Errorf("%w (is the daemon running? start it with 'mcpvessel daemon')", err)
+				var unreachable *daemon.Unreachable
+				if errors.As(err, &unreachable) {
+					return fmt.Errorf("%w (the daemon is not running; start it with 'mcpvessel init')", err)
+				}
+				return err
 			}
 			return nil
 		},

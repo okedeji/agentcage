@@ -85,7 +85,7 @@ func (d *Daemon) handleRunTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found || rec.TraceJSON == "" {
-		writeError(w, http.StatusNotFound, "no trace for run "+id)
+		writeError(w, http.StatusNotFound, "no trace for run "+id+" (a trace exists once a finished run made at least one LLM call; 'mcpvessel ps -a' lists run ids)")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -37,7 +38,11 @@ the full history.`,
 			}
 			runs, err := daemon.Dial(socket).ListRuns(cmd.Context())
 			if err != nil {
-				return fmt.Errorf("%w (is the daemon running? start it with 'mcpvessel daemon')", err)
+				var unreachable *daemon.Unreachable
+				if errors.As(err, &unreachable) {
+					return fmt.Errorf("%w (the daemon is not running; start it with 'mcpvessel init')", err)
+				}
+				return err
 			}
 			printRuns(cmd.OutOrStdout(), runs, all)
 			return nil

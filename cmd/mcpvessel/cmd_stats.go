@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -39,7 +40,11 @@ A cage is one container in a run: the agent, its gateways, and any sub-agents.
 			}
 			stats, err := c.Stats(cmd.Context())
 			if err != nil {
-				return fmt.Errorf("%w (is the daemon running? start it with 'mcpvessel daemon')", err)
+				var unreachable *daemon.Unreachable
+				if errors.As(err, &unreachable) {
+					return fmt.Errorf("%w (the daemon is not running; start it with 'mcpvessel init')", err)
+				}
+				return err
 			}
 			printStats(cmd.OutOrStdout(), stats)
 			return nil
@@ -55,7 +60,11 @@ func watchStats(ctx context.Context, c *daemon.Client, w io.Writer) error {
 	for {
 		stats, err := c.Stats(ctx)
 		if err != nil {
-			return fmt.Errorf("%w (is the daemon running?)", err)
+			var unreachable *daemon.Unreachable
+			if errors.As(err, &unreachable) {
+				return fmt.Errorf("%w (the daemon is not running; start it with 'mcpvessel init')", err)
+			}
+			return err
 		}
 		// Clear the screen and home the cursor.
 		_, _ = io.WriteString(w, "\033[2J\033[H")

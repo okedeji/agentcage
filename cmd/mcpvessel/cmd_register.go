@@ -145,14 +145,22 @@ func preparePublish(cmd *cobra.Command, ref reference.Reference, forcePublic, fo
 // non-interactive session never prompts: publish if logged in, else skip with
 // a note.
 func confirmLoginIfNeeded(cmd *cobra.Command, mustPublish bool) (bool, error) {
-	if tok, found, err := mcpregistry.LoadToken(); err == nil && found && !tok.Expired() {
+	tok, found, tokErr := mcpregistry.LoadToken()
+	if tokErr == nil && found && !tok.Expired() {
 		return true, nil
 	}
+	// A token that exists but lapsed is an expired login, not a missing app:
+	// registry tokens live minutes, so this is the common case, and naming a
+	// client id here would send the operator configuring the wrong thing.
+	expired := tokErr == nil && found
 
 	interactive := isInteractive(cmd)
 
 	if config.LookupEnv(env.GitHubClientID) == "" {
-		const how = "no MCP Registry app configured; set one with 'mcpvessel config env set VESSEL_GITHUB_CLIENT_ID <client-id>'"
+		how := "no MCP Registry app configured; set one with 'mcpvessel config env set VESSEL_GITHUB_CLIENT_ID <client-id>'"
+		if expired {
+			how = "your MCP Registry login has expired (registry tokens are short-lived); run 'mcpvessel login mcp-registry' again"
+		}
 		if mustPublish {
 			return false, fmt.Errorf("cannot publish: %s", how)
 		}

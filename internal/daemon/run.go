@@ -106,7 +106,7 @@ func (d *Daemon) handleCallRun(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	session, ok := d.session(id)
 	if !ok {
-		writeError(w, http.StatusNotFound, "no such run "+id)
+		writeError(w, http.StatusNotFound, "no such live run "+id+" ('mcpvessel ps' lists live runs)")
 		return
 	}
 	var req callRequest

@@ -13,7 +13,7 @@ func (d *Daemon) handleRunSpend(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	report, ok := runtime.RunSpend(r.Context(), id)
 	if !ok {
-		writeError(w, http.StatusNotFound, "no spend for run "+id+" (does it reason, and is it still running?)")
+		writeError(w, http.StatusNotFound, "no live spend for run "+id+" (spend reads a live reasoning run; a finished run's total is in 'mcpvessel ps')")
 		return
 	}
 	writeJSON(w, http.StatusOK, report)

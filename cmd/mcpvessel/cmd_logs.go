@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -29,7 +30,11 @@ The run id is the one 'mcpvessel ps' lists.`,
 				return err
 			}
 			if err := daemon.Dial(socket).Logs(cmd.Context(), args[0], follow, cmd.OutOrStdout()); err != nil {
-				return fmt.Errorf("%w (is the daemon running? start it with 'mcpvessel daemon')", err)
+				var unreachable *daemon.Unreachable
+				if errors.As(err, &unreachable) {
+					return fmt.Errorf("%w (the daemon is not running; start it with 'mcpvessel init')", err)
+				}
+				return err
 			}
 			return nil
 		},

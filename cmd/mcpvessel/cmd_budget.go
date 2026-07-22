@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -39,9 +40,13 @@ gateway) have a budget to set.`,
 				return err
 			}
 			if err := daemon.Dial(socket).SetBudget(cmd.Context(), args[0], micro); err != nil {
-				return fmt.Errorf("%w (is the daemon running?)", err)
+				var unreachable *daemon.Unreachable
+				if errors.As(err, &unreachable) {
+					return fmt.Errorf("%w (the daemon is not running; start it with 'mcpvessel init')", err)
+				}
+				return err
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "budget for %s set to $%s\n", args[0], args[1])
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Set budget for %s to $%s\n", args[0], args[1])
 			return nil
 		},
 	}

@@ -157,7 +157,7 @@ func (c *Client) runStream(ctx context.Context, req RunRequest, logs io.Writer) 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", usage, fmt.Errorf("daemon /run: %s", errorBody(resp))
+		return "", usage, fmt.Errorf("%s", errorBody(resp))
 	}
 
 	dec := json.NewDecoder(resp.Body)
@@ -239,7 +239,7 @@ func (c *Client) FetchReplay(ctx context.Context, id string) ([]byte, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("daemon /runs/%s/replay: %s", id, errorBody(resp))
+		return nil, fmt.Errorf("%s", errorBody(resp))
 	}
 	return io.ReadAll(resp.Body)
 }
@@ -261,7 +261,7 @@ func (c *Client) Logs(ctx context.Context, id string, follow bool, w io.Writer) 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("daemon %s: %s", path, errorBody(resp))
+		return fmt.Errorf("%s", errorBody(resp))
 	}
 	_, err = io.Copy(w, resp.Body)
 	return err
@@ -280,7 +280,7 @@ func (c *Client) Events(ctx context.Context, onEvent func(Event)) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("daemon /events: %s", errorBody(resp))
+		return fmt.Errorf("%s", errorBody(resp))
 	}
 	dec := json.NewDecoder(resp.Body)
 	for {
@@ -442,7 +442,7 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	defer func() { _ = resp.Body.Close() }()
 	c.checkStale(resp.Header)
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("daemon %s: %s", path, errorBody(resp))
+		return fmt.Errorf("%s", errorBody(resp))
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("decoding daemon response: %w", err)
@@ -475,7 +475,7 @@ func (c *Client) post(ctx context.Context, path string, body, out any) error {
 	defer func() { _ = resp.Body.Close() }()
 	c.checkStale(resp.Header)
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("daemon %s: %s", path, errorBody(resp))
+		return fmt.Errorf("%s", errorBody(resp))
 	}
 	if out != nil && resp.StatusCode == http.StatusOK {
 		return json.NewDecoder(resp.Body).Decode(out)

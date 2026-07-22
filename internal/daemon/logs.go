@@ -69,7 +69,7 @@ func (d *Daemon) handleRunLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "no logs for run "+id)
+		writeError(w, http.StatusNotFound, "no logs for run "+id+" ('mcpvessel ps -a' lists run ids)")
 		return
 	}
 	defer func() { _ = f.Close() }()

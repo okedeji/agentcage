@@ -120,7 +120,13 @@ func (c *Client) Publish(ctx context.Context, s *Server, token string) error {
 	case http.StatusForbidden:
 		return fmt.Errorf("publishing %s: token cannot publish this namespace", s.Name)
 	default:
-		return fmt.Errorf("publishing %s: registry returned %s: %s", s.Name, resp.Status, snippet(resp.Body))
+		body := snippet(resp.Body)
+		// The registry refuses re-publishing an existing version; surface the
+		// remedy instead of its raw JSON.
+		if resp.StatusCode == http.StatusBadRequest && strings.Contains(body, "duplicate version") {
+			return fmt.Errorf("publishing %s: version %s is already in the MCP Registry; bump the version, push, and register again", s.Name, s.Version)
+		}
+		return fmt.Errorf("publishing %s: registry returned %s: %s", s.Name, resp.Status, body)
 	}
 }
 
