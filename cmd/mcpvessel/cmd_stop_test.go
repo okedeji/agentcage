@@ -23,7 +23,7 @@ func TestStopRuns_StopsEveryIDAndEchoesThem(t *testing.T) {
 	if len(stopped) != 2 {
 		t.Errorf("stopped %d runs, want 2", len(stopped))
 	}
-	if got := stdout.String(); got != "a\nb\n" {
+	if got := stdout.String(); got != "Stopped a\nStopped b\n" {
 		t.Errorf("stdout = %q, want each stopped id on its own line", got)
 	}
 	if stderr.Len() != 0 {

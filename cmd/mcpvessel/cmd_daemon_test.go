@@ -17,7 +17,7 @@ func TestDaemonStop_NoDaemonRunning(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("daemon stop: %v", err)
 	}
-	if !strings.Contains(out.String(), "no daemon is running") {
+	if !strings.Contains(out.String(), "No daemon is running") {
 		t.Errorf("output = %q, want the no-daemon message", out.String())
 	}
 }
