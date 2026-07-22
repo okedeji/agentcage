@@ -59,7 +59,7 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 	if err != nil {
 		return nil, nil, err
 	}
-	warnSecretShapes(in.Stderr, tree, in.Name, in.Secrets)
+	warnSecretShapes(in.Stderr, tree, in.Name, in.Secrets, configSecretScopes(cfg))
 	plan, err := buildRunPlan(tree, runID, ops)
 	if err != nil {
 		return nil, nil, err
@@ -78,8 +78,10 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 // lets the operator scope the grant. One malicious declarer is enough, so this
 // fires whenever a broadcast secret reaches at least one non-root agent, not
 // only when two or more declare it. A scope matching no agent in the run grants
-// nothing, silently, which is almost always a typo.
-func warnSecretShapes(w io.Writer, tree *runTree, rootName string, secrets ScopedSecrets) {
+// nothing, silently, which is almost always a typo — unless the scope came from
+// a per-agent config binding (cfgScopes), which is global operator config and
+// legitimately covers agents other runs use, so it is not warned about here.
+func warnSecretShapes(w io.Writer, tree *runTree, rootName string, secrets ScopedSecrets, cfgScopes map[string]bool) {
 	if w == nil || len(secrets) == 0 {
 		return
 	}
@@ -125,10 +127,24 @@ func warnSecretShapes(w io.Writer, tree *runTree, rootName string, secrets Scope
 			strings.Join(declaredBy[name], ", "), name, name)
 	}
 	for _, scope := range secrets.Scopes() {
-		if !scopes[scope] {
+		if !scopes[scope] && !cfgScopes[scope] {
 			_, _ = fmt.Fprintf(w, "warning: --secret scope %q matches no agent in this run; nothing was granted under it\n", scope)
 		}
 	}
+}
+
+// configSecretScopes maps each per-agent config secret binding to the USES
+// alias it scopes to in a pool, mirroring how applyConfigSecrets injects it.
+func configSecretScopes(cfg *config.Config) map[string]bool {
+	scopes := map[string]bool{}
+	for key := range cfg.Secrets.Agents {
+		r, err := reference.Parse(key)
+		if err != nil || r.Repository == "" {
+			continue
+		}
+		scopes[usesAlias(r.Repository)] = true
+	}
+	return scopes
 }
 
 // resolveRunTree walks the root's transitive USES graph, pulling each

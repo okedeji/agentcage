@@ -172,6 +172,10 @@ func (c *Client) runStream(ctx context.Context, req RunRequest, logs io.Writer) 
 		switch f.Type {
 		case "run_id":
 			usage.RunID = f.Data
+			// Surface the id the moment the daemon assigns it, so the operator
+			// can target the live run from another shell: logs -f, spend,
+			// budget set, egress allow all key on it.
+			_, _ = fmt.Fprintf(logs, "run: %s\n", f.Data)
 		case "log":
 			_, _ = io.WriteString(logs, f.Data)
 		case "result":

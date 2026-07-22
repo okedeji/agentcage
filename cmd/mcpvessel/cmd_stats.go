@@ -69,6 +69,12 @@ func watchStats(ctx context.Context, c *daemon.Client, w io.Writer) error {
 }
 
 func printStats(w io.Writer, stats []runtime.CageStat) {
+	if len(stats) == 0 {
+		// A bare header reads as broken; say what empty means. Cages exist
+		// only while a run or serve instance is live, so quiet is the norm.
+		_, _ = fmt.Fprintln(w, "No live cages. Cages appear here only while a run or a served instance is booted.")
+		return
+	}
 	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "CAGE\tCPU\tMEM\tPIDS")
 	for _, s := range stats {

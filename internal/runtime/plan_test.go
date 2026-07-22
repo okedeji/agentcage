@@ -299,6 +299,55 @@ func TestBuildRunPlan_SubAgentSecretsNeverHitArgv(t *testing.T) {
 	}
 }
 
+func TestBuildRunPlan_HostlessDefaultSubAgentStaysPooledAndUnproxied(t *testing.T) {
+	// Regression: an imported sub-agent has no EGRESS directive (hold-capable
+	// default) and no granted hosts. It used to land in EgressAgents with its
+	// dedicated network name while staying pooled, so the egress proxy joined
+	// a network that was never created and the whole run failed to boot with
+	// "no such network". Such a node must stay poolable and get no proxy.
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root":  {Key: "root", Manifest: &bundle.Manifest{}},
+			"sub-1": {Key: "sub-1", Manifest: &bundle.Manifest{}},
+		},
+		Edges: []usesEdge{{Caller: "root", Sub: "sub-1", Alias: "s"}},
+	}
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{maxLive: 8})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+	if _, ok := plan.EgressAgents["run1-sub-1"]; ok {
+		t.Errorf("hostless default sub-agent must not be in EgressAgents: %v", plan.EgressAgents)
+	}
+	for _, a := range plan.Agents {
+		if a.Node.Key == "sub-1" {
+			if a.AlwaysWarm {
+				t.Error("hostless default sub-agent must stay poolable, not pinned warm")
+			}
+			if _, ok := a.Spec.Env["HTTPS_PROXY"]; ok {
+				t.Error("hostless default sub-agent must not carry proxy env it has no route to")
+			}
+		}
+	}
+
+	// The moment the operator grants it a host (flag or config), it is proxied
+	// and therefore pinned warm on its dedicated network.
+	plan, err = buildRunPlan(tree, "run1", operatorInputs{maxLive: 8, egressAllow: []string{"api.example.com"}})
+	if err != nil {
+		t.Fatalf("buildRunPlan with egress: %v", err)
+	}
+	ea, ok := plan.EgressAgents["run1-sub-1"]
+	if !ok || len(ea.Hosts) != 1 || ea.Hosts[0] != "api.example.com" {
+		t.Errorf("granted sub-agent egress = %+v ok=%v, want [api.example.com]", ea, ok)
+	}
+	for _, a := range plan.Agents {
+		if a.Node.Key == "sub-1" && !a.AlwaysWarm {
+			t.Error("egress-bearing sub-agent must be pinned warm so its proxy network exists at boot")
+		}
+	}
+}
+
 func TestBuildRunPlan_EgressAllowAgentsGetProxyEnv(t *testing.T) {
 	withEgress := func(policy string) *bundle.Manifest {
 		return &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Egress: policy}}

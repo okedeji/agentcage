@@ -140,9 +140,20 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		return nil, err
 	}
 
-	// pinnedWarm: nodes kept warm for the run's life. EGRESS allow: agents
-	// cannot be lazy or reaped (the egress proxy keys them by an IP that must
-	// exist at boot and stay put); operator keep_warm entries join them.
+	// grantedHosts is a sub-agent's full outbound allow-set: hosts the author
+	// baked into the Vesselfile plus hosts the operator granted by flag or
+	// persisted config. A sub-agent is proxied exactly when this is non-empty,
+	// and a proxied cage must be pinned warm: the proxy joins its dedicated
+	// network at boot and authorizes by an address that must exist then and
+	// stay put, which a pooled cage cannot promise. A hold-capable cage with
+	// no granted hosts stays poolable and unproxied; it has no route out at
+	// all until the operator grants it a host.
+	grantedHosts := func(node *agentNode) []string {
+		return unionHosts(egressHosts(nodeEgress(node)), ops.egressAllow, configEgressFor(node, ops.configEgress))
+	}
+
+	// pinnedWarm: nodes kept warm for the run's life, the egress-bearing
+	// sub-agents plus operator keep_warm entries.
 	keepWarm := map[string]bool{}
 	for _, ref := range ops.keepWarm {
 		keepWarm[ref] = true
@@ -152,7 +163,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		if key == tree.Root || wholeBanned[key] {
 			continue
 		}
-		if len(egressHosts(nodeEgress(node))) > 0 || keepWarm[refKey(node)] {
+		if len(grantedHosts(node)) > 0 || keepWarm[refKey(node)] {
 			pinnedWarm[key] = true
 		}
 	}
@@ -271,10 +282,14 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		// reasoning agent can allow the hosts its sub-servers need without
 		// rebuilding each one. The operator's persisted config egress is keyed
 		// per agent, so each cage also gets the hosts approved for its own ref.
-		// The proxy runs deny-default even with no hosts, so a cage's first
-		// contact with a new host is held for approval, not hard-failed.
-		nodeHosts := unionHosts(egressHosts(nodeEgress(node)), ops.egressAllow, configEgressFor(node, ops.configEgress))
-		if wantsEgress(nodeEgress(node), nodeHosts) {
+		// Only a sub-agent with at least one granted host is proxied; such a
+		// cage is pinned warm above, so the dedicated network the proxy joins
+		// exists at boot (a pooled cage would hand the proxy a network that is
+		// never created). Beyond its allow-set the proxy stays deny-default
+		// with hold. A sub-agent with no hosts at all gets no proxy and no
+		// route out until the operator grants it one.
+		nodeHosts := grantedHosts(node)
+		if len(nodeHosts) > 0 {
 			plan.EgressAgents[containerName(key)] = egressAgent{Network: nodeNet(key), Hosts: nodeHosts}
 			for k, v := range egressProxyEnv(runID) {
 				agentEnv[k] = v

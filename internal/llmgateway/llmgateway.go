@@ -409,6 +409,11 @@ func (g *Gateway) handleSpend(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(g.meter.snapshot())
 }
 
+// Snapshot is the run's current spend against its budget. The gateway main
+// logs one at startup so a spend read early in a run reports the configured
+// budget with $0 spent, before any call has been metered.
+func (g *Gateway) Snapshot() SpendReport { return g.meter.snapshot() }
+
 // meter accumulates per-agent and total spend behind one lock; the gateway
 // serves the whole tree against one budget. It reports after each debit, so
 // the latest log line is always the run's current total.

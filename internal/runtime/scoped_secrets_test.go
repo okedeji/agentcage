@@ -72,28 +72,28 @@ func TestWarnSecretShapes(t *testing.T) {
 
 	// A broadcast grant of a name two agents declare gets named.
 	var buf bytes.Buffer
-	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"": {"API_TOKEN": "v"}})
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"": {"API_TOKEN": "v"}}, nil)
 	if !strings.Contains(buf.String(), "API_TOKEN") || !strings.Contains(buf.String(), "brave-tools") {
 		t.Errorf("no duplicate-declaration warning: %q", buf.String())
 	}
 
 	// The same shape scoped to one agent is exactly the fix; no warning.
 	buf.Reset()
-	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"sentry-tools": {"API_TOKEN": "v"}})
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"sentry-tools": {"API_TOKEN": "v"}}, nil)
 	if strings.Contains(buf.String(), "declare secret") {
 		t.Errorf("scoped grant should not warn about duplicates: %q", buf.String())
 	}
 
 	// A scope that names no agent in the run is called out.
 	buf.Reset()
-	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"sentrytools-typo": {"API_TOKEN": "v"}})
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"sentrytools-typo": {"API_TOKEN": "v"}}, nil)
 	if !strings.Contains(buf.String(), "sentrytools-typo") {
 		t.Errorf("no unknown-scope warning: %q", buf.String())
 	}
 
 	// The root's own name is a valid scope.
 	buf.Reset()
-	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"oncall": {"X": "v"}})
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"oncall": {"X": "v"}}, nil)
 	if buf.Len() != 0 {
 		t.Errorf("root-scoped grant warned unexpectedly: %q", buf.String())
 	}
@@ -105,9 +105,22 @@ func TestWarnSecretShapes_SingleNonRootDeclarerWarns(t *testing.T) {
 	// past the two-or-more-declarers shape.
 	tree := treeWith(nil, map[string][]string{"sentry-tools": {"SOLO_TOKEN"}})
 	var buf bytes.Buffer
-	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"": {"SOLO_TOKEN": "v"}})
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"": {"SOLO_TOKEN": "v"}}, nil)
 	if !strings.Contains(buf.String(), "SOLO_TOKEN") || !strings.Contains(buf.String(), "sentry-tools") {
 		t.Errorf("single sub-agent declarer of a broadcast secret was not warned: %q", buf.String())
+	}
+}
+
+func TestWarnSecretShapes_ConfigBoundScopeIsQuiet(t *testing.T) {
+	// A scope injected by a per-agent config binding (config secrets set) is
+	// global operator config: it legitimately names agents other runs use, so
+	// its absence from this run is not the typo the --secret warning exists
+	// to catch.
+	tree := treeWith(nil, map[string][]string{"sentry-tools": {"API_TOKEN"}})
+	var buf bytes.Buffer
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"notes": {"STRIPE_SECRET_KEY": "v"}}, map[string]bool{"notes": true})
+	if buf.Len() != 0 {
+		t.Errorf("config-bound scope warned unexpectedly: %q", buf.String())
 	}
 }
 
@@ -116,7 +129,7 @@ func TestWarnSecretShapes_RootOnlyBroadcastIsQuiet(t *testing.T) {
 	// so there is nothing to warn about.
 	tree := treeWith([]string{"ROOT_ONLY"}, nil)
 	var buf bytes.Buffer
-	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"": {"ROOT_ONLY": "v"}})
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"": {"ROOT_ONLY": "v"}}, nil)
 	if strings.Contains(buf.String(), "declare secret") {
 		t.Errorf("root-only broadcast secret warned unexpectedly: %q", buf.String())
 	}

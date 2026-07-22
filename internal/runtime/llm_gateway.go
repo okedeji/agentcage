@@ -193,7 +193,9 @@ func startLLMGateway(ctx context.Context, sess *bootSession, runID string, agent
 }
 
 // RunSpend reads a run's current LLM spend off its gateway logs. Best-effort:
-// a run that does not reason, or whose gateway is gone, reports !ok.
+// a run that does not reason, or whose gateway is gone, reports !ok. A live
+// gateway with no metered call yet reports a zero snapshot rather than !ok,
+// so an early 'mcpvessel spend' reads $0, not "no such run".
 func RunSpend(ctx context.Context, runID string) (llmgateway.SpendReport, bool) {
 	p, err := DefaultProvisioner()
 	if err != nil {
@@ -204,7 +206,8 @@ func RunSpend(ctx context.Context, runID string) (llmgateway.SpendReport, bool) 
 	if !ok {
 		return llmgateway.SpendReport{}, false
 	}
-	return llmgateway.ParseSpendLine(log)
+	report, _ := llmgateway.ParseSpendLine(log)
+	return report, true
 }
 
 // RunTelemetry reads a run's final spend and per-call events off the gateway

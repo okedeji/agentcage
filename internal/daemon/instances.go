@@ -131,6 +131,20 @@ func (m *instanceManager) drop(sessionID string) {
 	m.signalSlotFree()
 }
 
+// hasRunID reports whether one of this manager's live instances runs under
+// runID. Instances are keyed by client session id, so steering commands that
+// arrive with a run id (budget set) resolve through this scan.
+func (m *instanceManager) hasRunID(runID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, inst := range m.instances {
+		if inst.runID == runID {
+			return true
+		}
+	}
+	return false
+}
+
 // clientCount is the number of live per-client instances.
 func (m *instanceManager) clientCount() int {
 	m.mu.Lock()

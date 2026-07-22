@@ -133,8 +133,8 @@ type budgetRequest struct {
 // with no gateway (does not reason).
 func (d *Daemon) handleSetBudget(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if _, ok := d.session(id); !ok {
-		writeError(w, http.StatusNotFound, "no such run "+id)
+	if !d.liveRun(id) {
+		writeError(w, http.StatusNotFound, "no such live run "+id+" ('mcpvessel ps' lists run ids; a budget can only change while the run is live)")
 		return
 	}
 	var req budgetRequest

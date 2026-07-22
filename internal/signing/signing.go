@@ -253,7 +253,7 @@ func Verify(raw []byte, digest, repository, requestedTag string) (pubB64 string,
 		return "", fmt.Errorf("parsing signature: %w", err)
 	}
 	if a.Version != ArtifactVersion {
-		return "", fmt.Errorf("signature version %q is not %q", a.Version, ArtifactVersion)
+		return "", fmt.Errorf("the bundle's signature uses format %q but this mcpvessel verifies format %q; the publisher must re-push it with a current mcpvessel to re-sign it", a.Version, ArtifactVersion)
 	}
 	body, err := base64.StdEncoding.DecodeString(a.Payload)
 	if err != nil {

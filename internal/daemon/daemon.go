@@ -119,6 +119,25 @@ func (d *Daemon) session(id string) (*runtime.Session, bool) {
 	return r.session, true
 }
 
+// liveRun reports whether id names a live run the daemon can steer: a held
+// stdio session, or one serve client instance (a serve entry itself is a
+// pool, not a run). Manager scans take the manager lock while holding d.mu;
+// the reverse order never occurs (instance hooks run outside the manager
+// lock), so the ordering is deadlock-free.
+func (d *Daemon) liveRun(id string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if r, ok := d.runs[id]; ok && r.session != nil {
+		return true
+	}
+	for _, r := range d.runs {
+		if r.manager != nil && r.manager.hasRunID(id) {
+			return true
+		}
+	}
+	return false
+}
+
 // take removes a run from the registry and returns its entry; concurrent stops
 // release at most once.
 func (d *Daemon) take(id string) (*heldRun, bool) {

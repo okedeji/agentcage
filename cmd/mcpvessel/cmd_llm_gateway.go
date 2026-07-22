@@ -57,6 +57,9 @@ func newLLMGatewayCmd() *cobra.Command {
 				Call:    func(e llmgateway.CallEvent) { llmgateway.WriteCallLine(out, e) },
 				Payload: func(r llmgateway.CallRecord) { llmgateway.WriteReplayLine(out, r) },
 			})
+			// An initial zero snapshot, so a spend read early in the run reports
+			// the configured budget rather than nothing.
+			llmgateway.WriteSpendLine(out, gw.Snapshot())
 
 			// Loopback only: agents on the run network cannot reach the
 			// control surface; the daemon drives it via nerdctl exec, inside

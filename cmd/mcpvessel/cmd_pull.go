@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/okedeji/mcpvessel/internal/locate"
 	"github.com/okedeji/mcpvessel/internal/reference"
 	"github.com/okedeji/mcpvessel/internal/registry"
 )
@@ -18,16 +21,23 @@ func newPullCmd() *cobra.Command {
 		Long: `Pull an agent bundle from an OCI registry into the local cache.
 
 REF accepts the same forms as 'push': shorthand (@org/name:version) or a
-fully-qualified host ref. A ref pinned to a digest that is already cached
-returns without touching the network.
+fully-qualified host ref. An MCP Registry name (io.github.user/server) also
+works, the same resolution 'run' and 'serve' do: the entry's OCI artifact is
+pulled, at the entry's version or a :version you append. A ref pinned to a
+digest that is already cached returns without touching the network.
 
 The bundle lands under ~/.mcpvessel/cache and the cache path is printed so
 it can be fed to 'mcpvessel run' or 'mcpvessel call'.`,
 		Example: `  mcpvessel pull @anthropic/web-search:1.2.0
-  mcpvessel pull ghcr.io/okedeji/researcher:0.1`,
+  mcpvessel pull ghcr.io/okedeji/researcher:0.1
+  mcpvessel pull io.github.okedeji/mcpvessel-docs`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ref, err := reference.Parse(args[0])
+			arg, err := resolveRegistryNameArg(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			ref, err := reference.Parse(arg)
 			if err != nil {
 				return err
 			}
@@ -71,4 +81,34 @@ it can be fed to 'mcpvessel run' or 'mcpvessel call'.`,
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return cmd
+}
+
+// resolveRegistryNameArg resolves an MCP Registry name (io.github.user/server,
+// optionally with a trailing :version) to the OCI ref its registry entry
+// points at. Anything that is not a registry name passes through untouched
+// for the ordinary reference parser.
+func resolveRegistryNameArg(ctx context.Context, arg string) (string, error) {
+	nameArg, tag := arg, ""
+	if i := strings.LastIndex(arg, ":"); i > strings.LastIndex(arg, "/") {
+		nameArg, tag = arg[:i], arg[i+1:]
+	}
+	name, ok := locate.RegistryName(nameArg)
+	if !ok {
+		return arg, nil
+	}
+	resolved, err := locate.ResolveRegistryName(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	// A :version the operator appended pins that version on the resolved
+	// repository, overriding the version the registry entry advertises.
+	if tag != "" {
+		r, perr := reference.Parse(resolved)
+		if perr != nil {
+			return "", perr
+		}
+		r.Tag, r.Digest = tag, ""
+		resolved = r.OCIRef()
+	}
+	return resolved, nil
 }

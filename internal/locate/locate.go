@@ -51,7 +51,7 @@ func Bundle(ctx context.Context, arg string) (Result, error) {
 	}
 
 	if name, ok := RegistryName(arg); ok {
-		resolved, err := resolveReverseDNS(ctx, name)
+		resolved, err := ResolveRegistryName(ctx, name)
 		if err != nil {
 			return Result{}, err
 		}
@@ -87,7 +87,10 @@ func Bundle(ctx context.Context, arg string) (Result, error) {
 	}
 	p, _, err := client.Pull(ctx, ref)
 	if err != nil {
-		return Result{}, err
+		// Name the whole resolution path: without the store context, a miss on
+		// a local-only tag reads as a baffling network error against whatever
+		// host the shorthand defaulted to.
+		return Result{}, fmt.Errorf("%s is not in the local store ('mcpvessel store ls' lists it) and pulling it failed: %w", ref.Display(), err)
 	}
 	return Result{Path: p, Display: ref.OCIRef(), Name: path.Base(ref.Repository)}, nil
 }
@@ -133,10 +136,10 @@ func isReverseDNSNamespace(s string) bool {
 	return true
 }
 
-// resolveReverseDNS resolves a name to the OCI ref its registry entry
-// points at. An entry with no OCI package cannot be pulled and is named as
-// such rather than failing later with an opaque reference error.
-func resolveReverseDNS(ctx context.Context, name string) (string, error) {
+// ResolveRegistryName resolves an MCP Registry name to the OCI ref its
+// registry entry points at. An entry with no OCI package cannot be pulled and
+// is named as such rather than failing later with an opaque reference error.
+func ResolveRegistryName(ctx context.Context, name string) (string, error) {
 	server, err := mcpregistry.New().Resolve(ctx, name)
 	if err != nil {
 		return "", err
