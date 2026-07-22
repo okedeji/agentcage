@@ -60,6 +60,15 @@ type instanceBoot struct {
 // maxClients, reap past idleTTL. The unit is a whole instance (root plus its
 // sub-agent tree), not a cage. The host floor is inherited: a boot fails
 // admission inside runtime.Acquire when the host is full.
+//
+// There is no per-source admission cap. The front door is unauthenticated, so
+// the manager cannot attribute a slot to a caller; maxClients plus the idle TTL
+// are the only backpressure. Ephemeral REST instances are dropped on release
+// (see drop) so a plain-HTTP burst frees slots at once instead of pinning them
+// for the TTL, but a determined unauthenticated client can still fill the cap
+// with concurrent in-flight calls. That residual is inherent to running with no
+// auth; the cap stays fail-closed (a newcomer gets a capacity error, never
+// another caller's instance). Add auth or a fronting proxy to bound per-source.
 type instanceManager struct {
 	address    string
 	boot       func(ctx context.Context, runID string) (managedSession, error)
@@ -101,6 +110,25 @@ func (m *instanceManager) endInstance(inst *instance) error {
 		m.hooks.onEnd(inst.runID)
 	}
 	return inst.session.Release()
+}
+
+// drop ends and removes one session's instance immediately, reclaiming its
+// client slot without waiting for the idle TTL. The front door calls it when a
+// single-use plain-HTTP request finishes, so ephemeral REST callers free their
+// slot at once rather than hold it the way a long-lived MCP session does. A
+// no-op when the session has no live instance (already reaped or released).
+func (m *instanceManager) drop(sessionID string) {
+	m.mu.Lock()
+	inst, ok := m.instances[sessionID]
+	if ok {
+		delete(m.instances, sessionID)
+	}
+	m.mu.Unlock()
+	if !ok {
+		return
+	}
+	_ = m.endInstance(inst)
+	m.signalSlotFree()
 }
 
 // clientCount is the number of live per-client instances.

@@ -150,6 +150,9 @@ func buildLLMConfig(agents, tokens map[string]string, budgetMicroUSD int64) (llm
 // provider keys and reaching out, kept off the broker of hostile inter-agent
 // traffic.
 func startLLMGateway(ctx context.Context, sess *bootSession, runID string, agentNets []string, egressNetwork string, llmCfg llmgateway.Config, in bootInput, td *teardown) error {
+	// Resolve the body cap on the host (the gateway container has no config
+	// access); zero leaves the gateway default.
+	llmCfg.MaxBodyBytes = config.ByteSizeEnv(env.MaxLLMBody, 0)
 	cfgJSON, err := json.Marshal(llmCfg)
 	if err != nil {
 		return fmt.Errorf("encoding LLM gateway config: %w", err)
@@ -162,8 +165,13 @@ func startLLMGateway(ctx context.Context, sess *bootSession, runID string, agent
 		Args:     []string{"llm-gateway"},
 		Networks: append(append([]string{}, agentNets...), egressNetwork),
 		Env: map[string]string{
+			env.LLMAddr: ":" + env.DefaultLLMGatewayPort,
+		},
+		// The config JSON carries the operator's real provider keys, so deliver
+		// it off argv (via the env-file stdin channel) rather than as --env,
+		// which would expose the keys through ps/nerdctl inspect.
+		SecretEnv: map[string]string{
 			env.LLMConfig: string(cfgJSON),
-			env.LLMAddr:   ":" + env.DefaultLLMGatewayPort,
 		},
 		Detached: true,
 		Managed:  in.Managed,

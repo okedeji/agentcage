@@ -157,7 +157,7 @@ func signAfterPush(ctx context.Context, w io.Writer, client *registry.Client, re
 		path, _ := signing.KeyPath()
 		_, _ = fmt.Fprintf(w, "Generated signing key %s at %s (back it up; 'mcpvessel keys' shows the public half)\n", fp, path)
 	}
-	sig, err := signing.Sign(key, digest, ref.Registry+"/"+ref.Repository)
+	sig, err := signing.Sign(key, digest, ref.Registry+"/"+ref.Repository, ref.Tag)
 	if err != nil {
 		return "", err
 	}

@@ -6,7 +6,10 @@ package serve
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +19,8 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/okedeji/mcpvessel/internal/config"
+	"github.com/okedeji/mcpvessel/internal/env"
 	"github.com/okedeji/mcpvessel/internal/identity"
 	"github.com/okedeji/mcpvessel/internal/mcp"
 )
@@ -99,8 +104,10 @@ func toolPrefix(addr string) string {
 
 // Handler builds the front door: each exposed agent is reachable over
 // MCP-over-HTTP and over plain JSON-over-HTTP, and the merged endpoints carry
-// every agent's tools at once. The plain path reuses the same caged instance
-// and dispatch as MCP, so it is a second door, not a bypass.
+// every agent's tools at once. The plain path reuses the same dispatch as MCP,
+// so it is a second door, not a bypass; unlike MCP it carries no session, so
+// each plain-HTTP call runs in its own ephemeral instance (see
+// ephemeralSessionID) and never shares state with another caller.
 func Handler(agents []Agent, flat []FlatTool) http.Handler {
 	mux := http.NewServeMux()
 	for i := range agents {
@@ -155,9 +162,56 @@ func Handler(agents []Agent, flat []FlatTool) http.Handler {
 	return mux
 }
 
-// httpSessionID keys the plain-HTTP path's instance: all HTTP callers to one
-// agent share a single instance, booted on first call and reaped when idle.
-const httpSessionID = "http"
+// defaultMaxRequestBytes caps a single plain-HTTP request body (tool arguments
+// or a prompt). The front door is unauthenticated, so this is a DoS floor: a
+// caller cannot make the daemon buffer an unbounded body before the JSON
+// decode. VESSEL_MAX_SERVE_BODY raises it for legitimately large payloads.
+const defaultMaxRequestBytes = 1 << 20 // 1 MiB
+
+// maxRequestBytes resolves the body cap once per process: the operator's
+// VESSEL_MAX_SERVE_BODY if set, else the default. Resolved lazily so tests and
+// config changes are picked up on first use, not at package init.
+var maxRequestBytes = sync.OnceValue(func() int64 {
+	return config.ByteSizeEnv(env.MaxServeBody, defaultMaxRequestBytes)
+})
+
+// ephemeralSessionPrefix marks a session id minted per plain-HTTP request. The
+// daemon recognizes it (see IsEphemeralSession) and drops the instance the
+// moment the call returns instead of pinning a client slot until the idle TTL.
+const ephemeralSessionPrefix = "rest-ephemeral-"
+
+// IsEphemeralSession reports whether id was minted by ephemeralSessionID for a
+// single plain-HTTP request, so the resolver can reclaim its instance on
+// release rather than hold it for reuse the way it holds an MCP session.
+func IsEphemeralSession(id string) bool {
+	return strings.HasPrefix(id, ephemeralSessionPrefix)
+}
+
+// ephemeralSessionID mints a fresh, unguessable session key for one plain-HTTP
+// request. Every REST call thus resolves to its own instance and can never read
+// another caller's conversation, files, or elicitation channel: unlike MCP,
+// plain HTTP carries no session, so a shared key would land every caller in one
+// live instance. A rand failure (near impossible) falls back to a nanosecond
+// stamp, still per-request unique.
+func ephemeralSessionID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%s%d", ephemeralSessionPrefix, time.Now().UnixNano())
+	}
+	return ephemeralSessionPrefix + hex.EncodeToString(b[:])
+}
+
+// statusForBodyError maps a request-body read failure to its HTTP status: 413
+// when the body ran past maxRequestBytes, 400 for anything else (malformed
+// JSON, a short read). The MaxBytesReader error survives fmt.Errorf %w
+// wrapping, so errors.As still finds it.
+func statusForBodyError(err error) int {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		return http.StatusRequestEntityTooLarge
+	}
+	return http.StatusBadRequest
+}
 
 // httpCallTool invokes a public tool with the JSON body as its arguments; a
 // tool outside the agent's public set is a 404.
@@ -166,9 +220,10 @@ func httpCallTool(w http.ResponseWriter, r *http.Request, a Agent, tool string) 
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("unknown tool %q", tool))
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes())
 	args, err := readArgs(r)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		writeJSONError(w, statusForBodyError(err), err.Error())
 		return
 	}
 	// The tool body is the tool's own arguments, so streaming is asked for out
@@ -189,8 +244,9 @@ func httpPrompt(w http.ResponseWriter, r *http.Request, a Agent) {
 		Messages []map[string]any `json:"messages"`
 		Stream   bool             `json:"stream"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes())
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
-		writeJSONError(w, http.StatusBadRequest, "decoding request: "+err.Error())
+		writeJSONError(w, statusForBodyError(err), "decoding request: "+err.Error())
 		return
 	}
 	var args map[string]any
@@ -229,6 +285,15 @@ func wantsStream(r *http.Request) bool {
 // client does not time out during a long tool-call phase that emits no deltas.
 const sseHeartbeat = 15 * time.Second
 
+// sseWriteTimeout bounds a single SSE write+flush. It is a per-write deadline,
+// reset before every event, not a cap on the stream's total length: a client
+// reading normally clears each event in milliseconds, so a legitimate hours-long
+// stream is unaffected, while a slow or stalled reader that stops draining the
+// socket trips the deadline and frees the serving slot instead of pinning it
+// open. It is comfortably longer than sseHeartbeat so a healthy idle stream
+// never races its own keepalive.
+const sseWriteTimeout = 45 * time.Second
+
 // httpInvokeStream answers over Server-Sent Events: `delta` events carry answer
 // chunks as the agent generates them, a final `done` event carries the whole
 // result, and `error` carries a failure. An agent that reports no progress (or
@@ -243,12 +308,24 @@ func httpInvokeStream(w http.ResponseWriter, r *http.Request, a Agent, tool stri
 		httpInvoke(w, r, a, tool, args)
 		return
 	}
-	target, release, err := a.Resolve(r.Context(), httpSessionID)
+	// A failed write (slow-reader deadline, dropped connection) cancels this
+	// context so the streaming call unwinds and the handler returns instead of
+	// generating for a client that stopped reading.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	target, release, err := a.Resolve(ctx, ephemeralSessionID())
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	defer release()
+
+	// SetWriteDeadline caps how long any single write may block on the socket,
+	// so a slow reader trips the deadline instead of pinning the handler. Flush
+	// goes through the controller too; both degrade to no-ops if the writer does
+	// not support them (the flusher check above already covers the common path).
+	rc := http.NewResponseController(w)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -258,13 +335,29 @@ func httpInvokeStream(w http.ResponseWriter, r *http.Request, a Agent, tool stri
 
 	// One writer at a time: progress arrives on the session's read goroutine,
 	// the heartbeat on a ticker goroutine, and the terminal event on this one.
+	// The first write that fails cancels the call; later writes short-circuit.
 	var mu sync.Mutex
+	failed := false
+	write := func(s string) {
+		mu.Lock()
+		defer mu.Unlock()
+		if failed {
+			return
+		}
+		_ = rc.SetWriteDeadline(time.Now().Add(sseWriteTimeout))
+		if _, err := io.WriteString(w, s); err != nil {
+			failed = true
+			cancel()
+			return
+		}
+		if err := rc.Flush(); err != nil {
+			failed = true
+			cancel()
+		}
+	}
 	writeEvent := func(event string, data any) {
 		b, _ := json.Marshal(data)
-		mu.Lock()
-		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b)
-		flusher.Flush()
-		mu.Unlock()
+		write(fmt.Sprintf("event: %s\ndata: %s\n\n", event, b))
 	}
 
 	stop := make(chan struct{})
@@ -276,10 +369,7 @@ func httpInvokeStream(w http.ResponseWriter, r *http.Request, a Agent, tool stri
 			case <-stop:
 				return
 			case <-t.C:
-				mu.Lock()
-				_, _ = fmt.Fprint(w, ": keepalive\n\n")
-				flusher.Flush()
-				mu.Unlock()
+				write(": keepalive\n\n")
 			}
 		}
 	}()
@@ -288,7 +378,7 @@ func httpInvokeStream(w http.ResponseWriter, r *http.Request, a Agent, tool stri
 	// A target with no streaming path (or an agent that emits no progress)
 	// still yields a valid stream: one final `done` with the whole answer.
 	if target.CallStream == nil {
-		text, err := target.Call(r.Context(), tool, args)
+		text, err := target.Call(ctx, tool, args)
 		if err != nil {
 			writeEvent("error", map[string]any{"error": err.Error()})
 			return
@@ -303,7 +393,7 @@ func httpInvokeStream(w http.ResponseWriter, r *http.Request, a Agent, tool stri
 		}
 		writeEvent("delta", map[string]any{"text": chunk.Message})
 	}
-	text, err := target.CallStream(r.Context(), tool, args, onProgress)
+	text, err := target.CallStream(ctx, tool, args, onProgress)
 	if err != nil {
 		writeEvent("error", map[string]any{"error": err.Error()})
 		return
@@ -311,11 +401,11 @@ func httpInvokeStream(w http.ResponseWriter, r *http.Request, a Agent, tool stri
 	writeEvent("done", map[string]any{"result": text})
 }
 
-// httpInvoke resolves the agent's shared HTTP instance and calls tool. It binds
-// no elicitation channel: a curl caller cannot answer a mid-call question, so an
-// agent that asks fails closed.
+// httpInvoke resolves this request's own ephemeral instance and calls tool. It
+// binds no elicitation channel: a curl caller cannot answer a mid-call
+// question, so an agent that asks fails closed.
 func httpInvoke(w http.ResponseWriter, r *http.Request, a Agent, tool string, args map[string]any) {
-	target, release, err := a.Resolve(r.Context(), httpSessionID)
+	target, release, err := a.Resolve(r.Context(), ephemeralSessionID())
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return

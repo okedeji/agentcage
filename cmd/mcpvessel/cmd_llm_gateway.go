@@ -3,14 +3,31 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 
 	"github.com/okedeji/mcpvessel/internal/env"
 	"github.com/okedeji/mcpvessel/internal/llmgateway"
 )
+
+// syncWriter serializes whole-line writes to the underlying stream. The gateway
+// emits spend/call/replay lines from many concurrent metered calls, and a
+// replay line's base64 payload far exceeds PIPE_BUF, so without this their
+// writes would interleave and corrupt the JSON lines the daemon parses.
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
+}
 
 // newLLMGatewayCmd runs the in-run LLM gateway. Hidden: the runtime starts it
 // inside the gateway container; its endpoints, per-agent models, and budget
@@ -34,10 +51,11 @@ func newLLMGatewayCmd() *cobra.Command {
 			if addr == "" {
 				addr = ":" + env.DefaultLLMGatewayPort
 			}
+			out := &syncWriter{w: os.Stdout}
 			gw := llmgateway.New(cfg, llmgateway.Hooks{
-				Spend:   func(r llmgateway.SpendReport) { llmgateway.WriteSpendLine(os.Stdout, r) },
-				Call:    func(e llmgateway.CallEvent) { llmgateway.WriteCallLine(os.Stdout, e) },
-				Payload: func(r llmgateway.CallRecord) { llmgateway.WriteReplayLine(os.Stdout, r) },
+				Spend:   func(r llmgateway.SpendReport) { llmgateway.WriteSpendLine(out, r) },
+				Call:    func(e llmgateway.CallEvent) { llmgateway.WriteCallLine(out, e) },
+				Payload: func(r llmgateway.CallRecord) { llmgateway.WriteReplayLine(out, r) },
 			})
 
 			// Loopback only: agents on the run network cannot reach the

@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // ScopedSecrets is the operator's secret pool, keyed by agent scope; "" is
@@ -77,6 +78,18 @@ func Broadcast(pool map[string]string) ScopedSecrets {
 // directly rather than the sealed manifest so it also works at build
 // introspection, where no manifest exists yet.
 func injectOperatorValues(agentEnv, declaredEnv map[string]string, declaredSecrets, optional []string, opEnv, opSecrets map[string]string) error {
+	// Secrets land in the same map as plain env, the legacy shape callers that
+	// cannot separate the two (the attached root, whose env is passed straight
+	// to nerdctl) still rely on.
+	return injectOperatorValuesSplit(agentEnv, agentEnv, declaredEnv, declaredSecrets, optional, opEnv, opSecrets)
+}
+
+// injectOperatorValuesSplit is injectOperatorValues but routes secret values
+// into secretEnv rather than agentEnv, so a caller can keep them off the
+// container's argv (delivered via --env-file instead; see ContainerSpec.SecretEnv).
+// The env-override and required/optional rules are identical. Pass the same map
+// for both to fold secrets back in with the plain env.
+func injectOperatorValuesSplit(agentEnv, secretEnv, declaredEnv map[string]string, declaredSecrets, optional []string, opEnv, opSecrets map[string]string) error {
 	isOptional := make(map[string]bool, len(optional))
 	for _, name := range optional {
 		isOptional[name] = true
@@ -100,7 +113,15 @@ func injectOperatorValues(agentEnv, declaredEnv map[string]string, declaredSecre
 			}
 			return fmt.Errorf("declares secret %q but it was not provided: pass --secret %s", name, name)
 		}
-		agentEnv[name] = v
+		// Secrets are delivered through a line-oriented env-file (--env-file
+		// /dev/stdin); a value with an embedded newline would inject a second,
+		// undeclared KEY=VALUE line into the cage (defeating declaration-gating
+		// at the file layer) or silently truncate a multi-line value. Refuse it
+		// loudly rather than corrupt or over-inject.
+		if strings.ContainsAny(v, "\n\r") {
+			return fmt.Errorf("secret %q contains a newline, which cannot be delivered as an env value; store it without embedded newlines", name)
+		}
+		secretEnv[name] = v
 	}
 	return nil
 }

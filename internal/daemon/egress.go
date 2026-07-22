@@ -4,12 +4,20 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/okedeji/mcpvessel/internal/egress"
 	"github.com/okedeji/mcpvessel/internal/runtime"
 )
 
 // egressDecisionRequest is the body of an egress allow/deny call.
 type egressDecisionRequest struct {
 	Host string `json:"host"`
+	// Agent, when set, scopes the decision to the one cage of that name, instead
+	// of resolving for every cage that requested the host. Set by
+	// `egress allow --agent NAME`. Mutually exclusive with All in practice.
+	Agent string `json:"agent,omitempty"`
+	// All grants the host to every cage in the run, not just the ones that
+	// requested it. Set only by `egress allow --all`.
+	All bool `json:"all,omitempty"`
 }
 
 // handleEgressPending returns every run's currently-held hosts.
@@ -41,7 +49,13 @@ func (d *Daemon) egressDecision(w http.ResponseWriter, r *http.Request, allow bo
 		writeError(w, http.StatusBadRequest, "host is required")
 		return
 	}
-	if err := runtime.AllowRunEgress(r.Context(), id, req.Host, allow); err != nil {
+	// Validate before it is interpolated into the control URL and exec argv: the
+	// same charset rule the proxy applies, re-applied where the host is used.
+	if !egress.ValidHost(req.Host) {
+		writeError(w, http.StatusBadRequest, "malformed egress host")
+		return
+	}
+	if err := runtime.AllowRunEgress(r.Context(), id, req.Host, req.Agent, allow, req.All); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}

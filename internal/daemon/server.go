@@ -27,8 +27,16 @@ func Serve(ctx context.Context, d *Daemon, socketPath string) error {
 	if err := checkSocketPathLen(socketPath); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
+	// 0700: the control socket drives runs, serves, and shutdown, so its
+	// directory is owner-only to keep other local users off the path to it.
+	if err := os.MkdirAll(filepath.Dir(socketPath), 0o700); err != nil {
 		return fmt.Errorf("creating socket dir: %w", err)
+	}
+	// Re-tighten in case the dir predates this (MkdirAll no-ops on an existing
+	// 0755 dir from an older version), so other local users cannot traverse to
+	// the socket.
+	if err := os.Chmod(filepath.Dir(socketPath), 0o700); err != nil {
+		return fmt.Errorf("tightening socket dir perms: %w", err)
 	}
 	if alreadyListening(socketPath) {
 		return fmt.Errorf("a daemon is already listening on %s", socketPath)
@@ -43,6 +51,13 @@ func Serve(ctx context.Context, d *Daemon, socketPath string) error {
 	ln, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", socketPath, err)
+	}
+	// Lock the socket to its owner before serving a single request: any local
+	// user who could connect could drive the daemon (POST /run, /serve,
+	// /shutdown). 0600 here plus the 0700 dir above keep other users out.
+	if err := os.Chmod(socketPath, 0o600); err != nil {
+		_ = ln.Close()
+		return fmt.Errorf("restricting control socket permissions: %w", err)
 	}
 
 	// We own the socket, so any daemon-labeled containers or networks are a

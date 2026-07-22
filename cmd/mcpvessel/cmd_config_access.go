@@ -224,56 +224,73 @@ func splitList(args []string) []string {
 	return out
 }
 
-// accessKeysForRef derives the config keys for a ref: @org/name:version and
-// @org/name. A path target or unparsable ref keys nothing, so it takes only the
-// general default.
-func accessKeysForRef(ref string) (versionKey, nameKey string) {
-	r, err := reference.Parse(ref)
-	if err != nil || r.Repository == "" {
-		return "", ""
-	}
-	nameKey = "@" + r.Repository
-	if r.Tag != "" {
-		versionKey = nameKey + ":" + r.Tag
-	}
-	return versionKey, nameKey
-}
-
-// applyConfigSecrets folds the operator's config-bound secrets for ref into the
-// broadcast scope of pool, resolving each value from the environment or the
-// secret store. An explicit --secret already in the pool is never overridden. A
-// name with no resolvable value is skipped with a note: a server that requires
-// it still fails closed at injection, and one that never declared it did not
-// need it.
+// applyConfigSecrets folds the operator's config-bound secrets into pool,
+// resolving each value from the environment or the secret store. Only the
+// general Secrets.Defaults broadcast to every agent (pool[""]); a per-agent
+// binding is injected into just that agent's scope, its short name, mirroring
+// how the runtime scopes egress and --secret grants per node. This keeps a
+// binding meant for one agent (the root or a sub-agent) from reaching a sibling
+// that happens to declare the same name, and it applies sub-agent bindings the
+// old broadcast-only path silently dropped. An explicit --secret already in a
+// scope is never overridden. A name with no resolvable value is skipped with a
+// note: a server that requires it still fails closed at injection, and one that
+// never declared it did not need it. ref is unused now that every binding is
+// resolved by its own key rather than the root ref alone.
 func applyConfigSecrets(pool runtime.ScopedSecrets, ref string, stderr io.Writer) error {
+	_ = ref
 	c, err := config.Load()
 	if err != nil {
 		return err
 	}
-	names := c.Secrets.For(accessKeysForRef(ref))
-	if len(names) == 0 {
+	if len(c.Secrets.Defaults) == 0 && len(c.Secrets.Agents) == 0 {
 		return nil
 	}
 	store, err := secrets.Load()
 	if err != nil {
 		return err
 	}
-	for _, name := range names {
-		if _, taken := pool[""][name]; taken {
-			continue
+	inject := func(scope string, names []string) {
+		for _, name := range names {
+			if _, taken := pool[scope][name]; taken {
+				continue
+			}
+			value, ok := os.LookupEnv(name)
+			if !ok {
+				value, ok = store.Get(name)
+			}
+			if !ok {
+				_, _ = fmt.Fprintf(stderr, "note: config-bound secret %q for %s is not in your environment or store; skipping\n", name, displayKey(scope))
+				continue
+			}
+			if pool[scope] == nil {
+				pool[scope] = map[string]string{}
+			}
+			pool[scope][name] = value
 		}
-		value, ok := os.LookupEnv(name)
-		if !ok {
-			value, ok = store.Get(name)
+	}
+	// Defaults broadcast; each per-agent binding lands only in its agent's scope.
+	inject("", c.Secrets.Defaults)
+	for key, names := range c.Secrets.Agents {
+		if scope := aliasForKey(key); scope != "" {
+			inject(scope, names)
 		}
-		if !ok {
-			_, _ = fmt.Fprintf(stderr, "note: config-bound secret %q for %s is not in your environment or store; skipping\n", name, displayKey(ref))
-			continue
-		}
-		if pool[""] == nil {
-			pool[""] = map[string]string{}
-		}
-		pool[""][name] = value
 	}
 	return nil
+}
+
+// aliasForKey maps a config binding key (@org/name or @org/name:version) onto
+// the agent scope the runtime keys secrets by: the agent's short name (its USES
+// alias for a sub-agent, or the run name for the root). Version-independent, so
+// a binding for @org/name:1.2 and one for @org/name both reach that agent. An
+// unparsable or ref-less key scopes nothing.
+func aliasForKey(key string) string {
+	r, err := reference.Parse(key)
+	if err != nil || r.Repository == "" {
+		return ""
+	}
+	name := r.Repository
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	return name
 }

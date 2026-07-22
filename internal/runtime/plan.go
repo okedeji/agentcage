@@ -41,6 +41,10 @@ type runPlan struct {
 	MCPGateway    ContainerSpec
 	Agents        []plannedAgent
 	RootEnv       map[string]string
+	// RootSecretEnv holds the root's declared secret values, kept out of RootEnv
+	// so they are delivered off argv (via the create-time env-file), not as
+	// --env visible in ps/inspect.
+	RootSecretEnv map[string]string
 
 	// AgentNets maps agents with a dedicated network: the root and the
 	// always-warm cages. Pooled cages draw a network at activation instead.
@@ -122,6 +126,7 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	plan := &runPlan{
 		MCPGatewayCfg: mcpgateway.Config{Edges: map[string]mcpgateway.Edge{}},
 		RootEnv:       map[string]string{},
+		RootSecretEnv: map[string]string{},
 		AgentNets:     map[string]string{},
 		LLMAgents:     map[string]string{},
 		LLMTokens:     map[string]string{},
@@ -275,22 +280,28 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 				agentEnv[k] = v
 			}
 		}
+		// Sub-agents boot detached, so their secret values go through
+		// --env-file on stdin, never argv: kept in a separate map the runtime
+		// pipes in rather than merged into the plain env.
+		var secretEnv map[string]string
 		if node.Manifest != nil {
+			secretEnv = map[string]string{}
 			// Each node draws from the broadcast pool plus its own scope, its
 			// USES alias, so one grant can be pinned to one sub-agent.
-			if err := injectOperatorValues(agentEnv, node.Manifest.Vesselfile.Env, node.Manifest.Vesselfile.Secrets, node.Manifest.Vesselfile.Optional, ops.env, ops.secrets.For(usesAlias(node.Ref.Repository))); err != nil {
+			if err := injectOperatorValuesSplit(agentEnv, secretEnv, node.Manifest.Vesselfile.Env, node.Manifest.Vesselfile.Secrets, node.Manifest.Vesselfile.Optional, ops.env, ops.secrets.For(usesAlias(node.Ref.Repository))); err != nil {
 				return nil, fmt.Errorf("agent %s: %w", key, err)
 			}
 		}
 		plan.Agents = append(plan.Agents, plannedAgent{
 			Node: node,
 			Spec: ContainerSpec{
-				RunID:    containerName(key),
-				ImageRef: agentImageRef(node),
-				Networks: nets,
-				Env:      agentEnv,
-				Detached: true,
-				Managed:  ops.managed,
+				RunID:     containerName(key),
+				ImageRef:  agentImageRef(node),
+				Networks:  nets,
+				Env:       agentEnv,
+				SecretEnv: secretEnv,
+				Detached:  true,
+				Managed:   ops.managed,
 			}.withCap(agentCap(node, ops.resources)),
 			Prewarm:    prewarmed[key],
 			AlwaysWarm: pinnedWarm[key],
@@ -319,7 +330,9 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	}
 	if rootManifest := tree.Nodes[tree.Root].Manifest; rootManifest != nil {
 		root := rootManifest.Vesselfile
-		if err := injectOperatorValues(plan.RootEnv, root.Env, root.Secrets, root.Optional, ops.env, ops.secrets.For(ops.rootName)); err != nil {
+		// Split the root's secrets off RootEnv so the attached root delivers
+		// their values via the create-time env-file, not on argv.
+		if err := injectOperatorValuesSplit(plan.RootEnv, plan.RootSecretEnv, root.Env, root.Secrets, root.Optional, ops.env, ops.secrets.For(ops.rootName)); err != nil {
 			return nil, fmt.Errorf("agent %s: %w", tree.Root, err)
 		}
 	}
@@ -334,6 +347,9 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 	plan.LLMNets = append(plan.LLMNets, plan.ReasonPool...)
 
 	plan.MCPGatewayCfg.Record = ops.record
+	// Resolve the body cap on the host (the gateway container has no config
+	// access) and carry it in the routing table; zero leaves the gateway default.
+	plan.MCPGatewayCfg.MaxBodyBytes = config.ByteSizeEnv(env.MaxGatewayBody, 0)
 	cfgJSON, err := json.Marshal(plan.MCPGatewayCfg)
 	if err != nil {
 		return nil, fmt.Errorf("encoding MCP gateway routing table: %w", err)
@@ -352,8 +368,13 @@ func buildRunPlan(tree *runTree, runID string, ops operatorInputs) (*runPlan, er
 		Args:     []string{"mcp-gateway"},
 		Networks: mcpGatewayNets,
 		Env: map[string]string{
+			env.MCPAddr: ":" + env.DefaultMCPGatewayPort,
+		},
+		// The routing table carries the run's capability tokens; keep it off
+		// argv (delivered via the env-file stdin channel) so ps/inspect cannot
+		// read them.
+		SecretEnv: map[string]string{
 			env.MCPConfig: string(cfgJSON),
-			env.MCPAddr:   ":" + env.DefaultMCPGatewayPort,
 		},
 		Detached: true,
 		Managed:  ops.managed,

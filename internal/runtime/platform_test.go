@@ -70,6 +70,52 @@ func TestNerdctlRunArgs_DetachedNetworkedWithEnv(t *testing.T) {
 	}
 }
 
+func TestNerdctlRunArgs_SecretValuesStayOffArgv(t *testing.T) {
+	spec := ContainerSpec{
+		RunID:    "cg-sub",
+		ImageRef: "mcpvessel/sub:latest",
+		Networks: []string{"run-net"},
+		Detached: true,
+		Env:      map[string]string{"VESSEL_SERVE_HTTP": ":8000"},
+		SecretEnv: map[string]string{
+			"GITHUB_TOKEN": "ghp-supersecret",
+			"NOTION_TOKEN": "ntn-alsosecret",
+		},
+	}
+	got := strings.Join(nerdctlRunArgs(spec), " ")
+
+	// The plumbing env is on argv; the secret VALUES are not, only the
+	// name-free --env-file /dev/stdin that pulls them from piped stdin.
+	if !strings.Contains(got, "--env VESSEL_SERVE_HTTP=:8000") {
+		t.Errorf("plumbing env missing from argv: %q", got)
+	}
+	if !strings.Contains(got, "--env-file /dev/stdin") {
+		t.Errorf("secret env-file flag missing: %q", got)
+	}
+	for _, leak := range []string{"ghp-supersecret", "ntn-alsosecret", "GITHUB_TOKEN=", "NOTION_TOKEN="} {
+		if strings.Contains(got, leak) {
+			t.Errorf("secret material %q leaked onto argv: %q", leak, got)
+		}
+	}
+
+	// The values are delivered out of band, sorted, one KEY=VALUE per line.
+	if content := secretEnvFile(spec); content != "GITHUB_TOKEN=ghp-supersecret\nNOTION_TOKEN=ntn-alsosecret\n" {
+		t.Errorf("secretEnvFile = %q", content)
+	}
+}
+
+func TestNerdctlRunArgs_NoSecretsNoEnvFile(t *testing.T) {
+	// A spec with no secrets is byte-for-byte what it was before: no stray
+	// --env-file, and secretEnvFile is empty so nothing is piped.
+	spec := ContainerSpec{RunID: "cg", ImageRef: "img:latest", Detached: true}
+	if got := strings.Join(nerdctlRunArgs(spec), " "); strings.Contains(got, "env-file") {
+		t.Errorf("no-secret spec grew an env-file flag: %q", got)
+	}
+	if secretEnvFile(spec) != "" {
+		t.Errorf("secretEnvFile for a secret-less spec = %q, want empty", secretEnvFile(spec))
+	}
+}
+
 func TestNerdctlRunArgs_ResourceCaps(t *testing.T) {
 	got := strings.Join(nerdctlRunArgs(ContainerSpec{
 		RunID:    "cg-1",

@@ -7,6 +7,8 @@ package registry
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -26,6 +28,7 @@ import (
 	"github.com/okedeji/mcpvessel/internal/bundle"
 	"github.com/okedeji/mcpvessel/internal/env"
 	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/signing"
 )
 
 const (
@@ -162,6 +165,12 @@ func manifestIsBundle(manifestBytes []byte) bool {
 func (c *Client) Pull(ctx context.Context, ref reference.Reference) (bundlePath, digest string, err error) {
 	if ref.Digest != "" {
 		if path := c.cachePath(ref.Digest); fileExists(path) {
+			// A cache hit skips verifyPulled, so strict-mode and pinned-key
+			// policy must be enforced here too, else a digest pull of an
+			// already-cached (or locally seeded) bundle would bypass it.
+			if err := c.enforceCachedDigestPolicy(ctx, ref, ref.Digest); err != nil {
+				return "", "", err
+			}
 			return path, ref.Digest, nil
 		}
 	}
@@ -179,7 +188,8 @@ func (c *Client) Pull(ctx context.Context, ref reference.Reference) (bundlePath,
 
 	// Verify before caching: the cache is digest-addressed and immutable, so
 	// ingest is the one boundary where signature policy must hold.
-	if err := c.verifyPulled(ctx, repo, ref, digest); err != nil {
+	verified, err := c.verifyPulled(ctx, repo, ref, digest)
+	if err != nil {
 		return "", "", err
 	}
 
@@ -187,7 +197,50 @@ func (c *Client) Pull(ctx context.Context, ref reference.Reference) (bundlePath,
 	if err := writeCache(path, data); err != nil {
 		return "", "", fmt.Errorf("caching %s: %w", ref.OCIRef(), err)
 	}
+	// Record the verified marker only for a real signature match, so a later
+	// digest cache hit under strict mode can trust it without re-fetching. Keyed
+	// by the publisher scope so the marker cannot be honored for a same-digest
+	// pull under a different (differently pinned) scope.
+	if verified {
+		if err := c.markVerified(signing.Scope(ref.Registry, ref.Repository), digest); err != nil {
+			return "", "", fmt.Errorf("recording verification for %s: %w", ref.OCIRef(), err)
+		}
+	}
 	return path, digest, nil
+}
+
+// enforceCachedDigestPolicy applies signature policy to a digest cache hit,
+// where the bundle bytes are already local. Under non-strict mode it is a
+// no-op, preserving the "a repeated digest pull never touches the network"
+// contract. Under strict mode a verified marker satisfies it; its absence (a
+// legacy cache entry or a locally seeded bundle) forces a re-verification
+// against the registry, refusing to serve when the signature is missing or the
+// registry cannot be reached. It never calls Pull, so there is no loop.
+func (c *Client) enforceCachedDigestPolicy(ctx context.Context, ref reference.Reference, digest string) error {
+	if !requireSignatures() {
+		return nil
+	}
+	scope := signing.Scope(ref.Registry, ref.Repository)
+	if c.isVerified(scope, digest) {
+		return nil
+	}
+	repo, err := c.repository(ref)
+	if err != nil {
+		return err
+	}
+	verified, err := c.verifyPulled(ctx, repo, ref, digest)
+	if err != nil {
+		return err
+	}
+	// Under strict mode verifyPulled errors on an unsigned bundle, so reaching
+	// here means a signature verified; persist the marker to skip the network
+	// next time.
+	if verified {
+		if err := c.markVerified(scope, digest); err != nil {
+			return fmt.Errorf("recording verification for %s: %w", ref.OCIRef(), err)
+		}
+	}
+	return nil
 }
 
 // ResolvePublic reports the digest a reference points at using no
@@ -356,6 +409,10 @@ func BundleDigest(bundlePath string) (string, error) {
 // must be the bundle's own BundleDigest; a mismatched digest hands out the
 // wrong bytes for a lock. Package function, not a Client method: seeding is a
 // local write that must work without registry credentials.
+//
+// It deliberately writes no verified marker: locally loaded bytes are not
+// registry-verified, so a later strict-mode digest pull re-verifies them
+// against the registry rather than trusting the seed.
 func SeedCache(digest, bundlePath string) error {
 	dir, err := cacheDir()
 	if err != nil {
@@ -428,6 +485,45 @@ func (c *Client) cachePath(digest string) string {
 // filename portability.
 func bundleCachePath(cacheDir, digest string) string {
 	return filepath.Join(cacheDir, "bundles", strings.ReplaceAll(digest, ":", "-")+".agent")
+}
+
+// bundleVerifiedPath is the marker written once a bundle has been
+// signature-verified against a pinned key. It sits beside the cached bundle,
+// keyed by the sanitized digest AND the publisher scope that verified it: the
+// same immutable bytes can live in two repos owned by different (differently
+// pinned) publishers, so a marker earned under one scope must not let a
+// strict-mode digest pull under another scope skip its own pinned-key check. The
+// scope is folded in as a short hash to keep the filename filesystem-safe. Its
+// absence means "not known to be registry-verified for this scope", which only
+// matters under strict mode.
+func bundleVerifiedPath(cacheDir, scope, digest string) string {
+	sum := sha256.Sum256([]byte(scope))
+	suffix := hex.EncodeToString(sum[:])[:16]
+	name := strings.ReplaceAll(digest, ":", "-") + "." + suffix + ".verified"
+	return filepath.Join(cacheDir, "bundles", name)
+}
+
+func (c *Client) verifiedPath(scope, digest string) string {
+	return bundleVerifiedPath(c.cacheDir, scope, digest)
+}
+
+// markVerified records that the bundle for digest passed signature verification
+// under scope. Write-then-rename keeps the marker all-or-nothing.
+func (c *Client) markVerified(scope, digest string) error {
+	path := c.verifiedPath(scope, digest)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte{}, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// isVerified reports whether a verified marker exists for digest under scope.
+func (c *Client) isVerified(scope, digest string) bool {
+	return fileExists(c.verifiedPath(scope, digest))
 }
 
 func writeCache(path string, data []byte) error {

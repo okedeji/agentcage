@@ -165,9 +165,14 @@ func TestBuildRunPlan_SingleEdge(t *testing.T) {
 	if plan.MCPGateway.Memory != defaultGatewayCap.Mem || plan.MCPGateway.Pids != defaultGatewayCap.Pids {
 		t.Errorf("gateway cap = %q/%d, want %q/%d", plan.MCPGateway.Memory, plan.MCPGateway.Pids, defaultGatewayCap.Mem, defaultGatewayCap.Pids)
 	}
-	// The routing table round-trips, so the container and the plan cannot disagree.
+	// The routing table round-trips, so the container and the plan cannot
+	// disagree. It carries capability tokens, so it is delivered off argv via
+	// SecretEnv, not Env.
+	if plan.MCPGateway.Env["VESSEL_MCP_CONFIG"] != "" {
+		t.Error("MCP config must not be on argv (Env); it carries capability tokens")
+	}
 	var served mcpgateway.Config
-	if err := json.Unmarshal([]byte(plan.MCPGateway.Env["VESSEL_MCP_CONFIG"]), &served); err != nil {
+	if err := json.Unmarshal([]byte(plan.MCPGateway.SecretEnv["VESSEL_MCP_CONFIG"]), &served); err != nil {
 		t.Fatalf("gateway config not valid json: %v", err)
 	}
 	if served.Edges[edgeKey].Target != edge.Target {
@@ -252,6 +257,45 @@ func TestBuildRunPlan_InjectsLLMURLForReasoningAgents(t *testing.T) {
 				t.Errorf("sub LLM url = %q, token must be the capability token", subURL)
 			}
 		}
+	}
+}
+
+func TestBuildRunPlan_SubAgentSecretsNeverHitArgv(t *testing.T) {
+	// A sub-agent declaring a secret gets its value in the plan's SecretEnv
+	// (fed off argv via --env-file), never in Env (which becomes --env argv).
+	tree := &runTree{
+		Root: "root",
+		Nodes: map[string]*agentNode{
+			"root": {Key: "root"},
+			"sub-ab": {
+				Key:      "sub-ab",
+				Ref:      reference.Reference{Repository: "me/sub"},
+				Manifest: &bundle.Manifest{Vesselfile: bundle.VesselfileSpec{Secrets: []string{"API_TOKEN"}}},
+			},
+		},
+		Edges: []usesEdge{{Caller: "root", Sub: "sub-ab", Alias: "sub"}},
+	}
+
+	plan, err := buildRunPlan(tree, "run1", operatorInputs{
+		maxLive: 32,
+		secrets: Broadcast(map[string]string{"API_TOKEN": "sk-supersecret"}),
+	})
+	if err != nil {
+		t.Fatalf("buildRunPlan: %v", err)
+	}
+	if len(plan.Agents) != 1 {
+		t.Fatalf("agents = %d, want 1", len(plan.Agents))
+	}
+	spec := plan.Agents[0].Spec
+	if spec.SecretEnv["API_TOKEN"] != "sk-supersecret" {
+		t.Errorf("secret not routed to SecretEnv: %+v", spec.SecretEnv)
+	}
+	if _, onArgv := spec.Env["API_TOKEN"]; onArgv {
+		t.Error("secret value landed in Env, which becomes --env argv")
+	}
+	// The generated run args must not carry the value anywhere.
+	if args := strings.Join(nerdctlRunArgs(spec), " "); strings.Contains(args, "sk-supersecret") {
+		t.Errorf("secret value leaked onto the run args: %q", args)
 	}
 }
 

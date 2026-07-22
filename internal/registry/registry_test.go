@@ -15,6 +15,7 @@ import (
 
 	"github.com/okedeji/mcpvessel/internal/bundle"
 	"github.com/okedeji/mcpvessel/internal/reference"
+	"github.com/okedeji/mcpvessel/internal/signing"
 )
 
 // realBundle builds a minimal valid .agent; packBundle needs a readable
@@ -157,6 +158,87 @@ func TestSeedCache_MakesPullALocalHit(t *testing.T) {
 	}
 	if path != c.cachePath(digest) {
 		t.Errorf("pulled path = %s, want the cache path", path)
+	}
+}
+
+func TestSeedCache_DoesNotMarkVerified(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VESSEL_HOME", home)
+
+	bundlePath := realBundle(t)
+	digest, err := BundleDigest(bundlePath)
+	if err != nil {
+		t.Fatalf("BundleDigest: %v", err)
+	}
+	if err := SeedCache(digest, bundlePath); err != nil {
+		t.Fatalf("SeedCache: %v", err)
+	}
+
+	// Locally seeded bytes are not registry-verified, so strict-mode digest
+	// pulls must not treat them as verified.
+	c := &Client{cacheDir: filepath.Join(home, "cache")}
+	if c.isVerified("ghcr.io/okedeji", digest) {
+		t.Error("seeded cache entry must not carry a verified marker")
+	}
+}
+
+func TestMarkVerified_RoundTrip(t *testing.T) {
+	c := &Client{cacheDir: t.TempDir()}
+	const scope, digest = "ghcr.io/okedeji", "sha256:abc123"
+	if c.isVerified(scope, digest) {
+		t.Fatal("marker should be absent before markVerified")
+	}
+	if err := c.markVerified(scope, digest); err != nil {
+		t.Fatalf("markVerified: %v", err)
+	}
+	if !c.isVerified(scope, digest) {
+		t.Error("marker should be present after markVerified")
+	}
+}
+
+func TestMarkVerified_IsScopeKeyed(t *testing.T) {
+	// The same immutable digest can live in two repos under two publisher scopes.
+	// A marker earned under one scope must not satisfy the other, so a strict-mode
+	// digest pull under the second scope still runs its own pinned-key check.
+	c := &Client{cacheDir: t.TempDir()}
+	const digest = "sha256:abc123"
+	if err := c.markVerified("ghcr.io/alice", digest); err != nil {
+		t.Fatalf("markVerified: %v", err)
+	}
+	if !c.isVerified("ghcr.io/alice", digest) {
+		t.Error("marker absent for the scope that earned it")
+	}
+	if c.isVerified("ghcr.io/eve", digest) {
+		t.Error("marker leaked across publisher scopes: eve inherited alice's verification")
+	}
+}
+
+func TestEnforceCachedDigestPolicy_NonStrictIsNoOp(t *testing.T) {
+	// No VESSEL_REQUIRE_SIGNATURES: an unverified digest cache hit is served
+	// with no network access.
+	c := &Client{cacheDir: t.TempDir()}
+	ref := mustParseRef(t, "@okedeji/researcher:0.1")
+	if err := c.enforceCachedDigestPolicy(context.Background(), ref, "sha256:abc"); err != nil {
+		t.Fatalf("non-strict cache hit should be a no-op, got %v", err)
+	}
+}
+
+func TestEnforceCachedDigestPolicy_StrictWithMarkerSkipsNetwork(t *testing.T) {
+	t.Setenv("VESSEL_HOME", t.TempDir())
+	t.Setenv("VESSEL_REQUIRE_SIGNATURES", "1")
+
+	c := &Client{cacheDir: t.TempDir()}
+	const digest = "sha256:abc123"
+	// Mark under the scope this ref resolves to, so the strict-mode enforce finds
+	// its own scope's marker.
+	ref := mustParseRef(t, "@okedeji/researcher:0.1")
+	if err := c.markVerified(signing.Scope(ref.Registry, ref.Repository), digest); err != nil {
+		t.Fatalf("markVerified: %v", err)
+	}
+	// A present marker satisfies strict mode without touching the network; an
+	// unreachable/undefined registry would error if it tried.
+	if err := c.enforceCachedDigestPolicy(context.Background(), ref, digest); err != nil {
+		t.Fatalf("verified marker should satisfy strict mode offline, got %v", err)
 	}
 }
 

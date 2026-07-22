@@ -70,8 +70,14 @@ func (t *TrustStore) Save() error {
 	if err != nil {
 		return fmt.Errorf("encoding trust store: %w", err)
 	}
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
+	// Write-then-rename so an interrupted write never leaves a truncated
+	// trust.json that would fail every future pull closed (a self-DoS).
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
 		return fmt.Errorf("writing trust store: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("finalizing trust store: %w", err)
 	}
 	return nil
 }
@@ -113,8 +119,8 @@ func (t *TrustStore) pin(scope, pubB64 string) {
 // the pulled digest and repository, then hold the signer's key to the scope's
 // pin. First use pins; a mismatch fails closed with the remedy. notify, when
 // non-nil, receives human-readable notices (a new pin, a verified pull).
-func VerifyPull(sigArtifact []byte, digest, registryHost, repository string, notify func(format string, args ...any)) error {
-	pub, err := Verify(sigArtifact, digest, registryHost+"/"+repository)
+func VerifyPull(sigArtifact []byte, digest, registryHost, repository, requestedTag string, notify func(format string, args ...any)) error {
+	pub, err := Verify(sigArtifact, digest, registryHost+"/"+repository, requestedTag)
 	if err != nil {
 		return err
 	}

@@ -58,8 +58,8 @@ func TestTrustCmd_LsEmptyAndRm(t *testing.T) {
 
 	// Pin a key through the policy path, then list and remove it.
 	key, _, _ := signing.EnsureKey()
-	sig, _ := signing.Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher")
-	if err := signing.VerifyPull(sig, "sha256:abc", "ghcr.io", "okedeji/researcher", nil); err != nil {
+	sig, _ := signing.Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher", "0.1")
+	if err := signing.VerifyPull(sig, "sha256:abc", "ghcr.io", "okedeji/researcher", "0.1", nil); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
 

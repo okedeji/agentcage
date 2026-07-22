@@ -177,7 +177,7 @@ func (s *denialScanSink) scan(line string) {
 				Type:   EventEgressPending,
 				RunID:  s.runID,
 				Target: host,
-				Detail: "mcpvessel egress allow " + s.runID + " " + host,
+				Detail: "mcpvessel egress allow " + s.runID + " " + host + "  (grants this agent; add --all for every agent in the run)",
 			})
 		}
 		return
@@ -229,13 +229,14 @@ func enrichEgressError(err error, runID string, hosts []string) error {
 	if len(hosts) > 1 {
 		more = " (repeat for each blocked host)"
 	}
-	// Three ways out, weakest grant first: this run only, remembered in config
-	// for future runs, or baked into the image to travel with it. The caller (an
-	// operator or an LLM relaying the tool error) picks the scope it wants.
+	// Ways out, weakest grant first. Each `allow` grants the host to this agent
+	// only; add --all to grant every agent in the run. The caller (an operator or
+	// an LLM relaying the tool error) picks the scope it wants.
 	return fmt.Errorf("%w\nthe cage was blocked from reaching %s. To allow it, choose one:\n"+
 		"  this run only:            mcpvessel egress allow %s %s --once%s\n"+
 		"  remember for future runs: mcpvessel egress allow %s %s%s\n"+
-		"  bake in (and share):      add 'EGRESS allow:%s' to the Vesselfile, then rebuild",
+		"  bake in (and share):      add 'EGRESS allow:%s' to the Vesselfile, then rebuild\n"+
+		"  (each allow grants this agent; add --all to grant every agent in the run)",
 		err, strings.Join(hosts, ", "),
 		runID, host, more,
 		runID, host, more,

@@ -20,6 +20,12 @@ import (
 	"time"
 )
 
+// defaultMaxGatewayRequestBytes caps a forwarded request body so a cage cannot
+// OOM the gateway (and take down routing for the whole run) with a giant body.
+// Config.MaxBodyBytes (set from VESSEL_MAX_GATEWAY_BODY on the host) overrides
+// it for a run whose agents exchange legitimately large payloads.
+const defaultMaxGatewayRequestBytes = 16 << 20
+
 // activationWaitTimeout bounds how long a call to an inactive edge waits for
 // the daemon to boot its sub-agent before failing closed. Sized for container
 // create plus the MCP handshake; a cold start that also builds the image can
@@ -50,6 +56,10 @@ type Config struct {
 	// Record enables full-payload capture (arguments and responses) for
 	// replay. Off by default; `mcpvessel replay record` sets it.
 	Record bool `json:"record,omitempty"`
+	// MaxBodyBytes overrides the forwarded-request-body cap. Zero means the
+	// default; the runtime resolves VESSEL_MAX_GATEWAY_BODY on the host and sets
+	// it here, since the gateway runs in a container without config access.
+	MaxBodyBytes int64 `json:"max_body_bytes,omitempty"`
 }
 
 // Gateway routes a parent's USES calls to each sub-agent and enforces deny.
@@ -89,6 +99,10 @@ type Gateway struct {
 	recordCall    func(SubCallEvent)
 	recordPayload func(SubCallRecord)
 	record        bool
+
+	// maxBody caps a forwarded request body and the response-strip read budget,
+	// resolved once at New from Config.MaxBodyBytes or the default.
+	maxBody int64
 }
 
 // New builds the gateway from its routing table. It starts no goroutines;
@@ -107,6 +121,10 @@ func New(cfg Config) *Gateway {
 		outbound: make(chan ControlMessage, 4*len(cfg.Edges)+64),
 		elicits:  make(map[string]chan elicitReply),
 		record:   cfg.Record,
+		maxBody:  cfg.MaxBodyBytes,
+	}
+	if g.maxBody <= 0 {
+		g.maxBody = defaultMaxGatewayRequestBytes
 	}
 	for id, edge := range cfg.Edges {
 		if edge.Banned {
@@ -261,7 +279,7 @@ func (g *Gateway) Handler() http.Handler {
 		// Only POST carries a JSON-RPC body to inspect; GET (SSE) and
 		// DELETE (session close) forward untouched.
 		if r.Method == http.MethodPost {
-			body, err := io.ReadAll(r.Body)
+			body, err := io.ReadAll(io.LimitReader(r.Body, g.maxBody))
 			_ = r.Body.Close()
 			if err != nil {
 				http.Error(w, "reading request body", http.StatusBadRequest)
@@ -270,6 +288,19 @@ func (g *Gateway) Handler() http.Handler {
 			if !g.ensureActive(r.Context(), id) {
 				writeActivationFailed(w, body)
 				return
+			}
+			// Fail closed on a body the gateway cannot fully parse, and forward
+			// the canonical re-serialized form. Otherwise a body Go's parser
+			// rejects but the sub-agent accepts (a BOM prefix, a trailing comma,
+			// a duplicate `name` key) would slip past the DENY/BAN/catalog
+			// filters and execute a tool the gateway never got to evaluate.
+			if len(bytes.TrimSpace(body)) > 0 {
+				canon, ok := canonicalJSONRPC(body)
+				if !ok {
+					writeUnparsable(w, body)
+					return
+				}
+				body = canon
 			}
 			if tool, denied := deniedCall(body, g.deny[id]); denied {
 				writeDenied(w, body, tool)
@@ -311,6 +342,38 @@ func (g *Gateway) Handler() http.Handler {
 		proxy.ServeHTTP(fw, r)
 		g.recordSubCall(id, tool, args, start, time.Now(), captured)
 	})
+}
+
+// canonicalJSONRPC validates a JSON-RPC request body and returns its canonical
+// re-serialized form: duplicate object keys collapsed (last wins, matching Go)
+// at every depth, no BOM, no trailing bytes, no comments. Forwarding this
+// instead of the raw bytes guarantees the sub-agent's parser sees exactly what
+// the DENY/BAN/catalog filters evaluated, closing the parser-differential
+// smuggling class. Returns ok=false for anything not strictly valid JSON.
+//
+// A single decode does the work: decoding an object into map[string]any
+// collapses duplicate keys last-wins recursively, UseNumber keeps every number
+// (JSON-RPC ids especially) at full precision as its literal rather than a
+// lossy float64, and re-marshaling emits objects with sorted keys. This is
+// O(n) in the input, so it cannot be turned into a re-scan-per-nesting-level
+// CPU amplifier; the decoder's own depth limit bounds nesting.
+func canonicalJSONRPC(body []byte) ([]byte, bool) {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return nil, false
+	}
+	if dec.More() {
+		// Trailing bytes (a second value, or junk after the object) that a
+		// lenient sub-agent parser might tolerate differently.
+		return nil, false
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
 }
 
 // toolCallNames returns the tool name of every tools/call in body. Both a
@@ -381,6 +444,12 @@ func writeDenied(w http.ResponseWriter, body []byte, tool string) {
 // edge can carry.
 func writeUncataloged(w http.ResponseWriter, body []byte, tool string) {
 	writeToolError(w, body, -32005, "tool "+tool+" is not in the agent's build-time catalog")
+}
+
+// writeUnparsable rejects a request the gateway could not strictly parse, so it
+// is never forwarded unfiltered to the sub-agent.
+func writeUnparsable(w http.ResponseWriter, body []byte) {
+	writeToolError(w, body, -32700, "malformed JSON-RPC request rejected by the MCP gateway")
 }
 
 func writeToolError(w http.ResponseWriter, body []byte, code int, message string) {

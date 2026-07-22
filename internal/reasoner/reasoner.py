@@ -51,6 +51,9 @@ MAX_TURNS = int(os.environ.get("REASONER_MAX_TURNS", "12"))
 MAX_RETRIES = int(os.environ.get("REASONER_MAX_RETRIES", "5"))
 LLM_TIMEOUT = float(os.environ.get("REASONER_LLM_TIMEOUT", "120"))
 MAX_TOOL_CHARS = int(os.environ.get("REASONER_MAX_TOOL_CHARS", "16000"))
+# A USES sub-agent is untrusted (its code and results are attacker-controlled),
+# so a tool call that never returns must not hang respond() forever. Bound it.
+TOOL_TIMEOUT = float(os.environ.get("REASONER_TOOL_TIMEOUT", "120"))
 # A tool that fails this many times with identical arguments is cut off, so the
 # model cannot burn the whole budget retrying a call that will never succeed.
 MAX_TOOL_FAILURES = int(os.environ.get("REASONER_MAX_TOOL_FAILURES", "3"))
@@ -172,7 +175,14 @@ class _Tools:
     async def dispatch(self, exposed: str, arguments: dict) -> str:
         alias, real = self.routes[exposed]
         session = self._sessions[alias]
-        result = await session.call_tool(real, arguments)
+        try:
+            result = await asyncio.wait_for(
+                session.call_tool(real, arguments), timeout=TOOL_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            # A stalling sub-agent returns a tool error the model can handle
+            # (MAX_TOOL_FAILURES bounds repeats), not an indefinite hang.
+            return f"(tool {exposed} timed out after {TOOL_TIMEOUT:.0f}s)"
         parts = [c.text for c in result.content if getattr(c, "text", None)]
         return "\n".join(parts) if parts else "(no output)"
 

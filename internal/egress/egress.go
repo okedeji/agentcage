@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,11 +33,24 @@ type Config struct {
 // the cage is freed rather than parked forever on an unanswered prompt.
 const holdDeadline = 3 * time.Minute
 
+// maxPerSource bounds, per source, the concurrent held CONNECTs and the distinct
+// hosts a source may have pending at once. A cage that floods the proxy with
+// unapproved hosts is denied fast past the cap instead of parking unbounded
+// goroutines and growing the hold/pending maps without limit (a DoS).
+const maxPerSource = 64
+
+// maxLogged caps the decision-dedup map so a run that touches an unbounded set
+// of hosts cannot grow it forever. Past the cap the map is flushed, at worst
+// re-logging a line that was already deduped.
+const maxLogged = 8192
+
 // waiter is one parked CONNECT: allowed is set before ch closes so the handler
-// reads the decision without a second lock.
+// reads the decision without a second lock. src is the cage that parked it, so
+// a per-source approval releases only that cage's waiters.
 type waiter struct {
 	ch      chan struct{}
 	allowed bool
+	src     string
 }
 
 // Proxy is the in-run CONNECT proxy. Deny-default: a host not in the allow-set
@@ -44,17 +58,25 @@ type waiter struct {
 // through the control surface. An approval also joins the allow-set, so the
 // same host is not held again this run. The static set is the baked, config,
 // and per-run --egress hosts known at boot; the runtime set is what the
-// operator approved during the run.
+// operator approved during the run, kept per source so approving a host for one
+// cage never opens it for a sibling cage sharing this proxy.
 type Proxy struct {
-	mu       sync.Mutex
-	static   map[string]map[string]bool // src -> host: allowed at boot
-	runtime  map[string]bool            // host -> approved live, for any source
-	holds    map[string][]*waiter       // host -> CONNECTs parked on a decision
-	names    map[string]string          // src -> agent label
-	logged   map[string]bool            // dedup for allowed/denied lines
-	events   io.Writer
-	deadline time.Duration
-	noHold   bool // served: fail fast instead of parking the call
+	mu      sync.Mutex
+	static  map[string]map[string]bool // src -> host: allowed at boot
+	runtime map[string]map[string]bool // src -> host: approved live for that source
+	// runtimeAll is the run-wide live allow-set: hosts the operator explicitly
+	// approved for every cage with `egress allow --all`. Written only on that
+	// explicit choice, never automatically, so the default stays per-source.
+	runtimeAll map[string]bool
+	requests   map[string]map[string]bool // src -> host: currently pending a decision
+	holds      map[string][]*waiter       // host -> CONNECTs parked on a decision
+	held       map[string]int             // src -> concurrent held CONNECTs (cap gate)
+	names      map[string]string          // src -> agent label
+	logged     map[string]bool            // dedup for allowed/denied lines
+	events     io.Writer
+	deadline   time.Duration
+	maxPer     int  // per-source cap on holds and distinct pending hosts
+	noHold     bool // served: fail fast instead of parking the call
 }
 
 // New builds a Proxy from cfg, writing decision lines to events.
@@ -63,19 +85,27 @@ func New(cfg Config, events io.Writer) *Proxy {
 	for src, hosts := range cfg.Sources {
 		set := make(map[string]bool, len(hosts))
 		for _, h := range hosts {
-			set[h] = true
+			// Normalize the same way the incoming CONNECT host is, so an
+			// allow-set entry with any uppercase or a trailing dot still
+			// matches (otherwise the entry would silently never match and the
+			// host would be held/denied though it was explicitly allowed).
+			set[normalizeHost(h)] = true
 		}
 		static[src] = set
 	}
 	return &Proxy{
-		static:   static,
-		runtime:  map[string]bool{},
-		holds:    map[string][]*waiter{},
-		names:    cfg.Names,
-		logged:   map[string]bool{},
-		events:   events,
-		deadline: holdDeadline,
-		noHold:   cfg.NoHold,
+		static:     static,
+		runtime:    map[string]map[string]bool{},
+		runtimeAll: map[string]bool{},
+		requests:   map[string]map[string]bool{},
+		holds:      map[string][]*waiter{},
+		held:       map[string]int{},
+		names:      cfg.Names,
+		logged:     map[string]bool{},
+		events:     events,
+		deadline:   holdDeadline,
+		maxPer:     maxPerSource,
+		noHold:     cfg.NoHold,
 	}
 }
 
@@ -89,7 +119,11 @@ func (p *Proxy) Handler() http.Handler {
 			http.Error(w, "egress proxy only supports CONNECT", http.StatusMethodNotAllowed)
 			return
 		}
-		host := hostOnly(r.Host)
+		// Normalize the CONNECT host before matching: DNS is case-insensitive and
+		// a fully-qualified name may carry a trailing dot, so API.GITHUB.COM and
+		// github.com. must match a lowercase allow-set entry rather than slip past
+		// it. The dial still uses the raw r.Host, so the SSRF guard is untouched.
+		host := normalizeHost(hostOnly(r.Host))
 		src := hostOnly(r.RemoteAddr)
 		if !ValidHost(host) {
 			// The host string is the caged server's own bytes. Refusing a
@@ -120,24 +154,42 @@ func (p *Proxy) await(src, host string) bool {
 		p.mark("denied", src, host)
 		return false
 	}
-	if srcSet[host] || p.runtime[host] {
+	if srcSet[host] || p.runtime[src][host] || p.runtimeAll[host] {
 		p.mu.Unlock()
 		p.mark("allowed", src, host)
 		return true
 	}
 	if p.noHold {
 		// Served: do not park the call. Still surface the host as pending so the
-		// operator can approve it (which joins the runtime allow-set), and record
-		// the denial so the tool error names the host. The client retries after
-		// approval and the host then passes.
+		// operator can approve it (which joins this source's runtime allow-set),
+		// and record the denial so the tool error names the host. The client
+		// retries after approval and the host then passes. Past the per-source cap
+		// a flood of distinct hosts is refused without recording more pending
+		// entries, bounding the pending map.
+		if p.overCapLocked(src, host) {
+			p.mu.Unlock()
+			p.mark("denied", src, host)
+			return false
+		}
+		p.noteRequestLocked(src, host)
 		p.mu.Unlock()
 		p.pending(src, host)
 		p.mark("denied", src, host)
 		return false
 	}
-	wtr := &waiter{ch: make(chan struct{})}
+	if p.held[src] >= p.maxPer || p.overCapLocked(src, host) {
+		// Too many concurrent holds or distinct pending hosts for this source:
+		// deny fast instead of parking another goroutine, so one cage cannot
+		// exhaust the proxy's memory by flooding unapproved CONNECTs.
+		p.mu.Unlock()
+		p.mark("denied", src, host)
+		return false
+	}
+	wtr := &waiter{ch: make(chan struct{}), src: src}
 	first := len(p.holds[host]) == 0
 	p.holds[host] = append(p.holds[host], wtr)
+	p.held[src]++
+	p.noteRequestLocked(src, host)
 	p.mu.Unlock()
 
 	// One prompt per host while it is held; a re-attempt after a decision asks
@@ -161,21 +213,116 @@ func (p *Proxy) await(src, host string) bool {
 	}
 }
 
-// decide resolves every CONNECT held on host. An allow also joins the runtime
-// allow-set so later attempts pass without another prompt. Driven by the
-// control surface.
-func (p *Proxy) decide(host string, allow bool) {
+// decide resolves CONNECTs held on host. An allow also joins the runtime
+// allow-set so later attempts pass without another prompt. It is scoped to a
+// source: an approval for one cage never opens the host for a sibling cage
+// sharing this proxy.
+//
+// src identifies the cage. When it is empty the control path could not carry a
+// source (the run-control exec passes only the host), so the decision resolves
+// for exactly the sources that requested this host, never for every source.
+// When src is set, only that source is approved and only its waiters are
+// released; other cages holding the same host keep waiting for their own call.
+//
+// all overrides the scoping: the operator explicitly chose (with
+// `egress allow --all`) to open the host for every cage in the run, now and for
+// any that request it later.
+func (p *Proxy) decide(src, host string, allow, all bool) {
 	p.mu.Lock()
-	if allow {
-		p.runtime[host] = true
+	var released []*waiter
+	if all {
+		// Explicit run-wide grant: the operator chose to open this host for every
+		// cage, so join the run-wide set and release all waiters regardless of
+		// source. Only ever reached via `egress allow --all`.
+		if allow {
+			p.runtimeAll[host] = true
+		}
+		released = p.holds[host]
+		delete(p.holds, host)
+		for s := range p.requests {
+			delete(p.requests[s], host)
+			if len(p.requests[s]) == 0 {
+				delete(p.requests, s)
+			}
+		}
+	} else if src == "" {
+		if allow {
+			for s := range p.requests {
+				if p.requests[s][host] {
+					p.approveLocked(s, host)
+				}
+			}
+		}
+		released = p.holds[host]
+		delete(p.holds, host)
+		for s := range p.requests {
+			delete(p.requests[s], host)
+			if len(p.requests[s]) == 0 {
+				delete(p.requests, s)
+			}
+		}
+	} else {
+		if allow {
+			p.approveLocked(src, host)
+		}
+		kept := p.holds[host][:0]
+		for _, w := range p.holds[host] {
+			if w.src == src {
+				released = append(released, w)
+			} else {
+				kept = append(kept, w)
+			}
+		}
+		if len(kept) == 0 {
+			delete(p.holds, host)
+		} else {
+			p.holds[host] = kept
+		}
+		if p.requests[src] != nil {
+			delete(p.requests[src], host)
+			if len(p.requests[src]) == 0 {
+				delete(p.requests, src)
+			}
+		}
 	}
-	list := p.holds[host]
-	delete(p.holds, host)
+	for _, w := range released {
+		if p.held[w.src] > 0 {
+			p.held[w.src]--
+		}
+	}
 	p.mu.Unlock()
-	for _, w := range list {
+	for _, w := range released {
 		w.allowed = allow
 		close(w.ch)
 	}
+}
+
+// approveLocked joins host to src's runtime allow-set. Caller holds p.mu.
+func (p *Proxy) approveLocked(src, host string) {
+	set := p.runtime[src]
+	if set == nil {
+		set = map[string]bool{}
+		p.runtime[src] = set
+	}
+	set[host] = true
+}
+
+// noteRequestLocked records host as pending for src, so a later approval can be
+// scoped to the sources that actually asked for it. Caller holds p.mu.
+func (p *Proxy) noteRequestLocked(src, host string) {
+	set := p.requests[src]
+	if set == nil {
+		set = map[string]bool{}
+		p.requests[src] = set
+	}
+	set[host] = true
+}
+
+// overCapLocked reports whether admitting a new distinct pending host would push
+// src past its cap. A host already pending for src is not over cap (a re-attempt
+// must still resolve). Caller holds p.mu.
+func (p *Proxy) overCapLocked(src, host string) bool {
+	return !p.requests[src][host] && len(p.requests[src]) >= p.maxPer
 }
 
 // removeWaiter drops a timed-out CONNECT from its host's hold list without
@@ -187,11 +334,30 @@ func (p *Proxy) removeWaiter(host string, wtr *waiter) {
 	for i, w := range list {
 		if w == wtr {
 			p.holds[host] = append(list[:i], list[i+1:]...)
+			if p.held[wtr.src] > 0 {
+				p.held[wtr.src]--
+			}
 			break
 		}
 	}
 	if len(p.holds[host]) == 0 {
 		delete(p.holds, host)
+	}
+	// A lapsed hold with no sibling still waiting on the same host for this
+	// source is no longer pending; drop its request so the source's pending cap
+	// frees up and a stale entry cannot linger.
+	stillHeld := false
+	for _, w := range p.holds[host] {
+		if w.src == wtr.src {
+			stillHeld = true
+			break
+		}
+	}
+	if !stillHeld && p.requests[wtr.src] != nil {
+		delete(p.requests[wtr.src], host)
+		if len(p.requests[wtr.src]) == 0 {
+			delete(p.requests, wtr.src)
+		}
 	}
 }
 
@@ -201,12 +367,28 @@ func (p *Proxy) Control() http.Handler {
 	mux := http.NewServeMux()
 	decide := func(allow bool) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			host := hostOnly(r.URL.Query().Get("host"))
+			host := normalizeHost(hostOnly(r.URL.Query().Get("host")))
 			if host == "" {
 				http.Error(w, "host is required", http.StatusBadRequest)
 				return
 			}
-			p.decide(host, allow)
+			// Optional src/agent scopes the approval to one cage. src is a raw
+			// source key; agent is the operator-facing name (`egress allow --agent
+			// NAME`) that the proxy resolves to its source here, since only the
+			// proxy holds the name↔source map. With neither supplied the decision
+			// resolves for the sources that requested the host (see decide), never
+			// for every cage on the proxy. all=true is the explicit run-wide grant.
+			src := r.URL.Query().Get("src")
+			if agent := r.URL.Query().Get("agent"); agent != "" {
+				resolved := p.srcForAgent(agent)
+				if resolved == "" {
+					http.Error(w, "unknown agent for this run", http.StatusBadRequest)
+					return
+				}
+				src = resolved
+			}
+			all := r.URL.Query().Get("all") == "true"
+			p.decide(src, host, allow, all)
 			w.WriteHeader(http.StatusNoContent)
 		}
 	}
@@ -239,13 +421,17 @@ func (p *Proxy) mark(kind, src, host string) {
 	if p.logged[key] {
 		return
 	}
+	if len(p.logged) >= maxLogged {
+		// Flush rather than grow without bound; a re-logged line is harmless.
+		p.logged = map[string]bool{}
+	}
 	p.logged[key] = true
 	name := p.label(src)
 	switch kind {
 	case "allowed":
 		_, _ = fmt.Fprintf(p.events, "egress allowed: %s (agent %s)\n", host, name)
 	default:
-		_, _ = fmt.Fprintf(p.events, "egress denied: %s (agent %s). Approve it with 'mcpvessel egress allow', or bake it into the Vesselfile with EGRESS allow:%s\n", host, name, host)
+		_, _ = fmt.Fprintf(p.events, "egress denied: %s (agent %s). Approve it for this agent with 'mcpvessel egress allow' (add --all to grant every agent in the run), or bake it into the Vesselfile with EGRESS allow:%s\n", host, name, host)
 	}
 }
 
@@ -254,6 +440,21 @@ func (p *Proxy) label(src string) string {
 		return n
 	}
 	return src
+}
+
+// srcForAgent resolves an agent's name (its label, what the operator sees in the
+// pending event and `egress ls`) back to its source key. Names are unique per
+// run (startEgressProxy refuses two agents on one source), so the match is
+// unambiguous. Returns "" when no cage on this proxy carries the name.
+func (p *Proxy) srcForAgent(name string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for src, n := range p.names {
+		if n == name {
+			return src
+		}
+	}
+	return ""
 }
 
 // tunnel dials the target and copies bytes both ways until either side
@@ -314,9 +515,46 @@ func dialPublic(target string) (net.Conn, error) {
 	return nil, fmt.Errorf("egress host %s resolves to no public address", host)
 }
 
+// reservedCIDRs are non-global ranges net.IP's own predicates miss: they are
+// not loopback/private/link-local/multicast, yet must never be dialed. Covers
+// CGNAT, IETF protocol assignments, benchmarking, 6to4 relay anycast, reserved
+// space, NAT64, and documentation blocks.
+var reservedCIDRs = func() []*net.IPNet {
+	nets := make([]*net.IPNet, 0, 8)
+	for _, c := range []string{
+		"0.0.0.0/8",      // RFC1122 "this network" (0.x is a localhost alias on some kernels)
+		"100.64.0.0/10",  // RFC6598 CGNAT
+		"192.0.0.0/24",   // RFC6890 IETF protocol assignments
+		"192.0.2.0/24",   // RFC5737 documentation (TEST-NET-1)
+		"198.18.0.0/15",  // RFC2544 benchmarking
+		"192.88.99.0/24", // RFC7526 6to4 relay anycast (deprecated)
+		"240.0.0.0/4",    // RFC1112 reserved (includes 255.255.255.255 broadcast)
+		"64:ff9b::/96",   // RFC6052 NAT64 well-known prefix
+		"2001:db8::/32",  // RFC3849 IPv6 documentation
+	} {
+		if _, n, err := net.ParseCIDR(c); err == nil {
+			nets = append(nets, n)
+		}
+	}
+	return nets
+}()
+
+// isPublic is allowlist-posture: only a global unicast address that is not
+// private and not in any reserved range is dialable. Starting from
+// IsGlobalUnicast (which already rejects loopback, link-local, multicast, and
+// the unspecified address) closes the gap that a denylist of a few predicates
+// left open. Without this, an allowed hostname resolving to CGNAT, NAT64, or
+// another reserved range is an SSRF pivot.
 func isPublic(ip net.IP) bool {
-	return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsUnspecified() &&
-		!ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !ip.IsMulticast()
+	if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	for _, n := range reservedCIDRs {
+		if n.Contains(ip) {
+			return false
+		}
+	}
+	return true
 }
 
 func pipe(wg *sync.WaitGroup, dst, src net.Conn) {
@@ -325,6 +563,13 @@ func pipe(wg *sync.WaitGroup, dst, src net.Conn) {
 	if cw, ok := dst.(interface{ CloseWrite() error }); ok {
 		_ = cw.CloseWrite()
 	}
+}
+
+// normalizeHost lowercases a host and strips a single trailing dot so the
+// allow-set and the incoming CONNECT host compare on equal footing (DNS names
+// are case-insensitive and "example.com." is the same host as "example.com").
+func normalizeHost(h string) string {
+	return strings.TrimSuffix(strings.ToLower(h), ".")
 }
 
 func hostOnly(hostport string) string {

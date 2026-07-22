@@ -477,6 +477,59 @@ func LookupEnvOr(name, def string) string {
 	return def
 }
 
+// ByteSizeEnv resolves a byte-size knob (env then config) to a byte count,
+// falling back to def when it is unset or unparseable. A malformed value is
+// ignored rather than fatal: a size cap should never keep the process from
+// starting, and the default is always a safe bound.
+func ByteSizeEnv(name string, def int64) int64 {
+	v := LookupEnv(name)
+	if v == "" {
+		return def
+	}
+	n, err := ParseByteSize(v)
+	if err != nil || n <= 0 {
+		return def
+	}
+	return n
+}
+
+// ParseByteSize reads a byte count with an optional binary suffix: a bare
+// integer is bytes, or a K/M/G/T suffix (case-insensitive, with or without an
+// "i"/"iB", so "16M", "16MiB", "16mb" all mean 16*2^20). It powers the
+// request-body size knobs.
+func ParseByteSize(s string) (int64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty size")
+	}
+	// Split the trailing unit letters from the leading number.
+	i := 0
+	for i < len(s) && (s[i] == '+' || s[i] == '-' || (s[i] >= '0' && s[i] <= '9')) {
+		i++
+	}
+	numPart, unit := s[:i], strings.ToLower(strings.TrimSpace(s[i:]))
+	n, err := strconv.ParseInt(strings.TrimSpace(numPart), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size %q: %w", s, err)
+	}
+	var mult int64
+	switch strings.TrimSuffix(strings.TrimSuffix(unit, "b"), "i") {
+	case "":
+		mult = 1
+	case "k":
+		mult = 1 << 10
+	case "m":
+		mult = 1 << 20
+	case "g":
+		mult = 1 << 30
+	case "t":
+		mult = 1 << 40
+	default:
+		return 0, fmt.Errorf("unknown size unit in %q", s)
+	}
+	return n * mult, nil
+}
+
 // Path resolves ~/.mcpvessel/config.json, honoring VESSEL_HOME so all of
 // mcpvessel's state moves together.
 func Path() (string, error) {

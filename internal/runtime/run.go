@@ -419,13 +419,17 @@ func bootAgent(ctx context.Context, in bootInput) (*mcp.Client, *workingSet, err
 	if in.Env == nil {
 		in.Env = map[string]string{}
 	}
+	// Split declared secrets into their own map so the attached root, like a
+	// sub-agent, delivers their values off argv (via the create-time env-file),
+	// not as --env visible in ps/inspect.
+	secretEnv := map[string]string{}
 	if in.Vesselfile != nil {
-		if err := injectOperatorValues(in.Env, in.Vesselfile.Env, in.Vesselfile.Secrets, in.Vesselfile.Optional, in.OpEnv, in.OpSecrets); err != nil {
+		if err := injectOperatorValuesSplit(in.Env, secretEnv, in.Vesselfile.Env, in.Vesselfile.Secrets, in.Vesselfile.Optional, in.OpEnv, in.OpSecrets); err != nil {
 			return nil, nil, fmt.Errorf("agent %s: %w", rootAgentKey, err)
 		}
 	}
 
-	client, err := startAttachedAgent(ctx, sess, in, td)
+	client, err := startAttachedAgent(ctx, sess, in, secretEnv, td)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -525,7 +529,7 @@ func isTransientBuildError(err error) bool {
 // startAttachedAgent builds the agent's image and starts its container
 // attached over stdio, opening an MCP session. Stdin EOF is the container's
 // exit signal; sub-agents start detached and speak HTTP instead.
-func startAttachedAgent(ctx context.Context, sess *bootSession, in bootInput, td *teardown) (*mcp.Client, error) {
+func startAttachedAgent(ctx context.Context, sess *bootSession, in bootInput, secretEnv map[string]string, td *teardown) (*mcp.Client, error) {
 	if err := buildImage(ctx, sess, BuildInput{
 		Vesselfile:   in.Vesselfile,
 		Manifest:     in.Manifest,
@@ -551,14 +555,30 @@ func startAttachedAgent(ctx context.Context, sess *bootSession, in bootInput, td
 		in.Env[env.Interaction] = in.Interaction
 	}
 
+	spec := ContainerSpec{
+		RunID:     in.RunID,
+		ImageRef:  in.ImageRef,
+		Networks:  []string{in.Network},
+		Env:       in.Env,
+		SecretEnv: secretEnv,
+		Managed:   in.Managed,
+	}.withCap(cap)
+
+	// The root's stdin is the MCP stdio channel, so its secrets cannot be piped
+	// to nerdctl like a sub-agent's. Stage them in a private env-file instead
+	// (host temp file on Linux, VM-side on macOS) and point --env-file at it, so
+	// no secret value ever lands on the nerdctl/limactl argv (ps/inspect).
+	if len(secretEnv) > 0 {
+		path, cleanup, err := sess.provisioner.StageSecretFile(ctx, secretEnvFile(spec))
+		if err != nil {
+			return nil, fmt.Errorf("staging root secrets: %w", err)
+		}
+		td.push(func() error { cleanup(); return nil })
+		spec.SecretEnvFile = path
+	}
+
 	// limactl shell into the Lima VM on macOS; nerdctl directly on Linux.
-	cmd := sess.provisioner.Nerdctl(ctx, nerdctlRunArgs(ContainerSpec{
-		RunID:    in.RunID,
-		ImageRef: in.ImageRef,
-		Networks: []string{in.Network},
-		Env:      in.Env,
-		Managed:  in.Managed,
-	}.withCap(cap))...)
+	cmd := sess.provisioner.Nerdctl(ctx, nerdctlRunArgs(spec)...)
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("stdin pipe: %w", err)

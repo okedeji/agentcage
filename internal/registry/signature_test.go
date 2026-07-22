@@ -34,7 +34,7 @@ func TestPushFetchSignature_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureKey: %v", err)
 	}
-	sig, err := signing.Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher")
+	sig, err := signing.Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher", "0.1")
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestPushFetchSignature_RoundTrip(t *testing.T) {
 		t.Error("fetched signature differs from pushed")
 	}
 
-	if _, err := signing.Verify(got, "sha256:abc", "ghcr.io/okedeji/researcher"); err != nil {
+	if _, err := signing.Verify(got, "sha256:abc", "ghcr.io/okedeji/researcher", "0.1"); err != nil {
 		t.Errorf("fetched signature should verify: %v", err)
 	}
 }
@@ -87,7 +87,7 @@ func TestVerifyPulled_UnsignedFailsClosedUnderRequire(t *testing.T) {
 
 	c := &Client{}
 	ref := mustParseRef(t, "@okedeji/researcher:0.1")
-	err := c.verifyPulled(context.Background(), memory.New(), ref, "sha256:abc")
+	_, err := c.verifyPulled(context.Background(), memory.New(), ref, "sha256:abc")
 	if err == nil || !strings.Contains(err.Error(), "not signed") {
 		t.Fatalf("err = %v, want an unsigned rejection under VESSEL_REQUIRE_SIGNATURES", err)
 	}
@@ -99,7 +99,7 @@ func TestVerifyPulled_SignedRoundTripThroughPolicy(t *testing.T) {
 
 	ref := mustParseRef(t, "@okedeji/researcher:0.1")
 	repoFull := ref.Registry + "/" + ref.Repository
-	sig, _ := signing.Sign(key, "sha256:abc", repoFull)
+	sig, _ := signing.Sign(key, "sha256:abc", repoFull, "0.1")
 
 	dst := memory.New()
 	if err := pushSignature(context.Background(), dst, "sha256:abc", sig); err != nil {
@@ -108,7 +108,7 @@ func TestVerifyPulled_SignedRoundTripThroughPolicy(t *testing.T) {
 
 	var notices []string
 	c := &Client{Notify: func(format string, args ...any) { notices = append(notices, format) }}
-	if err := c.verifyPulled(context.Background(), dst, ref, "sha256:abc"); err != nil {
+	if _, err := c.verifyPulled(context.Background(), dst, ref, "sha256:abc"); err != nil {
 		t.Fatalf("verifyPulled: %v", err)
 	}
 	if len(notices) == 0 {

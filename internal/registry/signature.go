@@ -122,19 +122,27 @@ func fetchSignature(ctx context.Context, src oras.ReadOnlyTarget, digest string)
 // every network pull passes. A published signature must verify and match the
 // scope's pinned key. An unsigned bundle passes unless
 // VESSEL_REQUIRE_SIGNATURES is set, in which case it fails closed.
-func (c *Client) verifyPulled(ctx context.Context, src oras.ReadOnlyTarget, ref reference.Reference, digest string) error {
+//
+// verified reports whether an actual signature was verified against a pinned
+// key, so the caller can persist a per-digest verified marker. An unsigned
+// bundle that passes under non-strict mode returns verified false: it must not
+// be recorded as registry-verified.
+func (c *Client) verifyPulled(ctx context.Context, src oras.ReadOnlyTarget, ref reference.Reference, digest string) (verified bool, err error) {
 	sig, ok, err := fetchSignature(ctx, src, digest)
 	if err != nil {
-		return fmt.Errorf("checking signature for %s: %w", ref.OCIRef(), err)
+		return false, fmt.Errorf("checking signature for %s: %w", ref.OCIRef(), err)
 	}
 	if !ok {
 		if requireSignatures() {
-			return fmt.Errorf("%s is not signed and %s is set; unset it or ask the publisher for a signed push", ref.OCIRef(), env.RequireSignatures)
+			return false, fmt.Errorf("%s is not signed and %s is set; unset it or ask the publisher for a signed push", ref.OCIRef(), env.RequireSignatures)
 		}
 		c.notify("Signature: none (unsigned bundle)")
-		return nil
+		return false, nil
 	}
-	return signing.VerifyPull(sig, digest, ref.Registry, ref.Repository, c.notify)
+	if err := signing.VerifyPull(sig, digest, ref.Registry, ref.Repository, ref.Tag, c.notify); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // notify forwards a human-readable notice to the client's Notify hook when

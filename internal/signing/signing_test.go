@@ -78,17 +78,43 @@ func TestLoadKey_TamperedSeedFailsClosed(t *testing.T) {
 	}
 }
 
+func TestVerify_BindsVersionAgainstDowngrade(t *testing.T) {
+	setHome(t)
+	key, _, err := EnsureKey()
+	if err != nil {
+		t.Fatalf("EnsureKey: %v", err)
+	}
+	const repo = "ghcr.io/okedeji/app"
+	sig, err := Sign(key, "sha256:abc", repo, "2.0") // published as 2.0
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	// A digest pull (no requested tag) verifies: the digest already fixes content.
+	if _, err := Verify(sig, "sha256:abc", repo, ""); err != nil {
+		t.Errorf("digest pull should verify: %v", err)
+	}
+	// A tag pull for the signed version verifies.
+	if _, err := Verify(sig, "sha256:abc", repo, "2.0"); err != nil {
+		t.Errorf("matching version should verify: %v", err)
+	}
+	// A tag pull for a different version (a registry substituting an older
+	// genuinely-signed digest for a newer tag) is rejected.
+	if _, err := Verify(sig, "sha256:abc", repo, "3.0"); err == nil {
+		t.Error("a version mismatch (downgrade substitution) must be rejected")
+	}
+}
+
 func TestSignVerify_RoundTrip(t *testing.T) {
 	setHome(t)
 	key, _, err := EnsureKey()
 	if err != nil {
 		t.Fatalf("EnsureKey: %v", err)
 	}
-	sig, err := Sign(key, "sha256:abc123", "ghcr.io/okedeji/researcher")
+	sig, err := Sign(key, "sha256:abc123", "ghcr.io/okedeji/researcher", "0.1")
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
-	pub, err := Verify(sig, "sha256:abc123", "ghcr.io/okedeji/researcher")
+	pub, err := Verify(sig, "sha256:abc123", "ghcr.io/okedeji/researcher", "")
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
@@ -100,12 +126,12 @@ func TestSignVerify_RoundTrip(t *testing.T) {
 func TestVerify_WrongDigestOrRepositoryFails(t *testing.T) {
 	setHome(t)
 	key, _, _ := EnsureKey()
-	sig, _ := Sign(key, "sha256:abc123", "ghcr.io/okedeji/researcher")
+	sig, _ := Sign(key, "sha256:abc123", "ghcr.io/okedeji/researcher", "0.1")
 
-	if _, err := Verify(sig, "sha256:other", "ghcr.io/okedeji/researcher"); err == nil {
+	if _, err := Verify(sig, "sha256:other", "ghcr.io/okedeji/researcher", ""); err == nil {
 		t.Error("verify with wrong digest must fail")
 	}
-	if _, err := Verify(sig, "sha256:abc123", "ghcr.io/attacker/researcher"); err == nil {
+	if _, err := Verify(sig, "sha256:abc123", "ghcr.io/attacker/researcher", ""); err == nil {
 		t.Error("verify with wrong repository must fail: cross-repo replay")
 	}
 }
@@ -113,7 +139,7 @@ func TestVerify_WrongDigestOrRepositoryFails(t *testing.T) {
 func TestVerify_TamperedPayloadFails(t *testing.T) {
 	setHome(t)
 	key, _, _ := EnsureKey()
-	sig, _ := Sign(key, "sha256:abc123", "ghcr.io/okedeji/researcher")
+	sig, _ := Sign(key, "sha256:abc123", "ghcr.io/okedeji/researcher", "0.1")
 
 	var a map[string]string
 	_ = json.Unmarshal(sig, &a)
@@ -121,7 +147,7 @@ func TestVerify_TamperedPayloadFails(t *testing.T) {
 	a["payload"] = base64.StdEncoding.EncodeToString(forged)
 	tampered, _ := json.Marshal(a)
 
-	if _, err := Verify(tampered, "sha256:evil", "ghcr.io/okedeji/researcher"); err == nil {
+	if _, err := Verify(tampered, "sha256:evil", "ghcr.io/okedeji/researcher", ""); err == nil {
 		t.Fatal("a re-written payload must not verify against the old signature")
 	}
 }
@@ -129,13 +155,13 @@ func TestVerify_TamperedPayloadFails(t *testing.T) {
 func TestVerifyPull_TOFUPinsThenHolds(t *testing.T) {
 	setHome(t)
 	key, _, _ := EnsureKey()
-	sig, _ := Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher")
+	sig, _ := Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher", "0.1")
 
 	var notices []string
 	notify := func(format string, args ...any) { notices = append(notices, format) }
 
 	// First pull pins.
-	if err := VerifyPull(sig, "sha256:abc", "ghcr.io", "okedeji/researcher", notify); err != nil {
+	if err := VerifyPull(sig, "sha256:abc", "ghcr.io", "okedeji/researcher", "", notify); err != nil {
 		t.Fatalf("first VerifyPull: %v", err)
 	}
 	trust, _ := LoadTrust()
@@ -144,8 +170,8 @@ func TestVerifyPull_TOFUPinsThenHolds(t *testing.T) {
 	}
 
 	// Same key, different repo in the same scope: passes against the pin.
-	sig2, _ := Sign(key, "sha256:def", "ghcr.io/okedeji/other")
-	if err := VerifyPull(sig2, "sha256:def", "ghcr.io", "okedeji/other", nil); err != nil {
+	sig2, _ := Sign(key, "sha256:def", "ghcr.io/okedeji/other", "0.1")
+	if err := VerifyPull(sig2, "sha256:def", "ghcr.io", "okedeji/other", "", nil); err != nil {
 		t.Fatalf("same-key pull: %v", err)
 	}
 
@@ -157,8 +183,8 @@ func TestVerifyPull_TOFUPinsThenHolds(t *testing.T) {
 func TestVerifyPull_KeyMismatchFailsClosed(t *testing.T) {
 	setHome(t)
 	key, _, _ := EnsureKey()
-	sig, _ := Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher")
-	if err := VerifyPull(sig, "sha256:abc", "ghcr.io", "okedeji/researcher", nil); err != nil {
+	sig, _ := Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher", "0.1")
+	if err := VerifyPull(sig, "sha256:abc", "ghcr.io", "okedeji/researcher", "", nil); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
 
@@ -166,9 +192,9 @@ func TestVerifyPull_KeyMismatchFailsClosed(t *testing.T) {
 	keyPath, _ := KeyPath()
 	_ = os.Remove(keyPath)
 	attacker, _, _ := EnsureKey()
-	forged, _ := Sign(attacker, "sha256:abc", "ghcr.io/okedeji/researcher")
+	forged, _ := Sign(attacker, "sha256:abc", "ghcr.io/okedeji/researcher", "0.1")
 
-	err := VerifyPull(forged, "sha256:abc", "ghcr.io", "okedeji/researcher", nil)
+	err := VerifyPull(forged, "sha256:abc", "ghcr.io", "okedeji/researcher", "", nil)
 	if err == nil {
 		t.Fatal("a different key for a pinned scope must fail closed")
 	}
@@ -180,8 +206,8 @@ func TestVerifyPull_KeyMismatchFailsClosed(t *testing.T) {
 func TestTrustStore_RemoveAllowsRepin(t *testing.T) {
 	setHome(t)
 	key, _, _ := EnsureKey()
-	sig, _ := Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher")
-	_ = VerifyPull(sig, "sha256:abc", "ghcr.io", "okedeji/researcher", nil)
+	sig, _ := Sign(key, "sha256:abc", "ghcr.io/okedeji/researcher", "0.1")
+	_ = VerifyPull(sig, "sha256:abc", "ghcr.io", "okedeji/researcher", "", nil)
 
 	trust, _ := LoadTrust()
 	if !trust.Remove("ghcr.io/okedeji") {
@@ -195,8 +221,8 @@ func TestTrustStore_RemoveAllowsRepin(t *testing.T) {
 	keyPath, _ := KeyPath()
 	_ = os.Remove(keyPath)
 	rotated, _, _ := EnsureKey()
-	sig2, _ := Sign(rotated, "sha256:abc", "ghcr.io/okedeji/researcher")
-	if err := VerifyPull(sig2, "sha256:abc", "ghcr.io", "okedeji/researcher", nil); err != nil {
+	sig2, _ := Sign(rotated, "sha256:abc", "ghcr.io/okedeji/researcher", "0.1")
+	if err := VerifyPull(sig2, "sha256:abc", "ghcr.io", "okedeji/researcher", "", nil); err != nil {
 		t.Fatalf("re-pin after trust rm: %v", err)
 	}
 }

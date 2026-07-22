@@ -98,3 +98,26 @@ func TestWarnSecretShapes(t *testing.T) {
 		t.Errorf("root-scoped grant warned unexpectedly: %q", buf.String())
 	}
 }
+
+func TestWarnSecretShapes_SingleNonRootDeclarerWarns(t *testing.T) {
+	// A broadcast secret that only ONE sub-agent declares must still warn: one
+	// malicious declarer is enough to harvest it, so the fix widens the trigger
+	// past the two-or-more-declarers shape.
+	tree := treeWith(nil, map[string][]string{"sentry-tools": {"SOLO_TOKEN"}})
+	var buf bytes.Buffer
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"": {"SOLO_TOKEN": "v"}})
+	if !strings.Contains(buf.String(), "SOLO_TOKEN") || !strings.Contains(buf.String(), "sentry-tools") {
+		t.Errorf("single sub-agent declarer of a broadcast secret was not warned: %q", buf.String())
+	}
+}
+
+func TestWarnSecretShapes_RootOnlyBroadcastIsQuiet(t *testing.T) {
+	// When only the root declares a broadcast secret, no sub-agent can reach it,
+	// so there is nothing to warn about.
+	tree := treeWith([]string{"ROOT_ONLY"}, nil)
+	var buf bytes.Buffer
+	warnSecretShapes(&buf, tree, "oncall", ScopedSecrets{"": {"ROOT_ONLY": "v"}})
+	if strings.Contains(buf.String(), "declare secret") {
+		t.Errorf("root-only broadcast secret warned unexpectedly: %q", buf.String())
+	}
+}

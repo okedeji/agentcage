@@ -447,9 +447,39 @@ func parseSecrets(af *Vesselfile, rest string, lineNo int) error {
 			name = strings.TrimSuffix(name, "?")
 			af.Optional = append(af.Optional, name)
 		}
+		if name == "" {
+			return fmt.Errorf("line %d: SECRETS requires a non-empty name", lineNo)
+		}
+		// A secret name becomes an env var in the cage, so it obeys the same
+		// rules ENV keys do: never the reserved VESSEL_ prefix (which would
+		// shadow runtime plumbing) and a valid shell identifier.
+		if strings.HasPrefix(name, env.Prefix) {
+			return fmt.Errorf("line %d: SECRETS name %q uses reserved %s prefix", lineNo, name, env.Prefix)
+		}
+		if !validEnvName(name) {
+			return fmt.Errorf("line %d: SECRETS name %q must match [A-Za-z_][A-Za-z0-9_]*", lineNo, name)
+		}
 		af.Secrets = append(af.Secrets, name)
 	}
 	return nil
+}
+
+// validEnvName reports whether name is a valid environment-variable identifier:
+// [A-Za-z_][A-Za-z0-9_]*.
+func validEnvName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		switch {
+		case r == '_':
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func parseEgress(af *Vesselfile, rest string, lineNo int) error {

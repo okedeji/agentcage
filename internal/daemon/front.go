@@ -3,11 +3,13 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/okedeji/mcpvessel/internal/bundle"
 	"github.com/okedeji/mcpvessel/internal/config"
@@ -20,6 +22,29 @@ import (
 	"github.com/okedeji/mcpvessel/internal/runtime"
 	"github.com/okedeji/mcpvessel/internal/serve"
 )
+
+// maxControlBodyBytes caps a control-plane request body. The control plane is
+// the local operator socket, but a bounded read still keeps a malformed or
+// hostile /serve body from making the daemon buffer without limit.
+const maxControlBodyBytes = 1 << 20 // 1 MiB
+
+// isLoopbackListen reports whether addr binds only the local loopback. A host
+// of "" (e.g. ":8080") binds every interface, so it is not loopback; an
+// unparseable address is treated as non-loopback so the warning errs loud.
+func isLoopbackListen(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	switch host {
+	case "localhost":
+		return true
+	case "":
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
 
 // serveRequest is the POST /serve body.
 type serveRequest struct {
@@ -69,9 +94,15 @@ type exposedService struct {
 // get their own instances. A registration that fails partway releases what it
 // set up.
 func (d *Daemon) handleServe(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxControlBodyBytes)
 	var req serveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "decoding request: "+err.Error())
+		code := http.StatusBadRequest
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			code = http.StatusRequestEntityTooLarge
+		}
+		writeError(w, code, "decoding request: "+err.Error())
 		return
 	}
 	if len(req.Bundles) == 0 {
@@ -144,13 +175,27 @@ func (d *Daemon) handleServe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !isLoopbackListen(req.Listen) {
+		fmt.Fprintf(os.Stderr,
+			"WARNING: serving the front door on %s, which is not loopback. The front door has NO authentication: anyone who can reach this address can call every exposed agent. Bind 127.0.0.1 to keep it local.\n",
+			req.Listen)
+	}
 	ln, err := net.Listen("tcp", req.Listen)
 	if err != nil {
 		d.dropServe(ids)
 		writeError(w, http.StatusBadRequest, "listening on "+req.Listen+": "+err.Error())
 		return
 	}
-	srv := &http.Server{Handler: serve.Handler(agents, flat)}
+	// Timeouts bound a slowloris caller who opens a connection and dribbles (or
+	// never sends) its request. No WriteTimeout: the SSE streaming path holds a
+	// response open for the whole tool call, and a write deadline would sever
+	// long-lived streams mid-answer.
+	srv := &http.Server{
+		Handler:           serve.Handler(agents, flat),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	d.addFront(srv, ids)
 	go func() { _ = srv.Serve(ln) }()
 
@@ -244,6 +289,17 @@ func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve, sc
 				session, release, err := m.acquire(ctx, sessionID)
 				if err != nil {
 					return serve.Target{}, nil, err
+				}
+				// A plain-HTTP request rides a single-use ephemeral session id:
+				// drop its instance the moment the call returns so a burst of
+				// unauthenticated REST calls cannot pin every client slot until
+				// the idle TTL. MCP sessions keep their instance for reuse.
+				if serve.IsEphemeralSession(sessionID) {
+					base := release
+					release = func() {
+						base()
+						m.drop(sessionID)
+					}
 				}
 				// Wrap Call so a tool error names any host the cage blocked, so
 				// the calling client (or an LLM) can relay why it failed.

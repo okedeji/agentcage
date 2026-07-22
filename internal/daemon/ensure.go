@@ -107,10 +107,18 @@ func spawn() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(home, 0o755); err != nil {
+	// 0700: the mcpvessel home holds the control socket and daemon log; keep it
+	// owner-only so other local users cannot reach the socket the daemon binds.
+	if err := os.MkdirAll(home, 0o700); err != nil {
 		return fmt.Errorf("creating mcpvessel home: %w", err)
 	}
-	logFile, err := os.OpenFile(filepath.Join(home, "daemon.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	// MkdirAll is a no-op on an existing dir, so an install upgraded from an
+	// older 0755 version would stay world-traversable (exposing the socket,
+	// daemon log, and cached bundles). Re-tighten explicitly.
+	if err := os.Chmod(home, 0o700); err != nil {
+		return fmt.Errorf("tightening mcpvessel home perms: %w", err)
+	}
+	logFile, err := os.OpenFile(filepath.Join(home, "daemon.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("opening daemon log: %w", err)
 	}

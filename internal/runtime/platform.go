@@ -36,6 +36,13 @@ type Provisioner interface {
 	ContainerdAddress() string
 	BuildKitAddress() string
 	Nerdctl(ctx context.Context, args ...string) *exec.Cmd
+	// StageSecretFile writes content to a private (0600) file the container
+	// runtime can read via --env-file, returning its path and a cleanup to
+	// remove it. On Linux this is a host temp file; on macOS it is written
+	// inside the Lima VM (the host filesystem is not visible to nerdctl there).
+	// It delivers the attached root's secret values off argv without needing
+	// stdin, which the root reserves for the MCP stdio channel.
+	StageSecretFile(ctx context.Context, content string) (path string, cleanup func(), err error)
 	// AvailableMemory reports the memory the machine can give cages, in bytes:
 	// host RAM on Linux, the VM's RAM on macOS.
 	AvailableMemory() (int64, error)
@@ -55,10 +62,21 @@ type ContainerSpec struct {
 	Args     []string // command args after the image; the gateway image's mode
 	Networks []string // one for an agent, many for a multi-homed gateway
 	Env      map[string]string
-	Memory   string // nerdctl --memory cap; every cage gets one
-	CPUs     string // nerdctl --cpus cap
-	Pids     int    // nerdctl --pids-limit cap
-	Detached bool
+	// SecretEnv holds env values that must never appear on argv: the secret
+	// values a manifest's SECRETS declares. nerdctlRunArgs keeps these off the
+	// command line (so they cannot be read via `ps` or `nerdctl inspect`'s
+	// argv) and the runtime feeds them through an --env-file. Plain Env (VESSEL_*
+	// plumbing and author ENV) stays on --env.
+	SecretEnv map[string]string
+	// SecretEnvFile, when set, is the --env-file path the runtime reads SecretEnv
+	// from. A detached container leaves it empty and the values are piped to
+	// /dev/stdin; the attached root, whose stdin is the MCP channel, stages the
+	// values in a private file (StageSecretFile) and points here instead.
+	SecretEnvFile string
+	Memory        string // nerdctl --memory cap; every cage gets one
+	CPUs          string // nerdctl --cpus cap
+	Pids          int    // nerdctl --pids-limit cap
+	Detached      bool
 	// Managed labels the container for the daemon orphan sweep; a one-shot
 	// run leaves it false and is never swept.
 	Managed bool
@@ -79,6 +97,15 @@ func nerdctlRunArgs(spec ContainerSpec) []string {
 	} else {
 		args = append(args, "--rm", "-i")
 	}
+	args = append(args, nerdctlSpecArgs(spec)...)
+	return args
+}
+
+// nerdctlSpecArgs renders the flags after the run verb: networks, caps, label,
+// env, the secret env-file, then the image and its args. Env keys are sorted
+// for determinism.
+func nerdctlSpecArgs(spec ContainerSpec) []string {
+	var args []string
 	for _, net := range spec.Networks {
 		if net != "" {
 			args = append(args, "--network", net)
@@ -104,8 +131,41 @@ func nerdctlRunArgs(spec ContainerSpec) []string {
 	for _, k := range keys {
 		args = append(args, "--env", k+"="+spec.Env[k])
 	}
+	// Secret values never go on argv. They arrive via --env-file: a detached
+	// container has them piped to /dev/stdin; the attached root reads them from
+	// a staged private file (its own stdin is the MCP channel).
+	switch {
+	case spec.SecretEnvFile != "":
+		args = append(args, "--env-file", spec.SecretEnvFile)
+	case len(spec.SecretEnv) > 0:
+		args = append(args, "--env-file", "/dev/stdin")
+	}
 	args = append(args, spec.ImageRef)
 	return append(args, spec.Args...)
+}
+
+// secretEnvFile renders spec.SecretEnv as env-file content (KEY=VALUE lines,
+// keys sorted for determinism), or "" when there are no secrets. The runtime
+// pipes this to `nerdctl run --env-file /dev/stdin` (see nerdctlRunArgs) so the
+// values are delivered off argv. Stdin crosses the limactl-shell boundary into
+// the Lima VM on macOS, so this works identically there and on Linux.
+func secretEnvFile(spec ContainerSpec) string {
+	if len(spec.SecretEnv) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(spec.SecretEnv))
+	for k := range spec.SecretEnv {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(spec.SecretEnv[k])
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // DefaultProvisioner returns the Provisioner for the host OS. Linux assumes
@@ -180,6 +240,32 @@ func parseMemTotal(data []byte) (int64, error) {
 // Nerdctl runs nerdctl on the host; it must be on PATH.
 func (n *NativeProvisioner) Nerdctl(ctx context.Context, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, "nerdctl", args...)
+}
+
+// StageSecretFile writes content to a 0600 host temp file (nerdctl runs on the
+// host here, so it can read it) and returns its path and a remover.
+func (n *NativeProvisioner) StageSecretFile(_ context.Context, content string) (string, func(), error) {
+	f, err := os.CreateTemp("", "mcpvessel-secret-*.env")
+	if err != nil {
+		return "", nil, err
+	}
+	path := f.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", nil, err
+	}
+	if _, err := f.WriteString(content); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", nil, err
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return path, cleanup, nil
 }
 
 // LimaProvisioner runs the containerd + buildkitd stack inside a Lima VM on
@@ -279,4 +365,22 @@ func (l *LimaProvisioner) DestroyVM(ctx context.Context, stdout, stderr io.Write
 func (l *LimaProvisioner) Nerdctl(ctx context.Context, args ...string) *exec.Cmd {
 	full := append([]string{"shell", l.VM.instanceName(), "nerdctl"}, args...)
 	return l.VM.command(ctx, full...)
+}
+
+// StageSecretFile writes content to a 0600 file inside the Lima VM (nerdctl runs
+// there, and the host filesystem is not visible to it), returning the VM path
+// and a remover. The content crosses on stdin, never argv.
+func (l *LimaProvisioner) StageSecretFile(ctx context.Context, content string) (string, func(), error) {
+	path := "/tmp/mcpvessel-secret-" + uniqueSuffix() + ".env"
+	inst := l.VM.instanceName()
+	write := l.VM.command(ctx, "shell", inst, "sh", "-c", "umask 077; cat > "+path)
+	write.Stdin = strings.NewReader(content)
+	if out, err := write.CombinedOutput(); err != nil {
+		return "", nil, fmt.Errorf("staging secret env-file in the VM: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	cleanup := func() {
+		rm := l.VM.command(context.Background(), "shell", inst, "rm", "-f", path)
+		_ = rm.Run()
+	}
+	return path, cleanup, nil
 }

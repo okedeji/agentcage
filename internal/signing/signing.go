@@ -22,8 +22,11 @@ import (
 	"github.com/okedeji/mcpvessel/internal/env"
 )
 
-// ArtifactVersion is the locked signature artifact schema version.
-const ArtifactVersion = "0.1"
+// ArtifactVersion is the locked signature artifact schema version. Bumped to
+// 0.2 when the signed payload gained the tag, so a pre-0.2 signature (which
+// binds no version and would let a downgrade substitution pass) is rejected
+// with a clear "re-push" error rather than silently accepted.
+const ArtifactVersion = "0.2"
 
 const keyFileName = "signing-key.json"
 
@@ -199,6 +202,11 @@ func PublicKeyEncoded(pub ed25519.PublicKey) string {
 type payload struct {
 	Digest     string `json:"digest"`
 	Repository string `json:"repository"`
+	// Tag binds the signature to the version it was published as, so a hostile
+	// registry cannot answer a request for :2.0 with an older, genuinely-signed
+	// :1.0 digest (a downgrade). A digest-pinned pull carries no tag and does not
+	// check this (the digest is the content).
+	Tag string `json:"tag,omitempty"`
 }
 
 // artifact is the signature file pushed next to a bundle. Payload carries the
@@ -211,12 +219,14 @@ type artifact struct {
 	Signature string `json:"signature"`
 }
 
-// Sign produces the signature artifact for a pushed bundle.
-func Sign(key *Key, digest, repository string) ([]byte, error) {
+// Sign produces the signature artifact for a pushed bundle. tag is the version
+// being published (empty is allowed for a tagless push, but then a later tagged
+// pull of the same digest cannot be version-verified).
+func Sign(key *Key, digest, repository, tag string) ([]byte, error) {
 	if digest == "" || repository == "" {
 		return nil, fmt.Errorf("signing needs a digest and repository")
 	}
-	body, err := json.Marshal(payload{Digest: digest, Repository: repository})
+	body, err := json.Marshal(payload{Digest: digest, Repository: repository, Tag: tag})
 	if err != nil {
 		return nil, fmt.Errorf("encoding signature payload: %w", err)
 	}
@@ -233,7 +243,11 @@ func Sign(key *Key, digest, repository string) ([]byte, error) {
 // repository, returning the signer's base64 public key. It proves the
 // signature is valid and bound to these bytes and this name; whether the key
 // is the one trusted for the publisher is trust.go's call.
-func Verify(raw []byte, digest, repository string) (pubB64 string, err error) {
+// requestedTag is the tag the caller asked for. When non-empty (a tag pull),
+// the signed tag must match it, which is what blocks a downgrade substitution.
+// When empty (a digest pull), the tag is not checked: the digest already fixes
+// the content.
+func Verify(raw []byte, digest, repository, requestedTag string) (pubB64 string, err error) {
 	var a artifact
 	if err := json.Unmarshal(raw, &a); err != nil {
 		return "", fmt.Errorf("parsing signature: %w", err)
@@ -265,6 +279,9 @@ func Verify(raw []byte, digest, repository string) (pubB64 string, err error) {
 	}
 	if !bytes.Equal([]byte(p.Repository), []byte(repository)) {
 		return "", fmt.Errorf("signature is for %s, not %s", p.Repository, repository)
+	}
+	if requestedTag != "" && p.Tag != requestedTag {
+		return "", fmt.Errorf("signature is for version %q, not %q: the registry may be substituting an older signed version (downgrade)", p.Tag, requestedTag)
 	}
 	return a.PublicKey, nil
 }

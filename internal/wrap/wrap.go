@@ -81,6 +81,56 @@ type Source struct {
 	Origin string
 }
 
+// safePackageRef reports whether s is confined to the character set that npm,
+// PyPI, and OCI package references share. An empty string is allowed (an
+// absent version); a non-empty identifier is required separately. Any
+// character outside this set (whitespace, newline, or a shell metacharacter
+// like ; & | $ ` ( ) < > \ " ' *) fails, blocking injection into the generated
+// Dockerfile.
+func safePackageRef(s string) bool {
+	// A leading '-' would be read by npm/pip as a flag (e.g. pip -r<file>), so
+	// require the ref to start with an alphanumeric or '@' (npm scope).
+	if s != "" {
+		switch c := s[0]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '@':
+		default:
+			return false
+		}
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '.' || c == '_' || c == '-' || c == '/' || c == '@' || c == ':' || c == '+':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validEnvVarName reports whether name is a POSIX environment variable name
+// ([A-Za-z_][A-Za-z0-9_]*), which also excludes the newline that would let a
+// registry-supplied name inject a Vesselfile directive.
+func validEnvVarName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_':
+		case c >= '0' && c <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // CanonicalOrigin is the version-less imported_from marker, so every wrap
 // of the same server matches regardless of version. A registry import
 // overrides it with the server's reverse-DNS name.
@@ -93,6 +143,40 @@ func CanonicalOrigin(src Source) string {
 func Vesselfile(src Source) (string, error) {
 	if src.Identifier == "" {
 		return "", fmt.Errorf("wrap: no package identifier")
+	}
+	// The identifier and version come from an untrusted source (a public MCP
+	// Registry entry the bundle author controls) and are rendered verbatim into
+	// a shell-form `RUN install ...`/`FROM ...` Dockerfile line that BuildKit
+	// executes at import. A value carrying a space, newline, or shell
+	// metacharacter would inject arbitrary build commands or extra Dockerfile
+	// directives, so refuse anything outside the package-reference charset that
+	// npm, PyPI, and OCI names all live within.
+	if !safePackageRef(src.Identifier) {
+		return "", fmt.Errorf("wrap: refusing package identifier %q: it contains characters outside the package-reference charset (possible injection)", src.Identifier)
+	}
+	if !safePackageRef(src.Version) {
+		return "", fmt.Errorf("wrap: refusing package version %q: it contains characters outside the package-reference charset (possible injection)", src.Version)
+	}
+	// The env names/defaults, origin, and egress hosts are equally attacker-
+	// controlled (a public-registry entry) and are rendered verbatim into
+	// Vesselfile directives (ENV/SECRETS/META/EGRESS). A newline in any of them
+	// injects an arbitrary directive (RUN, FROM, EGRESS allow:*), so guard them
+	// the same way the package ref is guarded.
+	for _, e := range src.Env {
+		if !validEnvVarName(e.Name) {
+			return "", fmt.Errorf("wrap: refusing env variable name %q: not a valid environment variable name", e.Name)
+		}
+		if strings.ContainsAny(e.Default, "\n\r") {
+			return "", fmt.Errorf("wrap: refusing env default for %q: it contains a newline (possible Vesselfile injection)", e.Name)
+		}
+	}
+	if strings.ContainsAny(src.Origin, "\n\r") {
+		return "", fmt.Errorf("wrap: refusing origin %q: it contains a newline (possible Vesselfile injection)", src.Origin)
+	}
+	for _, h := range src.Egress {
+		if strings.ContainsAny(h, "\n\r") {
+			return "", fmt.Errorf("wrap: refusing egress host %q: it contains a newline (possible Vesselfile injection)", h)
+		}
 	}
 	switch src.Registry {
 	case NPM:

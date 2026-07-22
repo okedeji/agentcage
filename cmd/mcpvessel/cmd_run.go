@@ -192,6 +192,15 @@ func buildInputPools(envFlags []string, envFile string, secretFlags []string, se
 		pool[name] = value
 	}
 	if secretFile != "" {
+		// The file holds secret values, so it must not be readable by group or
+		// other; refuse a loose mode rather than silently leaking through it.
+		info, err := os.Stat(secretFile)
+		if err != nil {
+			return nil, nil, fmt.Errorf("reading --secret-file: %w", err)
+		}
+		if perm := info.Mode().Perm(); perm&0o077 != 0 {
+			return nil, nil, fmt.Errorf("--secret-file %s is accessible to group/other (mode %04o); restrict it with 'chmod 600 %s'", secretFile, perm, secretFile)
+		}
 		data, err := os.ReadFile(secretFile)
 		if err != nil {
 			return nil, nil, fmt.Errorf("reading --secret-file: %w", err)

@@ -97,6 +97,29 @@ func TestHandler_RoutesAttachesKeyOverridesModelAndEnforcesBudget(t *testing.T) 
 	}
 }
 
+func TestHandler_ReservationReleasedOnUpstreamError(t *testing.T) {
+	// Every call hits a dead upstream, so the proxy runs its ErrorHandler and
+	// never ModifyResponse. The per-call reservation must still be released
+	// (from the handler, not the response callbacks) or the budget wedges at 402
+	// while actual spend is 0. Calls are sequential, so call N sees call N-1's
+	// reservation already released.
+	cfg := Config{
+		Endpoints: map[string]Endpoint{
+			"openai": {BaseURL: "http://127.0.0.1:1/v1", Key: "sk-secret", PriceIn: 2_500_000, PriceOut: 10_000_000},
+		},
+		Default:        "openai",
+		Agents:         map[string]AgentRoute{"tok-r": {Key: "researcher", Model: "openai/gpt-4o"}},
+		BudgetMicroUSD: 5000,
+	}
+	gw := httptest.NewServer(New(cfg, Hooks{}).Handler())
+	defer gw.Close()
+	for i := 0; i < 20; i++ {
+		if got := post(t, gw.URL+"/tok-r/chat/completions", `{"messages":[]}`); got == http.StatusPaymentRequired {
+			t.Fatalf("call %d got 402: the reservation leaked on the upstream-error path and wedged the budget (spend is 0)", i)
+		}
+	}
+}
+
 func TestHandler_FallbackUsesDefaultEndpointModel(t *testing.T) {
 	var seen providerCall
 	provider := fakeProvider(t, &seen)

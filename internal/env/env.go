@@ -44,6 +44,21 @@ const (
 	RequireSignatures = Prefix + "REQUIRE_SIGNATURES"
 )
 
+// Request-body size caps. Each guards one enforcement point against an
+// oversized body (OOM protection); the defaults suit typical MCP traffic and
+// these knobs raise them for a workload with legitimately large payloads. A
+// value is a byte count with an optional binary suffix (e.g. 32MiB, 512k).
+const (
+	// MaxServeBody caps a single plain-HTTP request body at the serve front
+	// door (tool arguments or a prompt). Default 1 MiB.
+	MaxServeBody = Prefix + "MAX_SERVE_BODY"
+	// MaxGatewayBody caps a forwarded MCP request body at the MCP gateway, so a
+	// cage cannot OOM the shared gateway. Default 16 MiB.
+	MaxGatewayBody = Prefix + "MAX_GATEWAY_BODY"
+	// MaxLLMBody caps a request body at the LLM gateway. Default 8 MiB.
+	MaxLLMBody = Prefix + "MAX_LLM_BODY"
+)
+
 // MCP gateway variables the runtime injects into the MCP gateway container.
 const (
 	// MCPConfig is the JSON routing table the MCP gateway serves.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -50,6 +51,85 @@ func TestBuildInputPools_SecretFileScopes(t *testing.T) {
 	}
 	if !reflect.DeepEqual(pool, want) {
 		t.Errorf("pool = %v, want %v", pool, want)
+	}
+}
+
+func TestBuildInputPools_SecretFileRejectsLoosePerms(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "secrets.env")
+	if err := os.WriteFile(file, []byte("TOKEN=v\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := buildInputPools(nil, "", nil, file)
+	if err == nil {
+		t.Fatal("expected a rejection for a group/other-readable secret file")
+	}
+	if !strings.Contains(err.Error(), "group/other") {
+		t.Errorf("error = %q, want it to name the loose permissions", err.Error())
+	}
+
+	// The exact contract: mode 0600 is accepted.
+	if err := os.Chmod(file, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := buildInputPools(nil, "", nil, file); err != nil {
+		t.Errorf("0600 secret file rejected: %v", err)
+	}
+}
+
+func TestApplyConfigSecrets_ScopesPerAgentBindings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VESSEL_HOME", home)
+	cfg := `{"secrets":{"defaults":["SHARED"],"agents":{` +
+		`"@me/github:0.1":["GH_TOKEN"],` +
+		`"@me/notion":["NOTION_TOKEN"]}}}`
+	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHARED", "shared-v")
+	t.Setenv("GH_TOKEN", "gh-v")
+	t.Setenv("NOTION_TOKEN", "notion-v")
+
+	pool := runtime.ScopedSecrets{}
+	if err := applyConfigSecrets(pool, "@me/github:0.1", io.Discard); err != nil {
+		t.Fatalf("applyConfigSecrets: %v", err)
+	}
+
+	// The general default broadcasts; a per-agent binding lands only in that
+	// agent's scope (its short name), never the broadcast pool.
+	if pool[""]["SHARED"] != "shared-v" {
+		t.Errorf("default not broadcast: %v", pool[""])
+	}
+	if _, leaked := pool[""]["GH_TOKEN"]; leaked {
+		t.Error("a per-agent binding leaked into the broadcast pool")
+	}
+	if pool["github"]["GH_TOKEN"] != "gh-v" {
+		t.Errorf("github binding not scoped to its agent: %v", pool["github"])
+	}
+	// A sub-agent binding is applied too (the old broadcast-only path dropped
+	// it), scoped to the sub-agent, not broadcast.
+	if pool["notion"]["NOTION_TOKEN"] != "notion-v" {
+		t.Errorf("sub-agent binding not applied to its scope: %v", pool["notion"])
+	}
+	if _, leaked := pool[""]["NOTION_TOKEN"]; leaked {
+		t.Error("a sub-agent binding leaked into the broadcast pool")
+	}
+}
+
+func TestApplyConfigSecrets_DoesNotOverrideExplicitGrant(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VESSEL_HOME", home)
+	if err := os.WriteFile(filepath.Join(home, "config.json"),
+		[]byte(`{"secrets":{"agents":{"@me/github":["GH_TOKEN"]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GH_TOKEN", "from-config")
+
+	pool := runtime.ScopedSecrets{"github": {"GH_TOKEN": "from-flag"}}
+	if err := applyConfigSecrets(pool, "@me/github", io.Discard); err != nil {
+		t.Fatalf("applyConfigSecrets: %v", err)
+	}
+	if pool["github"]["GH_TOKEN"] != "from-flag" {
+		t.Errorf("config binding overrode an explicit --secret: %v", pool["github"])
 	}
 }
 

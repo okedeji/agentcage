@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -62,12 +63,27 @@ func newEgressControlCmd() *cobra.Command {
 		Hidden: true,
 	}
 	post := func(path string) *cobra.Command {
-		return &cobra.Command{
-			Use:  path[1:] + " HOST",
-			Args: cobra.ExactArgs(1),
+		var all bool
+		var agent string
+		c := &cobra.Command{
+			Use:  path[1:] + " HOST [SRC]",
+			Args: cobra.RangeArgs(1, 2),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				url := "http://127.0.0.1:" + env.DefaultEgressControlPort + path + "?host=" + args[0]
-				resp, err := http.Post(url, "", nil)
+				// Escape every value: the host is caged-server-supplied and the agent
+				// name flows from the operator, and neither must be able to inject
+				// extra query parameters or a fragment into the control URL.
+				endpoint := "http://127.0.0.1:" + env.DefaultEgressControlPort + path +
+					"?host=" + url.QueryEscape(args[0])
+				if len(args) > 1 {
+					endpoint += "&src=" + url.QueryEscape(args[1])
+				}
+				if agent != "" {
+					endpoint += "&agent=" + url.QueryEscape(agent)
+				}
+				if all {
+					endpoint += "&all=true"
+				}
+				resp, err := http.Post(endpoint, "", nil)
 				if err != nil {
 					return err
 				}
@@ -78,6 +94,9 @@ func newEgressControlCmd() *cobra.Command {
 				return nil
 			},
 		}
+		c.Flags().BoolVar(&all, "all", false, "grant the host to every cage in the run")
+		c.Flags().StringVar(&agent, "agent", "", "scope the decision to one agent by name")
+		return c
 	}
 	cmd.AddCommand(post("/allow"), post("/deny"))
 	return cmd

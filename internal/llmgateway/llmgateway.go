@@ -159,6 +159,10 @@ type Config struct {
 	BudgetMicroUSD int64                 `json:"budget_micro_usd,omitempty"`
 	// Record enables full-payload capture for replay; heavy, so off by default.
 	Record bool `json:"record,omitempty"`
+	// MaxBodyBytes overrides the forwarded-request-body cap. Zero means the
+	// default; the runtime resolves VESSEL_MAX_LLM_BODY on the host and sets it
+	// here, since the gateway runs in a container without config access.
+	MaxBodyBytes int64 `json:"max_body_bytes,omitempty"`
 }
 
 // AgentRoute is one reasoning agent's LLM route, addressed by the capability
@@ -187,6 +191,80 @@ type AgentSpend struct {
 type route struct {
 	proxy *httputil.ReverseProxy
 	model string
+	ep    Endpoint
+}
+
+// defaultMaxTokens bounds the completion estimate when a request omits
+// max_tokens, so a call with no declared ceiling still reserves a
+// non-trivial amount against the budget rather than reserving ~0.
+const defaultMaxTokens = 4096
+
+// maxEstimateTokens caps the completion count used for the reservation
+// estimate. max_tokens is cage-controlled, so without a ceiling a call could
+// declare max_tokens=1e15 and reserve more than the whole budget, starving
+// every sibling agent (and overflowing int64 in the price multiply). No real
+// model serves anywhere near this many completion tokens.
+const maxEstimateTokens = 1 << 20
+
+// defaultMaxLLMRequestBytes caps a forwarded request body so a cage cannot OOM
+// the gateway with a giant body; large contexts still fit comfortably.
+// Config.MaxBodyBytes (from VESSEL_MAX_LLM_BODY on the host) overrides it.
+const defaultMaxLLMRequestBytes = 8 << 20
+
+// reservationKey carries a call's reserved estimate to the response side so it
+// is released (and reconciled) exactly once on completion.
+type reservationKey struct{}
+
+func reservation(ctx context.Context) int64 {
+	if est, ok := ctx.Value(reservationKey{}).(int64); ok {
+		return est
+	}
+	return 0
+}
+
+// allowedLLMPath restricts the forwarded upstream path (after the cage's token
+// segment) to the OpenAI-compatible inference endpoints. Everything else under
+// the provider base URL (files, batches, fine-tuning, assistants) is refused so
+// the operator's key cannot be driven off the metered inference path.
+func allowedLLMPath(p string) bool {
+	switch strings.TrimSuffix(p, "/") {
+	case "/chat/completions", "/completions", "/embeddings", "/responses":
+		return true
+	}
+	return false
+}
+
+// estimateCost is the upper-bound cost charged at admission (reservation) and,
+// if a response never yields a usage block, as the settled fallback. Prompt
+// size is approximated from the request bytes (~4 bytes/token) and the
+// completion from the request's max_tokens (or a default). It never
+// under-estimates to zero, so aborting or omitting usage is never cheaper than
+// completing honestly.
+func estimateCost(ep Endpoint, body []byte) int64 {
+	promptTokens := int64(len(body)) / 4
+	maxTok := int64(defaultMaxTokens)
+	var req struct {
+		MaxTokens           *int64 `json:"max_tokens"`
+		MaxCompletionTokens *int64 `json:"max_completion_tokens"`
+	}
+	if json.Unmarshal(body, &req) == nil {
+		if req.MaxCompletionTokens != nil && *req.MaxCompletionTokens > 0 {
+			maxTok = *req.MaxCompletionTokens
+		} else if req.MaxTokens != nil && *req.MaxTokens > 0 {
+			maxTok = *req.MaxTokens
+		}
+	}
+	// Clamp the cage-controlled completion count before the price multiply, so
+	// a call cannot reserve more than a real completion could cost (starving
+	// siblings) or overflow int64.
+	if maxTok > maxEstimateTokens {
+		maxTok = maxEstimateTokens
+	}
+	est := ceilDiv(promptTokens*ep.PriceIn, 1_000_000) + ceilDiv(maxTok*ep.PriceOut, 1_000_000)
+	if est < 1 {
+		est = 1
+	}
+	return est
 }
 
 // Gateway serves the agent-facing proxy and the operator control surface.
@@ -214,6 +292,10 @@ func New(cfg Config, hooks Hooks) *Gateway {
 		recordCall:    hooks.Call,
 		recordPayload: hooks.Payload,
 		record:        cfg.Record,
+		maxBody:       cfg.MaxBodyBytes,
+	}
+	if m.maxBody <= 0 {
+		m.maxBody = defaultMaxLLMRequestBytes
 	}
 	// Keyed by the capability token a caller addresses, but metered by the real
 	// agent key, so the spend tally still attributes to the agent and a forged
@@ -230,7 +312,7 @@ func New(cfg Config, hooks Hooks) *Gateway {
 				model = ep.Model
 			}
 		}
-		routes[token] = route{proxy: newProxy(ep, m, ar.Key, model), model: model}
+		routes[token] = route{proxy: newProxy(ep, m, ar.Key, model), model: model, ep: ep}
 	}
 
 	agent := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -239,31 +321,52 @@ func New(cfg Config, hooks Hooks) *Gateway {
 			writeError(w, http.StatusNotFound, "no LLM route for this agent")
 			return
 		}
+		// The cage controls the path after its token; without this it could
+		// steer the operator's key at any endpoint under the provider base URL
+		// (files, batches, fine-tuning), all off the metered inference path.
+		// Restrict to POST and the OpenAI-compatible inference endpoints.
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "the LLM gateway only forwards POST")
+			return
+		}
+		if !allowedLLMPath(stripFirstSegment(r.URL.Path)) {
+			writeError(w, http.StatusForbidden, "the LLM gateway only forwards inference endpoints")
+			return
+		}
 		// Stamp the start time; the proxy clones the request with its context,
 		// so meterResponse reads it back off the outbound request.
 		r = r.WithContext(context.WithValue(r.Context(), callStartKey{}, time.Now()))
-		// Soft cap: a call proceeds while budget remains, metering happens on
-		// the way back, worst case one in-flight call's overshoot. Read live so
-		// a mid-run `budget set` takes effect on the next call.
-		if m.overBudget() {
+		body, err := io.ReadAll(io.LimitReader(r.Body, m.maxBody))
+		_ = r.Body.Close()
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "reading request body")
+			return
+		}
+		body = rewriteModel(body, rt.model)
+		// Admit against the budget by reserving this call's estimated cost, so
+		// N concurrent calls cannot each pass an entry check before any has
+		// metered and collectively overrun the ceiling. Reserved cost is
+		// released on completion and reconciled with actual usage.
+		est := estimateCost(rt.ep, body)
+		if !m.reserve(est) {
 			writeError(w, http.StatusPaymentRequired, "over-budget: the run's LLM budget is spent")
 			return
 		}
-		if r.Method == http.MethodPost {
-			body, err := io.ReadAll(r.Body)
-			_ = r.Body.Close()
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "reading request body")
-				return
-			}
-			body = rewriteModel(body, rt.model)
-			r.Body = io.NopCloser(bytes.NewReader(body))
-			r.ContentLength = int64(len(body))
-			// Stash the request for replay before the proxy attaches the
-			// provider key (a header), so a recorded request never carries one.
-			if m.record {
-				r = r.WithContext(context.WithValue(r.Context(), callBodyKey{}, append([]byte(nil), body...)))
-			}
+		// Release from here, not from the proxy's response callbacks: on a
+		// transport error (refused/DNS/TLS/timeout, or a cage that drops the
+		// connection before the provider answers) ReverseProxy runs its
+		// ErrorHandler and ModifyResponse never fires, so releasing there would
+		// orphan the reservation and permanently wedge the budget. ServeHTTP
+		// blocks until the response (stream included) is fully copied, so this
+		// fires after metering on every path.
+		defer m.release(est)
+		r = r.WithContext(context.WithValue(r.Context(), reservationKey{}, est))
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		// Stash the request for replay before the proxy attaches the provider
+		// key (a header), so a recorded request never carries one.
+		if m.record {
+			r = r.WithContext(context.WithValue(r.Context(), callBodyKey{}, append([]byte(nil), body...)))
 		}
 		rt.proxy.ServeHTTP(w, r)
 	})
@@ -310,15 +413,63 @@ func (g *Gateway) handleSpend(w http.ResponseWriter, _ *http.Request) {
 // serves the whole tree against one budget. It reports after each debit, so
 // the latest log line is always the run's current total.
 type meter struct {
-	mu            sync.Mutex
-	budget        int64
-	total         int64
+	mu     sync.Mutex
+	budget int64
+	total  int64
+	// reserved is the sum of in-flight calls' estimated cost, admitted at the
+	// gate and released on completion. Admitting against total+reserved (not
+	// total alone) stops N concurrent calls from each reading "under budget"
+	// before any has debited and collectively blowing past the ceiling.
+	reserved      int64
 	agents        map[string]int64
 	calls         map[string]int64
 	report        func(SpendReport)
 	recordCall    func(CallEvent)
 	recordPayload func(CallRecord)
 	record        bool
+	// maxBody caps a forwarded request body, resolved at New from
+	// Config.MaxBodyBytes or the default.
+	maxBody int64
+}
+
+// reserve admits a call while any budget headroom remains, then tentatively
+// charges its estimated cost. Admitting on headroom (settled spend plus other
+// in-flight reservations still below budget) rather than requiring the whole
+// estimate to fit means a lone call that will cost less than its max-token
+// estimate is not wrongly refused. But once one call's reservation commits the
+// remaining budget, concurrent calls are refused, so N parallel calls can no
+// longer each pass the gate before any debits and collectively overrun the
+// ceiling: overshoot is bounded to a single in-flight call. A zero budget is
+// unbounded.
+func (m *meter) reserve(est int64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.budget > 0 && m.total+m.reserved >= m.budget {
+		return false
+	}
+	m.reserved += est
+	return true
+}
+
+// release drops a completed call's reservation. Every reserved call must
+// release exactly once on completion (success, error, or abort) so the
+// reservation pool does not leak upward and wedge the run.
+func (m *meter) release(est int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.reserved -= est
+	if m.reserved < 0 {
+		m.reserved = 0
+	}
+}
+
+// ceilDiv divides rounding up, so a sub-micro-USD call meters as at least 1
+// rather than truncating to 0 (which would let many tiny calls run ~free).
+func ceilDiv(n, d int64) int64 {
+	if n <= 0 {
+		return 0
+	}
+	return (n + d - 1) / d
 }
 
 // recordPayloadFor logs one call's full payload for replay, computing the call's
@@ -327,7 +478,7 @@ func (m *meter) recordPayloadFor(agentKey, model string, ep Endpoint, request, r
 	if m.recordPayload == nil {
 		return
 	}
-	cost := u.PromptTokens*ep.PriceIn/1_000_000 + u.CompletionTokens*ep.PriceOut/1_000_000
+	cost := ceilDiv(u.PromptTokens*ep.PriceIn, 1_000_000) + ceilDiv(u.CompletionTokens*ep.PriceOut, 1_000_000)
 	m.recordPayload(CallRecord{
 		Agent:            agentKey,
 		Model:            model,
@@ -341,15 +492,6 @@ func (m *meter) recordPayloadFor(agentKey, model string, ep Endpoint, request, r
 	})
 }
 
-// overBudget reports whether spend has reached the budget, read live so a
-// budget raised or lowered mid-run takes effect on the next call. A zero budget
-// is unbounded.
-func (m *meter) overBudget() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.budget > 0 && m.total >= m.budget
-}
-
 // setBudget changes the run's budget live. Raising it lets a blocked run
 // continue; lowering it stops the next call. An in-flight call is not aborted.
 func (m *meter) setBudget(b int64) {
@@ -359,7 +501,7 @@ func (m *meter) setBudget(b int64) {
 }
 
 func (m *meter) debit(agentKey string, ep Endpoint, u usage, model string, start time.Time) {
-	cost := u.PromptTokens*ep.PriceIn/1_000_000 + u.CompletionTokens*ep.PriceOut/1_000_000
+	cost := ceilDiv(u.PromptTokens*ep.PriceIn, 1_000_000) + ceilDiv(u.CompletionTokens*ep.PriceOut, 1_000_000)
 	m.mu.Lock()
 	m.total += cost
 	m.agents[agentKey] += cost
@@ -378,6 +520,33 @@ func (m *meter) debit(agentKey string, ep Endpoint, u usage, model string, start
 			CostMicroUSD:     cost,
 			StartUnixNano:    start.UnixNano(),
 			EndUnixNano:      time.Now().UnixNano(),
+		})
+	}
+}
+
+// debitCost charges a precomputed cost (the admission estimate) when a call
+// produced no parseable usage: an aborted stream or a usage-less 2xx. It keeps
+// spend advancing so an unmetered response is never free.
+func (m *meter) debitCost(agentKey string, cost int64, model string, start time.Time) {
+	if cost <= 0 {
+		return
+	}
+	m.mu.Lock()
+	m.total += cost
+	m.agents[agentKey] += cost
+	m.calls[agentKey]++
+	snap := m.snapshotLocked()
+	m.mu.Unlock()
+	if m.report != nil {
+		m.report(snap)
+	}
+	if m.recordCall != nil {
+		m.recordCall(CallEvent{
+			Agent:         agentKey,
+			Model:         model,
+			CostMicroUSD:  cost,
+			StartUnixNano: start.UnixNano(),
+			EndUnixNano:   time.Now().UnixNano(),
 		})
 	}
 }
@@ -415,11 +584,23 @@ func newProxy(ep Endpoint, m *meter, agentKey, model string) *httputil.ReversePr
 			pr.Out.URL.Host = target.Host
 			pr.Out.URL.Path = singleJoin(target.Path, stripFirstSegment(pr.In.URL.Path))
 			pr.Out.Host = target.Host
-			pr.Out.Header.Set("Authorization", "Bearer "+string(ep.Key))
+			// Rebuild the outbound headers from a strict allowlist. The cage
+			// controls the request body, but must not pass provider headers
+			// through (e.g. OpenAI-Organization/OpenAI-Beta) that would change
+			// billing, routing, or feature behavior under the operator's key.
+			out := make(http.Header, 4)
+			if ct := pr.In.Header.Get("Content-Type"); ct != "" {
+				out.Set("Content-Type", ct)
+			}
+			if ac := pr.In.Header.Get("Accept"); ac != "" {
+				out.Set("Accept", ac)
+			}
+			out.Set("Authorization", "Bearer "+string(ep.Key))
 			// Force an uncompressed body: the meter parses the usage block as
 			// JSON, and a gzip/br/zstd response would silently leave the call
 			// unmetered and the budget unenforced. Completions are small.
-			pr.Out.Header.Set("Accept-Encoding", "identity")
+			out.Set("Accept-Encoding", "identity")
+			pr.Out.Header = out
 		},
 		FlushInterval:  -1,
 		ModifyResponse: meterResponse(ep, m, agentKey, model),
@@ -463,8 +644,11 @@ func meterResponse(ep Endpoint, m *meter, agentKey, model string) func(*http.Res
 	return func(resp *http.Response) error {
 		ctx := resp.Request.Context()
 		start := callStart(ctx)
+		est := reservation(ctx)
 		if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
-			sm := &streamMeter{src: resp.Body, ep: ep, meter: m, agentKey: agentKey, model: model, start: start}
+			// The stream path settles the charge and releases the reservation in
+			// streamMeter.Close, which the proxy always calls.
+			sm := &streamMeter{src: resp.Body, ep: ep, meter: m, agentKey: agentKey, model: model, start: start, est: est}
 			if m.record {
 				sm.record = true
 				sm.request = callBody(ctx)
@@ -480,8 +664,16 @@ func meterResponse(ep Endpoint, m *meter, agentKey, model string) func(*http.Res
 		var parsed struct {
 			Usage usage `json:"usage"`
 		}
-		if json.Unmarshal(body, &parsed) == nil {
+		metered := json.Unmarshal(body, &parsed) == nil &&
+			(parsed.Usage.PromptTokens > 0 || parsed.Usage.CompletionTokens > 0)
+		switch {
+		case metered:
 			m.debit(agentKey, ep, parsed.Usage, model, start)
+		case resp.StatusCode >= 200 && resp.StatusCode < 300:
+			// A 2xx that carries no parseable usage (compressed, or a
+			// non-standard body) still costs money upstream; charge the
+			// admission estimate so an unmetered response is never free.
+			m.debitCost(agentKey, est, model, start)
 		}
 		if m.record {
 			m.recordPayloadFor(agentKey, model, ep, callBody(ctx), body, parsed.Usage, start, false)
@@ -504,8 +696,10 @@ type streamMeter struct {
 	agentKey string
 	model    string
 	start    time.Time
+	est      int64
 	buf      bytes.Buffer
 	done     bool
+	released bool
 
 	// Replay capture: the stashed request body and the whole streamed
 	// response, accumulated as it flows, off the client's path.
@@ -555,7 +749,20 @@ func (m *streamMeter) scan(b []byte) {
 	}
 }
 
-func (m *streamMeter) Close() error { return m.src.Close() }
+// Close settles and releases the stream's reservation. If the usage chunk was
+// never seen (the cage read the content then aborted before it, or the endpoint
+// omitted it), charge the admission estimate so aborting a stream is never
+// cheaper than letting it meter honestly. Guarded so a double Close is a no-op.
+func (m *streamMeter) Close() error {
+	if !m.released {
+		if !m.done {
+			m.meter.debitCost(m.agentKey, m.est, m.model, m.start)
+			m.done = true
+		}
+		m.released = true
+	}
+	return m.src.Close()
+}
 
 // rewriteModel sets the request's model to the resolved name and, for a
 // streamed request, asks for usage in the final chunk. A non-JSON-object body

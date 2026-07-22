@@ -461,6 +461,21 @@ func TestParse_Errors(t *testing.T) {
 			"ENV requires a key",
 		},
 		{
+			"reserved secret prefix",
+			"FROM x\nENTRYPOINT y\nSECRETS VESSEL_TOKEN",
+			"reserved VESSEL_ prefix",
+		},
+		{
+			"secret invalid name",
+			"FROM x\nENTRYPOINT y\nSECRETS 1BAD",
+			"must match",
+		},
+		{
+			"secret name with dash",
+			"FROM x\nENTRYPOINT y\nSECRETS api-token",
+			"must match",
+		},
+		{
 			"egress bad format",
 			"FROM x\nENTRYPOINT y\nEGRESS something",
 			"must be deny-default or allow:",

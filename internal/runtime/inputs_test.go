@@ -30,6 +30,30 @@ func TestInjectOperatorValues_ScopesToDeclaredNames(t *testing.T) {
 	}
 }
 
+func TestInjectOperatorValuesSplit_SecretsGoToSecretEnv(t *testing.T) {
+	// The split variant keeps secret values out of the plain env map (which
+	// becomes argv) and in the secret map (which the runtime pipes off argv),
+	// while ENV overrides still land in the plain map.
+	agentEnv := map[string]string{}
+	secretEnv := map[string]string{}
+	declaredEnv := map[string]string{"LOG_LEVEL": "info"}
+	if err := injectOperatorValuesSplit(agentEnv, secretEnv, declaredEnv,
+		[]string{"github_token"}, nil,
+		map[string]string{"LOG_LEVEL": "debug"},
+		map[string]string{"github_token": "ghp-secret"}); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if agentEnv["LOG_LEVEL"] != "debug" {
+		t.Errorf("env override not in plain map: %q", agentEnv["LOG_LEVEL"])
+	}
+	if _, onArgv := agentEnv["github_token"]; onArgv {
+		t.Error("secret value landed in the plain (argv) env map")
+	}
+	if secretEnv["github_token"] != "ghp-secret" {
+		t.Errorf("secret not routed to secretEnv: %q", secretEnv["github_token"])
+	}
+}
+
 func TestInjectOperatorValues_MissingDeclaredSecretFailsClosed(t *testing.T) {
 	err := injectOperatorValues(map[string]string{}, nil, []string{"required_key"}, nil, nil, nil)
 	if err == nil {

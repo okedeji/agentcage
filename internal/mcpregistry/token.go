@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,7 +65,7 @@ func (c *Client) ExchangeGitHubToken(ctx context.Context, githubToken string) (T
 		RegistryToken string `json:"registry_token"`
 		ExpiresAt     int64  `json:"expires_at"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRegistryBody)).Decode(&out); err != nil {
 		return Token{}, fmt.Errorf("decoding token exchange response: %w", err)
 	}
 	if out.RegistryToken == "" {

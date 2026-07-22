@@ -39,31 +39,44 @@ only. 'egress deny' rejects a host and forgets a remembered approval.`,
 }
 
 func newEgressAllowCmd() *cobra.Command {
-	var once bool
+	var once, all bool
+	var agent string
 	cmd := &cobra.Command{
 		Use:   "allow TARGET HOST",
 		Short: "Approve a held host (TARGET is a @tag or a run id)",
-		Args:  cobra.ExactArgs(2),
+		Long: "Approve a held host. By default the host is granted to whichever " +
+			"agents asked for it, so approving a host never opens it for an agent " +
+			"that did not request it. Pass --agent NAME to pin the grant to one " +
+			"named agent, or --all to grant it to every agent in the run.",
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return decideEgress(cmd, args[0], args[1], true, once)
+			if agent != "" && all {
+				return fmt.Errorf("--agent and --all are mutually exclusive")
+			}
+			return decideEgress(cmd, args[0], args[1], agent, true, once, all)
 		},
 	}
 	cmd.Flags().BoolVar(&once, "once", false, "approve for the live run only; do not remember it in config")
+	cmd.Flags().BoolVar(&all, "all", false, "grant the host to every agent in the run, not just the one that asked")
+	cmd.Flags().StringVar(&agent, "agent", "", "grant the host to just this one named agent")
 	return cmd
 }
 
 func newEgressDenyCmd() *cobra.Command {
-	return &cobra.Command{
+	var agent string
+	cmd := &cobra.Command{
 		Use:   "deny TARGET HOST",
 		Short: "Reject a held host and forget any remembered approval",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return decideEgress(cmd, args[0], args[1], false, false)
+			return decideEgress(cmd, args[0], args[1], agent, false, false, false)
 		},
 	}
+	cmd.Flags().StringVar(&agent, "agent", "", "reject the host for just this one named agent")
+	return cmd
 }
 
-func decideEgress(cmd *cobra.Command, target, host string, allow, once bool) error {
+func decideEgress(cmd *cobra.Command, target, host, agent string, allow, once, all bool) error {
 	socket, err := daemon.SocketPath()
 	if err != nil {
 		return err
@@ -73,7 +86,7 @@ func decideEgress(cmd *cobra.Command, target, host string, allow, once bool) err
 
 	released := 0
 	for _, id := range runIDs {
-		if err := client.AllowEgress(cmd.Context(), id, host, allow); err != nil {
+		if err := client.AllowEgress(cmd.Context(), id, host, agent, allow, all); err != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", id, err)
 			continue
 		}
@@ -101,9 +114,20 @@ func decideEgress(cmd *cobra.Command, target, host string, allow, once bool) err
 	if !allow {
 		verb = "Denied"
 	}
+	scope := "for the requesting agent"
+	switch {
+	case all:
+		scope = "for every agent in the run"
+	case agent != "":
+		scope = "for agent " + agent
+	}
 	msg := fmt.Sprintf("%s %s", verb, host)
 	if released > 0 {
-		msg += fmt.Sprintf(" for %d live run(s)", released)
+		if allow {
+			msg += fmt.Sprintf(" %s in %d live run(s)", scope, released)
+		} else {
+			msg += fmt.Sprintf(" for %d live run(s)", released)
+		}
 	} else {
 		msg += " (no live run held this host)"
 	}
@@ -191,6 +215,7 @@ func newEgressLsCmd() *cobra.Command {
 					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\theld by %s\tapprove: mcpvessel egress allow %s %s\n", h, held, id, h)
 				}
 			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nApproving grants the host to that agent only; add --all to grant every agent in the run.")
 			return nil
 		},
 	}

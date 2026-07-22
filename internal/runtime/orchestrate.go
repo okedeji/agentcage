@@ -72,10 +72,12 @@ func bootRun(ctx context.Context, in RunInput, boot bootInput, runID string) (*m
 }
 
 // warnSecretShapes flags two grant shapes worth an operator's eye before a
-// tree boots. A broadcast-granted secret declared by more than one agent
-// reaches all of them, which is legitimate but also the exact shape of a
-// sibling harvesting a credential meant for another; naming it lets the
-// operator scope the grant. A scope matching no agent in the run grants
+// tree boots. A broadcast-granted secret that any non-root agent declares
+// reaches that agent, which is legitimate but also the exact shape of a
+// sub-agent harvesting a credential meant for the root or a sibling; naming it
+// lets the operator scope the grant. One malicious declarer is enough, so this
+// fires whenever a broadcast secret reaches at least one non-root agent, not
+// only when two or more declare it. A scope matching no agent in the run grants
 // nothing, silently, which is almost always a typo.
 func warnSecretShapes(w io.Writer, tree *runTree, rootName string, secrets ScopedSecrets) {
 	if w == nil || len(secrets) == 0 {
@@ -103,10 +105,24 @@ func warnSecretShapes(w io.Writer, tree *runTree, rootName string, secrets Scope
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if _, broadcast := secrets[""][name]; broadcast && len(declaredBy[name]) > 1 {
-			_, _ = fmt.Fprintf(w, "warning: agents %s all declare secret %s and the broadcast grant reaches every one of them; scope it with --secret <agent>:%s if only one should have it\n",
-				strings.Join(declaredBy[name], ", "), name, name)
+		if _, broadcast := secrets[""][name]; !broadcast {
+			continue
 		}
+		// Fire if any non-root agent receives this broadcast secret: a single
+		// sub-agent declaring the name is enough to harvest it, so the
+		// two-or-more-declarers shape is not the only risk worth surfacing.
+		nonRoot := false
+		for _, scope := range declaredBy[name] {
+			if scope != rootName {
+				nonRoot = true
+				break
+			}
+		}
+		if !nonRoot {
+			continue
+		}
+		_, _ = fmt.Fprintf(w, "warning: agents %s declare secret %s and the broadcast grant reaches every one of them; scope it with --secret <agent>:%s to grant only the agent that should have it\n",
+			strings.Join(declaredBy[name], ", "), name, name)
 	}
 	for _, scope := range secrets.Scopes() {
 		if !scopes[scope] {
@@ -316,7 +332,7 @@ func bootTree(ctx context.Context, in bootInput, tree *runTree, plan *runPlan, r
 
 	in.Network = plan.RootNet
 	in.Env = plan.RootEnv
-	client, err := startAttachedAgent(ctx, sess, in, td)
+	client, err := startAttachedAgent(ctx, sess, in, plan.RootSecretEnv, td)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -447,7 +463,15 @@ func imageExists(ctx context.Context, p Provisioner, ref string) bool {
 }
 
 func startDetached(ctx context.Context, p Provisioner, spec ContainerSpec) error {
-	return runNerdctl(p.Nerdctl(ctx, nerdctlRunArgs(spec)...), "starting "+spec.RunID)
+	cmd := p.Nerdctl(ctx, nerdctlRunArgs(spec)...)
+	// When the spec carries secret values, nerdctlRunArgs added
+	// `--env-file /dev/stdin`; feed the KEY=VALUE lines over stdin so the values
+	// never appear on argv. A detached container reads no stdin of its own, so
+	// this is safe. runNerdctl sets stdout/stderr, so only stdin is set here.
+	if content := secretEnvFile(spec); content != "" {
+		cmd.Stdin = strings.NewReader(content)
+	}
+	return runNerdctl(cmd, "starting "+spec.RunID)
 }
 
 // removeNetwork and removeContainer run at teardown on a fresh context: the

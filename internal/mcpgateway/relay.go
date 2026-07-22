@@ -103,12 +103,34 @@ func (g *Gateway) modifyResponse(edge string) func(*http.Response) error {
 				_ = pw.CloseWithError(err)
 			}()
 			resp.Body = pr
-		case "application/json":
-			body, err := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
+		default:
+			// Any non-SSE response (application/json or a sub-agent's
+			// non-standard/absent Content-Type) goes through the strip. Running
+			// it by default rather than only for application/json stops an
+			// adversarial sub-agent from leaking denied/uncataloged tool names
+			// by mislabeling its tools/list response. A non-JSON body simply
+			// won't parse and is forwarded unchanged.
+			// Read up to the strip budget plus one byte. If the response fits,
+			// strip and forward it. If it exceeds the budget, forward it whole
+			// and unstripped (chaining the bytes already read with the rest of
+			// the stream) rather than truncating and corrupting a legitimately
+			// large tool result; the request-side deny/catalog filter is the
+			// authoritative enforcement, so an unstripped oversized tools/list
+			// is a name-disclosure risk only.
+			limited := &io.LimitedReader{R: resp.Body, N: g.maxBody + 1}
+			body, err := io.ReadAll(limited)
 			if err != nil {
+				_ = resp.Body.Close()
 				return err
 			}
+			if limited.N <= 0 {
+				resp.Body = struct {
+					io.Reader
+					io.Closer
+				}{io.MultiReader(bytes.NewReader(body), resp.Body), resp.Body}
+				return nil
+			}
+			_ = resp.Body.Close()
 			if stripped, changed := stripDeniedTools(body, deny, allow); changed {
 				body = stripped
 			}
@@ -240,6 +262,35 @@ func (g *Gateway) postBackChannel(ctx context.Context, subURL, sessionID string,
 func stripDeniedTools(data []byte, deny, allow map[string]bool) ([]byte, bool) {
 	if len(deny) == 0 && allow == nil {
 		return data, false
+	}
+	// A JSON-RPC batch response is a top-level array; strip each element so a
+	// batched tools/list cannot smuggle denied/uncataloged names past the filter.
+	if trimmed := bytes.TrimSpace(data); len(trimmed) > 0 && trimmed[0] == '[' {
+		var batch []json.RawMessage
+		if json.Unmarshal(trimmed, &batch) != nil {
+			return data, false
+		}
+		anyChanged := false
+		for i, el := range batch {
+			// A batch element is a JSON-RPC object. Only recurse into objects,
+			// never a nested array, so a crafted deeply-nested body cannot
+			// force a re-scan per level.
+			if t := bytes.TrimSpace(el); len(t) == 0 || t[0] != '{' {
+				continue
+			}
+			if stripped, changed := stripDeniedTools(el, deny, allow); changed {
+				batch[i] = stripped
+				anyChanged = true
+			}
+		}
+		if !anyChanged {
+			return data, false
+		}
+		out, err := json.Marshal(batch)
+		if err != nil {
+			return data, false
+		}
+		return out, true
 	}
 	var msg map[string]json.RawMessage
 	if json.Unmarshal(data, &msg) != nil {

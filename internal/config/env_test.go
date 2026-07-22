@@ -72,3 +72,55 @@ func TestSetRemoveEnv(t *testing.T) {
 		t.Error("RemoveEnv reported present for an absent knob")
 	}
 }
+
+func TestParseByteSize(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int64
+		ok   bool
+	}{
+		{"1024", 1024, true},
+		{"16M", 16 << 20, true},
+		{"16MiB", 16 << 20, true},
+		{"16mb", 16 << 20, true},
+		{"8g", 8 << 30, true},
+		{"512k", 512 << 10, true},
+		{"2T", 2 << 40, true},
+		{"  32MiB ", 32 << 20, true},
+		{"", 0, false},
+		{"abc", 0, false},
+		{"10x", 0, false},
+	}
+	for _, c := range cases {
+		got, err := ParseByteSize(c.in)
+		if c.ok {
+			if err != nil {
+				t.Errorf("ParseByteSize(%q) errored: %v", c.in, err)
+				continue
+			}
+			if got != c.want {
+				t.Errorf("ParseByteSize(%q) = %d, want %d", c.in, got, c.want)
+			}
+		} else if err == nil {
+			t.Errorf("ParseByteSize(%q) = %d, want error", c.in, got)
+		}
+	}
+}
+
+func TestByteSizeEnv_FallsBackOnUnsetOrGarbage(t *testing.T) {
+	const def = 1 << 20
+	// Unset: the default holds.
+	if got := ByteSizeEnv(knob, def); got != def {
+		t.Errorf("unset ByteSizeEnv = %d, want default %d", got, def)
+	}
+	// A garbage value must not blow up or zero the cap; it falls back.
+	storeEnv(t, knob, "not-a-size")
+	if got := ByteSizeEnv(knob, def); got != def {
+		t.Errorf("garbage ByteSizeEnv = %d, want default %d", got, def)
+	}
+	// A good value wins.
+	storeEnv(t, knob, "4MiB")
+	if got := ByteSizeEnv(knob, def); got != 4<<20 {
+		t.Errorf("ByteSizeEnv = %d, want %d", got, 4<<20)
+	}
+}

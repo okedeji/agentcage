@@ -192,7 +192,7 @@ func TestProxy_HoldThenApproveTunnels(t *testing.T) {
 	}()
 
 	waitHold(t, p, backendHost)
-	p.decide(backendHost, true) // operator approves
+	p.decide("", backendHost, true, false) // operator approves
 
 	out := <-done
 	if !contains(out, "200") || !strings.Contains(out, "echo:ping") {
@@ -217,7 +217,7 @@ func TestProxy_HoldThenDeny(t *testing.T) {
 		done <- status
 	}()
 	waitHold(t, p, "evil.test")
-	p.decide("evil.test", false) // operator rejects
+	p.decide("", "evil.test", false, false) // operator rejects
 	if status := <-done; !contains(status, "403") {
 		t.Errorf("rejected host status = %q, want 403", status)
 	}
@@ -254,10 +254,150 @@ func TestProxy_NoHoldFailsFastThenApprovalPasses(t *testing.T) {
 
 	// After the operator approves, the same host passes without holding: the
 	// client's retry (modeled here at the decision level) is admitted at once.
-	p.decide("api.test", true)
+	p.decide("", "api.test", true, false)
 	if !p.await(srcIP, "api.test") {
 		t.Error("approved host was not admitted on retry")
 	}
+}
+
+func TestProxy_ApprovalIsPerSource(t *testing.T) {
+	// Two cages share one proxy. Approving a host for cage A must not open it for
+	// cage B: a runtime approval is scoped to the source that requested it.
+	const a, b = "10.0.0.2", "10.0.0.3"
+	p := New(Config{Sources: map[string][]string{a: {}, b: {}}, NoHold: true}, nil)
+
+	// A hits the host (fail fast records it as pending for A), the operator
+	// approves it for A, and A's retry now passes.
+	if p.await(a, "api.test") {
+		t.Fatal("host should be denied before approval")
+	}
+	p.decide(a, "api.test", true, false)
+	if !p.await(a, "api.test") {
+		t.Error("approved host was not admitted for source A")
+	}
+
+	// B never requested it and was never approved, so it stays denied: the
+	// approval did not leak across cages.
+	if p.await(b, "api.test") {
+		t.Error("approval for source A leaked to source B")
+	}
+}
+
+func TestProxy_ApproveAllGrantsEveryCage(t *testing.T) {
+	// `egress allow --all` (decide with all=true) opens the host for every cage
+	// in the run, including one that never requested it and one that requests it
+	// later. This is the explicit opt-in, in contrast to the per-source default.
+	const a, b = "10.0.0.2", "10.0.0.3"
+	p := New(Config{Sources: map[string][]string{a: {}, b: {}}, NoHold: true}, nil)
+
+	if p.await(a, "api.test") {
+		t.Fatal("host should be denied before approval")
+	}
+	p.decide("", "api.test", true, true) // operator approves for all agents
+
+	if !p.await(a, "api.test") {
+		t.Error("run-wide approval did not admit the requesting cage A")
+	}
+	// B never requested it, yet the explicit --all grant covers it.
+	if !p.await(b, "api.test") {
+		t.Error("run-wide (--all) approval did not cover cage B")
+	}
+}
+
+func TestControl_AgentNameScopesToOneSource(t *testing.T) {
+	// `egress allow --agent NAME` reaches Control as ?agent=NAME. The proxy
+	// resolves the name to that cage's source and scopes the grant to it, never
+	// to a sibling cage that shares the proxy.
+	const a, b = "10.0.0.2", "10.0.0.3"
+	p := New(Config{
+		Sources: map[string][]string{a: {}, b: {}},
+		Names:   map[string]string{a: "fetcher", b: "sneaky"},
+		NoHold:  true,
+	}, nil)
+	ctrl := httptest.NewServer(p.Control())
+	defer ctrl.Close()
+
+	// Both cages request the host so both are pending; only "fetcher" is named.
+	if p.await(a, "api.test") || p.await(b, "api.test") {
+		t.Fatal("host should be denied before approval")
+	}
+	resp, err := http.Post(ctrl.URL+"/allow?host=api.test&agent=fetcher", "", nil)
+	if err != nil {
+		t.Fatalf("control post: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("allow status = %d, want 204", resp.StatusCode)
+	}
+
+	if !p.await(a, "api.test") {
+		t.Error("named agent 'fetcher' (source A) was not granted the host")
+	}
+	if p.await(b, "api.test") {
+		t.Error("grant scoped to 'fetcher' leaked to the unnamed sibling source B")
+	}
+}
+
+func TestControl_UnknownAgentIsRejected(t *testing.T) {
+	// A name no cage carries is a bad request, not a silent no-op that the
+	// operator might read as success.
+	p := New(Config{
+		Sources: map[string][]string{"10.0.0.2": {}},
+		Names:   map[string]string{"10.0.0.2": "fetcher"},
+		NoHold:  true,
+	}, nil)
+	ctrl := httptest.NewServer(p.Control())
+	defer ctrl.Close()
+
+	resp, err := http.Post(ctrl.URL+"/allow?host=api.test&agent=ghost", "", nil)
+	if err != nil {
+		t.Fatalf("control post: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown-agent status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestProxy_HoldCapDeniesInsteadOfParks(t *testing.T) {
+	// Past the per-source cap a new unapproved host is denied fast rather than
+	// parked, so one cage cannot exhaust the proxy with held CONNECTs.
+	const src = "10.0.0.9"
+	p := New(Config{Sources: map[string][]string{src: {}}}, nil)
+	p.maxPer = 2
+	p.deadline = 2 * time.Second
+
+	// Fill the cap with two parked holds on distinct hosts.
+	for _, h := range []string{"one.test", "two.test"} {
+		go p.await(src, h)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		p.mu.Lock()
+		n := p.held[src]
+		p.mu.Unlock()
+		if n == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("held count reached %d, want 2", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// A third distinct host is over cap: it must return false fast, not block for
+	// the hold deadline.
+	start := time.Now()
+	if p.await(src, "three.test") {
+		t.Error("over-cap host was allowed, want denied")
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Errorf("over-cap connect took %s, want a fast deny without parking", elapsed)
+	}
+
+	// Release the parked holds so the goroutines exit.
+	p.decide("", "one.test", false, false)
+	p.decide("", "two.test", false, false)
 }
 
 func TestHandler_TunnelsAllowedHost(t *testing.T) {
@@ -307,6 +447,42 @@ func TestHandler_TunnelsAllowedHost(t *testing.T) {
 	}
 }
 
+func TestHandler_MatchesHostCaseInsensitively(t *testing.T) {
+	// An allow-set entry is lowercase; a CONNECT to the same name uppercased and
+	// with a trailing dot must still match, not slip past the filter and hold.
+	// Stub the dialer so timing reflects only the match, not a real DNS lookup:
+	// a matched host reaches the dial (fast error), an unmatched one holds.
+	old := dialTarget
+	dialTarget = func(target string) (net.Conn, error) { return nil, fmt.Errorf("stub dial %s", target) }
+	defer func() { dialTarget = old }()
+
+	probe := httptest.NewServer(testHandler(Config{}))
+	_, srcIP, pc := connect(t, probe.Listener.Addr().String(), "x:1")
+	_ = pc.Close()
+	probe.Close()
+
+	p := shortProxy(Config{Sources: map[string][]string{srcIP: {"good.test"}}}, nil)
+	srv := httptest.NewServer(p.Handler())
+	defer srv.Close()
+
+	start := time.Now()
+	status, _, c := connect(t, srv.Listener.Addr().String(), "GOOD.TEST.:443")
+	_ = c.Close()
+	if elapsed := time.Since(start); elapsed >= 100*time.Millisecond {
+		t.Errorf("connect took %s: host did not match the allow-set and was held", elapsed)
+	}
+	// A matched-but-undialable host is refused by the dial (403), never held.
+	if !contains(status, "403") {
+		t.Errorf("status = %q, want 403 from the dial on a matched host", status)
+	}
+	p.mu.Lock()
+	held := len(p.holds["good.test"])
+	p.mu.Unlock()
+	if held != 0 {
+		t.Errorf("matched host was held (%d waiters), want an immediate match", held)
+	}
+}
+
 func TestHandler_RefusesPrivateTarget(t *testing.T) {
 	// The host is explicitly allowed, so a 403 can only come from the dial
 	// guard refusing the private address, not from host-deny.
@@ -340,6 +516,13 @@ func TestIsPublic(t *testing.T) {
 		{"::1", false},                 // IPv6 loopback
 		{"fd00::1", false},             // IPv6 ULA
 		{"2606:4700:4700::1111", true}, // public IPv6
+		{"100.64.0.1", false},          // RFC6598 CGNAT
+		{"198.18.0.1", false},          // RFC2544 benchmarking
+		{"192.0.2.1", false},           // TEST-NET-1 documentation
+		{"240.0.0.1", false},           // reserved
+		{"255.255.255.255", false},     // broadcast
+		{"64:ff9b::808:808", false},    // NAT64 well-known prefix
+		{"2001:db8::1", false},         // IPv6 documentation
 	}
 	for _, c := range cases {
 		if got := isPublic(net.ParseIP(c.ip)); got != c.want {

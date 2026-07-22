@@ -107,6 +107,56 @@ func TestHandler_PromptStreamsSSEChunks(t *testing.T) {
 	}
 }
 
+// TestHandler_StreamCancelsCallWhenClientLeaves proves the SSE handler does not
+// keep generating for a client that stopped reading. A disconnect is the same
+// unwind path the per-write deadline (sseWriteTimeout) trips on a slow reader:
+// the write fails, the derived context is canceled, and CallStream returns
+// instead of pinning the serving slot. Here the client closes mid-stream and we
+// assert the server-side call observes the cancellation promptly.
+func TestHandler_StreamCancelsCallWhenClientLeaves(t *testing.T) {
+	canceled := make(chan struct{})
+	blockingAgent := Agent{
+		Address: "oncall",
+		Main:    "respond",
+		Tools:   []mcp.Tool{{Name: "respond", Schema: map[string]any{"type": "object"}}},
+		Resolve: func(context.Context, string) (Target, func(), error) {
+			stream := func(ctx context.Context, _ string, _ map[string]any, onProgress mcp.ProgressHandler) (string, error) {
+				onProgress(mcp.ProgressChunk{Message: "first chunk"})
+				// Now stall as if mid-generation; a live client would keep
+				// reading, but this one disconnects.
+				select {
+				case <-ctx.Done():
+					close(canceled)
+					return "", ctx.Err()
+				case <-time.After(10 * time.Second):
+					return "should have been canceled", nil
+				}
+			}
+			return Target{CallStream: stream}, func() {}, nil
+		},
+	}
+	srv := httptest.NewServer(Handler([]Agent{blockingAgent}, nil))
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/agents/oncall",
+		strings.NewReader(`{"prompt":"what broke","stream":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	// Read the first delta so the stream is established, then hang up.
+	buf := make([]byte, 64)
+	_, _ = resp.Body.Read(buf)
+	_ = resp.Body.Close()
+
+	select {
+	case <-canceled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("CallStream was not canceled after the client disconnected")
+	}
+}
+
 func TestHandler_DefaultPromptStaysJSON(t *testing.T) {
 	agent := streamingAgent("oncall", "respond", []string{"hi"})
 	srv := httptest.NewServer(Handler([]Agent{agent}, nil))

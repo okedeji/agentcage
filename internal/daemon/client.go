@@ -205,11 +205,20 @@ func (c *Client) promptEgressApproval(ctx context.Context, runID, host string) {
 	}
 	egressPromptMu.Lock()
 	defer egressPromptMu.Unlock()
-	_, _ = fmt.Fprintf(os.Stderr, "\negress pending: %s. Allow this host? [y/N] (or run: mcpvessel egress allow %s %s)\n> ", host, runID, host)
+	_, _ = fmt.Fprintf(os.Stderr,
+		"\negress pending: a caged agent wants to reach %s (not on its allow-list).\n"+
+			"  [y] allow it for this agent    [a] allow it for every agent in this run    [N] deny\n"+
+			"  (or from another shell: mcpvessel egress allow %s %s   [add --all for every agent])\n> ",
+		host, runID, host)
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	answer := strings.ToLower(strings.TrimSpace(line))
-	allow := answer == "y" || answer == "yes"
-	if err := c.AllowEgress(ctx, runID, host, allow); err != nil {
+	all := answer == "a" || answer == "all"
+	allow := all || answer == "y" || answer == "yes"
+	// The inline prompt does not carry the requesting agent's name, so it passes
+	// no agent: the proxy resolves for exactly the sources that asked for this
+	// host (the attached cage), never every cage. The out-of-band
+	// `egress allow --agent NAME` is the path for pinning a single cage by name.
+	if err := c.AllowEgress(ctx, runID, host, "", allow, all); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "egress decision for %s failed: %v\n", host, err)
 	}
 }
@@ -348,13 +357,14 @@ func (c *Client) PendingEgress(ctx context.Context) (map[string][]string, error)
 }
 
 // AllowEgress approves (allow=true) or rejects a host the run's egress proxy is
-// holding, releasing the parked connection.
-func (c *Client) AllowEgress(ctx context.Context, id, host string, allow bool) error {
+// holding, releasing the parked connection. A non-empty agent scopes the
+// decision to that one cage; all grants it to every cage in the run.
+func (c *Client) AllowEgress(ctx context.Context, id, host, agent string, allow, all bool) error {
 	verb := "allow"
 	if !allow {
 		verb = "deny"
 	}
-	return c.post(ctx, "/runs/"+id+"/egress/"+verb, map[string]string{"host": host}, nil)
+	return c.post(ctx, "/runs/"+id+"/egress/"+verb, egressDecisionRequest{Host: host, Agent: agent, All: all}, nil)
 }
 
 // ServedAgent is one endpoint the front door opened: its /agents/ address and

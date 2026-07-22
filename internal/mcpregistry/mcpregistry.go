@@ -144,11 +144,17 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("registry returned %s: %s", resp.Status, snippet(resp.Body))
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	// Bound the success body: a hostile or misconfigured registry must not be
+	// able to OOM the CLI with a multi-gigabyte JSON response.
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRegistryBody)).Decode(out); err != nil {
 		return fmt.Errorf("decoding registry response: %w", err)
 	}
 	return nil
 }
+
+// maxRegistryBody caps a registry success response so a hostile registry
+// cannot exhaust CLI memory. A server-list page is far smaller than this.
+const maxRegistryBody = 32 << 20
 
 // snippet reads a bounded prefix of an error body so a misbehaving registry
 // cannot flood the terminal.

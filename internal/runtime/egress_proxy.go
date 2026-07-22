@@ -19,7 +19,7 @@ import (
 // container, the same daemon-to-container path the LLM gateway uses for budget.
 // An approval releases the held connection and joins the proxy's allow-set for
 // the rest of the run.
-func AllowRunEgress(ctx context.Context, runID, host string, allow bool) error {
+func AllowRunEgress(ctx context.Context, runID, host, agent string, allow, all bool) error {
 	p, err := DefaultProvisioner()
 	if err != nil {
 		return err
@@ -30,7 +30,14 @@ func AllowRunEgress(ctx context.Context, runID, host string, allow bool) error {
 	if !allow {
 		verb = "deny"
 	}
-	cmd := p.Nerdctl(ctx, "exec", egressProxyName(runID), gatewayBinaryPath, "egress-control", verb, host)
+	args := []string{"exec", egressProxyName(runID), gatewayBinaryPath, "egress-control", verb, host}
+	if agent != "" {
+		args = append(args, "--agent", agent)
+	}
+	if all {
+		args = append(args, "--all")
+	}
+	cmd := p.Nerdctl(ctx, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("egress %s %s for run %s (is it running with an egress proxy?): %w: %s",
