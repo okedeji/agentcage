@@ -50,10 +50,15 @@ match that pin. A changed key fails closed with a loud error rather than swappin
 silently. This is trust on first use, the same model as SSH known hosts.
 
 Servers published from this project are signed with key fingerprint
-`bf4894a180f2` (scope `ghcr.io/okedeji`). Your first pull prints
-`Signature verified; pinned signing key bf4894a180f2 ... (first use)`. Confirm it
+`dbb184de32d2` (scope `ghcr.io/okedeji`). Your first pull prints
+`Signature verified; pinned signing key dbb184de32d2 ... (first use)`. Confirm it
 matches this before you trust it. If a later pull reports a key mismatch and you
 have not been told to expect a rotation, stop and check.
+
+The key was rotated from `bf4894a180f2` on 2026-07-22, alongside the move to
+the tag-bound signature format. If you pinned the old key, the mismatch you see
+is this rotation: run `mcpvessel trust rm ghcr.io/okedeji`, pull again, and
+confirm the new fingerprint above.
 
 The limits are the ones listed above: a signature proves origin, not intent, and
 the sandbox, not the signature, is what contains a malicious agent.
