@@ -3,24 +3,33 @@ package main
 import (
 	"fmt"
 	"io"
-	"text/tabwriter"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/okedeji/mcpvessel/internal/cliout"
 	"github.com/okedeji/mcpvessel/internal/daemon"
 )
 
+// psRecentFinished is how many finished runs the default view keeps under the
+// live ones; the full history stays behind -a.
+const psRecentFinished = 10
+
 func newPsCmd() *cobra.Command {
+	var all bool
 	cmd := &cobra.Command{
 		Use:   "ps",
 		Short: "List running agents",
 		Long: `List the agents the daemon is currently running.
 
 ps talks to the daemon, so it needs one running. Each row is a run: its id,
-the agent reference, its status, and how long it has been up.`,
-		Example: `  mcpvessel ps`,
-		Args:    cobra.NoArgs,
+the agent reference, its status, when it started, and what it cost. Live runs
+sort first, newest first, over the ` + fmt.Sprint(psRecentFinished) + ` most recently finished; -a/--all shows
+the full history.`,
+		Example: `  mcpvessel ps
+  mcpvessel ps -a`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			socket, err := daemon.SocketPath()
 			if err != nil {
@@ -30,30 +39,55 @@ the agent reference, its status, and how long it has been up.`,
 			if err != nil {
 				return fmt.Errorf("%w (is the daemon running? start it with 'mcpvessel daemon')", err)
 			}
-			printRuns(cmd.OutOrStdout(), runs)
+			printRuns(cmd.OutOrStdout(), runs, all)
 			return nil
 		},
 	}
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "show the full run history, not just live and recent runs")
 	return cmd
 }
 
-// printRuns renders the ps table. The header prints even with no runs so an
-// empty list reads as "nothing running" rather than blank output.
-func printRuns(w io.Writer, runs []daemon.RunInfo) {
-	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "RUN ID\tREF\tSTATUS\tUP\tCOST")
-	for _, r := range runs {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.ID, r.Ref, r.Status, uptime(r), cost(r.CostMicroUSD))
+// printRuns renders the ps table: live runs first, then finished ones, each
+// newest first. Without all, finished runs past psRecentFinished are elided
+// behind a trailer naming -a, so the live rows are never buried under history.
+func printRuns(w io.Writer, runs []daemon.RunInfo, all bool) {
+	if len(runs) == 0 {
+		cliout.Empty(w, "No runs yet. Start one with 'mcpvessel run' or 'mcpvessel serve'.")
+		return
 	}
-	_ = tw.Flush()
+	var live, done []daemon.RunInfo
+	for _, r := range runs {
+		if isLive(r) {
+			live = append(live, r)
+		} else {
+			done = append(done, r)
+		}
+	}
+	newestFirst := func(rs []daemon.RunInfo) {
+		sort.SliceStable(rs, func(i, j int) bool { return rs[i].StartedAt.After(rs[j].StartedAt) })
+	}
+	newestFirst(live)
+	newestFirst(done)
+	elided := 0
+	if !all && len(done) > psRecentFinished {
+		elided = len(done) - psRecentFinished
+		done = done[:psRecentFinished]
+	}
+	rows := make([][]string, 0, len(live)+len(done))
+	for _, r := range append(live, done...) {
+		rows = append(rows, []string{r.ID, r.Ref, r.Status, since(r.StartedAt), cost(r.CostMicroUSD)})
+	}
+	cliout.Table(w, []string{"RUN ID", "REF", "STATUS", "STARTED", "COST"}, rows)
+	if elided > 0 {
+		_, _ = fmt.Fprintf(w, "... and %d older; 'mcpvessel ps -a' shows all\n", elided)
+	}
 }
 
-// uptime is the age of a live run, a dash for a finished one.
-func uptime(r daemon.RunInfo) string {
-	if !r.EndedAt.IsZero() {
-		return "-"
-	}
-	return since(r.StartedAt)
+// isLive reports whether a run still holds containers: attached and one-shot
+// runs while their call is in flight, serve entries and instances until
+// released.
+func isLive(r daemon.RunInfo) bool {
+	return r.Status == "running" || r.Status == "serving"
 }
 
 // cost is blank when nothing was metered, so a tool collection or an unstarted
@@ -65,7 +99,7 @@ func cost(microUSD int64) string {
 	return "$" + formatUSDMicros(microUSD)
 }
 
-// since formats an age as a single coarse unit ("3s", "5m", "2h").
+// since formats an age as a single coarse unit ("3s", "5m", "2h", "3d").
 func since(t time.Time) string {
 	if t.IsZero() {
 		return "-"
@@ -76,8 +110,10 @@ func since(t time.Time) string {
 		return fmt.Sprintf("%ds", int(d.Seconds()))
 	case d < time.Hour:
 		return fmt.Sprintf("%dm", int(d.Minutes()))
-	default:
+	case d < 24*time.Hour:
 		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
 }
 

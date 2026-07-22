@@ -7,11 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
 	"github.com/okedeji/mcpvessel/internal/bundle"
+	"github.com/okedeji/mcpvessel/internal/cliout"
 	"github.com/okedeji/mcpvessel/internal/reference"
 	"github.com/okedeji/mcpvessel/internal/registry"
 	"github.com/okedeji/mcpvessel/internal/store"
@@ -119,16 +119,19 @@ plus a row for a bundle stored only by content hash.`,
 }
 
 func printStoreEntries(w io.Writer, entries []store.Entry) {
-	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "REFERENCE\tHASH\tSIZE")
+	if len(entries) == 0 {
+		cliout.Empty(w, "The store is empty. 'mcpvessel build' and 'mcpvessel import' fill it.")
+		return
+	}
+	rows := make([][]string, 0, len(entries))
 	for _, e := range entries {
 		ref := e.Ref
 		if ref == "" {
 			ref = "<untagged>"
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", ref, shortStoreHash(e.Hash), humanSize(e.Size))
+		rows = append(rows, []string{ref, shortStoreHash(e.Hash), humanSize(e.Size)})
 	}
-	_ = tw.Flush()
+	cliout.Table(w, []string{"REFERENCE", "HASH", "SIZE"}, rows)
 }
 
 func shortStoreHash(hash string) string {

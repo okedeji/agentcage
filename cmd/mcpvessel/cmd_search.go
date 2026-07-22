@@ -3,13 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/okedeji/mcpvessel/internal/cliout"
 	"github.com/okedeji/mcpvessel/internal/mcpregistry"
 	"github.com/okedeji/mcpvessel/internal/store"
 )
@@ -76,25 +75,21 @@ func searchLocal(w io.Writer, query string, jsonOut bool) error {
 // printSearchResults clips descriptions so one long entry cannot wreck the
 // column alignment.
 func printSearchResults(w io.Writer, servers []mcpregistry.Server) {
-	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "NAME\tVERSION\tEVALS\tDESCRIPTION")
-	for _, s := range servers {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.Name, orDash(s.Version), orDash(s.EvalSummary()), clip(s.Description, 60))
+	if len(servers) == 0 {
+		cliout.Empty(w, "No matches in the MCP Registry.")
+		return
 	}
-	_ = tw.Flush()
+	rows := make([][]string, 0, len(servers))
+	for _, s := range servers {
+		rows = append(rows, []string{s.Name, s.Version, s.EvalSummary(), clip(s.Description, 60)})
+	}
+	cliout.Table(w, []string{"NAME", "VERSION", "EVALS", "DESCRIPTION"}, rows)
 }
 
 func writeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
-}
-
-func orDash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
 }
 
 func clip(s string, max int) string {

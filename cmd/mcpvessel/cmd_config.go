@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/okedeji/mcpvessel/internal/cliout"
 	"github.com/okedeji/mcpvessel/internal/config"
 )
 
@@ -77,14 +78,20 @@ stored value, so a shell or CI override still wins for that run.`,
 			if err != nil {
 				return err
 			}
+			if len(c.Env) == 0 {
+				cliout.Empty(cmd.OutOrStdout(), "No persisted settings. Persist one with 'mcpvessel config env set KEY VALUE'.")
+				return nil
+			}
 			names := make([]string, 0, len(c.Env))
 			for n := range c.Env {
 				names = append(names, n)
 			}
 			sort.Strings(names)
+			rows := make([][]string, 0, len(names))
 			for _, n := range names {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-32s %s\n", n, c.Env[n])
+				rows = append(rows, []string{n, c.Env[n]})
 			}
+			cliout.Table(cmd.OutOrStdout(), []string{"KEY", "VALUE"}, rows)
 			return nil
 		},
 	}
@@ -419,9 +426,20 @@ ref to match; its model comes from its own MODEL and the default provider.`,
 			if err != nil {
 				return err
 			}
-			for ref, model := range c.Models {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-32s %s\n", ref, model)
+			if len(c.Models) == 0 {
+				cliout.Empty(cmd.OutOrStdout(), "No model overrides. Pin one with 'mcpvessel config models set REF provider/model'.")
+				return nil
 			}
+			refs := make([]string, 0, len(c.Models))
+			for ref := range c.Models {
+				refs = append(refs, ref)
+			}
+			sort.Strings(refs)
+			rows := make([][]string, 0, len(refs))
+			for _, ref := range refs {
+				rows = append(rows, []string{ref, c.Models[ref]})
+			}
+			cliout.Table(cmd.OutOrStdout(), []string{"REF", "MODEL"}, rows)
 			return nil
 		},
 	}
@@ -512,19 +530,23 @@ func newConfigProviderLsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			for _, e := range c.Providers {
-				line := fmt.Sprintf("%-16s %s", e.Name, e.BaseURL)
-				if e.KeyRef != "" {
-					line += "  key-ref=" + e.KeyRef
-				}
-				if e.PriceIn != 0 || e.PriceOut != 0 {
-					line += fmt.Sprintf("  $%s/$%s per Mtok", formatUSDMicros(e.PriceIn), formatUSDMicros(e.PriceOut))
-				}
-				if e.Default {
-					line += "  [default]"
-				}
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), line)
+			if len(c.Providers) == 0 {
+				cliout.Empty(cmd.OutOrStdout(), "No providers configured. Add one with 'mcpvessel config provider set'.")
+				return nil
 			}
+			rows := make([][]string, 0, len(c.Providers))
+			for _, e := range c.Providers {
+				pricing := ""
+				if e.PriceIn != 0 || e.PriceOut != 0 {
+					pricing = fmt.Sprintf("$%s/$%s per Mtok", formatUSDMicros(e.PriceIn), formatUSDMicros(e.PriceOut))
+				}
+				def := ""
+				if e.Default {
+					def = "yes"
+				}
+				rows = append(rows, []string{e.Name, e.BaseURL, e.KeyRef, pricing, def})
+			}
+			cliout.Table(cmd.OutOrStdout(), []string{"NAME", "BASE URL", "KEY REF", "PRICING", "DEFAULT"}, rows)
 			return nil
 		},
 	}
@@ -660,12 +682,23 @@ func newConfigResourcesLsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			var rows [][]string
 			if line := capLine(c.Resources.Defaults); line != "" {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-32s %s\n", "default", line)
+				rows = append(rows, []string{"default", line})
 			}
-			for ref, cap := range c.Resources.Agents {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-32s %s\n", ref, capLine(cap))
+			refs := make([]string, 0, len(c.Resources.Agents))
+			for ref := range c.Resources.Agents {
+				refs = append(refs, ref)
 			}
+			sort.Strings(refs)
+			for _, ref := range refs {
+				rows = append(rows, []string{ref, capLine(c.Resources.Agents[ref])})
+			}
+			if len(rows) == 0 {
+				cliout.Empty(cmd.OutOrStdout(), "No resource caps configured; the built-in defaults apply. Set one with 'mcpvessel config resources set'.")
+				return nil
+			}
+			cliout.Table(cmd.OutOrStdout(), []string{"SCOPE", "CAPS"}, rows)
 			return nil
 		},
 	}

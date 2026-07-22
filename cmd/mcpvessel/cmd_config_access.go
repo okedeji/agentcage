@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/okedeji/mcpvessel/internal/cliout"
 	"github.com/okedeji/mcpvessel/internal/config"
 	"github.com/okedeji/mcpvessel/internal/reference"
 	"github.com/okedeji/mcpvessel/internal/runtime"
@@ -60,7 +61,8 @@ land here too.`,
 				if err != nil {
 					return err
 				}
-				printAccess(cmd, c.Egress.Defaults, c.Egress.Agents)
+				printAccess(cmd, c.Egress.Defaults, c.Egress.Agents, "HOSTS",
+					"No egress allow-lists configured. Persist one with 'mcpvessel config egress set REF host,host'.")
 				return nil
 			},
 		},
@@ -147,7 +149,8 @@ binding cannot leak into a server that did not ask for it.`,
 				if err != nil {
 					return err
 				}
-				printAccess(cmd, c.Secrets.Defaults, c.Secrets.Agents)
+				printAccess(cmd, c.Secrets.Defaults, c.Secrets.Agents, "SECRETS",
+					"No secret bindings configured. Bind one with 'mcpvessel config secrets set REF NAME'.")
 				return nil
 			},
 		},
@@ -190,9 +193,16 @@ func saveSecretPolicy(cmd *cobra.Command, key string, names []string) error {
 }
 
 // printAccess renders a default list plus per-agent lists in a stable order.
-func printAccess(cmd *cobra.Command, defaults []string, agents map[string][]string) {
+// valueHeader names the second column (HOSTS, SECRETS); emptyMsg is printed
+// when nothing is configured.
+func printAccess(cmd *cobra.Command, defaults []string, agents map[string][]string, valueHeader, emptyMsg string) {
+	if len(defaults) == 0 && len(agents) == 0 {
+		cliout.Empty(cmd.OutOrStdout(), emptyMsg)
+		return
+	}
+	var rows [][]string
 	if len(defaults) > 0 {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-40s %s\n", "default", strings.Join(defaults, ", "))
+		rows = append(rows, []string{"default", strings.Join(defaults, ", ")})
 	}
 	keys := make([]string, 0, len(agents))
 	for k := range agents {
@@ -200,8 +210,9 @@ func printAccess(cmd *cobra.Command, defaults []string, agents map[string][]stri
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-40s %s\n", k, strings.Join(agents[k], ", "))
+		rows = append(rows, []string{k, strings.Join(agents[k], ", ")})
 	}
+	cliout.Table(cmd.OutOrStdout(), []string{"SCOPE", valueHeader}, rows)
 }
 
 func displayKey(key string) string {

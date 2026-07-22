@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/okedeji/mcpvessel/internal/cliout"
 	"github.com/okedeji/mcpvessel/internal/secrets"
 )
 
@@ -66,7 +67,12 @@ func newSecretsLsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			for _, name := range store.Names() {
+			names := store.Names()
+			if len(names) == 0 {
+				cliout.Empty(cmd.OutOrStdout(), "No secrets stored. Add one with 'mcpvessel secrets set NAME'.")
+				return nil
+			}
+			for _, name := range names {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), name)
 			}
 			return nil

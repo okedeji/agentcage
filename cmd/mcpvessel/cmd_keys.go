@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/okedeji/mcpvessel/internal/cliout"
 	"github.com/okedeji/mcpvessel/internal/signing"
 )
 
@@ -128,13 +128,13 @@ the publisher's new key out of band.`,
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No pinned keys. A key is pinned on the first pull of a signed bundle.")
 				return nil
 			}
-			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 2, 8, 2, ' ', 0)
-			_, _ = fmt.Fprintln(tw, "SCOPE\tKEY\tPINNED")
+			rows := make([][]string, 0, len(scopes))
 			for _, s := range scopes {
 				pin, _ := trust.Get(s)
-				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", s, signing.Fingerprint(pin.PublicKey), pin.PinnedAt.Format("2006-01-02"))
+				rows = append(rows, []string{s, signing.Fingerprint(pin.PublicKey), pin.PinnedAt.Format("2006-01-02")})
 			}
-			return tw.Flush()
+			cliout.Table(cmd.OutOrStdout(), []string{"SCOPE", "KEY", "PINNED"}, rows)
+			return nil
 		},
 	}
 
