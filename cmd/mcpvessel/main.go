@@ -43,8 +43,29 @@ func main() {
 	// Hidden internal commands the runtime execs inside gateway and cage containers.
 	root.AddCommand(newMCPGatewayCmd(), newMCPControlCmd(), newLLMGatewayCmd(), newLLMControlCmd(), newEgressProxyCmd(), newEgressControlCmd(), newMCPBridgeCmd())
 
+	rejectUnknownSubcommands(root)
+
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
+	}
+}
+
+// rejectUnknownSubcommands walks the tree and gives every runless group
+// command (config, secrets, store, ...) a RunE that shows help when called
+// bare but errors, exit 1, on an unknown subcommand. Cobra's default for a
+// runless parent prints help and exits 0 either way, so a typo like
+// 'config ls' would read as success to a script.
+func rejectUnknownSubcommands(cmd *cobra.Command) {
+	if cmd.HasSubCommands() && cmd.Run == nil && cmd.RunE == nil {
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			return fmt.Errorf("unknown command %q for %q; run '%s --help' for usage", args[0], cmd.CommandPath(), cmd.CommandPath())
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		rejectUnknownSubcommands(sub)
 	}
 }
