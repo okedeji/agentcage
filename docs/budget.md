@@ -10,7 +10,7 @@ mcpvessel budget set RUN AMOUNT
 
 ## budget set
 
-`set` takes two positional arguments and nothing else. `RUN` is the run id from `mcpvessel ps`. `AMOUNT` is a USD figure like `5.00`. It resolves the amount to micro-USD, opens the daemon socket, and posts the new cap to the run. On success it prints `budget for <RUN> set to $<AMOUNT>`, echoing the amount exactly as you typed it.
+`set` takes two positional arguments and nothing else. `RUN` is the run id from `mcpvessel ps`. `AMOUNT` is a USD figure like `5.00`. It resolves the amount to micro-USD, opens the daemon socket, and posts the new cap to the run. On success it prints `Set budget for <RUN> to $<AMOUNT>`, echoing the amount exactly as you typed it.
 
 There are no flags. Everything the command needs is in the two arguments.
 
@@ -70,7 +70,7 @@ mcpvessel budget set researcher-7a1c4f2e9d3b 0
 
 - A live change is checked at the start of the next call, not against the call already running. Lowering the budget never aborts an in-flight call, and the total can overshoot the cap by one call.
 - The budget is shared across the run's whole agent tree. Setting it caps the sum of every sub-agent's spend, not any one agent's.
-- The success line echoes the amount you typed (`set to $10.00` if you wrote `10.00`, `set to $10` if you wrote `10`). It does not re-format the number.
+- The success line echoes the amount you typed (`to $10.00` if you wrote `10.00`, `to $10` if you wrote `10`). It does not re-format the number.
 - Unlike `run --budget`, which forbids `0` at start, `budget set` accepts `0` to make a running cap unbounded.
 - An agent inside the cage cannot change its own budget. The control listener is loopback-only and reachable solely by a host `exec` into the gateway container.
 - If the command errors with a hint about the daemon, the daemon is not reachable on its socket. Start it (see [daemon](daemon.md)) and retry.
@@ -78,6 +78,6 @@ mcpvessel budget set researcher-7a1c4f2e9d3b 0
 ## See also
 
 - [run](run.md): `--budget` sets the run's initial cap, and the `BUDGET` directive is the agent author's advisory default that `--budget` overrides.
-- [ps and stop](daemon.md): where run ids come from, and how held runs are listed and released.
+- [ps](ps.md), [stop](stop.md): where run ids come from, and how held runs are listed and released.
 - [serve](serve.md): the long-lived front door, whose runs `budget set` does not target.
 - [give it a brain](../README.md#give-it-a-brain): why a reasoning run has an LLM gateway and a spend cap in the first place.

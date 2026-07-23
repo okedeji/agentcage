@@ -101,9 +101,23 @@ mcpvessel init --recreate
 - On macOS the default VM is 8 GiB RAM, 4 CPUs, and a 60 GiB disk when the config leaves them unset. On Linux `machine.memory_gib` caps the host RAM admitted against; cpus and disk are ignored (there is no VM to size).
 - Everything `init` produces lives under `~/.mcpvessel`: the fetched Lima, the VM and its cache, the daemon log, and the daemon socket. Removing that directory (see the uninstall steps) resets the runtime to unprovisioned.
 
+## Uninstall
+
+Everything `init` sets up comes back out in three steps: stop the runtime, remove the binary, delete the state directory.
+
+```sh
+mcpvessel daemon stop
+brew uninstall --cask mcpvessel   # or delete the binary you installed
+rm -rf ~/.mcpvessel
+```
+
+Deleting `~/.mcpvessel` removes the macOS VM, cached images and bundles, the daemon log and socket, your signing key, your pinned publisher keys, and your config and secrets. If you might come back, keep the signing key first (`mcpvessel keys export`, before removing the binary); a re-install otherwise generates a new one, and anyone pinned to your old key sees a mismatch on your next push. With `VESSEL_HOME` set, that directory is the one to delete instead.
+
+To reset a broken runtime without uninstalling, `mcpvessel init --recreate` rebuilds the VM and keeps your bundles, secrets, and config.
+
 ## See also
 
 - [import](import.md): the first command that actually needs the runtime `init` prepares.
 - [How it works, briefly](../README.md#how-it-works-briefly): what the VM, the daemon, and the broker containers are for.
 - [Requirements](../README.md#requirements): the one-time setup cost, in the same words.
-- [Uninstall](../README.md#uninstall): tearing the runtime and its state back down.
+- [troubleshooting](troubleshooting.md): the failures `init` and the daemon can produce, with fixes.

@@ -61,14 +61,13 @@ Because the trace rides on the history record, it lives exactly as long as that 
 
 ## Errors
 
-`trace` surfaces one error for every failure, with a hint appended: `(is the daemon running? does the run exist and did it make any LLM calls?)`. The cases behind it:
+`trace` has two failure shapes. An unreachable daemon fails with the hint `the daemon is not running; start it with 'mcpvessel init'`. Everything else comes back as the daemon's 404, which names the conditions itself: `no trace for run <id> (a trace exists once a finished run made at least one LLM call; 'mcpvessel ps -a' lists run ids)`. The cases behind that 404:
 
-- **The daemon is not reachable.** No socket, or nothing listening. Start it with `mcpvessel daemon` (or let `mcpvessel init` bring it up).
 - **The run is unknown.** No history record with that id.
 - **The run has no trace.** The record exists but the run made no LLM call, or history was off when it ran.
 - **History is unavailable.** The daemon came up without a history store.
 
-All four come back through the same message, so the hint lists the likely causes rather than the daemon distinguishing them for you on the command line.
+All three come back through the same message, so the parenthetical lists the likely causes rather than the daemon distinguishing them for you on the command line.
 
 ## Flags
 

@@ -6,7 +6,7 @@ Stream a live feed of the daemon's lifecycle events as they happen. `events` con
 mcpvessel events
 ```
 
-`events` takes no arguments and no flags. It reads the daemon's Unix socket, opens `GET /events`, and forwards whatever the daemon sends. When it cannot reach the daemon it fails with a hint to start one: `is the daemon running? start it with 'mcpvessel daemon'`.
+`events` takes no arguments and no flags. It reads the daemon's Unix socket, opens `GET /events`, and forwards whatever the daemon sends. At a terminal it first prints `Listening for daemon events (Ctrl-C to stop)` to stderr, so a quiet feed reads as connected rather than hung. When it cannot reach the daemon it fails with a hint to start one: `the daemon is not running; start it with 'mcpvessel init'`.
 
 ## The feed is live and per-subscriber
 

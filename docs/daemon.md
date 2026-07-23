@@ -24,7 +24,7 @@ Because all of this is in one process, stopping it is not just killing a server.
 The daemon runs where the container runtime runs.
 
 - **On Linux** the host's own containerd and buildkitd are used directly, so the daemon runs on this host. In production you start it under systemd. For local development you can start it in a terminal with `mcpvessel daemon`, or just let the first command that needs it spawn one.
-- **On macOS** agents run inside a small Linux VM the runtime provisions. The host starts the daemon inside that hidden VM for you (under launchd), so you do not run `mcpvessel daemon` yourself there.
+- **On macOS** the daemon still runs on the host, same as Linux. What moves into the small Linux VM the runtime provisions is the containers and their runtime (containerd, buildkitd): the daemon drives them from outside, through the VM's shell. So `mcpvessel daemon` behaves identically on both platforms, and the auto-spawn described below is how it usually starts on either.
 
 The listening line it prints on start names the socket it bound:
 
@@ -90,12 +90,12 @@ Ask the running daemon to shut down cleanly, releasing every agent it holds befo
 
 This is the supported alternative to killing the process. A SIGKILL would leave a run's containers and its per-run network behind for the next daemon's startup sweep to clean up. `daemon stop` instead:
 
-1. Dials the socket and checks whether a daemon answers. If none does, it prints `no daemon is running` and exits successfully. Stopping nothing is not an error.
+1. Dials the socket and checks whether a daemon answers. If none does, it prints `No daemon is running.` and exits successfully. Stopping nothing is not an error.
 2. Sends the shutdown request. The daemon acks immediately, then triggers its own shutdown, so the request finishes before the process goes down.
 3. On the way down the daemon closes its front doors first, stopping external MCP traffic before the runs behind them are released, then releases every held run. A run held over stdio is recorded as `stopped` (a clean stop, not a crash) before its session, container, and network are torn down; a serve pool releases all its per-client instances. Same path a SIGTERM from systemd or launchd takes.
 4. `daemon stop` confirms the shutdown by polling the socket until it stops answering, up to 30 seconds, not by trusting the ack (the ack can race the socket closing). If the daemon is still answering after 30 seconds it fails with `daemon did not stop within 30s; check ~/.mcpvessel/daemon.log`. The window is generous because a graceful stop releases held runs first.
 
-On success it prints `daemon stopped`.
+On success it prints `Stopped the daemon`.
 
 In production the process manager owns the daemon and stops it with SIGTERM, which runs this exact clean shutdown. Reach for `daemon stop` in local development, where you started the daemon yourself.
 

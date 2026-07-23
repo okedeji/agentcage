@@ -175,6 +175,32 @@ mcpvessel run @me/oncall:0.1 "what is causing our top Sentry error?"
 It is signed on push and verified on pull, so they run exactly what you built, caged the same way. The publisher key fingerprint and how to verify a pull are in [SECURITY.md](SECURITY.md#signing-and-trust).
 
 
+## What the cage actually does
+
+Concretely, per server:
+
+- **Own container, own network.** Each server runs alone in its own container on its own private network. It cannot see your files, your processes, or another caged server. Nothing from your host is mounted in.
+- **Deny-default egress.** No outbound connection opens unless the host is allowed. An unknown host is held and surfaced for you to approve (`mcpvessel egress`), and every decision lands in the audit log.
+- **Secrets by declaration.** A secret value is injected only into a server whose manifest declares that name, entered over stdin and never on a command line. Your LLM provider key never enters any cage at all; a broker outside the cage holds it.
+- **Hard caps.** Every cage runs under cpu, memory, and pid limits, and a reasoning run's LLM spend is metered against a hard budget.
+- **Verified distribution.** A shared bundle is content-addressed and signed; a pull verifies the bytes and pins the publisher's key, so a changed key or tampered bundle fails loudly.
+
+The full mechanism, with the threat model and invariants, is in [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## What it does not protect against
+
+The cage constrains what a server can reach, not whether it behaves. Know the edges:
+
+- An allowed host receives whatever the server sends it. Egress control decides which hosts, not what goes to one you permitted.
+- A server granted a secret and a matching host can use them together. That is the grant working as issued; scope grants narrowly.
+- A signature proves who built a bundle, not that it is safe. The sandbox contains it; the signature only names its author.
+- Trust on first use trusts the first key it sees. Verify the printed fingerprint against the publisher's stated one on first pull.
+- A reasoning agent's model traffic goes to your configured provider directly, outside the egress allow-set, so anything the agent puts in a prompt reaches the provider.
+- `serve` authenticates no caller and speaks plain HTTP. The `--listen` address is the exposure decision: keep it on loopback, or put TLS and auth in front.
+- A tool that returns a plausible lie is not detected, and a host compromised outside mcpvessel is out of scope.
+
+The complete list is in [ARCHITECTURE.md §14](docs/ARCHITECTURE.md#14-limitations-and-non-goals).
+
 ## How it works, briefly
 
 A run is a small set of containers on private, internal-only networks. The server you cage sits alone on its own network with no route out. The only doors are small broker containers that mcpvessel runs for you: one filters every outbound network request against the allowlist you set, one brokers calls between servers, and when a server reasons with an LLM, one more holds your model key so the agent never sees it. On macOS all of this runs inside a lightweight Linux VM that mcpvessel sets up on first run, so nothing touches your host directly. On Linux it uses the host's own container runtime.
@@ -201,7 +227,7 @@ Note: on macOS the release archives bundle the Linux VM image the runtime needs,
 
 ## Requirements
 
-- macOS (Apple Silicon or Intel) or Linux. On Windows, it runs inside WSL2.
+- macOS (Apple Silicon or Intel) or Linux. On Windows, it runs inside WSL2: install the Linux binary in your WSL2 distro and run everything (the CLI, the daemon, and `~/.mcpvessel`) there. There is no native Windows binary.
 - Homebrew, for the recommended install above.
 - On first run, `mcpvessel init` sets up the runtime. On macOS that is a one-time step: it downloads a small Linux VM image and starts a rootless container daemon, which takes two to five minutes depending on your connection. Every run after that is a few seconds. On Linux this is a no-op and uses the host's container runtime directly.
 

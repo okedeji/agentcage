@@ -3,8 +3,8 @@
 Approve or reject an outbound host a caged server is trying to reach. A run is deny-default: a server reaches only the hosts you have allowed, and the first time it reaches a new one mcpvessel surfaces it for you to decide (holding a foreground call, or failing a served one fast so the client can retry). `egress allow` releases a held host and remembers it; `egress deny` rejects one and forgets it; `egress ls` shows what is currently held. This is how you let a server talk to the internet without knowing its hosts in advance and without ever opening it wide.
 
 ```
-mcpvessel egress allow TARGET HOST [--once]
-mcpvessel egress deny  TARGET HOST
+mcpvessel egress allow TARGET HOST [--once] [--agent NAME | --all]
+mcpvessel egress deny  TARGET HOST [--agent NAME]
 mcpvessel egress ls
 ```
 
@@ -54,6 +54,13 @@ mcpvessel egress ls
 
 `allow` does two things: it releases the connection on every **live** run that matches `TARGET`, and, unless you pass `--once`, it records the host in your config under that tag so it is not asked again. `--once` is for a host you want this run to reach but do not want to trust permanently. A run addressed by id with no registry tag (a local `.agent` or directory) can only be approved `--once`, since there is no tag to remember it under.
 
+An approval is scoped, not broadcast. By default the host is granted to whichever agents actually asked for it, so approving a host a sub-agent was held on never opens it for a sibling that did not request it. Two flags override that default:
+
+- `--agent NAME` pins the grant to one named agent, whether or not it was the one held.
+- `--all` grants the host to every agent in the run.
+
+They are mutually exclusive. `deny` takes `--agent NAME` the same way, to reject a host for just one agent. The `egress ls` output ends with a reminder of this model: `Approving grants the host to that agent only; add --all to grant every agent in the run.`
+
 `deny` releases the hold as a rejection (the call sees the host refused) and removes the host from your config if it was remembered, so a mistaken approval is easy to undo.
 
 ## Where an approval is remembered
@@ -87,6 +94,12 @@ A server that genuinely needs no network should declare `EGRESS deny-default` in
 | Flag (on `allow`) | Meaning |
 | --- | --- |
 | `--once` | Release the host for the live run only; do not remember it in config. |
+| `--agent NAME` | Grant the host to just this one named agent. Mutually exclusive with `--all`. |
+| `--all` | Grant the host to every agent in the run, not just the one that asked. |
+
+| Flag (on `deny`) | Meaning |
+| --- | --- |
+| `--agent NAME` | Reject the host for just this one named agent. |
 
 ## Notes
 

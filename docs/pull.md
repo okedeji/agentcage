@@ -18,7 +18,7 @@ You rarely need `pull` on its own. `run`, `call`, and `serve` pull a missing bun
 
 **A digest pin** (`@org/name@sha256:...` or `host/org/name@sha256:...`): pins the exact bytes. The digest must be a real `sha256:` digest. When both a tag and a digest appear, the digest wins.
 
-Reverse-DNS MCP Registry names (`io.github.org/server`) are not accepted here. `pull` speaks to an OCI registry directly, not the MCP Registry index.
+**An MCP Registry name** (`io.github.org/server`): resolved through the MCP Registry index the same way `run` and `serve` resolve it. The entry's OCI artifact is what gets pulled, at the version the entry records, or at a `:version` you append to override it. This is the one REF form that does not need an explicit tag or digest, since the registry entry supplies the version.
 
 ## The cache and digest pinning
 
@@ -117,6 +117,9 @@ mcpvessel pull @anthropic/web-search:1.2.0
 
 # Pull from an explicit host and org.
 mcpvessel pull ghcr.io/okedeji/researcher:0.1
+
+# Pull by MCP Registry name; the entry supplies the OCI artifact and version.
+mcpvessel pull io.github.okedeji/mcpvessel-docs
 
 # Pin exact bytes by digest; if already cached, returns offline with no re-verify.
 mcpvessel pull @okedeji/researcher@sha256:9f8e...

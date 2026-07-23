@@ -22,7 +22,7 @@ mcpvessel replay record BUNDLE [PROMPT]
 
 The bundle must have a `MAIN`. `record` reads the sealed manifest and, if `MAIN` is empty, refuses with an error saying it records an agent's `MAIN`, not a tool collection. A tool collection has no single entry to drive, so there is nothing to record. To exercise one of its tools, use `call`.
 
-`record` runs with defaults for everything else. It has no flags of its own: no `--budget`, `--env`, `--secret`, `--egress`, `--memory`, `--cpus`, `--pids`, or `--no-cache`. A run that needs a secret or a host allowance to work must have those baked into the bundle already (an `EGRESS allow:` line, a `SECRETS` line resolved at run time). If you need to record a run that takes flags, that is not supported here.
+`record` takes the same input flags as `run` (`--budget`, `--secret`, `--secret-file`, `--env`, `--env-file`, `--egress`; the table below), so a run that needs a secret or a host allowance records the same way it runs. What it does not take is `run`'s resource and build knobs: no `--memory`, `--cpus`, `--pids`, `--no-cache`, or `--save`. Those shape how a bundle is built or capped, and `record` runs an already-built bundle at default caps.
 
 `record` needs the daemon. If it cannot reach it, the error tells you to run `mcpvessel init` to start it.
 
@@ -104,7 +104,7 @@ cat ~/.mcpvessel/replays/researcher-1f3c-*.replay | jq '.events[].type'
 
 ## See also
 
-- [run](run.md): the same boot and `MAIN` routing without capture, plus the flags (`--budget`, `--secret`, `--egress`, and the rest) `record` does not take.
+- [run](run.md): the same boot, `MAIN` routing, and input flags without capture, plus the resource and build flags (`--memory`, `--cpus`, `--pids`, `--no-cache`, `--save`) `record` does not take.
 - [inspect](inspect.md): resolves a `BUNDLE` the same way, to see what an agent is before you record it.
 - [trace](trace.md), [spend](spend.md): the other ways to watch what a run does.
 - [call](call.md): drive a single tool of a tool collection, which `record` cannot record.

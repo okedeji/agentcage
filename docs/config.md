@@ -18,7 +18,7 @@ Configure the OpenAI-compatible LLM endpoints the gateway can route to. Each end
 
 `--price-in` and `--price-out` are USD per million tokens, written like `2.50` or `0.003`. They are parsed into integer micro-USD so run cost stays exact integer math against a micro-USD budget. More than six decimal places is finer than mcpvessel tracks and is rejected; a non-numeric or negative amount is rejected too.
 
-**`provider ls`** prints one line per endpoint: name, base URL, `key-ref=<name>` when set, `$IN/$OUT per Mtok` when either price is set, and `[default]` on the default. It prints the key reference, never a key value, because the value is not in the config to begin with.
+**`provider ls`** prints a table with one row per endpoint, under the columns `NAME`, `BASE URL`, `KEY REF`, `PRICING` (`$IN/$OUT per Mtok`, blank when unpriced), and `DEFAULT` (`yes` on the default). It prints the key reference, never a key value, because the value is not in the config to begin with.
 
 **`provider rm NAME`** drops the named endpoint and errors if no endpoint by that name exists.
 
@@ -37,7 +37,7 @@ Set the cpu, memory, and pid caps the runtime hands to nerdctl for each cage. Th
 
 **`resources set REF`** sets the cap for one agent, keyed by its `@org/name:version` ref. **`resources default`** sets the cap applied to every cage without a per-agent match. Both take the same flags and both require at least one of them. If you pass `--pids` it must be positive. `--cpus` must be a positive number and `--memory` a positive size, checked at save time.
 
-**`resources ls`** prints the default cap (as `default`) when set, then each per-agent cap, showing only the fields you gave (`cpus=`, `mem=`, `pids=`).
+**`resources ls`** prints a `SCOPE`/`CAPS` table: the default cap (as `default`) when set, then each per-agent cap, the caps showing only the fields you gave (`cpus=`, `mem=`, `pids=`). With nothing configured it prints an empty-state line pointing at `resources set`.
 
 **`resources rm REF`** removes one per-agent cap and errors if none exists for that ref. It does not touch the default cap; the default is only overwritten by another `resources default`, not cleared here.
 
@@ -149,7 +149,7 @@ mcpvessel config models set @okedeji/researcher:0.1 openai/gpt-4o-mini
 
 # Expose metrics to an off-host Prometheus, then restart the daemon.
 mcpvessel config metrics set 0.0.0.0:9323
-mcpvessel daemon restart
+mcpvessel daemon stop && mcpvessel init
 ```
 
 ## Notes

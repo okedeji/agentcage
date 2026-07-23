@@ -66,6 +66,10 @@ Two commands set up the machine. `init` prepares the runtime (on macOS it downlo
 - [REASONER.md](REASONER.md): the reasoning harness `--reasoning` writes, its environment contract, and how to shape or replace it.
 - [ARCHITECTURE.md](ARCHITECTURE.md): the cages, brokers, networks, and trust model a run is built from.
 
+## When something breaks
+
+- [troubleshooting](troubleshooting.md): the common failures, what each message means, and the command that fixes it.
+
 ## Reporting and support
 
 Bugs and features go to the [issue tracker](https://github.com/okedeji/mcpvessel/issues); security reports go privately, per [SECURITY.md](../SECURITY.md).

@@ -27,7 +27,7 @@ Four columns, printed with aligned tab stops:
 
 The values are the runtime's own already-formatted strings, passed through as-is. A field the runtime leaves blank prints as `-` rather than an empty cell, so a missing reading is visible instead of silent.
 
-When the runtime is up but nothing is running, the table is just the header row with no data rows. That is a normal state, not an error.
+When the runtime is up but nothing is running, there is no table; `stats` prints a single empty-state line instead: `No live cages. Cages appear here only while a run or a served instance is booted.` That is a normal state, not an error.
 
 ## Where the numbers come from
 
@@ -65,9 +65,9 @@ mcpvessel stats -w
 
 ## Notes
 
-- The daemon must be running. If it is not reachable, `stats` fails and tells you to start it with `mcpvessel daemon`; in watch mode the same failure ends the watch.
+- The daemon must be running. If it is not reachable, `stats` fails and tells you to start it with `mcpvessel init`; in watch mode the same failure ends the watch.
 - The runtime behind the daemon must be up. If the daemon can reach nerdctl but the runtime is not up to report (no VM, for example), `/stats` answers `stats unavailable (is the runtime up?)`.
-- An empty table (header only) means the runtime is up and no cages are running. It is not an error.
+- The `No live cages.` line means the runtime is up and nothing is booted. It is not an error.
 - The numbers are nerdctl's, unmodified. mcpvessel does not compute or rescale them, so they read exactly as nerdctl's own `stats` would.
 
 ## See also

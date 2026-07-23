@@ -31,7 +31,9 @@ Any run the daemon boots gets a durable log: a one-shot `run`, and each per-sess
 - **A serve front door itself.** The `serving` row `ps` shows for a served agent is the front door, not a booted instance. It has no log file of its own. The per-session instances behind it each do, under their own run ids.
 - **A boot that failed before it got a run id.** If a run never reached the point where the daemon opens its log, there is nothing on disk.
 
-Asking for either, or for a run id that never existed, is a 404: `no logs for run <id>`.
+Asking for either, or for a run id that never existed, is a 404: `no logs for run <id> ('mcpvessel ps -a' lists run ids)`.
+
+A run can also exist and have recorded nothing, a quiet server that wrote no stderr and triggered no egress decision. That is not an error; `logs` says so explicitly: `The run recorded no output: nothing on its stderr and no egress events.`
 
 ## Flags
 
@@ -57,7 +59,7 @@ mcpvessel logs -f me-github-3f9a1c22-b17e | tee github.log
 
 ## Notes
 
-- `logs` does not start the daemon. If none is running the command fails with `is the daemon running? start it with 'mcpvessel daemon'`, and the same hint is appended to every other error, including the 404 for an unknown run.
+- `logs` does not start the daemon. If none is running the command fails with `the daemon is not running; start it with 'mcpvessel init'`. Other errors, like the 404 for an unknown run, come back as the daemon sent them.
 - The run id comes from `ps`, which lists only currently live runs. A finished run's log is still readable if you have its id from earlier; `logs` reads the file directly and does not need the run to be live.
 - Run ids are the agent's friendly name plus a short content hash for a one-shot run (`researcher-7a1c4f2e9d3b`), and the served address plus a session hash and a per-boot suffix for a per-session instance (`me-github-3f9a1c22-b17e`).
 - The log is the agent's stderr, not a structured event feed. For a finished reasoning run's LLM steps and cost, that lives in the run trace, not here.

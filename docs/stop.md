@@ -29,9 +29,9 @@ A daemon-wide shutdown does the same teardown per run, so stopping a run by id a
 
 ## Stopping several runs
 
-Pass more than one id and `stop` works through them in order. It does not stop at the first failure: a run that errors is counted, its `id: error` line is written to stderr, and the loop moves to the next id, so one bad id does not leave the rest running. Each run that stops cleanly has its id echoed to stdout.
+Pass more than one id and `stop` works through them in order. It does not stop at the first failure: a run that errors is counted, its `id: error` line is written to stderr, and the loop moves to the next id, so one bad id does not leave the rest running. Each run that stops cleanly prints a `Stopped <id>` line to stdout.
 
-When the loop finishes with any failures, `stop` returns `failed to stop N of M run(s)`, which carries the non-zero exit. With no failures it returns nothing and exits zero. The stdout list is the runs that stopped; the stderr lines are the ones that did not.
+When the loop finishes with any failures, `stop` returns `failed to stop N of M run(s)`, which carries the non-zero exit. The stdout `Stopped` lines are the runs that stopped; the stderr lines are the ones that did not.
 
 ## When the daemon is unreachable
 
@@ -75,7 +75,7 @@ mcpvessel stop $(mcpvessel ps | awk 'NR>1{print $1}')
 - `stop` ends a run; it does not remove the bundle from your store. The bundle stays; only the running instance goes away.
 - Stopping a serve entry drops external traffic first, then releases the pool. In-flight requests on that front door end when the door closes.
 - A held session's terminal history status is `stopped`, not `crashed` or `failed`. A run you stop reads back in `history` and `replay` as an intentional stop with its final spend recorded.
-- The exit code is non-zero if any id failed, so a script can stop a list and detect a bad id without parsing the output. The stdout lines are exactly the ids that stopped.
+- The exit code is non-zero if any id failed, so a script can stop a list and detect a bad id without parsing the output. The stdout `Stopped <id>` lines name exactly the runs that stopped.
 - Stopping the same id twice is safe: the first stop takes it out of the registry, the second gets `no such run` and counts as a per-run failure.
 
 ## See also

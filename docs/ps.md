@@ -1,9 +1,10 @@
 # ps
 
-List the runs the daemon knows about. `ps` asks the daemon for its run set, overlays the live runs it is holding on top of the durable history it has recorded, and prints one row per run: its id, the agent reference, its status, how long it has been up, and what it cost. It takes no arguments and no flags.
+List the runs the daemon knows about. `ps` asks the daemon for its run set, overlays the live runs it is holding on top of the durable history it has recorded, and prints one row per run: its id, the agent reference, its status, when it started, and what it cost. The default view keeps live runs on top and trims old history; `-a/--all` shows everything.
 
 ```
 mcpvessel ps
+mcpvessel ps -a
 ```
 
 `ps` is a read of daemon state. It changes nothing. It needs a daemon running, since the whole answer comes from one call to the control socket.
@@ -15,21 +16,25 @@ mcpvessel ps
 If the socket cannot be reached, the call fails and `ps` wraps the error with a hint:
 
 ```
-... (is the daemon running? start it with 'mcpvessel daemon')
+... (the daemon is not running; start it with 'mcpvessel init')
 ```
 
 An unreachable daemon is the common case here (nothing started it, or it was stopped), so the message points straight at the fix rather than leaving you with a bare dial error.
 
 ## The table
 
-One header row, then one row per run. The header always prints, even with no runs, so an empty daemon reads as a labeled table with nothing under it rather than blank output.
+One header row, then one row per run. With no runs at all there is no table; `ps` prints a single empty-state line instead:
+
+```
+No runs yet. Start one with 'mcpvessel run' or 'mcpvessel serve'.
+```
 
 | Column | Source | Meaning |
 | --- | --- | --- |
 | `RUN ID` | `RunInfo.ID` | The run's identifier. For a one-shot or held run it is the runtime run id. For a served agent it is the address the front door exposes. For a per-client served instance it is a derived id (`address-<session>-<suffix>`). |
 | `REF` | `RunInfo.Ref` | The agent reference as it was named when the run started: the reference you typed, or the resolved agent name. |
 | `STATUS` | `RunInfo.Status` | `serving`, `running`, `stopped`, `succeeded`, `failed`, `over_budget`, or `crashed`. See below. |
-| `UP` | computed | Age of a live run as one coarse unit; a dash for a finished one. |
+| `STARTED` | computed | How long ago the run started, as one coarse unit. |
 | `COST` | `RunInfo.CostMicroUSD` | Metered spend for a finished run, blank when nothing was metered. |
 
 ### RUN ID
@@ -54,9 +59,9 @@ The rest are terminal statuses read back from history:
 - **`over_budget`** is a `failed` run whose final spend met or exceeded its budget: the daemon escalates the status when it closes the run out, so a budget exhaustion is legible as such rather than a generic failure.
 - **`crashed`** is a run whose daemon died under it. A record left in the `running` state at daemon startup is one no live daemon owns anymore, so the next startup reconciles it to `crashed`. You will not see this produced by a healthy daemon; it surfaces a prior daemon that was killed mid-run.
 
-### UP
+### STARTED
 
-For a live run (no end time recorded), `UP` is the age of the run rendered as a single coarse unit: seconds under a minute (`45s`), minutes under an hour (`5m`), hours beyond that (`2h`). It is truncated, not rounded, so a 90-minute run shows `1h`. For a finished run, `UP` is a dash: the column tracks how long something has been up, and a finished run is not up.
+`STARTED` is how long ago the run began, rendered as a single coarse unit: seconds under a minute (`45s`), minutes under an hour (`5m`), hours under a day (`2h`), days beyond that (`3d`). It is truncated, not rounded, so a 90-minute run shows `1h`. Finished runs show their age too, so a row that ended yesterday reads `1d`; a run with no recorded start time shows a dash.
 
 ### COST
 
@@ -69,41 +74,50 @@ For a live run (no end time recorded), `UP` is the age of the run rendered as a 
 
 The list the daemon returns is its durable run history with the live run set laid over it. For every run in history, if the daemon is currently holding a live run with the same id, the live entry wins (its in-flight status and start time replace the stored `running` record); otherwise the stored record is used as is. Any live run that has no history record (a `serving` front door is the usual one, since front doors are never recorded) is appended. If the daemon has no history store, the list is just the live set.
 
-The result is sorted by start time, oldest first, so the table reads top-to-bottom in the order runs began. One consequence worth knowing: `ps` shows finished runs too, not only what is live. It is the daemon's whole ledger, live and past, in one view.
+The result is ordered live-first: runs still holding containers (`running`, `serving`) print at the top, then finished ones, each group newest first, so what is happening now is never buried under history. By default only the 10 most recently finished runs print; anything older is elided behind a trailer line:
+
+```
+... and 4 older; 'mcpvessel ps -a' shows all
+```
+
+`-a/--all` lifts the cap and prints the daemon's whole ledger, live and past, in one view.
 
 ## Examples
 
 ```sh
-# List everything the daemon is tracking.
+# Live runs plus the 10 most recent finished ones.
 mcpvessel ps
+
+# The full history, nothing elided.
+mcpvessel ps -a
 ```
 
 A daemon serving one agent, with a client connected and a past one-shot run, prints something like:
 
 ```
-RUN ID                    REF              STATUS   UP   COST
-run-3f9a2c                @me/github:0.1   succeeded -    $0.0231
-@me/github:0.1            @me/github:0.1   serving  8m
-@me/github-a1b2c3d4-9f2   @me/github:0.1   running  12s
+RUN ID                    REF              STATUS     STARTED   COST
+@me/github:0.1            @me/github:0.1   serving    8m
+@me/github-a1b2c3d4-9f2   @me/github:0.1   running    12s
+run-3f9a2c                @me/github:0.1   succeeded  2h        $0.0231
 ```
 
-An idle daemon prints the header alone:
+An idle daemon with no history prints the empty-state line:
 
 ```
-RUN ID   REF   STATUS   UP   COST
+No runs yet. Start one with 'mcpvessel run' or 'mcpvessel serve'.
 ```
 
 No daemon running:
 
 ```sh
 mcpvessel ps
-# Error: contacting the daemon: ... (is the daemon running? start it with 'mcpvessel daemon')
+# Error: contacting the daemon: ... (the daemon is not running; start it with 'mcpvessel init')
 ```
 
 ## Notes
 
-- `ps` has no flags and no filters. It shows every run the daemon reports, live and historical, in one sorted table. To narrow down, read the columns.
-- The header always prints, so empty output is a labeled table with no rows, never truly blank.
+- `-a/--all` is the only flag. The default view is live runs plus the 10 most recently finished; `-a` shows every run the daemon reports.
+- With nothing to show, `ps` prints a single empty-state line, not a bare header.
 - Live runs never show a cost; cost lands only when a run finishes and its final spend is read off the gateway. A blank `COST` on a live `running` or `serving` row is expected, not a lost figure.
 - A `serving` row is the front door, not a session. It carries no cost and never appears in history. The per-client `running` and `stopped` rows under it are the actual sessions, and those are what history records.
 - `crashed` only appears when a previous daemon was killed mid-run. A running daemon reconciles those stale records to `crashed` at startup; it never mints one during normal operation.

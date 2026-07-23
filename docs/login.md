@@ -18,7 +18,7 @@ This is the path `push` and `pull` need. It writes a username and password into 
 
 **Plaintext fallback on a bare host.** The store is opened with plaintext puts allowed. On a machine with a credential helper configured, the helper stores the secret as usual. On a machine with no helper (a bare Linux box or a CI runner), rather than refuse the login, it falls back to writing base64 into `config.json`, matching Docker's own default behavior. This only changes the no-helper case; a helper, where present, still wins.
 
-`credentials.Login` validates the credential against the registry before it stores it, so a wrong password fails here, not later on the first push. On success `login` prints `Login Succeeded` to stdout.
+`credentials.Login` validates the credential against the registry before it stores it, so a wrong password fails here, not later on the first push. On success `login` prints `Logged in to <host>` to stdout.
 
 ### How credentials are read
 
@@ -42,7 +42,7 @@ It resolves a GitHub token, exchanges it for a registry bearer, and saves the be
 
 The device flow needs a registered GitHub OAuth app client id in `VESSEL_GITHUB_CLIENT_ID`. Without it, and without a piped token, `login` fails and tells you both ways out: set the client id with `mcpvessel config env set VESSEL_GITHUB_CLIENT_ID <client-id>`, or feed a GitHub token with `--password-stdin`.
 
-**Exchange and cache.** The GitHub token is POSTed to the MCP Registry's `/v0.1/auth/github-at` endpoint, which returns the registry's own bearer and an expiry. The registry is `https://registry.modelcontextprotocol.io`, or `VESSEL_MCP_REGISTRY` if you override it. The bearer is written to `~/.mcpvessel/mcpregistry-token.json` at mode `0600` (`VESSEL_HOME` overrides the `~/.mcpvessel` root). On success `login` prints `Login Succeeded`.
+**Exchange and cache.** The GitHub token is POSTed to the MCP Registry's `/v0.1/auth/github-at` endpoint, which returns the registry's own bearer and an expiry. The registry is `https://registry.modelcontextprotocol.io`, or `VESSEL_MCP_REGISTRY` if you override it. The bearer is written to `~/.mcpvessel/mcpregistry-token.json` at mode `0600` (`VESSEL_HOME` overrides the `~/.mcpvessel` root). On success `login` prints `Logged in to the MCP Registry`.
 
 `register` reads that saved token; an expired one is treated as not logged in, so re-run `login mcp-registry` to refresh it.
 

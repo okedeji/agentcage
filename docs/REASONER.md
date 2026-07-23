@@ -42,6 +42,7 @@ The loop's bounds are environment variables with sane defaults, so you can tune 
 | `REASONER_MAX_TURNS` | `12` | Tool-loop turns before the reasoner forces a final answer. Guards a runaway loop; the real ceiling is the run's budget. |
 | `REASONER_MAX_RETRIES` | `5` | Retries the OpenAI SDK makes on a 429, 5xx, or timeout, with backoff that honors `Retry-After`. A rate-limit blip does not kill a deployed run. |
 | `REASONER_LLM_TIMEOUT` | `120` | Seconds before a single completion request times out. |
+| `REASONER_TOOL_TIMEOUT` | `120` | Seconds before a single tool call times out, so a hung sub-agent cannot stall the loop forever. |
 | `REASONER_MAX_TOOL_CHARS` | `16000` | Character cap on one tool result. A larger result is truncated with a visible marker so one big payload cannot overflow the model's context. |
 | `REASONER_MAX_TOOL_FAILURES` | `3` | Identical failing tool calls before that call is cut off, so the model cannot burn the whole budget retrying a call that will never work. |
 

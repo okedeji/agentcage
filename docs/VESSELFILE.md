@@ -67,9 +67,12 @@ Names the single tool that is the agent's reasoning entry point, the one `run` a
 ```
 EXPOSE tool_a tool_b
 EXPOSE tool_c, tool_d
+EXPOSE *
 ```
 
 The tools that are publicly callable from outside the cage. Repeatable, and names may be separated by spaces or commas; duplicates across lines are merged, not rejected. `EXPOSE` is the boundary a parent sees over `USES`: a sub-agent contributes exactly the tools it exposes, minus anything the parent denies. With no `EXPOSE`, a tool collection still serves its tools, but a parent composing it over `USES` has nothing it is promised to keep.
+
+`EXPOSE *` exposes every tool the server advertises. The wildcard is resolved at build time: introspection observes the server's real tool list and the `*` expands to exactly those names, so the sealed catalog holds concrete tools, not a wildcard. This is what `import` writes into a generated Vesselfile, since a wrapped server's whole point is to offer all its tools; narrow it to explicit names when you want a tighter surface. One consequence: in a bundle built with `--no-introspect` there is no observed tool list to expand against, so a bare `*` names nothing there. The wildcard only means something in an introspected build.
 
 ## Composing other agents
 
@@ -124,6 +127,8 @@ SECRETS OPTIONAL_KEY?
 ```
 
 The secret keys the server needs injected at runtime. Repeatable, comma or space separated. A secret differs from an `ENV` value in where it comes from and how it is handled: the operator supplies it from their secret store or `--secret`, it is scoped so it only reaches the server that declares it, and it is kept out of logs and the bundle. A trailing `?` marks a secret optional, the same fail-open rule as `ENV KEY?`. `SECRETS` is a declaration of need; the value never lives in the Vesselfile.
+
+A secret name must be a valid environment-variable identifier (a letter or underscore, then letters, digits, or underscores), since it is injected as one, and it may not start with the reserved `VESSEL_` prefix, which belongs to the runtime's own injected contract. A name breaking either rule is rejected at parse time.
 
 ### EGRESS
 

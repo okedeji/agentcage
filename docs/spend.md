@@ -20,7 +20,7 @@ The spend number is not stored anywhere durable. The LLM gateway that fronts a r
 - **Only a running gateway can be read.** Once the run stops, its gateway is gone and the read fails. A finished run's total cost is captured by the runtime at teardown and shown in `mcpvessel ps`; `spend` is for a run that is still up.
 - **The first metered call has to have happened.** The snapshot is written after a call, so a reasoning run that is up but has not yet made its first billable LLM call has no snapshot to read yet. It reports the same 404 as a run that does not reason at all.
 
-When any of these is the case the daemon returns `no spend for run <id> (does it reason, and is it still running?)`.
+When any of these is the case the daemon returns `no live spend for run <id> (spend reads a live reasoning run; a finished run's total is in 'mcpvessel ps')`.
 
 ## The readout
 

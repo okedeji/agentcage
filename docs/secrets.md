@@ -34,7 +34,7 @@ Stores one value under `NAME`, read from stdin. Takes exactly one argument, the 
 - **On a terminal**, typing is hidden. Characters are read without echo, so the value never appears on screen. You type it and press enter.
 - **When stdin is not a terminal** (a pipe or a redirected file), `set` reads one line and strips the trailing newline (`\r\n` or `\n`). This is the scripting path: `mcpvessel secrets set NAME < key.txt` or `printf %s "$TOKEN" | mcpvessel secrets set NAME`.
 
-After reading, `set` prints a newline to stderr (to close the prompt line) and, on success, `Stored NAME` to stdout. Because the prompt and the newline go to stderr, capturing stdout in a script yields only the confirmation.
+After reading, `set` prints a newline to stderr (to close the prompt line) and, on success, `Stored secret NAME` to stdout. Because the prompt and the newline go to stderr, capturing stdout in a script yields only the confirmation.
 
 **Empty is rejected.** If the value comes back empty (you pressed enter at the prompt, or piped in nothing), `set` fails with `secret "NAME" is empty` and writes nothing. This is deliberate: an empty secret would otherwise satisfy a required input and defer the failure to run time, so `set` refuses it up front.
 
@@ -50,7 +50,7 @@ mcpvessel secrets ls
 
 Prints the stored names, one per line, sorted. Takes no arguments.
 
-`ls` prints **names only, never values**. There is no flag to reveal a value, and the store's `Names` method returns the keys alone. An empty store prints nothing and exits zero. Use `ls` to see what you have stored before a run, or to confirm a `set` landed.
+`ls` prints **names only, never values**. There is no flag to reveal a value, and the store's `Names` method returns the keys alone. An empty store prints a pointer instead of silence, and exits zero: `No secrets stored. Add one with 'mcpvessel secrets set NAME'.` Use `ls` to see what you have stored before a run, or to confirm a `set` landed.
 
 ## rm
 
@@ -99,7 +99,7 @@ mcpvessel secrets rm slack_token
 
 ## Notes
 
-- The prompt (`Value: `) and the closing newline go to stderr, so `mcpvessel secrets set NAME > /dev/null` still shows the prompt, and a script capturing stdout gets only `Stored NAME`.
+- The prompt (`Value: `) and the closing newline go to stderr, so `mcpvessel secrets set NAME > /dev/null` still shows the prompt, and a script capturing stdout gets only `Stored secret NAME`.
 - Piping in a file with a trailing newline is fine: `set` strips one trailing `\r\n` or `\n`. A value with meaningful internal newlines cannot be stored through the piped path, which reads a single line.
 - `ls` sorts names, so its order does not reflect when you stored each one.
 - There is no bulk import here. To load many secrets for one run without storing them, `run` and `import` accept `--secret-file` (`NAME=VALUE` per line); `secrets set` handles one named value at a time for the persistent store.
