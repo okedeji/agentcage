@@ -28,6 +28,20 @@ jobs:
       - run: make test
       - run: make build
 
+  # govulncheck scans the module against the Go vulnerability database. It
+  # builds against go1.26 (unlike golangci-lint), so it is a safe CI gate. Its
+  # own job so a vuln disclosure does not mask a test failure, and vice versa.
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
+
   # No golangci-lint release is built with Go 1.26 yet, and a binary built with
   # an older Go refuses to lint a go1.26 module (exit 3). Lint runs locally via
   # `make lint` / `make ci`; re-add a lint job here once a 1.26-built release

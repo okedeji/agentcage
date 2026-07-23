@@ -1,4 +1,4 @@
-.PHONY: all build build-linux build-linux-all setup clean test vet lint fmt-check ci tidy lima-deps lima-deps-all completions release-deps
+.PHONY: all build build-linux build-linux-all setup clean test vet lint vuln fmt-check ci tidy lima-deps lima-deps-all completions release-deps
 
 GO := go
 # git describe fails with no tags; the trailing sed still exits 0, so fall back
@@ -57,6 +57,14 @@ vet:
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "error: golangci-lint not found (install: https://golangci-lint.run/welcome/install/)"; exit 1; }
 	golangci-lint run ./...
+
+# vuln scans the module against the Go vulnerability database. It queries
+# vuln.go.dev, so it needs network and is kept out of the offline `ci` target;
+# CI runs it as its own job. govulncheck (unlike golangci-lint) builds against
+# go1.26, so it is safe to gate on.
+vuln:
+	@command -v govulncheck >/dev/null 2>&1 || $(GO) install golang.org/x/vuln/cmd/govulncheck@latest
+	govulncheck ./...
 
 fmt-check:
 	@unformatted=$$(gofmt -l .); if [ -n "$$unformatted" ]; then echo "gofmt: these files are not formatted:" >&2; echo "$$unformatted" >&2; exit 1; fi
