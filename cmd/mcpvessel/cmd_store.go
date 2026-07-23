@@ -32,7 +32,7 @@ bundles you no longer need.`,
   mcpvessel store load researcher.agent -t @okedeji/researcher:0.1
   mcpvessel store rm @me/oldagent:0.1`,
 	}
-	cmd.AddCommand(newStoreLsCmd(), newStoreLoadCmd(), newStoreRmCmd())
+	cmd.AddCommand(newStoreLsCmd(), newStoreLoadCmd(), newStoreRmCmd(), newStorePruneCmd())
 	return cmd
 }
 
@@ -220,4 +220,37 @@ func loadBundle(w io.Writer, file, tag string) error {
 	}
 	_, _ = fmt.Fprintf(w, "Loaded %s as %s\n", filepath.Base(file), name)
 	return nil
+}
+
+func newStorePruneCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "prune",
+		Short: "Remove untagged bundles left behind by rebuilds",
+		Long: `Delete every bundle in the store that no reference points at.
+
+Rebuilding a tag moves the reference to the new bundle and strands the old
+bytes; 'store ls' shows them as <untagged>. Prune deletes exactly those.
+Tagged bundles are never touched, and neither is the pull cache, so a digest
+another agent's USES lock resolves stays available.`,
+		Example: `  mcpvessel store prune`,
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			pruned, err := store.Prune()
+			if err != nil {
+				return err
+			}
+			w := cmd.OutOrStdout()
+			if len(pruned) == 0 {
+				cliout.Empty(w, "Nothing to prune; every bundle is tagged.")
+				return nil
+			}
+			var total int64
+			for _, p := range pruned {
+				total += p.Size
+				_, _ = fmt.Fprintf(w, "Removed %s (%s)\n", shortStoreHash(p.Hash), humanSize(p.Size))
+			}
+			_, _ = fmt.Fprintf(w, "Reclaimed %s from %d bundle(s)\n", humanSize(total), len(pruned))
+			return nil
+		},
+	}
 }

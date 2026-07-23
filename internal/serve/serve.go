@@ -383,7 +383,7 @@ func httpInvokeStream(w http.ResponseWriter, r *http.Request, a Agent, tool stri
 			writeEvent("error", map[string]any{"error": err.Error()})
 			return
 		}
-		writeEvent("done", map[string]any{"result": text})
+		writeEvent("done", map[string]any{"result": resultValue(text)})
 		return
 	}
 
@@ -398,7 +398,7 @@ func httpInvokeStream(w http.ResponseWriter, r *http.Request, a Agent, tool stri
 		writeEvent("error", map[string]any{"error": err.Error()})
 		return
 	}
-	writeEvent("done", map[string]any{"result": text})
+	writeEvent("done", map[string]any{"result": resultValue(text)})
 }
 
 // httpInvoke resolves this request's own ephemeral instance and calls tool. It
@@ -416,7 +416,23 @@ func httpInvoke(w http.ResponseWriter, r *http.Request, a Agent, tool string, ar
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"result": text})
+	writeJSON(w, http.StatusOK, map[string]any{"result": resultValue(text)})
+}
+
+// resultValue upgrades a tool's text output to real JSON when it is a JSON
+// object or array, so an HTTP caller gets {"result": {...}} instead of the
+// same JSON escaped inside a string, parsed twice. Scalars stay strings: a
+// tool that answers the text "42" or "true" means the text, not the value.
+func resultValue(text string) any {
+	trimmed := strings.TrimSpace(text)
+	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[') {
+		return text
+	}
+	var v any
+	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
+		return text
+	}
+	return v
 }
 
 func publicTool(a Agent, tool string) bool {

@@ -453,3 +453,38 @@ func storeDir() (string, error) {
 	}
 	return filepath.Join(home, ".mcpvessel", "store"), nil
 }
+
+// Pruned is one bundle Prune deleted: its hash and the bytes reclaimed.
+type Pruned struct {
+	Hash string
+	Size int64
+}
+
+// Prune deletes every bundle no reference points at: the leftovers a rebuild
+// under the same tag strands, since Tag moves the ref and keeps the old
+// bytes. Refs are untouched. A digest a USES lock resolves is served from
+// the pull cache, not the store, so an untagged store bundle is safe to drop.
+func Prune() ([]Pruned, error) {
+	entries, err := List()
+	if err != nil {
+		return nil, err
+	}
+	s, err := New()
+	if err != nil {
+		return nil, err
+	}
+	var out []Pruned
+	for _, e := range entries {
+		if e.Ref != "" {
+			continue
+		}
+		gone, err := s.removeBundleFile(e.Hash)
+		if err != nil {
+			return out, err
+		}
+		if gone {
+			out = append(out, Pruned{Hash: e.Hash, Size: e.Size})
+		}
+	}
+	return out, nil
+}

@@ -63,7 +63,18 @@ If the run finishes but the CLI cannot fetch the artifact back, it says so (`the
 
 ## Flags
 
-`record` has no flags of its own. It accepts only the global flags every `mcpvessel` command carries. The run's behavior comes entirely from the bundle and the optional prompt.
+`record` takes the same input flags `run` does, so a recorded run is exactly the run it would have been:
+
+| Flag | Meaning |
+| --- | --- |
+| `--budget USD` | Cap the run's LLM spend, e.g. `5.00`. Overrides the agent's advisory `BUDGET`. |
+| `--secret NAME` | Supply a secret the agent declares, or `agent:NAME` to grant one agent of several. Repeatable. |
+| `--secret-file PATH` | Read secret values (`[agent:]NAME=VALUE` per line) from a permissions-restricted file. |
+| `--env KEY=VALUE` | Supply an env value, or `KEY` to pass it through from your environment. Repeatable. |
+| `--env-file PATH` | Read env values (`KEY=VALUE` per line) from a file. |
+| `--egress HOSTS` | Allow the agent hosts for this run: `host,host`, or `agent:host,host` to scope one. Repeatable. |
+
+The recording itself never contains a secret or the provider key: request bodies are captured before the gateway attaches the key, and secret values ride env injection, not the recorded payloads.
 
 ## Examples
 

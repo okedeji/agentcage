@@ -59,8 +59,14 @@ Type coercion needs a schema, and only an introspected build carries one. A bund
 | Flag | Meaning |
 | --- | --- |
 | `--arg KEY=VALUE` | One tool argument. Repeatable, once per argument. Split on the first `=`; the key is trimmed, the value is verbatim. Coerced to the tool's declared type (see [Passing arguments](#passing-arguments)). |
+| `--secret NAME` | Supply a secret the agent declares, or `agent:NAME` to grant one agent of several. Resolved from your environment or the secret store, never the command line. Repeatable. |
+| `--secret-file PATH` | Read secret values (`[agent:]NAME=VALUE` per line) from a permissions-restricted file. |
+| `--env KEY=VALUE` | Supply an env value, or `KEY` to pass it through from your environment. Repeatable. |
+| `--env-file PATH` | Read env values (`KEY=VALUE` per line) from a file. |
+| `--egress HOSTS` | Allow the agent hosts for this call: `host,host`, or `agent:host,host` to scope one of several. Repeatable. |
+| `--budget USD` | Cap the call's LLM spend, e.g. `5.00`. Only matters when the tool belongs to a reasoning agent. |
 
-That is the only flag `call` defines. Unlike `run`, `call` has no `--secret`, `--env`, `--budget`, `--egress`, or resource-cap flags: it sends only the bundle reference, the tool name, and the arguments. The bundle's baked `EGRESS`, `ENV`, and `SECRETS` still apply at boot, but you cannot supply or override a runtime secret or env value on the `call` command line. A tool that needs a secret injected at run time has no channel for it here; serve or run the bundle instead.
+These are the same input flags `run` takes, resolved the same way: flags overlay your config-bound secrets, and a server still only receives a name its `SECRETS` declares.
 
 ## Examples
 

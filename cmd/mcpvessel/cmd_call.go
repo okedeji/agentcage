@@ -12,11 +12,13 @@ import (
 
 	"github.com/okedeji/mcpvessel/internal/bundle"
 	"github.com/okedeji/mcpvessel/internal/daemon"
-	"github.com/okedeji/mcpvessel/internal/runtime"
+	"github.com/okedeji/mcpvessel/internal/egress"
 )
 
 func newCallCmd() *cobra.Command {
 	var argPairs []string
+	var envFlags, secretFlags, egressFlags []string
+	var envFile, secretFile, budget string
 	cmd := &cobra.Command{
 		Use:   "call BUNDLE TOOL",
 		Short: "Call a specific tool on an agent by name",
@@ -56,9 +58,24 @@ Tools the agent serves over MCP but does not EXPOSE stay private.`,
 			if err != nil {
 				return err
 			}
-			// Config-bound secrets flow to a called tool the same as to run/serve,
-			// so a tool collection gets the keys it declares without a flag.
-			secretPool := runtime.ScopedSecrets{}
+			var budgetMicros int64
+			if budget != "" {
+				m, err := parseUSDMicros(budget)
+				if err != nil {
+					return fmt.Errorf("--budget %q is not a USD amount", budget)
+				}
+				if m == 0 {
+					return fmt.Errorf("--budget must be a positive amount; omit it to leave the call unbounded")
+				}
+				budgetMicros = m
+			}
+			// The same input pools run builds: --env/--secret flags overlaid on
+			// config-bound secrets, so a tool collection gets the keys it
+			// declares with or without a flag.
+			envPool, secretPool, err := buildInputPools(envFlags, envFile, secretFlags, secretFile)
+			if err != nil {
+				return err
+			}
 			if err := applyConfigSecrets(secretPool, t.Ref, cmd.ErrOrStderr()); err != nil {
 				return err
 			}
@@ -66,7 +83,10 @@ Tools the agent serves over MCP but does not EXPOSE stay private.`,
 				Ref:     t.Ref,
 				Tool:    toolName,
 				Args:    toolArgs,
+				Budget:  budgetMicros,
+				Env:     envPool,
 				Secrets: secretPool,
+				Egress:  egress.ParseScoped(egressFlags),
 			}, cmd.ErrOrStderr())
 			if err != nil {
 				var unreachable *daemon.Unreachable
@@ -83,6 +103,12 @@ Tools the agent serves over MCP but does not EXPOSE stay private.`,
 		},
 	}
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "tool argument as KEY=VALUE (repeatable)")
+	cmd.Flags().StringVar(&budget, "budget", "", "cap the call's LLM spend in USD, e.g. 5.00 (only matters for a reasoning agent's tool)")
+	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "supply an env value: KEY=VALUE, or KEY to pass it through from your environment (repeatable)")
+	cmd.Flags().StringVar(&envFile, "env-file", "", "read env values (KEY=VALUE per line) from a file")
+	cmd.Flags().StringArrayVar(&secretFlags, "secret", nil, "supply a secret NAME, or agent:NAME to grant one agent of several; the value resolves from your environment or the mcpvessel secret store (repeatable)")
+	cmd.Flags().StringVar(&secretFile, "secret-file", "", "read secret values ([agent:]NAME=VALUE per line) from a perms-restricted file")
+	cmd.Flags().StringArrayVar(&egressFlags, "egress", nil, "allow the agent hosts for this call: host,host, or agent:host,host to scope one (repeatable)")
 	return cmd
 }
 

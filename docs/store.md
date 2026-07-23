@@ -6,6 +6,7 @@ Inspect and populate the local bundle store, the content-addressed directory und
 mcpvessel store ls [--json]
 mcpvessel store load FILE [-t REF]
 mcpvessel store rm REF|HASH...
+mcpvessel store prune
 ```
 
 ## The store on disk
@@ -87,6 +88,14 @@ The messages spell out the outcome:
 `rm` touches only the local store. A copy you pushed to a registry is untouched. Emptied ref directories (the last tag under an org, say) are pruned so no empty scaffolding is left behind.
 
 `store rm` has no flags.
+
+## store prune
+
+```
+mcpvessel store prune
+```
+
+Deletes every bundle no reference points at. Rebuilding a tag moves the reference to the new bundle and strands the old bytes, which `store ls` shows as `<untagged>`; prune removes exactly those and reports the space reclaimed. Tagged bundles are never touched, and neither is the pull cache, so a digest another agent's `USES` lock resolves stays available. With nothing to remove it says so and exits 0.
 
 ## Examples
 

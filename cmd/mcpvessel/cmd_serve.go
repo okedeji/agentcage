@@ -22,7 +22,7 @@ import (
 )
 
 func newServeCmd() *cobra.Command {
-	var listen string
+	var listen, budget string
 	var expose, noExpose, egressFlags, secretFlags, envFlags []string
 	var secretFile, envFile string
 	var save bool
@@ -86,7 +86,18 @@ shuts down.`,
 			if err != nil {
 				return err
 			}
-			res, err := daemon.Dial(socket).Serve(cmd.Context(), targets, listen, expose, noExpose, runtimeEgress, envPool, secretPool)
+			var budgetMicros int64
+			if budget != "" {
+				m, err := parseUSDMicros(budget)
+				if err != nil {
+					return fmt.Errorf("--budget %q is not a USD amount", budget)
+				}
+				if m == 0 {
+					return fmt.Errorf("--budget must be a positive amount; omit it to leave each instance unbounded")
+				}
+				budgetMicros = m
+			}
+			res, err := daemon.Dial(socket).Serve(cmd.Context(), targets, listen, expose, noExpose, runtimeEgress, envPool, secretPool, budgetMicros)
 			if err != nil {
 				var unreachable *daemon.Unreachable
 				if errors.As(err, &unreachable) {
@@ -139,6 +150,7 @@ shuts down.`,
 		},
 	}
 	cmd.Flags().StringVar(&listen, "listen", "", "address to bind the MCP front door to, e.g. :7000 (required)")
+	cmd.Flags().StringVar(&budget, "budget", "", "cap each client instance's LLM spend in USD, e.g. 5.00 (per instance, not shared)")
 	cmd.Flags().StringArrayVar(&expose, "expose", nil, "also expose this agent, matched by repository (repeatable)")
 	cmd.Flags().StringArrayVar(&noExpose, "no-expose", nil, "hide this agent even if USES PUBLIC, matched by repository (repeatable)")
 	cmd.Flags().StringArrayVar(&egressFlags, "egress", nil, "allow a served agent hosts for this run: host,host, or agent:host,host to scope one of several (repeatable)")

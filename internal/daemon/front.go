@@ -57,6 +57,10 @@ type serveRequest struct {
 	// Secrets is the operator secret pool: broadcast under "", or granted to
 	// one agent under its short name; declaration still gates injection.
 	Secrets runtime.ScopedSecrets `json:"secrets,omitempty"`
+	// Budget caps each client instance's LLM spend in micro-USD; every
+	// instance is its own run with its own gateway meter, so the ceiling is
+	// per instance, not shared across clients. Zero leaves spend unbounded.
+	Budget int64 `json:"budget,omitempty"`
 }
 
 // serveBundle is one bundle to serve; Name, when set, overrides the root
@@ -162,7 +166,7 @@ func (d *Daemon) handleServe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agents, ids, err := d.registerExposed(services, cfg.Serve, req.Egress, req.Env, req.Secrets)
+	agents, ids, err := d.registerExposed(services, cfg.Serve, req.Egress, req.Env, req.Secrets, req.Budget)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -222,7 +226,7 @@ func (d *Daemon) handleServe(w http.ResponseWriter, r *http.Request) {
 // read from the bundle's catalog (no boot needed to list them), an instance
 // manager booting per-client instances on demand, and a serve entry in the
 // registry. On error it rolls back the entries already created.
-func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve, scopedEgress map[string][]string, envPool map[string]string, secretPool runtime.ScopedSecrets) ([]serve.Agent, []string, error) {
+func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve, scopedEgress map[string][]string, envPool map[string]string, secretPool runtime.ScopedSecrets, budgetMicroUSD int64) ([]serve.Agent, []string, error) {
 	agents := make([]serve.Agent, 0, len(services))
 	ids := make([]string, 0, len(services))
 	for _, svc := range services {
@@ -241,6 +245,7 @@ func (d *Daemon) registerExposed(services []exposedService, cfg config.Serve, sc
 					Name:        ea.Address,
 					Ref:         display,
 					RunID:       runID,
+					Budget:      budgetMicroUSD,
 					Interaction: env.InteractionInteractive,
 					Managed:     true,
 					Stdout:      io.Discard,

@@ -13,6 +13,7 @@ import (
 
 	"github.com/okedeji/mcpvessel/internal/bundle"
 	"github.com/okedeji/mcpvessel/internal/daemon"
+	"github.com/okedeji/mcpvessel/internal/egress"
 	"github.com/okedeji/mcpvessel/internal/locate"
 	"github.com/okedeji/mcpvessel/internal/replay"
 )
@@ -31,6 +32,8 @@ run, share it when reporting a bug, or analyze it yourself.`,
 }
 
 func newReplayRecordCmd() *cobra.Command {
+	var envFlags, secretFlags, egressFlags []string
+	var envFile, secretFile, budget string
 	cmd := &cobra.Command{
 		Use:   "record BUNDLE [PROMPT]",
 		Short: "Run an agent and record its full payloads to a .replay artifact",
@@ -62,10 +65,34 @@ it attaches the provider key, so a recording never contains a key.`,
 			if err != nil {
 				return err
 			}
+			var budgetMicros int64
+			if budget != "" {
+				m, err := parseUSDMicros(budget)
+				if err != nil {
+					return fmt.Errorf("--budget %q is not a USD amount", budget)
+				}
+				if m == 0 {
+					return fmt.Errorf("--budget must be a positive amount; omit it to leave the run unbounded")
+				}
+				budgetMicros = m
+			}
+			// The same input pools run builds, so a recorded run is the run it
+			// would have been: flags overlaid on config-bound secrets.
+			envPool, secretPool, err := buildInputPools(envFlags, envFile, secretFlags, secretFile)
+			if err != nil {
+				return err
+			}
+			if err := applyConfigSecrets(secretPool, args[0], cmd.ErrOrStderr()); err != nil {
+				return err
+			}
 			runID, result, err := daemon.Dial(socket).RecordRun(cmd.Context(), daemon.RunRequest{
-				Ref:  args[0],
-				Tool: manifest.Vesselfile.Main,
-				Args: toolArgs,
+				Ref:     args[0],
+				Tool:    manifest.Vesselfile.Main,
+				Args:    toolArgs,
+				Budget:  budgetMicros,
+				Env:     envPool,
+				Secrets: secretPool,
+				Egress:  egress.ParseScoped(egressFlags),
 			}, cmd.ErrOrStderr())
 			if err != nil {
 				var unreachable *daemon.Unreachable
@@ -82,6 +109,12 @@ it attaches the provider key, so a recording never contains a key.`,
 			return saveReplay(cmd, socket, runID)
 		},
 	}
+	cmd.Flags().StringVar(&budget, "budget", "", "cap the run's LLM spend in USD, e.g. 5.00 (overrides the agent's advisory BUDGET)")
+	cmd.Flags().StringArrayVar(&envFlags, "env", nil, "supply an env value: KEY=VALUE, or KEY to pass it through from your environment (repeatable)")
+	cmd.Flags().StringVar(&envFile, "env-file", "", "read env values (KEY=VALUE per line) from a file")
+	cmd.Flags().StringArrayVar(&secretFlags, "secret", nil, "supply a secret NAME, or agent:NAME to grant one agent of several (repeatable)")
+	cmd.Flags().StringVar(&secretFile, "secret-file", "", "read secret values ([agent:]NAME=VALUE per line) from a perms-restricted file")
+	cmd.Flags().StringArrayVar(&egressFlags, "egress", nil, "allow the agent hosts for this run: host,host, or agent:host,host to scope one (repeatable)")
 	return cmd
 }
 

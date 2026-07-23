@@ -42,7 +42,7 @@ Either way the directory's base name becomes the agent's address, because a cont
 - `POST /agents/<address>` prompts the agent's main tool. The body is `{"prompt": "..."}`, or a raw `{"messages": [...]}` array; a bare prompt is wrapped as one user message the way `run` does. This route exists only for an agent that has a `MAIN`. A tool collection with no `MAIN` has no prompt route.
 - `POST /tools/<name>` invokes a tool on the merged endpoint by its prefixed `<agent>_<tool>` name.
 
-A successful plain-HTTP call returns `{"result": "..."}`; an error returns `{"error": "..."}` with an HTTP status (400 for a failed call, 404 for an unknown tool).
+A successful plain-HTTP call returns `{"result": ...}`; an error returns `{"error": "..."}` with an HTTP status (400 for a failed call, 404 for an unknown tool). When the tool's output is a JSON object or array, `result` carries it as real JSON (`{"result": {"timezone": ...}}`), so a consumer parses once; any other output, including scalar-looking text like `42`, stays a string exactly as the tool produced it. The SSE `done` event carries the same shape.
 
 ## Streaming answers over SSE
 
@@ -118,6 +118,7 @@ Over the MCP endpoints, an agent that asks a mid-call question routes it to the 
 | `--secret-file PATH` | Read secret values (`[agent:]NAME=VALUE` per line) from a permissions-restricted file. |
 | `--env KEY=VALUE` | Supply an env value a served agent needs, or `KEY` to pass it through from your environment. Repeatable. |
 | `--env-file PATH` | Read env values (`KEY=VALUE` per line) from a file. |
+| `--budget USD` | Cap each client instance's LLM spend, e.g. `5.00`. Every connected client gets its own instance with its own meter, so the ceiling is per instance, not shared across clients. Unset leaves served spend unbounded. |
 
 ## Examples
 

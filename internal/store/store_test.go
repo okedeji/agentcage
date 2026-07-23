@@ -268,3 +268,45 @@ func TestStore_TagRequiresVersion(t *testing.T) {
 		t.Fatal("Tag without a version should error")
 	}
 }
+
+func TestPrune_RemovesOnlyUntaggedBundles(t *testing.T) {
+	s := newTestStore(t)
+	write := func(hash string) {
+		t.Helper()
+		dst := s.PathFor(hash)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			t.Fatalf("mkdir bundles: %v", err)
+		}
+		if err := os.WriteFile(dst, []byte("bundle bytes"), 0o644); err != nil {
+			t.Fatalf("write bundle: %v", err)
+		}
+	}
+	write("sha256:aaa111")
+	write("sha256:bbb222")
+	ref, err := reference.Parse("@okedeji/kept:0.1")
+	if err != nil {
+		t.Fatalf("parse ref: %v", err)
+	}
+	if err := s.Tag(ref, "sha256:aaa111"); err != nil {
+		t.Fatalf("Tag: %v", err)
+	}
+
+	pruned, err := Prune()
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if len(pruned) != 1 || pruned[0].Hash != "sha256:bbb222" {
+		t.Fatalf("pruned = %+v, want exactly the untagged bbb222", pruned)
+	}
+	if _, err := os.Stat(s.PathFor("sha256:aaa111")); err != nil {
+		t.Errorf("tagged bundle must survive prune: %v", err)
+	}
+	if _, err := os.Stat(s.PathFor("sha256:bbb222")); !os.IsNotExist(err) {
+		t.Errorf("untagged bundle must be gone, stat err = %v", err)
+	}
+
+	again, err := Prune()
+	if err != nil || len(again) != 0 {
+		t.Errorf("second prune should be a no-op, got %+v, %v", again, err)
+	}
+}
